@@ -1,0 +1,16 @@
+[package]
+name = "cargo-spellcheck"
+version = "0.0.0"
+authors = ["Bernhard Schuster <bernhard@ahoi.io>"]
+edition = "2018"
+repository = "https://github.com/drahnr/cargo-spellcheck.git"
+homepage = "https://github.com/drahnr/cargo-spellcheck"
+license = "MIT OR Apache-2.0"
+keywords = ["spellcheck","spelling","grammar"]
+description = "Checks all doc comments for spelling mistakes"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+hunspell = "0.1"
+docopt = "1"
