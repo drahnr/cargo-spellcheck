@@ -14,3 +14,8 @@ description = "Checks all doc comments for spelling mistakes"
 [dependencies]
 hunspell = "0.1"
 docopt = "1"
+serde = { version = "1", features = ["derive"] }
+anyhow = "1"
+proc-macro2 = "1"
+walkdir = "2"
+syn = "1"
