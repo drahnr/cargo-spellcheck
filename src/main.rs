@@ -1,6 +1,3 @@
-
-
-
 mod extractor;
 mod checker;
 
@@ -9,6 +6,7 @@ use serde::Deserialize;
 use std::path::PathBuf;
 use std::convert::TryFrom;
 use docopt::Docopt;
+use log::{warn,info,debug,trace};
 
 const USAGE: &str = r#"
 Spellcheck all your doc comments
@@ -19,9 +17,9 @@ Usage:
   spellcheck [--fix] [[--recursive] <paths>.. ]
 
 Options:
-  -h --help     Show this screen.
-  --fix         Synonym to running the `fix` subcommand.
-  -r --recursive   If a path is provided, if should recurse into subdirectories [default: false].
+  -h --help        Show this screen.
+  --fix            Synonym to running the `fix` subcommand.
+  -r --recursive   If a path is provided, if recursion into subdirectories is desired.
 "#;
 
 
@@ -34,6 +32,7 @@ struct Args {
     cmd_check: bool,
 }
 
+#[derive(Debug,Clone,Copy,Eq,PartialEq)]
 enum Mode {
     Fix,
     Check,
@@ -51,7 +50,12 @@ impl std::convert::TryFrom<(bool,bool)> for Mode {
 }
 
 
+
+/// XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXx
+/// Funky bros shalld cause some erroris.
 fn main() -> anyhow::Result<()> {
+    env_logger::init();
+
     let args: Args = Docopt::new(USAGE)
     .and_then(|d| d.deserialize())
     .unwrap_or_else(|e| e.exit());
@@ -60,5 +64,6 @@ fn main() -> anyhow::Result<()> {
     let check = args.cmd_check || !fix;
     let mode = Mode::try_from((fix,check))?;
 
+    trace!("Executing: {:?}", mode);
     extractor::run(mode, args.arg_paths, args.flag_recursive)
 }
