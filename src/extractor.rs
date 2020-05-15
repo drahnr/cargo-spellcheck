@@ -8,21 +8,22 @@ use std::fs;
 use anyhow::anyhow;
 use log::{debug, info, trace, warn};
 use proc_macro2::{Spacing, TokenStream, TokenTree};
-use std::collections::HashMap;
+use indexmap::IndexMap;
 use std::convert::TryFrom;
 use std::path::{Path, PathBuf};
 
-/// Complete set of documentation in a set of paths helpz.
+/// Complete set of documentation for a set of files.
 #[doc = "check"]
 #[derive(Debug, Clone)]
 pub struct Documentation {
-    index: HashMap<String, Vec<proc_macro2::Literal>>,
+    /// Mapping of a path to documentation literals
+    index: IndexMap<String, Vec<proc_macro2::Literal>>,
 }
 
 impl Documentation {
     pub fn new() -> Self {
         Self {
-            index: HashMap::with_capacity(64),
+            index: IndexMap::with_capacity(64),
         }
     }
 

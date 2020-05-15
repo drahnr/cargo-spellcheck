@@ -48,16 +48,20 @@ where
 
 /// A suggestion for certain offending span.
 #[derive(Clone, Debug)]
-pub struct Suggestion {
-    /// Reference to the file location
+pub struct Suggestion<'s> {
+    /// Reference to the file location.
     pub path: PathBuf,
+    /// Literal we are referencing.
+    pub literal: &'s proc_macro2::Literal, // TODO merge adjacent literals
+    /// The span (absolute!) of where it is supposed to be used. TODO make this relative towards the literal.
     pub span: RelativeSpan,
+    /// Fix suggestions, might be words or the full sentence.
     pub replacements: Vec<String>,
 }
 
 use std::fmt;
 
-impl fmt::Display for Suggestion {
+impl<'s> fmt::Display for Suggestion<'s> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         use console::Style;
 
@@ -65,14 +69,15 @@ impl fmt::Display for Suggestion {
         let error = Style::new().bold().red();
         let arrow_marker = Style::new().blue();
         let context_marker = Style::new().bold().blue();
-        let replacement = Style::new().white();
+		let fix = Style::new().green();
+		let help = Style::new().yellow().bold();
 
         let line_number_digit_count = dbg!(self.span.start.line.to_string()).len();
         let indent = 3 + line_number_digit_count;
 
         error.apply_to("error").fmt(formatter)?;
         highlight.apply_to(": spellcheck").fmt(formatter)?;
-        formatter.write_str("\n");
+        formatter.write_str("\n")?;
 
         arrow_marker
             .apply_to(format!("{:>width$}", "-->", width = indent + 1))
@@ -87,7 +92,7 @@ impl fmt::Display for Suggestion {
         context_marker
             .apply_to(format!("{:>width$}", "|", width = indent))
             .fmt(formatter)?;
-        formatter.write_str("\n");
+        formatter.write_str("\n")?;
         context_marker
             .apply_to(format!(
                 "{:>width$} |",
@@ -96,24 +101,60 @@ impl fmt::Display for Suggestion {
             ))
             .fmt(formatter)?;
 
-        writeln!(formatter, " {}", "XX TODO XXX EXTRACT THE REAL SENTENCE")?;
+		// TODO spans must be adjusted accordingly! probably impossible
+		// trimming must be done one after the other and size must be kept track of!
+		let literal_str = self.literal.to_string();
+		let orig_len = literal_str.len();
+		let literal_str = literal_str.trim_start_matches(|c: char| { c.is_whitespace() || c == '\n' || c == '"' });
+		let shift_left = orig_len - literal_str.len();
+		let literal_str = literal_str.trim_end_matches(|c: char| { c.is_whitespace() || c == '\n' || c == '"' });
+		let tail_cut = orig_len - shift_left - literal_str.len();
+
+		writeln!(
+			formatter,
+			" {}",
+			literal_str
+        )?;
+
+        // underline the relevant part with ^^^^^
+
+		let size = if self.span.end.line == self.span.start.line {
+			self.span.end.column.saturating_sub(self.span.start.column)
+		} else {
+			literal_str.len().saturating_sub(self.span.start.column)
+		};
+
+		if size > 0 && shift_left <= self.span.start.column {
+			// TODO should have never ended up in here
+			// TODO trim must be done before hands
+			context_marker
+				.apply_to(format!("{:>width$}", "|", width = indent))
+				.fmt(formatter)?;
+			help.apply_to(format!(" {:>offset$}", "", offset = self.span.start.column - shift_left)).fmt(formatter)?;
+			help.apply_to(format!("{:^>size$}", "", size = size)).fmt(formatter)?;
+			formatter.write_str("\n")?;
+		}
+
         context_marker
             .apply_to(format!("{:>width$}", "|", width = indent))
             .fmt(formatter)?;
 
+
         let replacement = match self.replacements.len() {
             0 => String::new(),
-            1 => format!(" - {}", self.replacements[0]),
-            2 => format!(" - {} or {}", self.replacements[0], self.replacements[1]),
+            1 => format!(" - {}", fix.apply_to(&self.replacements[1])),
+            2 => format!(" - {} or {}", fix.apply_to(&self.replacements[0]).to_string(), fix.apply_to(&self.replacements[1]).to_string()),
             n => {
-                let last = &self.replacements[n - 1];
-                let joined = self.replacements[..n - 1].join(", ");
+                let last = fix.apply_to(&self.replacements[n - 1]).to_string();
+                let joined = self.replacements[..n - 1].iter().map(|x| {
+					fix.apply_to(x).to_string()
+				}).collect::<Vec<String>>().as_slice().join(", ");
                 format!(" - {}, or {}", joined, last)
             }
         };
 
         error.apply_to(replacement).fmt(formatter)?;
-        formatter.write_str("\n");
+        formatter.write_str("\n")?;
         context_marker
             .apply_to(format!("{:>width$}", "|", width = indent))
             .fmt(formatter)?;
@@ -121,7 +162,7 @@ impl fmt::Display for Suggestion {
     }
 }
 
-impl Suggestion {
+impl<'s> Suggestion<'s> {
     /// Show with style
     pub fn show(&self) -> anyhow::Result<()> {
         println!("{}", self);
@@ -138,22 +179,24 @@ pub struct RelativeSpan {
     pub end: LineColumn,
 }
 
-/// rturns absolute offsets
+/// Returns absolute offsets and the data with the token in question.
+///
+/// Does not handle hypenation yet or partial words at boundaries.
 fn tokenize<'a>(literal: &'a proc_macro2::Literal) -> Vec<(String, RelativeSpan)> {
     let mut start = LineColumn { line: 0, column: 0 };
     let mut end = LineColumn { line: 0, column: 0 };
     let mut column = 0usize;
-    let mut row = 0usize;
+    let mut line = 0usize;
     let mut started = false;
     let mut linear_start = 0usize;
     let mut linear_end = 0usize;
     let s = literal.to_string();
     let mut bananasplit = Vec::with_capacity(32);
-    for (kar_idx, kar) in s.char_indices() {
-        if kar.is_whitespace() {
-            linear_end = kar_idx;
+    for (c_idx, c) in s.char_indices() {
+        if c.is_whitespace() {
+            linear_end = c_idx;
             end = LineColumn {
-                line: row,
+                line: line,
                 column: column,
             };
             if started {
@@ -163,45 +206,61 @@ fn tokenize<'a>(literal: &'a proc_macro2::Literal) -> Vec<(String, RelativeSpan)
                 }
                 start.line += literal.span().start().line;
 
-                if literal.span().start().line == 0 {
+
+				if literal.span().start().line == 0 {
                     end.column += literal.span().start().column;
                 }
-                end.line += literal.span().start().line;
+				end.line += literal.span().start().line;
 
-                bananasplit.push((
+
+                bananasplit.push(dbg!((
                     s[linear_start..linear_end].to_string(),
                     RelativeSpan { start, end },
-                ));
+                )));
             }
             started = false;
-            if kar == '\n' {
+            if c == '\n' {
                 column = 0;
-                row += 1;
-            }
+                line += 1;
+			}
         } else {
             if !started {
-                linear_start = kar_idx;
+                linear_start = c_idx;
                 start = LineColumn {
-                    line: row,
+                    line: line,
                     column: column,
                 };
                 started = true;
             }
-        }
+		}
+		column += 1;
     }
     dbg!(bananasplit)
 }
 
-fn tokenize_literals<'a>(literals: &'a [proc_macro2::Literal]) -> Vec<(String, RelativeSpan)> {
+/// Tokenize a set of literals.
+///
+/// Does not handle hyphenation yet!
+fn tokenize_literals<'a, 'b>(
+    literals: &'a [proc_macro2::Literal],
+) -> Vec<(Vec<(String, RelativeSpan)>, &'b proc_macro2::Literal)>
+where
+    'a: 'b,
+{
     literals
         .iter()
         .fold(Vec::with_capacity(128), |mut acc, literal| {
-            acc.append(&mut tokenize(&literal));
+            acc.push((tokenize(&literal), &*literal));
             acc
         })
 }
 
-pub(crate) fn check<'a>(docu: &'a Documentation) -> Result<Vec<Suggestion>> {
+
+/// Check a full document for violations using the tools we have.
+pub(crate) fn check<'a, 's>(docu: &'a Documentation) -> Result<Vec<Suggestion<'s>>>
+where
+    'a: 's,
+{
     let grammar: bool = false;
     let spelling: bool = true;
     let mut corrections = Vec::<Suggestion>::with_capacity(128);
@@ -242,6 +301,7 @@ pub(crate) fn check<'a>(docu: &'a Documentation) -> Result<Vec<Suggestion>> {
                     },
                     path: PathBuf::from(path),
                     replacements: vec![],
+                    literal: &literals[0],
                 });
                 Ok(acc)
             },
@@ -267,16 +327,24 @@ pub(crate) fn check<'a>(docu: &'a Documentation) -> Result<Vec<Suggestion>> {
                 .fold(Vec::with_capacity(128), |mut acc, (path, literals)| {
                     // FIXME literals should be passed directly to tokenize to allow
                     // for correct span calculation
-                    for (word, rspan) in tokenize_literals(literals) {
-                        let word = word.as_str();
-                        if !hunspell.check(word) {
-                            let replacements = hunspell.suggest(word);
-                            // FIXME translate the rspan back to
-                            acc.push(Suggestion {
-                                span: rspan,
-                                path: PathBuf::from(path),
-                                replacements,
-                            })
+                    for (words_with_spans, literal) in tokenize_literals(literals) {
+                        for (word, rspan) in words_with_spans {
+                            let word = word.as_str();
+                            if !hunspell.check(word) {
+                                // get rid of single character suggestions
+                                let replacements = hunspell
+                                    .suggest(word)
+                                    .into_iter()
+                                    .filter(|x| x.len() != 1)
+                                    .collect::<Vec<_>>();
+                                // FIXME translate the rspan back to
+                                acc.push(Suggestion {
+                                    span: rspan,
+                                    path: PathBuf::from(path),
+                                    replacements,
+                                    literal,
+                                })
+                            }
                         }
                     }
                     acc

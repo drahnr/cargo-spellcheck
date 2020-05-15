@@ -19,6 +19,7 @@ syn = { version = "1", features = ["full"] }
 log = "0.4"
 env_logger = "0.7"
 console = "0.11"
+indexmap = "1"
 
 # dictionary
 hunspell = { version = "0.1", package = "hunspell-rs" }

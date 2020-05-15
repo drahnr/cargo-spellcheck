@@ -148,6 +148,7 @@ dependencies = [
  "docopt",
  "env_logger 0.7.1",
  "hunspell-rs",
+ "indexmap",
  "languagetool",
  "log",
  "proc-macro2 1.0.12",
