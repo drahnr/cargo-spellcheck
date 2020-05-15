@@ -123,6 +123,9 @@ where
     }
 }
 
+/// TODO do this incremental, first parse the firstt file
+/// and extract all mod declarations and filter the subdirs and files based on
+/// the modules names. That way stale files can be avoided.
 pub(crate) fn traverse(path: &Path) -> anyhow::Result<Vec<Documentation>> {
     let sources = walkdir::WalkDir::new(path)
         .max_depth(45)
