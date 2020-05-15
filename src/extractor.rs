@@ -136,9 +136,8 @@ pub(crate) fn traverse(path: &Path) -> anyhow::Result<Vec<Documentation>> {
     let documentation = sources
         .iter()
         .filter_map(|path: &String| -> Option<Documentation> {
-            fs::read_to_string(path)
-                .map(|content: String| dbg!(syn::parse_str(&content)).ok())
-                .ok().flatten()
+            fs::read_to_string(path).ok()
+                .and_then(|content: String| { syn::parse_str(&content).ok() } )
                 .map(|stream| Documentation::from((path, stream)))
         })
         .filter(|documentation| !documentation.is_empty())
@@ -172,8 +171,11 @@ pub(crate) fn run(mode: Mode, paths: Vec<PathBuf>, recurse: bool) -> anyhow::Res
     };
 
     let combined = Documentation::combine(docs);
-	crate::checker::check(combined)?;
-	// crate::checker::fix(docs)?;
+	let suggestions = crate::checker::check(&combined)?;
+    // crate::checker::fix(docs)?;
+    for suggestion in suggestions {
+        eprintln!("{}", suggestion);
+    }
 
     Ok(())
 }

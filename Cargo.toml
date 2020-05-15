@@ -13,14 +13,13 @@ description = "Checks all doc comments for spelling mistakes"
 docopt = "1"
 serde = { version = "1", features = ["derive"] }
 anyhow = "1"
-proc-macro2 = { version = "1" }
+proc-macro2 = { version = "1", features = ["span-locations"] }
 walkdir = "2"
 syn = { version = "1", features = ["full"] }
 log = "0.4"
 env_logger = "0.7"
+console = "0.11"
 
-# tokenization
-natural = "0.5"
 # dictionary
 hunspell = { version = "0.1", package = "hunspell-rs" }
 # full grammar check
