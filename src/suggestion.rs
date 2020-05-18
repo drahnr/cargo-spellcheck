@@ -159,7 +159,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
 
         let replacement = match self.replacements.len() {
             0 => String::new(),
-            1 => format!(" - {}", fix.apply_to(&self.replacements[1])),
+            1 => format!(" - {}", fix.apply_to(&self.replacements[0])),
             2 => format!(
                 " - {} or {}",
                 fix.apply_to(&self.replacements[0]).to_string(),
