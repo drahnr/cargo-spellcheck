@@ -3,6 +3,8 @@
 //! Whatever.
 
 use super::*;
+use super::checker::RelativeSpan;
+
 use std::fs;
 
 use indexmap::IndexMap;
@@ -10,6 +12,51 @@ use log::{debug, info, trace, warn};
 use proc_macro2::{Spacing, TokenTree};
 
 use std::path::{Path, PathBuf};
+
+
+
+#[derive(Clone,Debug,Default)]
+pub struct LiteralSet {
+    /// consecutive set of literals
+    pub literals: Vec<proc_macro2::Literal>
+}
+
+impl LiteralSet {
+    /// Add a literal to a literal set.
+    pub fn add(&mut self, literal: proc_macro2::Literal) -> Result<(),proc_macro2::Literal> {
+        if let Some(previous) = self.literals.last() {
+
+            let y1 = previous.span().end().line + 1 == literal.span().start().line;
+            let y21 = previous.span().end().line == literal.span().start().line;
+            let y22 = previous.span().end().column + 1 == literal.span().start().column;
+            if y1 || ( y21 && y22 ) {
+                return Err(literal)
+            }
+        }
+
+        self.literals.push(literal);
+        Ok(())
+    }
+
+    /// Convert a linear offset to a set of offsets with literal references and spans within that literal.
+    pub fn linear<'a>(&'a self, offset: u64, length:u64) -> Vec<(&'a proc_macro2::Literal, RelativeSpan)> {
+        unimplemented!("XXX")
+    }
+}
+
+use std::fmt;
+
+impl<'s> fmt::Display for LiteralSet {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for literal in self.literals.iter() {
+            literal.fmt(formatter)?;
+            formatter.write_str("\n")?;
+        }
+        Ok(())
+    }
+}
+
+
 
 /// Complete set of documentation for a set of files.
 #[doc = "check"]
@@ -27,7 +74,7 @@ impl Documentation {
     }
 
     pub fn join(&mut self, other: Documentation) -> &mut Self {
-        other.index.into_iter().for_each(|(path, literals)| {
+        other.into_iter().for_each(|(path, literals)| {
             self.index
                 .entry(path)
                 .and_modify(|acc| acc.extend_from_slice(literals.as_slice()))

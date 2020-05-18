@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use super::extractor::Documentation;
-use super::suggestion::Suggestion;
+use super::suggestion::{Suggestion,Detector};
 
 use anyhow::Result;
 
@@ -102,7 +102,7 @@ pub(crate) fn check<'a, 's>(docu: &'a Documentation) -> Result<Vec<Suggestion<'s
 where
     'a: 's,
 {
-    let grammar: bool = false;
+    let grammar: bool = true;
     let spelling: bool = true;
     let mut corrections = Vec::<Suggestion>::with_capacity(128);
 
@@ -118,7 +118,7 @@ where
     if grammar {
         // TODO make configurable
         // FIXME properly handle
-        let url = "https://127.0.0.1:1337";
+        let url = "http://192.168.1.127:8010";
         let lt = LanguageTool::new(url)?;
         let mut suggestions = docu.iter().try_fold::<Vec<Suggestion>, _, Result<_>>(
             Vec::with_capacity(128),
@@ -127,23 +127,39 @@ where
                 // let text = text.as_str();
                 let req = Request::new(text, "en-US".to_owned());
                 let resp = lt.check(req)?;
-                let _ = dbg!(resp);
-                // TODO convert response to offsets and errors
-                acc.push(Suggestion {
-                    span: RelativeSpan {
-                        start: LineColumn {
-                            line: 0usize,
-                            column: 1337usize,
-                        },
-                        end: LineColumn {
-                            line: 0usize,
-                            column: 1337usize,
-                        },
-                    },
-                    path: PathBuf::from(path),
-                    replacements: vec![],
-                    literal: &literals[0],
-                });
+                if let Some(software) = resp.software {
+                    log::trace!("sw: {:?}", software);
+                }
+                if let Some(matches) = resp.matches {
+                    for item in matches {
+                        // log::trace!("item.context: {:?}", item.context);
+                        // log::trace!("item.message: {:?}", item.message);
+                        // log::trace!("item.short_message: {:?}", item.short_message);
+                        // log::trace!("item.rule: {:?}", item.rule);
+                        // log::trace!("item.replacements: {:?}", item.rule);
+                        // TODO convert response to offsets and errors with the matching literal
+                        let start = LineColumn {
+                            line: item.offset as usize,
+                            column: 0usize,
+                        };
+                        let end = LineColumn {
+                            line: (item.offset + item.length) as usize,
+                            column: 0usize,
+                        };
+                        acc.push(Suggestion {
+                            detector: Detector::LanguageTool,
+                            span: RelativeSpan {
+                                start,
+                                end,
+                            },
+                        path: PathBuf::from(path),
+                        replacements: item.replacements.into_iter().filter_map(|x| {
+                            x.value
+                        }).collect(),
+                        literal: &literals[0], // FIXME this is wrong
+                        });
+                    }
+                }
                 Ok(acc)
             },
         )?;
@@ -180,6 +196,7 @@ where
                                     .collect::<Vec<_>>();
                                 // FIXME translate the rspan back to
                                 acc.push(Suggestion {
+                                    detector: Detector::Hunspell,
                                     span: rspan,
                                     path: PathBuf::from(path),
                                     replacements,

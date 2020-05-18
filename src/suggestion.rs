@@ -38,9 +38,31 @@ pub use proc_macro2::LineColumn;
 //     }
 // }
 
+
+
+
+#[derive(Debug,Clone,Copy)]
+pub enum Detector {
+    LanguageTool,
+    Hunspell,
+}
+
+use std::fmt;
+
+impl fmt::Display for Detector {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::LanguageTool => "LanguageTool",
+            Self::Hunspell => "Hunspell",
+        })
+    }
+}
+
+
 /// A suggestion for certain offending span.
 #[derive(Clone, Debug)]
 pub struct Suggestion<'s> {
+    pub detector: Detector,
     /// Reference to the file location.
     pub path: PathBuf,
     /// Literal we are referencing.
@@ -51,7 +73,7 @@ pub struct Suggestion<'s> {
     pub replacements: Vec<String>,
 }
 
-use std::fmt;
+
 
 impl<'s> fmt::Display for Suggestion<'s> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -68,7 +90,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
         let indent = 3 + line_number_digit_count;
 
         error.apply_to("error").fmt(formatter)?;
-        highlight.apply_to(": spellcheck").fmt(formatter)?;
+        highlight.apply_to(format!(": spellcheck({})", &self.detector )).fmt(formatter)?;
         formatter.write_str("\n")?;
 
         arrow_marker

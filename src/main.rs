@@ -41,7 +41,7 @@ enum Mode {
 }
 
 /// XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXx
-/// Funky bros shalld cause some erroris.
+/// Fun facets shalld cause some erroris.
 fn main() -> anyhow::Result<()> {
     env_logger::init();
 
