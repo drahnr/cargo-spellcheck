@@ -39,12 +39,34 @@ pub use proc_macro2::LineColumn;
 // }
 
 
+pub struct TrimmedLiteral<'l> {
+    pub literal: &'l proc_macro2::Literal,
+    pub chopchop: (usize,usize),
+}
+
+pub fn<'l> TrimmedLiteral<'l> {
+    pub fn new(literal: &'l proc_macro2::Literal) -> Self {
+        let literal_str = self.literal.to_string();
+        let scrap = |c: char| -> bool {c.is_whitespace() || c == '\n'};
+        let n0 = literal_str.chars().take_while(scrap).count();
+        let n1 = literal_str.chars().rev().take_while(scrap).count();
+        Self {
+            literal,
+            chopchop: (n0,n1),
+        }
+    }
+}
 
 
-#[derive(Debug,Clone,Copy)]
+
+use enumflags2::BitFlags;
+
+
+#[derive(Debug,Clone,Copy,BitFlags)]
+#[repr(u8)]
 pub enum Detector {
-    LanguageTool,
-    Hunspell,
+    Hunspell = 0b0001,
+    LanguageTool = 0b0010,
 }
 
 use std::fmt;

@@ -139,12 +139,12 @@ where
                         // log::trace!("item.replacements: {:?}", item.rule);
                         // TODO convert response to offsets and errors with the matching literal
                         let start = LineColumn {
-                            line: item.offset as usize,
-                            column: 0usize,
+                            line: item.offset as usize,  // FIXME wrong
+                            column: 0usize,  // FIXME wrong
                         };
                         let end = LineColumn {
-                            line: (item.offset + item.length) as usize,
-                            column: 0usize,
+                            line: (item.offset + item.length) as usize,  // FIXME wrong
+                            column: item.length as usize, // FIXME wrong
                         };
                         acc.push(Suggestion {
                             detector: Detector::LanguageTool,
@@ -156,7 +156,7 @@ where
                         replacements: item.replacements.into_iter().filter_map(|x| {
                             x.value
                         }).collect(),
-                        literal: &literals[0], // FIXME this is wrong
+                        literal: &literals[0], // FIXME wrong
                         });
                     }
                 }
