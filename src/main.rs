@@ -1,5 +1,6 @@
 mod checker;
 mod extractor;
+mod suggestion;
 
 use anyhow::anyhow;
 use docopt::Docopt;
@@ -14,12 +15,13 @@ Spellcheck all your doc comments
 Usage:
   spellcheck check [[--recursive] <paths>.. ]
   spellcheck fix [[--recursive] <paths>.. ]
-  spellcheck [--fix] [[--recursive] <paths>.. ]
+  spellcheck [(--fix|--interactive)] [[--recursive] <paths>.. ]
 
 Options:
-  -h --help        Show this screen.
-  --fix            Synonym to running the `fix` subcommand.
-  -r --recursive   If a path is provided, if recursion into subdirectories is desired.
+  -h --help           Show this screen.
+  --fix               Synonym to running the `fix` subcommand.
+  -i --interactive    Interactively apply spelling and grammer fixes.
+  -r --recursive      If a path is provided, if recursion into subdirectories is desired.
 "#;
 
 #[derive(Debug, Deserialize)]
@@ -27,6 +29,7 @@ struct Args {
     flag_recursive: bool,
     arg_paths: Vec<PathBuf>,
     flag_fix: bool,
+    flag_interactive: bool,
     cmd_fix: bool,
     cmd_check: bool,
 }
@@ -35,18 +38,9 @@ struct Args {
 enum Mode {
     Fix,
     Check,
+    Interactive,
 }
 
-impl std::convert::TryFrom<(bool, bool)> for Mode {
-    type Error = anyhow::Error;
-    fn try_from(tup: (bool, bool)) -> Result<Self, Self::Error> {
-        match (tup.0, tup.1) {
-            (true, false) => Ok(Mode::Fix),
-            (false, true) => Ok(Mode::Check),
-            _ => Err(anyhow!("Can not be check and fix at the same time")),
-        }
-    }
-}
 
 /// XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXx
 /// Funky bros shalld cause some erroris.
@@ -57,9 +51,13 @@ fn main() -> anyhow::Result<()> {
         .and_then(|d| d.deserialize())
         .unwrap_or_else(|e| e.exit());
 
-    let fix = args.cmd_fix || args.flag_fix;
-    let check = args.cmd_check || !fix;
-    let mode = Mode::try_from((fix, check))?;
+    let mode = if args.cmd_fix || args.flag_fix {
+        Mode::Fix
+    } else if args.flag_interactive {
+        Mode::Interactive
+    } else { // check
+        Mode::Check
+    };
 
     trace!("Executing: {:?}", mode);
     extractor::run(mode, args.arg_paths, args.flag_recursive)

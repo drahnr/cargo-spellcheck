@@ -182,9 +182,17 @@ pub(crate) fn run(mode: Mode, paths: Vec<PathBuf>, recurse: bool) -> anyhow::Res
 
     let combined = Documentation::combine(docs);
     let suggestions = crate::checker::check(&combined)?;
-    // crate::checker::fix(docs)?;
-    for suggestion in suggestions {
-        eprintln!("{}", suggestion);
+
+
+
+    match mode {
+        Mode::Fix => unimplemented!("Unsupervised fixing is not implemented just yet"),
+        Mode::Check => {
+            for suggestion in suggestions {
+                eprintln!("{}", suggestion);
+            }
+        },
+        Mode::Interactive => unimplemented!("Interactive pick & apply is not implemented just yet")
     }
 
     Ok(())
