@@ -5,11 +5,10 @@
 use super::*;
 use std::fs;
 
-use anyhow::anyhow;
-use log::{debug, info, trace, warn};
-use proc_macro2::{Spacing, TokenStream, TokenTree};
 use indexmap::IndexMap;
-use std::convert::TryFrom;
+use log::{debug, info, trace, warn};
+use proc_macro2::{Spacing, TokenTree};
+
 use std::path::{Path, PathBuf};
 
 /// Complete set of documentation for a set of files.
@@ -183,16 +182,14 @@ pub(crate) fn run(mode: Mode, paths: Vec<PathBuf>, recurse: bool) -> anyhow::Res
     let combined = Documentation::combine(docs);
     let suggestions = crate::checker::check(&combined)?;
 
-
-
     match mode {
         Mode::Fix => unimplemented!("Unsupervised fixing is not implemented just yet"),
         Mode::Check => {
             for suggestion in suggestions {
                 eprintln!("{}", suggestion);
             }
-        },
-        Mode::Interactive => unimplemented!("Interactive pick & apply is not implemented just yet")
+        }
+        Mode::Interactive => unimplemented!("Interactive pick & apply is not implemented just yet"),
     }
 
     Ok(())

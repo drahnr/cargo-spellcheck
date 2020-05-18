@@ -1,9 +1,9 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use super::extractor::Documentation;
 use super::suggestion::Suggestion;
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 
 pub use proc_macro2::LineColumn;
 
@@ -50,12 +50,10 @@ fn tokenize<'a>(literal: &'a proc_macro2::Literal) -> Vec<(String, RelativeSpan)
                 }
                 start.line += literal.span().start().line;
 
-
-				if literal.span().start().line == 0 {
+                if literal.span().start().line == 0 {
                     end.column += literal.span().start().column;
                 }
-				end.line += literal.span().start().line;
-
+                end.line += literal.span().start().line;
 
                 bananasplit.push(dbg!((
                     s[linear_start..linear_end].to_string(),
@@ -66,7 +64,7 @@ fn tokenize<'a>(literal: &'a proc_macro2::Literal) -> Vec<(String, RelativeSpan)
             if c == '\n' {
                 column = 0;
                 line += 1;
-			}
+            }
         } else {
             if !started {
                 linear_start = c_idx;
@@ -76,8 +74,8 @@ fn tokenize<'a>(literal: &'a proc_macro2::Literal) -> Vec<(String, RelativeSpan)
                 };
                 started = true;
             }
-		}
-		column += 1;
+        }
+        column += 1;
     }
     dbg!(bananasplit)
 }
@@ -98,7 +96,6 @@ where
             acc
         })
 }
-
 
 /// Check a full document for violations using the tools we have.
 pub(crate) fn check<'a, 's>(docu: &'a Documentation) -> Result<Vec<Suggestion<'s>>>

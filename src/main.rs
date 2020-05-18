@@ -2,11 +2,10 @@ mod checker;
 mod extractor;
 mod suggestion;
 
-use anyhow::anyhow;
 use docopt::Docopt;
 use log::{debug, info, trace, warn};
 use serde::Deserialize;
-use std::convert::TryFrom;
+
 use std::path::PathBuf;
 
 const USAGE: &str = r#"
@@ -41,7 +40,6 @@ enum Mode {
     Interactive,
 }
 
-
 /// XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXx
 /// Funky bros shalld cause some erroris.
 fn main() -> anyhow::Result<()> {
@@ -55,7 +53,8 @@ fn main() -> anyhow::Result<()> {
         Mode::Fix
     } else if args.flag_interactive {
         Mode::Interactive
-    } else { // check
+    } else {
+        // check
         Mode::Check
     };
 
