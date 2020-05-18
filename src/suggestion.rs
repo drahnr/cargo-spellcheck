@@ -39,30 +39,48 @@ pub use proc_macro2::LineColumn;
 // }
 
 
-pub struct TrimmedLiteral<'l> {
+#[derive(Clone,Debug)]
+/// A litteral with meta info where the first and list whitespace may be found.
+pub struct AnnotatedLiteral<'l> {
     pub literal: &'l proc_macro2::Literal,
-    pub chopchop: (usize,usize),
+    pub rendered: String,
+    pub pre: usize,
+    pub post: usize,
+    pub len: usize,
 }
 
-pub fn<'l> TrimmedLiteral<'l> {
-    pub fn new(literal: &'l proc_macro2::Literal) -> Self {
-        let literal_str = self.literal.to_string();
-        let scrap = |c: char| -> bool {c.is_whitespace() || c == '\n'};
-        let n0 = literal_str.chars().take_while(scrap).count();
-        let n1 = literal_str.chars().rev().take_while(scrap).count();
+impl<'l> From<&'l proc_macro2::Literal> for AnnotatedLiteral<'l> {
+    fn from(literal: &'l proc_macro2::Literal) -> Self {
+        let rendered = literal.to_string();
+        let scrap = |c: &'_ char| -> bool { c.is_whitespace() };
+        let pre = 1 + rendered.chars().take_while(scrap).count();
+        let post = 1 + rendered.chars().rev().take_while(scrap).count();
         Self {
+            len: if rendered.len() > pre + post {rendered.len() - pre - post} else { 0 },
             literal,
-            chopchop: (n0,n1),
+            rendered,
+            pre,
+            post,
         }
     }
 }
 
+impl<'l> std::ops::Deref for AnnotatedLiteral<'l> {
+    type Target = proc_macro2::Literal;
+    fn deref(&self) -> &Self::Target {
+        self.literal
+    }
+}
 
+impl<'l> AnnotatedLiteral<'l> {
+    pub fn as_str(&self) -> &str {
+        &self.rendered.as_str()[self.pre..(self.pre+self.len)]
+    }
+}
 
 use enumflags2::BitFlags;
 
-
-#[derive(Debug,Clone,Copy,BitFlags)]
+#[derive(Debug, Clone, Copy, BitFlags)]
 #[repr(u8)]
 pub enum Detector {
     Hunspell = 0b0001,
@@ -80,7 +98,6 @@ impl fmt::Display for Detector {
     }
 }
 
-
 /// A suggestion for certain offending span.
 #[derive(Clone, Debug)]
 pub struct Suggestion<'s> {
@@ -88,14 +105,12 @@ pub struct Suggestion<'s> {
     /// Reference to the file location.
     pub path: PathBuf,
     /// Literal we are referencing.
-    pub literal: &'s proc_macro2::Literal, // TODO merge adjacent literals
+    pub literal: AnnotatedLiteral<'s>, // TODO merge adjacent literals
     /// The span (absolute!) of where it is supposed to be used. TODO make this relative towards the literal.
     pub span: RelativeSpan,
     /// Fix suggestions, might be words or the full sentence.
     pub replacements: Vec<String>,
 }
-
-
 
 impl<'s> fmt::Display for Suggestion<'s> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -112,7 +127,9 @@ impl<'s> fmt::Display for Suggestion<'s> {
         let indent = 3 + line_number_digit_count;
 
         error.apply_to("error").fmt(formatter)?;
-        highlight.apply_to(format!(": spellcheck({})", &self.detector )).fmt(formatter)?;
+        highlight
+            .apply_to(format!(": spellcheck({})", &self.detector))
+            .fmt(formatter)?;
         formatter.write_str("\n")?;
 
         arrow_marker
@@ -137,28 +154,17 @@ impl<'s> fmt::Display for Suggestion<'s> {
             ))
             .fmt(formatter)?;
 
-        // TODO spans must be adjusted accordingly! probably impossible
-        // trimming must be done one after the other and size must be kept track of!
-        let literal_str = self.literal.to_string();
-        let orig_len = literal_str.len();
-        let literal_str =
-            literal_str.trim_start_matches(|c: char| c.is_whitespace() || c == '\n' || c == '"');
-        let shift_left = orig_len - literal_str.len();
-        let literal_str =
-            literal_str.trim_end_matches(|c: char| c.is_whitespace() || c == '\n' || c == '"');
-        let _tail_cut = orig_len - shift_left - literal_str.len();
-
-        writeln!(formatter, " {}", literal_str)?;
+        writeln!(formatter, " {}", self.literal.as_str())?;
 
         // underline the relevant part with ^^^^^
 
-        let size = if self.span.end.line == self.span.start.line {
+        let marker_size = if self.span.end.line == self.span.start.line {
             self.span.end.column.saturating_sub(self.span.start.column)
         } else {
-            literal_str.len().saturating_sub(self.span.start.column)
+            self.literal.len.saturating_sub(self.span.start.column)
         };
 
-        if size > 0 && shift_left <= self.span.start.column {
+        if marker_size > 0 && self.literal.pre <= self.span.start.column {
             // TODO should have never ended up in here
             // TODO trim must be done before hands
             context_marker
@@ -167,10 +173,10 @@ impl<'s> fmt::Display for Suggestion<'s> {
             help.apply_to(format!(
                 " {:>offset$}",
                 "",
-                offset = self.span.start.column - shift_left
+                offset = self.span.start.column - self.literal.pre
             ))
             .fmt(formatter)?;
-            help.apply_to(format!("{:^>size$}", "", size = size))
+            help.apply_to(format!("{:^>size$}", "", size = marker_size))
                 .fmt(formatter)?;
             formatter.write_str("\n")?;
         }

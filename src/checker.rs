@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use super::extractor::Documentation;
-use super::suggestion::{Suggestion,Detector};
+use super::suggestion::{Suggestion,Detector,AnnotatedLiteral};
 
 use anyhow::Result;
 
@@ -156,7 +156,7 @@ where
                         replacements: item.replacements.into_iter().filter_map(|x| {
                             x.value
                         }).collect(),
-                        literal: &literals[0], // FIXME wrong
+                        literal: AnnotatedLiteral::from(&literals[0]), // FIXME wrong
                         });
                     }
                 }
@@ -200,7 +200,7 @@ where
                                     span: rspan,
                                     path: PathBuf::from(path),
                                     replacements,
-                                    literal,
+                                    literal: AnnotatedLiteral::from(literal),
                                 })
                             }
                         }
