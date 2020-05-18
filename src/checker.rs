@@ -28,12 +28,12 @@ pub struct RelativeSpan {
 /// Does not handle hypenation yet or partial words at boundaries.
 fn tokenize<'a>(literal: &'a proc_macro2::Literal) -> Vec<(String, RelativeSpan)> {
     let mut start = LineColumn { line: 0, column: 0 };
-    let mut end = LineColumn { line: 0, column: 0 };
+    let mut end;
     let mut column = 0usize;
     let mut line = 0usize;
     let mut started = false;
     let mut linear_start = 0usize;
-    let mut linear_end = 0usize;
+    let mut linear_end;
     let s = literal.to_string();
     let mut bananasplit = Vec::with_capacity(32);
     for (c_idx, c) in s.char_indices() {
