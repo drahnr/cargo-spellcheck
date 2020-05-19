@@ -51,7 +51,7 @@ impl Checker for LanguageToolChecker {
                                         .into_iter()
                                         .filter_map(|x| x.value)
                                         .collect(),
-                                    literal: AnnotatedLiteral::from(literal),
+                                    literal: literal.into(),
                                 });
                             } else {
                                 warn!("Unable to map response to literal {} {}", item.offset , item.length)

@@ -44,7 +44,7 @@ impl Checker for HunspellChecker {
                                     span: rspan,
                                     path: PathBuf::from(path),
                                     replacements,
-                                    literal: AnnotatedLiteral::from(literal),
+                                    literal,
                                 })
                             }
                         }

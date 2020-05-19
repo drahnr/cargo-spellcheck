@@ -29,9 +29,9 @@ Error display follows `cargo` error printing style:
 * [x] Decent error printing
 * [x] `cargo-spellcheck check`
 * [x] spell checking using `hunspell`
-* [ ] Merge multiline doc comments
+* [x] Merge multiline doc comments
 * [x] Grammar check using `languagetool` http API
-* [ ] False positive reduction
+* [x] False positive reduction
 * [ ] `cargo-spellcheck fix`
 * [ ] `cargo-spellcheck fix --interactive`
 * [ ] Re-wrap doc comments

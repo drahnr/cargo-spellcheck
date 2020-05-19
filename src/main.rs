@@ -1,8 +1,16 @@
 mod config;
+mod span;
+mod literalset;
+mod documentation;
 
 mod checker;
 mod extractor;
 mod suggestion;
+
+pub use self::span::*;
+pub use self::literalset::*;
+pub use self::documentation::*;
+pub use self::suggestion::*;
 
 use docopt::Docopt;
 use log::{debug, info, trace, warn};

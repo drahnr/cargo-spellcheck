@@ -1,36 +1,17 @@
 use std::path::PathBuf;
 
-use super::extractor::{Documentation,ConsecutiveLiteralSet};
-use super::suggestion::{Suggestion,Detector,AnnotatedLiteral};
+use crate::{
+    AnnotatedLiteralRef, ConsecutiveLiteralSet, Detector, Documentation, LineColumn, Span, Suggestion,
+};
 
 use anyhow::Result;
 
-pub use proc_macro2::LineColumn;
+use log::{debug, trace, warn};
 
-use log::{warn,debug,trace};
-
-#[cfg(feature="hunspell")]
+#[cfg(feature = "hunspell")]
 mod hunspell;
-#[cfg(feature="languagetool")]
+#[cfg(feature = "languagetool")]
 mod languagetool;
-
-/// Relative span in relation
-/// to the beginning of a doc comment.
-#[derive(Clone, Debug, Copy)]
-// TODO ,Eq,PartialEq,PartialOrd,Ord
-pub struct RelativeSpan {
-    pub start: LineColumn,
-    pub end: LineColumn,
-}
-
-
-// Span in relation to a full Document
-#[derive(Clone, Debug, Copy)]
-pub struct Span {
-    pub start: LineColumn,
-    pub end: LineColumn,
-}
-
 
 /// Implementation for a checker
 pub(crate) trait Checker {
@@ -43,7 +24,7 @@ pub(crate) trait Checker {
 ///
 /// Does not handle hypenation yet or partial words at boundaries.
 /// Returns the a vector of tokens as part of the string.
-fn tokenize<'a>(literal: &'a proc_macro2::Literal) -> Vec<(String, Span)> {
+fn tokenize<'a>(literal: AnnotatedLiteralRef<'a>) -> Vec<(String, Span)> {
     let mut start = LineColumn { line: 0, column: 0 };
     let mut end;
     let mut column = 0usize;
@@ -57,8 +38,8 @@ fn tokenize<'a>(literal: &'a proc_macro2::Literal) -> Vec<(String, Span)> {
     // add additional seperator characters for tokenization
     // which is useful to avoid pointless dict lookup failures.
     // TODO extract markdown links first
-    let blacklist = ";:,.?!#(){}[]_-".to_owned();
-    let is_ignore_char = |c: char| { c.is_whitespace() || blacklist.contains(c) };
+    let blacklist = "\";:,.?!#(){}[]_-".to_owned();
+    let is_ignore_char = |c: char| c.is_whitespace() || blacklist.contains(c);
     for (c_idx, c) in s.char_indices() {
         if is_ignore_char(c) {
             linear_end = c_idx;
@@ -78,10 +59,7 @@ fn tokenize<'a>(literal: &'a proc_macro2::Literal) -> Vec<(String, Span)> {
                 }
                 end.line += literal.span().start().line;
 
-                bananasplit.push((
-                    s[linear_start..linear_end].to_string(),
-                    Span { start, end },
-                ));
+                bananasplit.push((s[linear_start..linear_end].to_string(), Span { start, end }));
             }
             started = false;
             if c == '\n' {
@@ -108,7 +86,7 @@ fn tokenize<'a>(literal: &'a proc_macro2::Literal) -> Vec<(String, Span)> {
 /// Does not handle hyphenation yet!
 fn tokenize_literals<'a, 'b>(
     literals: &'a [ConsecutiveLiteralSet],
-) -> Vec<(Vec<(String, Span)>, &'b proc_macro2::Literal)>
+) -> Vec<(Vec<(String, Span)>, AnnotatedLiteralRef<'b>)>
 where
     'a: 'b,
 {
@@ -116,7 +94,7 @@ where
         .iter()
         .fold(Vec::with_capacity(128), |mut acc, cls| {
             for literal in cls.literals() {
-                acc.push((tokenize(&literal), &literal));
+                acc.push((tokenize(dbg!(literal).into()), literal.into()));
             }
             acc
         })
@@ -129,14 +107,14 @@ where
 {
     let mut corrections = Vec::<Suggestion>::with_capacity(128);
 
-    #[cfg(feature="languagetool")]
+    #[cfg(feature = "languagetool")]
     {
         if let Ok(mut suggestions) = self::languagetool::LanguageToolChecker::check(documentation) {
             corrections.append(&mut suggestions);
         }
     }
 
-    #[cfg(feature="hunspell")]
+    #[cfg(feature = "hunspell")]
     {
         if let Ok(mut suggestions) = self::hunspell::HunspellChecker::check(documentation) {
             corrections.append(&mut suggestions);

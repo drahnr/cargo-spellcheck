@@ -1,6 +1,6 @@
 [package]
 name = "cargo-spellcheck"
-version = "0.0.1"
+version = "0.0.2"
 authors = ["Bernhard Schuster <bernhard@ahoi.io>"]
 edition = "2018"
 repository = "https://github.com/drahnr/cargo-spellcheck.git"
@@ -8,6 +8,7 @@ homepage = "https://github.com/drahnr/cargo-spellcheck"
 license = "MIT OR Apache-2.0"
 keywords = ["spellcheck", "spelling", "grammar"]
 description = "Checks all doc comments for spelling mistakes"
+readme = "README.md"
 
 [dependencies]
 docopt = "1"
