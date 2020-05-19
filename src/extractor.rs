@@ -2,8 +2,8 @@
 //!
 //! Whatever.
 
+use super::checker::Span;
 use super::*;
-use super::checker::RelativeSpan;
 
 use std::fs;
 
@@ -11,42 +11,108 @@ use indexmap::IndexMap;
 use log::{debug, info, trace, warn};
 use proc_macro2::{Spacing, TokenTree};
 
+pub use proc_macro2::LineColumn;
 use std::path::{Path, PathBuf};
 
-
-
-#[derive(Clone,Debug,Default)]
-pub struct LiteralSet {
-    /// consecutive set of literals
-    pub literals: Vec<proc_macro2::Literal>
+#[derive(Clone, Debug, Default)]
+pub struct ConsecutiveLiteralSet {
+    /// consecutive set of literals mapped by line number
+    literals: Vec<proc_macro2::Literal>,
+    /// lines spanned (start, end)
+    pub coverage: (usize, usize),
 }
 
-impl LiteralSet {
-    /// Add a literal to a literal set.
-    pub fn add(&mut self, literal: proc_macro2::Literal) -> Result<(),proc_macro2::Literal> {
-        if let Some(previous) = self.literals.last() {
+impl ConsecutiveLiteralSet {
+    /// Initiate a new set based on the first literal
+    pub fn from(literal: proc_macro2::Literal) -> Self {
+        Self {
+            coverage: (literal.span().start().line, literal.span().end().line),
+            literals: vec![literal],
+        }
+    }
 
-            let y1 = previous.span().end().line + 1 == literal.span().start().line;
-            let y21 = previous.span().end().line == literal.span().start().line;
-            let y22 = previous.span().end().column + 1 == literal.span().start().column;
-            if y1 || ( y21 && y22 ) {
-                return Err(literal)
-            }
+    /// Add a literal to a literal set, if the previous lines literal already exists.
+    ///
+    /// Returns literl within the Err variant if not adjacent
+    pub fn add_adjacent(
+        &mut self,
+        literal: proc_macro2::Literal,
+    ) -> Result<(), proc_macro2::Literal> {
+        let previous_line = literal.span().end().line;
+        if previous_line == self.coverage.0 + 1 {
+            let _ = self.literals.insert(previous_line, literal);
+            return Ok(());
         }
 
-        self.literals.push(literal);
-        Ok(())
+        let next_line = literal.span().start().line;
+        if next_line + 1 == self.coverage.1 {
+            let _ = self.literals.insert(next_line, literal);
+            return Ok(());
+        }
+
+        return Err(literal);
+    }
+
+    fn extract<'a>(
+        it: &mut impl Iterator<Item = &'a proc_macro2::Literal>,
+        mut offset: usize,
+    ) -> Option<(&'a proc_macro2::Literal, LineColumn, usize)> {
+        for literal in it {
+            let len = literal.to_string().len();
+            if offset > len {
+                offset -= len;
+                continue;
+            }
+            if literal.span().end().column < offset {
+                break;
+            }
+            if literal.span().start().column > offset {
+                break;
+            }
+            return Some((
+                literal,
+                LineColumn {
+                    line: literal.span().start().line,
+                    column: offset,
+                },
+                offset,
+            ));
+        }
+        None
     }
 
     /// Convert a linear offset to a set of offsets with literal references and spans within that literal.
-    pub fn linear<'a>(&'a self, offset: u64, length:u64) -> Vec<(&'a proc_macro2::Literal, RelativeSpan)> {
-        unimplemented!("XXX")
+    pub fn linear_coverage_to_span<'a>(
+        &'a self,
+        offset: usize,
+        length: usize,
+    ) -> Option<(&'a proc_macro2::Literal, Span)> {
+        let mut x = self.literals.iter();
+
+        if let Some((start_literal, start, mut offset)) = Self::extract(&mut x, offset) {
+            offset += length;
+            if let Some((_end_literal, end, _offset)) = Self::extract(&mut x, offset) {
+                // if start_literal.span() != end_literal.span() {
+                //     warn!("Need multiline literal coverage support #TODO");
+                // }
+                let span = Span {
+                    start,
+                    end,
+                };
+                return Some((start_literal, span))
+            }
+        }
+        None
+    }
+
+    pub fn literals<'x>(&'x self) -> Vec<&'x proc_macro2::Literal> {
+        self.literals.iter().by_ref().collect()
     }
 }
 
 use std::fmt;
 
-impl<'s> fmt::Display for LiteralSet {
+impl<'s> fmt::Display for ConsecutiveLiteralSet {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         for literal in self.literals.iter() {
             literal.fmt(formatter)?;
@@ -56,14 +122,12 @@ impl<'s> fmt::Display for LiteralSet {
     }
 }
 
-
-
 /// Complete set of documentation for a set of files.
 #[doc = "check"]
 #[derive(Debug, Clone)]
 pub struct Documentation {
     /// Mapping of a path to documentation literals
-    index: IndexMap<String, Vec<proc_macro2::Literal>>,
+    index: IndexMap<PathBuf, Vec<ConsecutiveLiteralSet>>,
 }
 
 impl Documentation {
@@ -73,26 +137,30 @@ impl Documentation {
         }
     }
 
-    pub fn join(&mut self, other: Documentation) -> &mut Self {
-        other.into_iter().for_each(|(path, literals)| {
-            self.index
-                .entry(path)
-                .and_modify(|acc| acc.extend_from_slice(literals.as_slice()))
-                .or_insert_with(|| literals);
-        });
-        self
-    }
-
     pub fn is_empty(&self) -> bool {
         self.index.is_empty()
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&String, &Vec<proc_macro2::Literal>)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&PathBuf, &Vec<ConsecutiveLiteralSet>)> {
         self.index.iter()
     }
 
-    pub fn into_iter(self) -> impl Iterator<Item = (String, Vec<proc_macro2::Literal>)> {
+    pub fn into_iter(self) -> impl Iterator<Item = (PathBuf, Vec<ConsecutiveLiteralSet>)> {
         self.index.into_iter()
+    }
+
+    pub fn join(&mut self, other: Documentation) -> &mut Self {
+        other
+            .into_iter()
+            .for_each(|(path, mut literals): (_, Vec<ConsecutiveLiteralSet>)| {
+                self.index
+                    .entry(path)
+                    .and_modify(|acc: &mut Vec<ConsecutiveLiteralSet>| {
+                        acc.append(&mut literals);
+                    })
+                    .or_insert_with(|| literals);
+            });
+        self
     }
 
     pub fn combine(mut docs: Vec<Documentation>) -> Documentation {
@@ -105,15 +173,34 @@ impl Documentation {
             Documentation::new()
         }
     }
+
+    /// Append a literal to the given path
+    ///
+    /// Only works if the file is processed line by line, otherwise
+    /// requires a adjacency list.
+    pub fn append_literal(&mut self, path: &Path, literal: proc_macro2::Literal) {
+        let v: &mut Vec<_> = self
+            .index
+            .entry(path.to_owned())
+            .or_insert_with(|| Vec::new());
+
+        if let Some(last) = v.last_mut() {
+            if let Err(literal) = last.add_adjacent(literal) {
+                v.push(ConsecutiveLiteralSet::from(literal))
+            }
+        } else {
+            v.push(ConsecutiveLiteralSet::from(literal))
+        }
+    }
 }
 
-impl<S> From<(S, proc_macro2::TokenStream)> for Documentation
+impl<P> From<(P, proc_macro2::TokenStream)> for Documentation
 where
-    S: AsRef<str>,
+    P: AsRef<Path>,
 {
-    fn from(tup: (S, proc_macro2::TokenStream)) -> Self {
+    fn from(tup: (P, proc_macro2::TokenStream)) -> Self {
         let (path, stream) = tup;
-        let path = path.as_ref().to_owned();
+        let path: &Path = path.as_ref();
 
         let mut documentation = Documentation::new();
         let mut iter = stream.into_iter();
@@ -150,17 +237,13 @@ where
                     let comment = comment.unwrap();
                     if let TokenTree::Literal(literal) = comment {
                         trace!("Found doc literal: {:?}", literal);
-                        documentation
-                            .index
-                            .entry(path.clone())
-                            .or_insert_with(|| Vec::new())
-                            .push(literal);
+                        documentation.append_literal(path, literal);
                     } else {
                         continue;
                     }
                 }
                 TokenTree::Group(group) => {
-                    let _ = documentation.join(Documentation::from((&path, group.stream())));
+                    let _ = documentation.join(Documentation::from((path, group.stream())));
                 }
                 _ => {}
             };

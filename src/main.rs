@@ -33,15 +33,18 @@ struct Args {
     cmd_check: bool,
 }
 
+
+/// Mode in which we operate
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum Mode {
+    /// Fix issues without interaction if there is sufficient information
     Fix,
+    /// Only show errors
     Check,
+    /// Interactively choose from candidates provided, simliar to `git add -p` .
     Interactive,
 }
 
-/// XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXx
-/// Fun facets shalld cause some erroris.
 fn main() -> anyhow::Result<()> {
     env_logger::init();
 

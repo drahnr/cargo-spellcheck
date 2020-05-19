@@ -13,7 +13,7 @@
 
 use std::path::PathBuf;
 
-use super::checker::RelativeSpan;
+use super::checker::Span;
 
 pub use proc_macro2::LineColumn;
 
@@ -42,10 +42,16 @@ pub use proc_macro2::LineColumn;
 #[derive(Clone,Debug)]
 /// A litteral with meta info where the first and list whitespace may be found.
 pub struct AnnotatedLiteral<'l> {
+    /// The literal which this annotates to.
     pub literal: &'l proc_macro2::Literal,
+    /// the complete rendered string including post and pre.
     pub rendered: String,
+    /// Whitespace prefix len + 1
     pub pre: usize,
+    /// Whitespace postfix len + 1
     pub post: usize,
+    /// Length without pre and post
+    /// if all whitespace, this is zer0 and the sum of pre+post is 2x len
     pub len: usize,
 }
 
@@ -80,6 +86,9 @@ impl<'l> AnnotatedLiteral<'l> {
 
 use enumflags2::BitFlags;
 
+
+
+/// Bitflag of available checkers by compilation / configuration.
 #[derive(Debug, Clone, Copy, BitFlags)]
 #[repr(u8)]
 pub enum Detector {
@@ -107,7 +116,7 @@ pub struct Suggestion<'s> {
     /// Literal we are referencing.
     pub literal: AnnotatedLiteral<'s>, // TODO merge adjacent literals
     /// The span (absolute!) of where it is supposed to be used. TODO make this relative towards the literal.
-    pub span: RelativeSpan,
+    pub span: Span,
     /// Fix suggestions, might be words or the full sentence.
     pub replacements: Vec<String>,
 }
@@ -123,7 +132,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
         let fix = Style::new().green();
         let help = Style::new().yellow().bold();
 
-        let line_number_digit_count = dbg!(self.span.start.line.to_string()).len();
+        let line_number_digit_count = self.span.start.line.to_string().len();
         let indent = 3 + line_number_digit_count;
 
         error.apply_to("error").fmt(formatter)?;
@@ -158,6 +167,9 @@ impl<'s> fmt::Display for Suggestion<'s> {
 
         // underline the relevant part with ^^^^^
 
+        // FIXME this needs some more thought
+        // and mostly works since it currently does not contain
+        // multilines
         let marker_size = if self.span.end.line == self.span.start.line {
             self.span.end.column.saturating_sub(self.span.start.column)
         } else {
@@ -179,6 +191,11 @@ impl<'s> fmt::Display for Suggestion<'s> {
             help.apply_to(format!("{:^>size$}", "", size = marker_size))
                 .fmt(formatter)?;
             formatter.write_str("\n")?;
+        } else {
+            log::trace!("marker_size={} [{}|{}|{}] literal {{ {:?} .. {:?} }}", marker_size, self.literal.pre, self.literal.len, self.literal.post,
+            self.literal.span().start(),
+            self.literal.span().end(),
+        );
         }
 
         context_marker
@@ -193,7 +210,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
                 fix.apply_to(&self.replacements[0]).to_string(),
                 fix.apply_to(&self.replacements[1]).to_string()
             ),
-            n => {
+            n if (n < 7) => {
                 let last = fix.apply_to(&self.replacements[n - 1]).to_string();
                 let joined = self.replacements[..n - 1]
                     .iter()
@@ -202,6 +219,18 @@ impl<'s> fmt::Display for Suggestion<'s> {
                     .as_slice()
                     .join(", ");
                 format!(" - {}, or {}", joined, last)
+            },
+            _n => {
+                let joined = self.replacements[..=6]
+                    .iter()
+                    .map(|x| fix.apply_to(x).to_string())
+                    .collect::<Vec<String>>()
+                    .as_slice()
+                    .join(", ");
+
+                let remaining = self.replacements.len()-6;
+                let remaining = fix.apply_to(format!("{}", remaining)).to_string();
+                format!(" - {}, or one of {} others", joined, remaining)
             }
         };
 

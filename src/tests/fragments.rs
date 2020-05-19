@@ -23,5 +23,4 @@ impl X {
 
 
 // Should not be checked for now
-
-// Verify markdown.
+// Verify **some** _super_ *duper* [markdown](https://ahoi.io/).

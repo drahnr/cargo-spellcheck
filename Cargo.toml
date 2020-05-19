@@ -21,9 +21,16 @@ env_logger = "0.7"
 console = "0.11"
 indexmap = "1"
 enumflags2 = "0.6"
+toml = "0.5"
 
 # dictionary
-hunspell = { version = "0.1", package = "hunspell-rs" }
+hunspell-rs = { version = "0.1", optional = true }
 # full grammar check
-languagetool = "0.1"
+languagetool-rs = {version =  "0.1", package="languagetool", optional = true}
 
+
+[features]
+default = ["hunspell"]
+
+languagetool = ["languagetool-rs"]
+hunspell = ["hunspell-rs"]

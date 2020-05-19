@@ -30,9 +30,27 @@ Error display follows `cargo` error printing style:
 * [x] `cargo-spellcheck check`
 * [x] spell checking using `hunspell`
 * [ ] Merge multiline doc comments
-* [ ] Grammar check using `languagetool` http API
+* [x] Grammar check using `languagetool` http API
 * [ ] False positive reduction
 * [ ] `cargo-spellcheck fix`
 * [ ] `cargo-spellcheck fix --interactive`
 * [ ] Re-wrap doc comments
 * [ ] Word split validation
+
+`hunspell` and `languagetool` are currently the two supported featuresets.
+
+
+
+### Hunspell
+
+Requires the native library
+
+```sh
+dnf install -y hunspell-devel
+```
+
+and building should succeed just fine.
+
+### LanguageTool
+
+Run a instance of the [LanguageTool server i.e. as container](https://hub.docker.com/r/erikvl87/languagetool) .
