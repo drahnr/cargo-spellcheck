@@ -21,7 +21,6 @@ Error display follows `cargo` error printing style:
 <font color="#3465A4"><b>    |</b></font><font color="#CC0000"><b> - </b></font><font color="#4E9A06"><b>shall</b></font> or <font color="#4E9A06">shall d</font>
 <font color="#3465A4"><b>    |</b></font>
 </pre>
-```
 
 
 ## Features
