@@ -6,7 +6,7 @@ edition = "2018"
 repository = "https://github.com/drahnr/cargo-spellcheck.git"
 homepage = "https://github.com/drahnr/cargo-spellcheck"
 license = "MIT OR Apache-2.0"
-keywords = ["spellcheck","spelling","grammar"]
+keywords = ["spellcheck", "spelling", "grammar"]
 description = "Checks all doc comments for spelling mistakes"
 
 [dependencies]
@@ -22,15 +22,21 @@ console = "0.11"
 indexmap = "1"
 enumflags2 = "0.6"
 toml = "0.5"
+directories = "2"
+lazy_static = "1"
+
+# config parsing, must be independent of features
+iso_country = { version = "0.1" }
+isolang = { version = "1", features = ["serde_serialize"] }
+url = { version = "2", features = ["serde"] }
 
 # dictionary
 hunspell-rs = { version = "0.1", optional = true }
-# full grammar check
-languagetool-rs = {version =  "0.1", package="languagetool", optional = true}
 
+# full grammar check
+languagetool-rs = { version = "0.1", package = "languagetool", optional = true }
 
 [features]
 default = ["hunspell"]
-
 languagetool = ["languagetool-rs"]
 hunspell = ["hunspell-rs"]

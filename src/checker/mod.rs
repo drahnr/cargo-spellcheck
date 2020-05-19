@@ -130,13 +130,17 @@ where
     let mut corrections = Vec::<Suggestion>::with_capacity(128);
 
     #[cfg(feature="languagetool")]
-    if let Ok(mut suggestions) = self::languagetool::LanguageToolChecker::check(documentation) {
-        corrections.append(&mut suggestions);
+    {
+        if let Ok(mut suggestions) = self::languagetool::LanguageToolChecker::check(documentation) {
+            corrections.append(&mut suggestions);
+        }
     }
 
     #[cfg(feature="hunspell")]
-    if let Ok(mut suggestions) = self::hunspell::HunspellChecker::check(documentation) {
-        corrections.append(&mut suggestions);
+    {
+        if let Ok(mut suggestions) = self::hunspell::HunspellChecker::check(documentation) {
+            corrections.append(&mut suggestions);
+        }
     }
 
     Ok(corrections)

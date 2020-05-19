@@ -33,11 +33,11 @@ impl Checker for LanguageToolChecker {
                     }
                     if let Some(matches) = resp.matches {
                         for item in matches {
-                            // log::trace!("item.context: {:?}", item.context);
-                            // log::trace!("item.message: {:?}", item.message);
-                            // log::trace!("item.short_message: {:?}", item.short_message);
-                            // log::trace!("item.rule: {:?}", item.rule);
-                            // log::trace!("item.replacements: {:?}", item.rule);
+                            log::trace!("item.context: {:?}", item.context);
+                            log::trace!("item.message: {:?}", item.message);
+                            log::trace!("item.short_message: {:?}", item.short_message);
+                            log::trace!("item.rule: {:?}", item.rule);
+                            log::trace!("item.replacements: {:?}", item.rule);
                             // TODO convert response to offsets and errors with the matching literal
                             if let Some((literal, span)) = cls
                                 .linear_coverage_to_span(item.offset as usize, item.length as usize)
@@ -54,7 +54,7 @@ impl Checker for LanguageToolChecker {
                                     literal: AnnotatedLiteral::from(literal),
                                 });
                             } else {
-                                warn!("Unable to map response to literal")
+                                warn!("Unable to map response to literal {} {}", item.offset , item.length)
                             }
                         }
                     }

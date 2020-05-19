@@ -1,3 +1,5 @@
+mod config;
+
 mod checker;
 mod extractor;
 mod suggestion;
