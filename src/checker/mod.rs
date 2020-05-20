@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 
 use crate::{
-    AnnotatedLiteralRef, ConsecutiveLiteralSet, Detector, Documentation, LineColumn, Span, Suggestion,
+    AnnotatedLiteralRef, ConsecutiveLiteralSet, Detector, Documentation, LineColumn, Span,
+    Suggestion,
 };
 
 use anyhow::Result;

@@ -13,8 +13,8 @@
 
 use std::path::PathBuf;
 
-use crate::{Span,LineColumn};
 use crate::AnnotatedLiteralRef;
+use crate::{LineColumn, Span};
 
 use enumflags2::BitFlags;
 
@@ -25,7 +25,6 @@ pub enum Detector {
     Hunspell = 0b0001,
     LanguageTool = 0b0010,
 }
-
 
 use std::fmt;
 
@@ -125,10 +124,16 @@ impl<'s> fmt::Display for Suggestion<'s> {
                 .fmt(formatter)?;
             formatter.write_str("\n")?;
         } else {
-            log::trace!("marker_size={} [{}|{}|{}] literal {{ {:?} .. {:?} }}", marker_size, self.literal.pre(), self.literal.len(), self.literal.post(),
-            self.literal.span().start(),
-            self.literal.span().end(),
-        );
+            log::warn!(
+                "marker_size={} [{}|{}|{}] literal {{ {:?} .. {:?} }} >> {} <<",
+                marker_size,
+                self.literal.pre(),
+                self.literal.len(),
+                self.literal.post(),
+                self.literal.span().start(),
+                self.literal.span().end(),
+                self.literal.to_string(),
+            );
         }
 
         context_marker
@@ -152,7 +157,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
                     .as_slice()
                     .join(", ");
                 format!(" - {}, or {}", joined, last)
-            },
+            }
             _n => {
                 let joined = self.replacements[..=6]
                     .iter()
@@ -161,7 +166,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
                     .as_slice()
                     .join(", ");
 
-                let remaining = self.replacements.len()-6;
+                let remaining = self.replacements.len() - 6;
                 let remaining = fix.apply_to(format!("{}", remaining)).to_string();
                 format!(" - {}, or one of {} others", joined, remaining)
             }
@@ -171,19 +176,18 @@ impl<'s> fmt::Display for Suggestion<'s> {
         formatter.write_str("\n")?;
 
         context_marker
-        .apply_to(format!("{:>width$}", "|\n", width = indent+1))
-        .fmt(formatter)?;
+            .apply_to(format!("{:>width$}", "|\n", width = indent + 1))
+            .fmt(formatter)?;
 
         context_marker
-        .apply_to(format!("{:>width$}", "|", width = indent))
-        .fmt(formatter)?;
+            .apply_to(format!("{:>width$}", "|", width = indent))
+            .fmt(formatter)?;
         if let Some(ref description) = self.description {
             writeln!(formatter, "   {}", description)?;
         }
 
-
         context_marker
-            .apply_to(format!("{:>width$}", "|\n", width = indent+1))
+            .apply_to(format!("{:>width$}", "|\n", width = indent + 1))
             .fmt(formatter)
     }
 }

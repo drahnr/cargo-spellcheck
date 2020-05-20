@@ -79,7 +79,8 @@ impl Documentation {
                 if let Err(literal) = cls.add_adjacent(literal) {
                     trace!(
                         "appending, but failed to append: {:?} to set {:?}",
-                        &literal, &cls
+                        &literal,
+                        &cls
                     );
                     v.push(ConsecutiveLiteralSet::from(literal))
                 } else {
@@ -95,9 +96,6 @@ impl Documentation {
             }
         }
     }
-
-
-
 
     fn parse_token_tree<P: AsRef<Path>>(&mut self, path: P, stream: proc_macro2::TokenStream) {
         let path: &Path = path.as_ref();
@@ -135,7 +133,12 @@ impl Documentation {
                     }
                     let comment = comment.unwrap();
                     if let TokenTree::Literal(literal) = comment {
-                        trace!("Found doc literal at {:?}..{:?}: {:?}", literal.span().start(),literal.span().end(), literal);
+                        trace!(
+                            "Found doc literal at {:?}..{:?}: {:?}",
+                            literal.span().start(),
+                            literal.span().end(),
+                            literal
+                        );
                         self.append_literal(path, literal);
                     } else {
                         continue;

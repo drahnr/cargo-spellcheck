@@ -36,9 +36,10 @@ impl Checker for LanguageToolChecker {
                             log::trace!("item.message: {:?}", item.message);
                             log::trace!("item.short_message: {:?}", item.short_message);
                             // TODO convert response to offsets and errors with the matching literal
-                            for (literal, span) in cls
-                                .linear_coverage_to_spans(item.offset as usize, item.length as usize)
-                            {
+                            for (literal, span) in cls.linear_coverage_to_spans(
+                                item.offset as usize,
+                                item.length as usize,
+                            ) {
                                 acc.push(Suggestion {
                                     detector: Detector::LanguageTool,
                                     span: span,

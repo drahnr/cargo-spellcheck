@@ -1,15 +1,15 @@
 mod config;
-mod span;
-mod literalset;
 mod documentation;
+mod literalset;
+mod span;
 
 mod checker;
 mod extractor;
 mod suggestion;
 
-pub use self::span::*;
-pub use self::literalset::*;
 pub use self::documentation::*;
+pub use self::literalset::*;
+pub use self::span::*;
 pub use self::suggestion::*;
 
 use docopt::Docopt;
@@ -42,7 +42,6 @@ struct Args {
     cmd_fix: bool,
     cmd_check: bool,
 }
-
 
 /// Mode in which we operate
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]

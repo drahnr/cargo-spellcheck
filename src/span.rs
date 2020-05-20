@@ -11,7 +11,6 @@ pub struct RelativeSpan {
     pub end: LineColumn,
 }
 
-
 // Span in relation to a full Document
 #[derive(Clone, Debug, Copy)]
 pub struct Span {

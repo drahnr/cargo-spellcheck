@@ -2,8 +2,8 @@
 //!
 //! Whatever.
 
-use crate::{Documentation, Span, LineColumn};
 use super::*;
+use crate::{Documentation, LineColumn, Span};
 
 use std::fs;
 
