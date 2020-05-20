@@ -7,18 +7,18 @@
 
 use crate::suggestion::Detector;
 use anyhow::{anyhow, Result};
-use serde::Deserialize;
+use serde::{Serialize, Deserialize};
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-
-#[derive(Deserialize, Debug, Clone)]
+use std::io::Write;
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Config {
     pub hunspell: Option<HunspellConfig>,
     pub languagetool: Option<LanguageToolConfig>,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct HunspellConfig {
     pub lang: Option<String>, // TODO impl a custom xx_YY code deserializer based on iso crates
     // must be option so it can be omiited
@@ -65,7 +65,7 @@ impl HunspellConfig {
     }
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct LanguageToolConfig {
     pub url: url::Url,
 }
@@ -82,16 +82,41 @@ impl Config {
         Ok(cfg)
     }
 
-    pub fn load<P: AsRef<Path>>(path: P) -> Result<Self> {
+    pub fn load_from<P: AsRef<Path>>(path: P) -> Result<Self> {
         let mut file = File::open(path.as_ref().to_str().unwrap())?;
         let mut contents = String::with_capacity(1024);
         file.read_to_string(&mut contents)?;
         Self::parse(&contents)
     }
 
-    pub fn load_from_default() -> Result<Self> {
+    pub fn load() -> Result<Self> {
         if let Some(base) = directories::BaseDirs::new() {
-            Self::load(base.config_dir())
+            Self::load_from(base.config_dir())
+        } else {
+            Err(anyhow!(
+                "No idea where your config directory is located. XDG compliance would be nice."
+            ))
+        }
+    }
+
+    pub fn write_default_values_to<P: AsRef<Path>>(path: P) -> Result<Self> {
+        let values = Self::default();
+
+        let s = toml::to_string(&values).map_err(|_e| anyhow::anyhow!("Failed to convert to toml"))?;
+
+        let file = std::fs::OpenOptions::new().create(true).write(true).truncate(true).open(path.as_ref())?;
+        let mut writer = std::io::BufWriter::new(file);
+
+        writer.write_all(s.as_bytes()).map_err(|_e| anyhow::anyhow!("Failed to write all to {}", path.as_ref().display()))?;
+
+        Ok(values)
+    }
+
+    pub fn write_default_values() -> Result<Self> {
+        if let Some(base) = directories::BaseDirs::new() {
+            let d = base.config_dir().join("cargo_spellcheck");
+            std::fs::create_dir_all(d.as_path())?;
+            Self::write_default_values_to(d.join("config.toml"))
         } else {
             Err(anyhow!(
                 "No idea where your config directory is located. XDG compliance would be nice."
@@ -109,15 +134,42 @@ impl Config {
 
 impl Default for Config {
     fn default() -> Self {
+        let mut search_dirs = if cfg!(target_os = "macos") {
+            directories::BaseDirs::new().map(|base| {
+                vec![
+                    base.home_dir().to_owned().join("/Library/Spelling/"),
+                ]}).unwrap_or_else(|| { Vec::with_capacity(2)})
+            } else {
+                Vec::with_capacity(2)
+            };
+
+        #[cfg(target_os="macos")]
+        search_dirs.push(PathBuf::from("/Library/Spelling/"));
+
+        #[cfg(target_os="linux")]
+        search_dirs.push(PathBuf::from("/usr/share/myspell/"));
+
         Config {
             hunspell: Some(HunspellConfig {
                 lang: Some("en_US".to_owned()),
-                search_dirs: Some(Vec::new()),
+                search_dirs: Some(search_dirs),
                 extra_affixes: Some(Vec::new()),
                 extra_dictonaries: Some(Vec::new()),
             }),
             languagetool: None,
         }
+    }
+}
+
+
+// TODO figure out which ISO spec this actually is
+pub struct CommonLang(String);
+
+impl std::str::FromStr for CommonLang {
+    type Err = anyhow::Error;
+    fn from_str(s: &str) -> std::result::Result<Self,Self::Err> {
+        //
+        unimplemented!("Common Lang needs a ref spec")
     }
 }
 

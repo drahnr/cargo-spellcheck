@@ -37,7 +37,7 @@ pub(crate) fn traverse(path: &Path) -> anyhow::Result<Vec<Documentation>> {
     Ok(documentation)
 }
 
-pub(crate) fn run(mode: Mode, paths: Vec<PathBuf>, recurse: bool) -> anyhow::Result<()> {
+pub(crate) fn run(mode: Mode, paths: Vec<PathBuf>, recurse: bool, config: &Config) -> anyhow::Result<()> {
     // TODO honour recurse flag
 
     let docs: Vec<Documentation> = if recurse {
@@ -69,7 +69,7 @@ pub(crate) fn run(mode: Mode, paths: Vec<PathBuf>, recurse: bool) -> anyhow::Res
     };
 
     let combined = Documentation::combine(docs);
-    let suggestions = crate::checker::check(&combined)?;
+    let suggestions = crate::checker::check(&combined, config)?;
 
     match mode {
         Mode::Fix => unimplemented!("Unsupervised fixing is not implemented just yet"),

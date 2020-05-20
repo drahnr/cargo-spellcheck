@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use crate::{
     AnnotatedLiteralRef, ConsecutiveLiteralSet, Detector, Documentation, LineColumn, Span,
-    Suggestion,
+    Suggestion, Config,
 };
 
 use anyhow::Result;
@@ -16,7 +16,8 @@ mod languagetool;
 
 /// Implementation for a checker
 pub(crate) trait Checker {
-    fn check<'a, 's>(docu: &'a Documentation) -> Result<Vec<Suggestion<'s>>>
+    type Config;
+    fn check<'a, 's>(docu: &'a Documentation, config: &Self::Config) -> Result<Vec<Suggestion<'s>>>
     where
         'a: 's;
 }
@@ -102,7 +103,7 @@ where
 }
 
 /// Check a full document for violations using the tools we have.
-pub fn check<'a, 's>(documentation: &'a Documentation) -> Result<Vec<Suggestion<'s>>>
+pub fn check<'a, 's>(documentation: &'a Documentation, config: &Config) -> Result<Vec<Suggestion<'s>>>
 where
     'a: 's,
 {
@@ -110,17 +111,23 @@ where
 
     #[cfg(feature = "languagetool")]
     {
-        debug!("Running LanguageTool checks");
-        if let Ok(mut suggestions) = self::languagetool::LanguageToolChecker::check(documentation) {
-            corrections.append(&mut suggestions);
+        if config.is_enabled(Detector::LanguageTool) {
+            debug!("Running LanguageTool checks");
+            let config = config.languagetool.as_ref().expect("Must be Some(LanguageToolConfig) if is_enabled returns true");
+            if let Ok(mut suggestions) = self::languagetool::LanguageToolChecker::check(documentation, config) {
+                corrections.append(&mut suggestions);
+            }
         }
     }
 
     #[cfg(feature = "hunspell")]
     {
-        debug!("Running Hunspell checks");
-        if let Ok(mut suggestions) = self::hunspell::HunspellChecker::check(documentation) {
-            corrections.append(&mut suggestions);
+        if config.is_enabled(Detector::Hunspell) {
+            debug!("Running Hunspell checks");
+            let config = config.hunspell.as_ref().expect("Must be Some(HunspellConfig) if is_enabled returns true");
+            if let Ok(mut suggestions) = self::hunspell::HunspellChecker::check(documentation, config) {
+                corrections.append(&mut suggestions);
+            }
         }
     }
 

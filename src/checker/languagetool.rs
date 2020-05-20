@@ -5,14 +5,12 @@ use languagetool_rs::{LanguageTool, Request};
 pub struct LanguageToolChecker;
 
 impl Checker for LanguageToolChecker {
-    fn check<'a, 's>(docu: &'a Documentation) -> Result<Vec<Suggestion<'s>>>
+    type Config = crate::config::LanguageToolConfig;
+    fn check<'a, 's>(docu: &'a Documentation, config: &Self::Config) -> Result<Vec<Suggestion<'s>>>
     where
         'a: 's,
     {
-        // TODO make configurable
-        // FIXME properly handle
-        let url = "http://192.168.1.127:8010";
-        let lt = LanguageTool::new(url)?;
+        let lt = LanguageTool::new(config.url.as_str())?;
         let suggestions = docu.iter().try_fold::<Vec<Suggestion>, _, Result<_>>(
             Vec::with_capacity(128),
             |mut acc, (path, v)| {

@@ -180,7 +180,7 @@ impl ConsecutiveLiteralSet {
                 assert_eq!(literal.span().start().line, literal.span().end().line);
                 state = match state {
                     LookingFor::Start => {
-                        if dbg!(offset) > dbg!(len) {
+                        if offset > len {
                             offset -= len;
                             offset += 1; // additional \n introduced when combining literals
                             LookingFor::Start
@@ -201,7 +201,7 @@ impl ConsecutiveLiteralSet {
 
                     LookingFor::End { start } => {
                         acc.push(literal);
-                        if dbg!(offset) > dbg!(len) {
+                        if offset > len {
                             offset -= len;
                             offset += 1; // additional \n introduced when combining literals
                             state

@@ -45,6 +45,26 @@ Error display follows `cargo` error printing style:
 `hunspell` and `languagetool` are currently the two supported featuresets.
 
 
+## Configuration
+
+```toml
+# Linux:   /home/alice/.config/cargo_spellcheck/config.toml
+# Windows: C:\Users\Alice\AppData\Roaming\cargo_spellcheck\config.toml
+# macOS:   /Users/Alice/Library/Preferences/cargo_spellcheck/config.toml
+[LanguageTool]
+url = "192.168.1.1:8010"
+
+[Hunspell]
+# lang and name of `.dic` file
+lang = "en_US"
+# OS specific additives
+# Linux: [ /usr/share/myspell ]
+# Windows: []
+# macOS [ /home/alice/Libraries/hunspell, /Libraries/hunspell ]
+search_dirs = []
+extra_dictonaries = []
+```
+
 ## Installation
 
 `cargo install cargo-spellcheck`

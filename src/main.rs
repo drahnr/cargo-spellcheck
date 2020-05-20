@@ -7,12 +7,14 @@ mod checker;
 mod extractor;
 mod suggestion;
 
+pub use self::config::{Config, HunspellConfig, LanguageToolConfig};
 pub use self::documentation::*;
 pub use self::literalset::*;
 pub use self::span::*;
 pub use self::suggestion::*;
 
 use docopt::Docopt;
+use enumflags2::BitFlags;
 use log::{debug, info, trace, warn};
 use serde::Deserialize;
 
@@ -73,6 +75,10 @@ fn main() -> anyhow::Result<()> {
         Mode::Check
     };
 
+    let config = Config::load()
+        .or_else(|e| { Config::write_default_values() }).unwrap_or_else(|e| { Config::default() });
+
     trace!("Executing: {:?}", mode);
-    extractor::run(mode, args.arg_paths, args.flag_recursive)
+
+    extractor::run(mode, args.arg_paths, args.flag_recursive, &config)
 }

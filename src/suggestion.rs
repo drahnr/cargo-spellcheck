@@ -19,12 +19,22 @@ use crate::Span;
 use enumflags2::BitFlags;
 
 /// Bitflag of available checkers by compilation / configuration.
-#[derive(Debug, Clone, Copy, BitFlags)]
+#[derive(Debug, Clone, Copy, BitFlags, Eq, PartialEq)]
 #[repr(u8)]
 pub enum Detector {
     Hunspell = 0b0001,
     LanguageTool = 0b0010,
 }
+
+// impl
+// // TODO use this to display included compiled backends
+// fn list_available() {
+//     match detector {
+//         Detector::Hunspell => cfg!(feature="hunspell"),
+//         Detector::LanguageTool => cfg!(feature="languagetool"),
+//     }
+// }
+
 
 use std::fmt;
 
