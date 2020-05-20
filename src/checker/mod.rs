@@ -95,7 +95,7 @@ where
         .iter()
         .fold(Vec::with_capacity(128), |mut acc, cls| {
             for literal in cls.literals() {
-                acc.push((tokenize(dbg!(literal).into()), literal.into()));
+                acc.push((tokenize(literal.into()), literal.into()));
             }
             acc
         })

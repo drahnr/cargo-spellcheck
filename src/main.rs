@@ -22,9 +22,12 @@ const USAGE: &str = r#"
 Spellcheck all your doc comments
 
 Usage:
-  spellcheck check [[--recursive] <paths>.. ]
-  spellcheck fix [[--recursive] <paths>.. ]
-  spellcheck [(--fix|--interactive)] [[--recursive] <paths>.. ]
+  cargo spellcheck check [[--recursive] <paths>.. ]
+  cargo-spellcheck check [[--recursive] <paths>.. ]
+  cargo spellcheck fix [[--recursive] <paths>.. ]
+  cargo-spellcheck fix [[--recursive] <paths>.. ]
+  cargo spellcheck [(--fix|--interactive)] [[--recursive] <paths>.. ]
+  cargo-spellcheck [(--fix|--interactive)] [[--recursive] <paths>.. ]
 
 Options:
   -h --help           Show this screen.
