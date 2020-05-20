@@ -25,6 +25,7 @@ Error display follows `cargo` error printing style:
 
 ## Features
 
+* [x] Parse doc comments from arbitrary files
 * [x] Decent error printing
 * [x] `cargo-spellcheck check`
 * [x] Spell checking using `hunspell`
@@ -33,7 +34,9 @@ Error display follows `cargo` error printing style:
 * [x] False positive reduction
 * [ ] Be `markdown` aware
 * [ ] Exclude \`\`\` wrapped sections
+* [ ] Handle module documentation comments
 * [ ] Add `README.md` files
+* [ ] Follow module declarations rather than blindly recurse
 * [ ] `cargo-spellcheck fix`
 * [ ] `cargo-spellcheck fix --interactive`
 * [ ] Re-wrap doc comments
@@ -42,6 +45,9 @@ Error display follows `cargo` error printing style:
 `hunspell` and `languagetool` are currently the two supported featuresets.
 
 
+## Installation
+
+`cargo install cargo-spellcheck`
 
 ### Hunspell
 
