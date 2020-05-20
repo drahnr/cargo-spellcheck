@@ -16,29 +16,6 @@ use std::path::PathBuf;
 use crate::{Span,LineColumn};
 use crate::AnnotatedLiteralRef;
 
-
-/// The suggestion of span relative within a source file.
-// pub struct SuggestionSpan<'a> {
-//     path: &'a Path,
-//     start: LineColumn,
-//     end: LineColumn,
-// }
-
-// impl<'a, 'b> From<(&'b Path, proc_macro2::Span)> for SuggestionSpan<'a>
-// where
-//     'b: 'a,
-// {
-//     fn from(tup: (&'b Path, proc_macro2::Span)) -> Self {
-//         let (path, span) = tup;
-//         Self {
-//             path,
-//             start: span.start(),
-//             end: span.end(),
-//         }
-//     }
-// }
-
-
 use enumflags2::BitFlags;
 
 /// Bitflag of available checkers by compilation / configuration.
@@ -73,6 +50,8 @@ pub struct Suggestion<'s> {
     pub span: Span,
     /// Fix suggestions, might be words or the full sentence.
     pub replacements: Vec<String>,
+    /// Descriptive reason for the suggestion.
+    pub description: Option<String>,
 }
 
 impl<'s> fmt::Display for Suggestion<'s> {
@@ -190,10 +169,22 @@ impl<'s> fmt::Display for Suggestion<'s> {
 
         error.apply_to(replacement).fmt(formatter)?;
         formatter.write_str("\n")?;
+
         context_marker
-            .apply_to(format!("{:>width$}", "|", width = indent))
-            .fmt(formatter)?;
-        formatter.write_str("\n")
+        .apply_to(format!("{:>width$}", "|\n", width = indent+1))
+        .fmt(formatter)?;
+
+        context_marker
+        .apply_to(format!("{:>width$}", "|", width = indent))
+        .fmt(formatter)?;
+        if let Some(ref description) = self.description {
+            writeln!(formatter, "   {}", description)?;
+        }
+
+
+        context_marker
+            .apply_to(format!("{:>width$}", "|\n", width = indent+1))
+            .fmt(formatter)
     }
 }
 

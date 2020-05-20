@@ -27,10 +27,13 @@ Error display follows `cargo` error printing style:
 
 * [x] Decent error printing
 * [x] `cargo-spellcheck check`
-* [x] spell checking using `hunspell`
+* [x] Spell checking using `hunspell`
 * [x] Merge multiline doc comments
 * [x] Grammar check using `languagetool` http API
 * [x] False positive reduction
+* [ ] Be `markdown` aware
+* [ ] Exclude \`\`\` wrapped sections
+* [ ] Add `README.md` files
 * [ ] `cargo-spellcheck fix`
 * [ ] `cargo-spellcheck fix --interactive`
 * [ ] Re-wrap doc comments

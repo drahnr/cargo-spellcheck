@@ -2,8 +2,8 @@
 //!
 //! So to speak documentation of project as whole.
 
-use crate::{ConsecutiveLiteralSet,Span};
 use super::*;
+use crate::{ConsecutiveLiteralSet, Span};
 
 use std::fs;
 
@@ -71,31 +71,37 @@ impl Documentation {
     /// Only works if the file is processed line by line, otherwise
     /// requires a adjacency list.
     pub fn append_literal(&mut self, path: &Path, literal: proc_macro2::Literal) {
-        let v: &mut Vec<_> = self
-            .index
-            .entry(path.to_owned())
-            .or_insert_with(|| Vec::new());
-
         let literal = AnnotatedLiteral::from(literal);
-        if let Some(last) = v.last_mut() {
-            if let Err(literal) = last.add_adjacent(literal) {
-                v.push(ConsecutiveLiteralSet::from(literal))
+        match self.index.entry(path.to_owned()) {
+            indexmap::map::Entry::Occupied(occupied) => {
+                let v = occupied.into_mut();
+                let cls = v.last_mut().unwrap();
+                if let Err(literal) = cls.add_adjacent(literal) {
+                    trace!(
+                        "appending, but failed to append: {:?} to set {:?}",
+                        &literal, &cls
+                    );
+                    v.push(ConsecutiveLiteralSet::from(literal))
+                } else {
+                    trace!("successfully appended to existing: {:?} to set", &cls);
+                }
             }
-        } else {
-            v.push(ConsecutiveLiteralSet::from(literal))
+            indexmap::map::Entry::Vacant(vacant) => {
+                trace!(
+                    "nothing for {} file yet, create new literal set",
+                    path.display()
+                );
+                vacant.insert(vec![ConsecutiveLiteralSet::from(literal)]);
+            }
         }
     }
-}
 
-impl<P> From<(P, proc_macro2::TokenStream)> for Documentation
-where
-    P: AsRef<Path>,
-{
-    fn from(tup: (P, proc_macro2::TokenStream)) -> Self {
-        let (path, stream) = tup;
+
+
+
+    fn parse_token_tree<P: AsRef<Path>>(&mut self, path: P, stream: proc_macro2::TokenStream) {
         let path: &Path = path.as_ref();
 
-        let mut documentation = Documentation::new();
         let mut iter = stream.into_iter();
         while let Some(tree) = iter.next() {
             match tree {
@@ -129,18 +135,60 @@ where
                     }
                     let comment = comment.unwrap();
                     if let TokenTree::Literal(literal) = comment {
-                        trace!("Found doc literal: {:?}", literal);
-                        documentation.append_literal(path, literal);
+                        trace!("Found doc literal at {:?}..{:?}: {:?}", literal.span().start(),literal.span().end(), literal);
+                        self.append_literal(path, literal);
                     } else {
                         continue;
                     }
                 }
                 TokenTree::Group(group) => {
-                    let _ = documentation.join(Documentation::from((path, group.stream())));
+                    self.parse_token_tree(path, group.stream());
                 }
                 _ => {}
             };
         }
+    }
+}
+
+impl<P> From<(P, proc_macro2::TokenStream)> for Documentation
+where
+    P: AsRef<Path>,
+{
+    fn from((path, stream): (P, proc_macro2::TokenStream)) -> Self {
+        let mut documentation = Documentation::new();
+        documentation.parse_token_tree(path, stream);
         documentation
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const TEST: &str = r#"
+    /// A very good test.
+    ///
+    /// Without much ado, we adhere to king Ragnar.
+    struct Vikings;
+"#;
+
+    const TEST_EXTRACT: &str = r#" A very good test.
+
+ Without much ado, we adhere to king Ragnar."#;
+
+    #[test]
+    fn dummy() {
+        let _ = env_logger::try_init().unwrap();
+
+        let test_path = PathBuf::from("/tmp/dummy");
+
+        let stream = syn::parse_str(TEST).expect("Must be valid rust");
+        let docs = Documentation::from((test_path.as_path(), stream));
+        assert_eq!(docs.index.len(), 1);
+        let opt = docs.index.get(&test_path);
+        assert!(opt.is_some());
+        let v = opt.unwrap();
+        assert_eq!(dbg!(v).len(), 1);
+        assert_eq!(v[0].to_string(), TEST_EXTRACT.to_owned());
     }
 }

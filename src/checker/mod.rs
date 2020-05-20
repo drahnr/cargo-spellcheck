@@ -109,6 +109,7 @@ where
 
     #[cfg(feature = "languagetool")]
     {
+        debug!("Running LanguageTool checks");
         if let Ok(mut suggestions) = self::languagetool::LanguageToolChecker::check(documentation) {
             corrections.append(&mut suggestions);
         }
@@ -116,6 +117,7 @@ where
 
     #[cfg(feature = "hunspell")]
     {
+        debug!("Running Hunspell checks");
         if let Ok(mut suggestions) = self::hunspell::HunspellChecker::check(documentation) {
             corrections.append(&mut suggestions);
         }

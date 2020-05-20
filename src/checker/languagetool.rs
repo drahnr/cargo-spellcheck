@@ -9,14 +9,6 @@ impl Checker for LanguageToolChecker {
     where
         'a: 's,
     {
-        // let literals_to_string = |literals: &[ConsecutiveLiteralSet]| -> String {
-        //     literals
-        //         .into_iter()
-        //         .map(|x| x.to_string())
-        //         .collect::<Vec<String>>()
-        //         .join("\n")
-        // };
-
         // TODO make configurable
         // FIXME properly handle
         let url = "http://192.168.1.127:8010";
@@ -33,14 +25,19 @@ impl Checker for LanguageToolChecker {
                     }
                     if let Some(matches) = resp.matches {
                         for item in matches {
+                            if let Some(rule) = item.rule {
+                                if rule.id == "EN_QUOTES" {
+                                    // really annoying
+                                    continue;
+                                }
+                                log::trace!("item.rule: {:?}", rule);
+                            }
                             log::trace!("item.context: {:?}", item.context);
                             log::trace!("item.message: {:?}", item.message);
                             log::trace!("item.short_message: {:?}", item.short_message);
-                            log::trace!("item.rule: {:?}", item.rule);
-                            log::trace!("item.replacements: {:?}", item.rule);
                             // TODO convert response to offsets and errors with the matching literal
-                            if let Some((literal, span)) = cls
-                                .linear_coverage_to_span(item.offset as usize, item.length as usize)
+                            for (literal, span) in cls
+                                .linear_coverage_to_spans(item.offset as usize, item.length as usize)
                             {
                                 acc.push(Suggestion {
                                     detector: Detector::LanguageTool,
@@ -48,13 +45,12 @@ impl Checker for LanguageToolChecker {
                                     path: PathBuf::from(path),
                                     replacements: item
                                         .replacements
-                                        .into_iter()
-                                        .filter_map(|x| x.value)
+                                        .iter()
+                                        .filter_map(|x| x.value.clone())
                                         .collect(),
                                     literal: literal.into(),
+                                    description: Some(item.message.clone()),
                                 });
-                            } else {
-                                warn!("Unable to map response to literal {} {}", item.offset , item.length)
                             }
                         }
                     }

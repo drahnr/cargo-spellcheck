@@ -45,6 +45,7 @@ impl Checker for HunspellChecker {
                                     path: PathBuf::from(path),
                                     replacements,
                                     literal,
+                                    description: Some("Possible spelling mistake found.".to_owned()),
                                 })
                             }
                         }
