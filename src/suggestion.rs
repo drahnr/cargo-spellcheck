@@ -102,27 +102,45 @@ impl<'s> fmt::Display for Suggestion<'s> {
         // FIXME this needs some more thought
         // and mostly works since it currently does not contain
         // multilines
-        let marker_size = if self.span.end.line == self.span.start.line {
+        let mut marker_size = if self.span.end.line == self.span.start.line {
             self.span.end.column.saturating_sub(self.span.start.column)
         } else {
             self.literal.len().saturating_sub(self.span.start.column)
         };
 
-        if marker_size > 0 && self.literal.pre() <= self.span.start.column {
-            // TODO should have never ended up in here
-            // TODO trim must be done before hands
+        // if the offset starts from 0, we still want to continue if the length
+        // of the marker is at least length 1
+        let offset = if self.literal.pre() <= self.span.start.column {
+            self.span.start.column - self.literal.pre()
+        } else {
+            // reduce the marker size
+            marker_size -= self.literal.pre() - self.span.start.column;
+            0
+        };
+
+        if marker_size > 0 {
             context_marker
                 .apply_to(format!("{:>width$}", "|", width = indent))
                 .fmt(formatter)?;
             help.apply_to(format!(
                 " {:>offset$}",
                 "",
-                offset = self.span.start.column - self.literal.pre()
+                offset = offset
             ))
             .fmt(formatter)?;
             help.apply_to(format!("{:^>size$}", "", size = marker_size))
                 .fmt(formatter)?;
             formatter.write_str("\n")?;
+            log::trace!(
+                "marker_size={} [{}|{}|{}] literal {{ {:?} .. {:?} }} >> {} <<",
+                marker_size,
+                self.literal.pre(),
+                self.literal.len(),
+                self.literal.post(),
+                self.span.start,
+                self.span.end,
+                self.literal.to_string(),
+            );
         } else {
             log::warn!(
                 "marker_size={} [{}|{}|{}] literal {{ {:?} .. {:?} }} >> {} <<",
@@ -130,8 +148,8 @@ impl<'s> fmt::Display for Suggestion<'s> {
                 self.literal.pre(),
                 self.literal.len(),
                 self.literal.post(),
-                self.literal.span().start(),
-                self.literal.span().end(),
+                self.span.start,
+                self.span.end,
                 self.literal.to_string(),
             );
         }

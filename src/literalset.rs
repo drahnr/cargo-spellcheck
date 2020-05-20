@@ -189,6 +189,7 @@ impl ConsecutiveLiteralSet {
                     LookingFor::Start => {
                         if dbg!(offset) > dbg!(len) {
                             offset -= len;
+                            offset += 1; // additional \n introduced when combining literals
                             LookingFor::Start
                         } else {
                             state = LookingFor::End {
@@ -209,6 +210,7 @@ impl ConsecutiveLiteralSet {
                         acc.push(literal);
                         if dbg!(offset) > dbg!(len) {
                             offset -= len;
+                            offset += 1; // additional \n introduced when combining literals
                             state
                         } else {
                             let end = LineColumn {
