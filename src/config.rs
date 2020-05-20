@@ -1,3 +1,10 @@
+//! Configure cargo-spellcheck
+//!
+//! Supporst `Hunspell` and `LanguageTool` scopes.
+//!
+//! A default configuration will be generated in the default
+//! location by default. Default. Default default default.
+
 use crate::suggestion::Detector;
 use anyhow::{anyhow, Result};
 use serde::Deserialize;

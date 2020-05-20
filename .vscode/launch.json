@@ -1,0 +1,30 @@
+{
+	"configurations": [
+	{
+        "type": "lldb",
+        "request": "launch",
+        "name": "Debug unit tests in executable 'cargo-spellcheck'",
+        "cargo": {
+            "args": [
+                "test",
+                "--no-run",
+                "--bin=cargo-spellcheck",
+				"--package=cargo-spellcheck",
+				"combine_literals"
+				"--"
+				"--nocapture"
+            ],
+            "filter": {
+                "name": "cargo-spellcheck",
+                "kind": "bin"
+            }
+        },
+        "env": {
+            "RUST_LOG":"cargo_spellcheck=trace",
+            "RUST_BACKTRACE":"1"
+        },
+        "args": [],
+        "cwd": "${workspaceFolder}"
+	}
+	]
+}
