@@ -170,7 +170,7 @@ dependencies = [
 
 [[package]]
 name = "cargo-spellcheck"
-version = "0.0.2"
+version = "0.0.3"
 dependencies = [
  "anyhow",
  "console",
