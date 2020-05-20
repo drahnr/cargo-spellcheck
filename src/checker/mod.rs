@@ -7,7 +7,7 @@ use crate::{
 
 use anyhow::Result;
 
-use log::{debug, trace, warn};
+use log::debug;
 
 #[cfg(feature = "hunspell")]
 mod hunspell;

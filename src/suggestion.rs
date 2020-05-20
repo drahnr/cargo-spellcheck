@@ -14,7 +14,7 @@
 use std::path::PathBuf;
 
 use crate::AnnotatedLiteralRef;
-use crate::{LineColumn, Span};
+use crate::Span;
 
 use enumflags2::BitFlags;
 
@@ -122,12 +122,8 @@ impl<'s> fmt::Display for Suggestion<'s> {
             context_marker
                 .apply_to(format!("{:>width$}", "|", width = indent))
                 .fmt(formatter)?;
-            help.apply_to(format!(
-                " {:>offset$}",
-                "",
-                offset = offset
-            ))
-            .fmt(formatter)?;
+            help.apply_to(format!(" {:>offset$}", "", offset = offset))
+                .fmt(formatter)?;
             help.apply_to(format!("{:^>size$}", "", size = marker_size))
                 .fmt(formatter)?;
             formatter.write_str("\n")?;

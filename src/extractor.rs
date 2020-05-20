@@ -3,13 +3,11 @@
 //! Whatever.
 
 use super::*;
-use crate::{Documentation, LineColumn, Span};
+use crate::Documentation;
 
 use std::fs;
 
-use indexmap::IndexMap;
 use log::{debug, info, trace, warn};
-use proc_macro2::{Spacing, TokenTree};
 
 use std::path::{Path, PathBuf};
 

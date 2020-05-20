@@ -3,9 +3,7 @@
 //! So to speak documentation of project as whole.
 
 use super::*;
-use crate::{ConsecutiveLiteralSet, Span};
-
-use std::fs;
+use crate::ConsecutiveLiteralSet;
 
 use indexmap::IndexMap;
 use log::{debug, info, trace, warn};
@@ -13,8 +11,6 @@ use proc_macro2::{Spacing, TokenTree};
 
 pub use proc_macro2::LineColumn;
 use std::path::{Path, PathBuf};
-
-use std::fmt;
 
 #[derive(Debug, Clone)]
 pub struct Documentation {

@@ -1,13 +1,6 @@
-use super::*;
 use crate::{LineColumn, Span};
 
-use std::fs;
-
-use indexmap::IndexMap;
 use log::{debug, info, trace, warn};
-use proc_macro2::{Spacing, TokenTree};
-
-use std::path::{Path, PathBuf};
 
 #[derive(Clone, Debug, Copy)]
 /// A litteral with meta info where the first and list whitespace may be found.
@@ -166,7 +159,7 @@ impl ConsecutiveLiteralSet {
     fn find_intersection<'a>(
         &'a self,
         mut offset: usize,
-        mut length: usize,
+        length: usize,
     ) -> Option<(Vec<&'a AnnotatedLiteral>, LineColumn, LineColumn)> {
         #[derive(Copy, Clone, Debug)]
         enum LookingFor {
@@ -179,7 +172,7 @@ impl ConsecutiveLiteralSet {
         let mut it = self.literals.iter();
         let mut opt = it.next();
         loop {
-            let opt = if let Some(literal) = opt {
+            opt = if let Some(literal) = opt {
                 // work on the string version length
                 // such that we have the paddings removed
                 // since this is what is sent to the checker
@@ -223,7 +216,7 @@ impl ConsecutiveLiteralSet {
                         }
                     }
                 };
-                opt = it.next()
+                it.next()
             } else {
                 break;
             };
@@ -336,7 +329,7 @@ Boats float, don't they?"#;
         TEST_LITERALS
             .iter()
             .enumerate()
-            .map(|(idx, x)| {
+            .map(|(_idx, x)| {
                 let lit = proc_macro2::Literal::string(x);
                 lit
             })
