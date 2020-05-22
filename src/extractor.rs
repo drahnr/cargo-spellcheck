@@ -38,7 +38,26 @@ pub(crate) fn traverse(path: &Path) -> anyhow::Result<Vec<Documentation>> {
 }
 
 pub(crate) fn run(mode: Mode, paths: Vec<PathBuf>, recurse: bool, config: &Config) -> anyhow::Result<()> {
-    // TODO honour recurse flag
+    // @todo extract bin and lib from toml to obtain the entry point files, from there resolve modules
+    // @todo in case paths.len() == 1 && dir contains a `Cargo.toml` || file name and ends_with `Cargo.toml`
+    // @todo honour recurse flag if path is a dir, otherwise error
+    let cargo_tomls: Vec<_> = paths.iter().filter_map(|path| {
+        let meta = path.metadata().ok()?;
+        if path.file_name() == Some("Cargo.toml".as_ref()) && meta.is_file() {
+            Some(path.to_owned())
+        } else if meta.is_dir() {
+            let cargo_toml = path.with_file_name("Cargo.toml");
+            if cargo_toml.is_file() {
+                Some(cargo_toml)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+
+    }).collect();
+
 
     let docs: Vec<Documentation> = if recurse {
         trace!("Recursive");

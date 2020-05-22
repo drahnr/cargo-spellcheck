@@ -99,10 +99,14 @@ impl Config {
         }
     }
 
+    pub fn to_toml(&self) -> Result<String> {
+        toml::to_string(self).map_err(|_e| anyhow::anyhow!("Failed to convert to toml"))
+    }
+
     pub fn write_default_values_to<P: AsRef<Path>>(path: P) -> Result<Self> {
         let values = Self::default();
 
-        let s = toml::to_string(&values).map_err(|_e| anyhow::anyhow!("Failed to convert to toml"))?;
+        let s = values.to_toml()?;
 
         let file = std::fs::OpenOptions::new().create(true).write(true).truncate(true).open(path.as_ref())?;
         let mut writer = std::io::BufWriter::new(file);
