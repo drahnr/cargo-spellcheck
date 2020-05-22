@@ -91,7 +91,7 @@ impl Config {
 
     pub fn load() -> Result<Self> {
         if let Some(base) = directories::BaseDirs::new() {
-            Self::load_from(base.config_dir())
+            Self::load_from(base.config_dir().join("cargo_spellcheck").with_file_name("config.toml"))
         } else {
             Err(anyhow!(
                 "No idea where your config directory is located. XDG compliance would be nice."

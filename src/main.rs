@@ -74,7 +74,7 @@ fn main() -> anyhow::Result<()> {
     }
 
     let args: Args = Docopt::new(USAGE)
-        .and_then(|d| dbg!(d).deserialize())
+        .and_then(|d| d.deserialize())
         .unwrap_or_else(|e| e.exit());
 
     // handle `config` sub command
@@ -86,7 +86,7 @@ fn main() -> anyhow::Result<()> {
             } else {
                 Err(e)
             }
-        }).unwrap_or_else(|_e| { Config::default() });
+        })?;
         println!("{}", config.to_toml()?);
         return Ok(())
     }
@@ -103,7 +103,7 @@ fn main() -> anyhow::Result<()> {
     };
 
     // do not write the config without an explicit request
-    let config = Config::load().unwrap_or_else(|e| {
+    let config = Config::load().unwrap_or_else(|_e| {
         warn!("Using default configuration!");
         Config::default()
     });

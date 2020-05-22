@@ -3,6 +3,8 @@
 //! Details are full fo errors.
 
 
+mod M;
+
 
 /// Secret weapon X.
 ///

@@ -37,6 +37,87 @@ pub(crate) fn traverse(path: &Path) -> anyhow::Result<Vec<Documentation>> {
     Ok(documentation)
 }
 
+
+fn extract_cargo_toml_entry_files(cargo_toml: &Path) -> Vec<PathBuf> {
+    unimplemented!("Extraction is not yet implemented, smth with `toml`");
+}
+
+
+use proc_macro2::TokenTree;
+use proc_macro2::TokenStream;
+use proc_macro2::Spacing;
+
+fn extract_modules<P: AsRef<Path>>(path: P, stream: proc_macro2::TokenStream) -> anyhow::Result<Vec<PathBuf>> {
+    let path: &Path = path.as_ref();
+
+    // Ident {
+    //     sym: mod,
+    // },
+    // Ident {
+    //     sym: M,
+    // },
+    // Punct {
+    //     op: ';',
+    //     spacing: Alone,
+    // },
+
+    let base = if let Some(base) = path.parent() {
+        base.to_owned()
+    } else {
+        return Err(anyhow::anyhow!("Must have a valid parent directory: {}", path.display()))
+    };
+
+    #[derive(Debug,Clone)]
+    enum SeekingFor {
+        ModulKeyword,
+        ModulName,
+        ModulFin(String),
+    }
+
+    let mut acc = Vec::with_capacity(16);
+    let mut state = SeekingFor::ModulKeyword;
+    for tree in stream {
+        match tree {
+            TokenTree::Ident(ident) => {
+                match state {
+                    SeekingFor::ModulKeyword => {
+                        if ident == "mod" {
+                            state = SeekingFor::ModulName;
+                        }
+                    },
+                    SeekingFor::ModulName => {
+                        state = SeekingFor::ModulFin(ident.to_string());
+                    },
+                    _ => {},
+                }
+
+            }
+            TokenTree::Punct(punct) => {
+                if let SeekingFor::ModulFin(mod_name) = state {
+                    if punct.as_char() == ';' && punct.spacing() == Spacing::Alone {
+                        let path1 = base.join(&mod_name).with_file_name("mod.rs");
+                        let path2 = base.with_file_name(mod_name).with_extension("rs");
+                        match (path1.is_file() , path2.is_file()) {
+                            (true,false) => acc.push(path1),
+                            (false,true) => acc.push(path2),
+                            _ => {},
+                            (true,true) => return Err(anyhow::anyhow!("Detected both module entry files: {} and {}", path1.display(), path2.display()))
+                        }
+                        ;
+                    }
+                }
+                state = SeekingFor::ModulKeyword
+            },
+            _ => {
+            },
+        };
+    }
+    Ok(acc)
+}
+
+
+
+
 pub(crate) fn run(mode: Mode, paths: Vec<PathBuf>, recurse: bool, config: &Config) -> anyhow::Result<()> {
     // @todo extract bin and lib from toml to obtain the entry point files, from there resolve modules
     // @todo in case paths.len() == 1 && dir contains a `Cargo.toml` || file name and ends_with `Cargo.toml`
@@ -67,7 +148,7 @@ pub(crate) fn run(mode: Mode, paths: Vec<PathBuf>, recurse: bool, config: &Confi
                 Vec::with_capacity(paths.len()),
                 |mut acc, path| {
                     let content = fs::read_to_string(&path)?;
-                    let stream = syn::parse_str(&content)?;
+                    let stream = dbg!(syn::parse_str(&content))?;
                     let path: String = path.to_str().unwrap().to_owned();
                     acc.push(Documentation::from((path, stream)));
                     Ok(acc)
