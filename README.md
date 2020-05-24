@@ -33,7 +33,7 @@ Error display follows `cargo` error printing style:
 * [x] Grammar check using `languagetool` http API
 * [x] False positive reduction
 * [ ] Be `markdown` aware
-* [ ] Exclude \`\`\` wrapped sections
+* [ ] Include comments in ` ```rust` wrapped sections
 * [ ] Handle module documentation comments
 * [ ] Add `README.md` files
 * [ ] Follow module declarations rather than blindly recurse
