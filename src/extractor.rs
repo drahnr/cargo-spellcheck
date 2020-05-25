@@ -142,11 +142,16 @@ fn extract_modules_from_file<P: AsRef<Path>>(path: P) -> anyhow::Result<Vec<Path
 /// Extract all cargo manifest products / build targets.
 fn extract_products<P: AsRef<Path>>(manifest_dir: P) -> anyhow::Result<Vec<PathBuf>> {
     let manifest_dir = manifest_dir.as_ref();
-    let mut manifest = cargo_toml::Manifest::from_path(manifest_dir.join("Cargo.toml"))?;
+    let manifest_file = manifest_dir.join("Cargo.toml");
+    let mut manifest = cargo_toml::Manifest::from_path(&manifest_file).map_err(|e| {
+        anyhow::anyhow!("Failed to parse manifest file {}: {}", manifest_file.display(), e)
+    })?;
     // @todo verify which one is the sane one here, internally it calls `parent()`
     // but semantically it's not entirely clear.
     // manifest.complete_from_path(manifest_dir.join("Cargo.toml").as_path())?;
-    manifest.complete_from_path(manifest_dir.join("src").as_path())?;
+    manifest.complete_from_path(&manifest_file).map_err(|e| {
+        anyhow::anyhow!("Failed to complete manifest info {}: {}", manifest_file.display(), e)
+    })?;
     Ok(dbg!(manifest)
         .bin
         .into_iter()
@@ -163,9 +168,12 @@ pub(crate) fn run(
     mut recurse: bool,
     config: &Config,
 ) -> anyhow::Result<()> {
+    let cwd = std::env::current_dir().map_err(|e| { anyhow::anyhow!("Missing cwd!")})?;
+
     // if there are no arguments, pretend to be told to check the whole project
     if paths.is_empty() {
-        paths.push(PathBuf::from("Cargo.toml"));
+        // @todo also traverse parent dirs
+        paths.push(cwd.join("Cargo.toml"));
         recurse = true;
     }
 
@@ -181,6 +189,7 @@ pub(crate) fn run(
     let mut paths: Vec<_> = paths
         .into_iter()
         .map(|path| {
+            let path = if  path.is_absolute() { path } else { cwd.join(path) };
             if let Ok(meta) = path.metadata() {
                 if meta.is_file() {
                     if path.file_name() == Some("Cargo.toml".as_ref()) {
@@ -207,7 +216,7 @@ pub(crate) fn run(
             Vec::with_capacity(64),
             |mut acc, tagged_path| {
                 match tagged_path {
-                    Extraction::Manifest(ref cargo_toml_path) => acc.extend(extract_products(cargo_toml_path)?),
+                    Extraction::Manifest(ref cargo_toml_path) => acc.extend(extract_products(cargo_toml_path.parent().unwrap())?),
                     Extraction::Missing(ref missing_path) => warn!("File passed as argument or listed in Cargo.toml manifest does not exist: {}", missing_path.display()),
                     Extraction::Source(source) => acc.push(source),
                 }
@@ -231,10 +240,11 @@ pub(crate) fn run(
         }
 
         trace!(target: "run", "Recursive");
+        let n = path_collection.len();
         path_collection
-            .iter()
+            .into_iter()
             .try_fold::<Vec<Documentation>, _, anyhow::Result<Vec<Documentation>>>(
-                Vec::with_capacity(path_collection.len()),
+                Vec::with_capacity(n),
                 |mut acc, path| {
                     let content = fs::read_to_string(&path)?;
                     let stream = syn::parse_str(&content)?;

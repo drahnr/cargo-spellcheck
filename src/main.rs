@@ -24,13 +24,9 @@ const USAGE: &str = r#"
 Spellcheck all your doc comments
 
 Usage:
-    cargo-spellcheck check [[--recursive] <paths>.. ]
     cargo spellcheck check [[--recursive] <paths>.. ]
-    cargo-spellcheck fix [[--recursive] <paths>.. ]
     cargo spellcheck fix [[--recursive] <paths>.. ]
-    cargo-spellcheck [(--fix|--interactive)] [[--recursive] <paths>.. ]
     cargo spellcheck [(--fix|--interactive)] [[--recursive] <paths>.. ]
-    cargo-spellcheck config [--overwrite]
     cargo spellcheck config [--overwrite]
 
 Options:
@@ -52,6 +48,8 @@ struct Args {
     cmd_fix: bool,
     cmd_check: bool,
     cmd_config: bool,
+    // allow both cargo_spellcheck and cargo spellcheck
+    cmd_spellcheck: bool,
 }
 
 /// Mode in which we operate
@@ -68,13 +66,28 @@ enum Mode {
 fn main() -> anyhow::Result<()> {
     env_logger::init();
 
-    if log::log_enabled!(log::Level::Trace) {
-        let args: Vec<String> = std::env::args().collect();
-        trace!("Args: {:?}", args);
-    }
-
     let args: Args = Docopt::new(USAGE)
-        .and_then(|d| d.deserialize())
+        .and_then(|d| {
+            let mut argv_it = dbg!(std::env::args());
+            if let Some(arg0) = argv_it.next() {
+                if let Some(file_name) = PathBuf::from(&arg0)
+                    .file_name()
+                    .map(|x| x.to_str())
+                    .flatten()
+                {
+                    if file_name.ends_with("cargo-spellcheck") {
+                        dbg!(d.argv(arg0.split('-').map(|x| x.to_owned()).chain(argv_it)))
+                    } else {
+                        d
+                    }
+                } else {
+                    d
+                }
+            } else {
+                d
+            }
+            .deserialize()
+        })
         .unwrap_or_else(|e| e.exit());
 
     // handle `config` sub command
