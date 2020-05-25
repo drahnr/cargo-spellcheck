@@ -24,10 +24,10 @@ const USAGE: &str = r#"
 Spellcheck all your doc comments
 
 Usage:
-    cargo spellcheck check [[--recursive] <paths>.. ]
-    cargo spellcheck fix [[--recursive] <paths>.. ]
-    cargo spellcheck [(--fix|--interactive)] [[--recursive] <paths>.. ]
-    cargo spellcheck config [--overwrite]
+    cargo spellcheck [(-v...|-q)] check [[--recursive] <paths>.. ]
+    cargo spellcheck [(-v...|-q)] fix [[--recursive] <paths>.. ]
+    cargo spellcheck [(-v...|-q)] [(--fix|--interactive)] [[--recursive] <paths>.. ]
+    cargo spellcheck [(-v...|-q)] config [--overwrite]
 
 Options:
   -h --help           Show this screen.
@@ -35,6 +35,8 @@ Options:
   -i --interactive    Interactively apply spelling and grammer fixes.
   -r --recursive      If a path is provided, if recursion into subdirectories is desired.
   --overwrite         Overwrite any existing configuration file.
+  -v, --verbose           Verbosity level.
+  -q, --quiet             Silences all printed messages.
 
 "#;
 
@@ -45,6 +47,8 @@ struct Args {
     flag_interactive: bool,
     flag_recursive: bool,
     flag_overwrite: bool,
+    flag_verbose: Vec<bool>,
+    flag_quiet: bool,
     cmd_fix: bool,
     cmd_check: bool,
     cmd_config: bool,
@@ -64,19 +68,18 @@ enum Mode {
 }
 
 fn main() -> anyhow::Result<()> {
-    env_logger::init();
-
     let args: Args = Docopt::new(USAGE)
         .and_then(|d| {
-            let mut argv_it = dbg!(std::env::args());
+            let mut argv_it = std::env::args();
+            // if ends with file name `cargo-spellcheck`, split
             if let Some(arg0) = argv_it.next() {
                 if let Some(file_name) = PathBuf::from(&arg0)
                     .file_name()
                     .map(|x| x.to_str())
                     .flatten()
                 {
-                    if file_name.ends_with("cargo-spellcheck") {
-                        dbg!(d.argv(arg0.split('-').map(|x| x.to_owned()).chain(argv_it)))
+                    if file_name.starts_with("cargo-spellcheck") {
+                        dbg!(d.argv(file_name.split('-').skip(1).map(|x| x.to_owned()).chain(argv_it)))
                     } else {
                         d
                     }
@@ -89,6 +92,18 @@ fn main() -> anyhow::Result<()> {
             .deserialize()
         })
         .unwrap_or_else(|e| e.exit());
+
+    let mut builder = env_logger::from_env("CARGO_SPELLCHECK");
+    let verbosity = match args.flag_verbose.len() {
+        _ if args.flag_quiet => log::LevelFilter::Off,
+        n if n > 4  => log::LevelFilter::Trace,
+        4 => log::LevelFilter::Debug,
+        3 => log::LevelFilter::Info,
+        2 => log::LevelFilter::Warn,
+        _ => log::LevelFilter::Error,
+    };
+    builder.filter_level(verbosity).init();
+
 
     // handle `config` sub command
     if args.cmd_config {
