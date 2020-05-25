@@ -37,10 +37,6 @@ pub(crate) fn traverse(path: &Path) -> anyhow::Result<Vec<Documentation>> {
     Ok(documentation)
 }
 
-fn extract_cargo_toml_entry_files(cargo_toml: &Path) -> Vec<PathBuf> {
-    unimplemented!("Extraction is not yet implemented, smth with `toml`");
-}
-
 use proc_macro2::Spacing;
 use proc_macro2::TokenStream;
 use proc_macro2::TokenTree;
@@ -143,7 +139,8 @@ fn extract_modules_from_file<P: AsRef<Path>>(path: P) -> anyhow::Result<Vec<Path
     }
 }
 
-fn extract_entry_points<P: AsRef<Path>>(manifest_dir: P) -> anyhow::Result<Vec<PathBuf>> {
+/// Extract all cargo manifest products / build targets.
+fn extract_products<P: AsRef<Path>>(manifest_dir: P) -> anyhow::Result<Vec<PathBuf>> {
     let manifest_dir = manifest_dir.as_ref();
     let mut manifest = cargo_toml::Manifest::from_path(manifest_dir.join("Cargo.toml"))?;
     // @todo verify which one is the sane one here, internally it calls `parent()`
@@ -159,50 +156,94 @@ fn extract_entry_points<P: AsRef<Path>>(manifest_dir: P) -> anyhow::Result<Vec<P
         .collect())
 }
 
+/// Execute execute execute.
 pub(crate) fn run(
     mode: Mode,
-    paths: Vec<PathBuf>,
-    recurse: bool,
+    mut paths: Vec<PathBuf>,
+    mut recurse: bool,
     config: &Config,
 ) -> anyhow::Result<()> {
-    // @todo extract bin and lib from toml to obtain the entry point files, from there resolve modules
-    // @todo in case paths.len() == 1 && dir contains a `Cargo.toml` || file name and ends_with `Cargo.toml`
-    // @todo honour recurse flag if path is a dir, otherwise error
-    let cargo_tomls: Vec<_> = paths
-        .iter()
-        .filter_map(|path| {
-            let meta = path.metadata().ok()?;
-            if path.file_name() == Some("Cargo.toml".as_ref()) && meta.is_file() {
-                Some(path.to_owned())
-            } else if meta.is_dir() {
-                let cargo_toml = path.with_file_name("Cargo.toml");
-                if cargo_toml.is_file() {
-                    Some(cargo_toml)
+    // if there are no arguments, pretend to be told to check the whole project
+    if paths.is_empty() {
+        paths.push(PathBuf::from("Cargo.toml"));
+        recurse = true;
+    }
+
+    #[derive(Debug, Clone)]
+    enum Extraction {
+        Manifest(PathBuf),
+        Missing(PathBuf),
+        Source(PathBuf),
+    }
+
+    // convert all `Cargo.toml` manifest files to their respective product files
+    // so after this conversion all of them are considered
+    let mut paths: Vec<_> = paths
+        .into_iter()
+        .map(|path| {
+            if let Ok(meta) = path.metadata() {
+                if meta.is_file() {
+                    if path.file_name() == Some("Cargo.toml".as_ref()) {
+                        Extraction::Manifest(path)
+                    } else {
+                        Extraction::Source(path)
+                    }
+                } else if meta.is_dir() {
+                    let cargo_toml = path.with_file_name("Cargo.toml");
+                    if cargo_toml.is_file() {
+                        Extraction::Manifest(cargo_toml)
+                    } else {
+                        // @todo should we just collect all .rs files here instead?
+                        Extraction::Missing(cargo_toml)
+                    }
                 } else {
-                    None
+                    Extraction::Missing(path)
                 }
             } else {
-                None
+                Extraction::Missing(path)
             }
         })
-        .collect();
+        .try_fold::<Vec<_>, _, anyhow::Result<_>>(
+            Vec::with_capacity(64),
+            |mut acc, tagged_path| {
+                match tagged_path {
+                    Extraction::Manifest(ref cargo_toml_path) => acc.extend(extract_products(cargo_toml_path)?),
+                    Extraction::Missing(ref missing_path) => warn!("File passed as argument or listed in Cargo.toml manifest does not exist: {}", missing_path.display()),
+                    Extraction::Source(source) => acc.push(source),
+                }
+                Ok(acc)
+            },
+        )?;
 
     let docs: Vec<Documentation> = if recurse {
-        trace!("Recursive");
-        paths
+        let mut path_collection = indexmap::IndexSet::<_>::with_capacity(64);
+
+        // @todo merge this with the `Documentation::from` to reduce parsing of the file twice
+        let mut dq = std::collections::VecDeque::<PathBuf>::with_capacity(64);
+
+        while let Some(path) = paths.pop() {
+            let modules = extract_modules_from_file(&path)?;
+            if path_collection.insert(path.to_owned()) {
+                dq.extend(modules.into_iter());
+            } else {
+                warn!(target: "run", "Already visited module");
+            }
+        }
+
+        trace!(target: "run", "Recursive");
+        path_collection
             .iter()
             .try_fold::<Vec<Documentation>, _, anyhow::Result<Vec<Documentation>>>(
-                Vec::with_capacity(paths.len()),
+                Vec::with_capacity(path_collection.len()),
                 |mut acc, path| {
                     let content = fs::read_to_string(&path)?;
                     let stream = syn::parse_str(&content)?;
-                    let path: String = path.to_str().unwrap().to_owned();
                     acc.push(Documentation::from((path, stream)));
                     Ok(acc)
                 },
             )?
     } else {
-        trace!("Single file");
+        trace!(target: "run","Single file");
         paths
             .iter()
             .try_fold::<Vec<Documentation>, _, anyhow::Result<Vec<Documentation>>>(
@@ -250,8 +291,13 @@ mod tests {
     #[test]
     fn manifest_entries() {
         assert_eq!(
-            extract_entry_points(PathBuf::from(env!("CARGO_MANIFEST_DIR"))).expect("Must succeed"),
+            extract_products(PathBuf::from(env!("CARGO_MANIFEST_DIR"))).expect("Must succeed"),
             vec![PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/main.rs")]
         );
     }
+
+    // #[test]
+    // fn module_doc() {
+    //     let _ = env_logger::try_init();
+    // }
 }

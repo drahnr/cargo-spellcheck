@@ -36,7 +36,7 @@ Error display follows `cargo` error printing style:
 * [ ] Include comments in ` ```rust` wrapped sections
 * [ ] Handle module documentation comments
 * [ ] Add `README.md` files
-* [ ] Follow module declarations rather than blindly recurse
+* [X] Follow module declarations rather than blindly recurse
 * [ ] `cargo-spellcheck fix`
 * [ ] `cargo-spellcheck fix --interactive`
 * [ ] Re-wrap doc comments
