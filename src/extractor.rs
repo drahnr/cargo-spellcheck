@@ -186,7 +186,7 @@ pub(crate) fn run(
 
     // convert all `Cargo.toml` manifest files to their respective product files
     // so after this conversion all of them are considered
-    let mut paths: Vec<_> = paths
+    let paths: Vec<_> = paths
         .into_iter()
         .map(|path| {
             let path = if  path.is_absolute() { path } else { cwd.join(path) };
@@ -229,8 +229,8 @@ pub(crate) fn run(
 
         // @todo merge this with the `Documentation::from` to reduce parsing of the file twice
         let mut dq = std::collections::VecDeque::<PathBuf>::with_capacity(64);
-
-        while let Some(path) = paths.pop() {
+        dq.extend(paths.into_iter());
+        while let Some(path) = dq.pop_front () {
             let modules = extract_modules_from_file(&path)?;
             if path_collection.insert(path.to_owned()) {
                 dq.extend(modules.into_iter());
