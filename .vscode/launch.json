@@ -10,8 +10,8 @@
                 "--no-run",
                 "--bin=cargo-spellcheck",
 				"--package=cargo-spellcheck",
-				"combine_literals"
-				"--"
+				"combine_literals",
+				"--",
 				"--nocapture"
             ],
             "filter": {
