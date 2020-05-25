@@ -26,6 +26,7 @@ toml = "0.5"
 directories = "2"
 lazy_static = "1"
 pulldown-cmark = "0.7"
+cargo_toml = "0.8"
 
 # config parsing, must be independent of features
 iso_country = { version = "0.1" }

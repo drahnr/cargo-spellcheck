@@ -173,6 +173,7 @@ name = "cargo-spellcheck"
 version = "0.0.5"
 dependencies = [
  "anyhow",
+ "cargo_toml",
  "console",
  "directories",
  "docopt",
@@ -192,6 +193,17 @@ dependencies = [
  "toml",
  "url 2.1.1",
  "walkdir",
+]
+
+[[package]]
+name = "cargo_toml"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e7877b00aaf997d7ed66a81281d3a8b9f9da5361df05b72785b985349979a0f3"
+dependencies = [
+ "serde",
+ "serde_derive",
+ "toml",
 ]
 
 [[package]]

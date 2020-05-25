@@ -1,5 +1,3 @@
-mod M;
-
 /// First.
 /// Second.
 /// Thurd.

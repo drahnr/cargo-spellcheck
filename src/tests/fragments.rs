@@ -2,9 +2,7 @@
 //!
 //! Details are full fo errors.
 
-
-mod M;
-
+mod simple;
 
 /// Secret weapon X.
 ///
