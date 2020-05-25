@@ -129,6 +129,7 @@ fn extract_modules_inner<P: AsRef<Path>>(
     Ok(acc)
 }
 
+/// Read all `mod x;` declarations from a source file.
 fn extract_modules_from_file<P: AsRef<Path>>(path: P) -> anyhow::Result<Vec<PathBuf>> {
     let path = path.as_ref();
     if let Some(path_str) = path.to_str() {

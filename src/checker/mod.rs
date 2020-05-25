@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
 use crate::{
-    AnnotatedLiteralRef, ConsecutiveLiteralSet, Detector, Documentation, LineColumn, Span,
-    Suggestion, Config,
+    AnnotatedLiteralRef, Config, ConsecutiveLiteralSet, Detector, Documentation, LineColumn, Span,
+    Suggestion,
 };
 
 use anyhow::Result;
@@ -103,7 +103,10 @@ where
 }
 
 /// Check a full document for violations using the tools we have.
-pub fn check<'a, 's>(documentation: &'a Documentation, config: &Config) -> Result<Vec<Suggestion<'s>>>
+pub fn check<'a, 's>(
+    documentation: &'a Documentation,
+    config: &Config,
+) -> Result<Vec<Suggestion<'s>>>
 where
     'a: 's,
 {
@@ -113,8 +116,13 @@ where
     {
         if config.is_enabled(Detector::LanguageTool) {
             debug!("Running LanguageTool checks");
-            let config = config.languagetool.as_ref().expect("Must be Some(LanguageToolConfig) if is_enabled returns true");
-            if let Ok(mut suggestions) = self::languagetool::LanguageToolChecker::check(documentation, config) {
+            let config = config
+                .languagetool
+                .as_ref()
+                .expect("Must be Some(LanguageToolConfig) if is_enabled returns true");
+            if let Ok(mut suggestions) =
+                self::languagetool::LanguageToolChecker::check(documentation, config)
+            {
                 corrections.append(&mut suggestions);
             }
         }
@@ -124,8 +132,13 @@ where
     {
         if config.is_enabled(Detector::Hunspell) {
             debug!("Running Hunspell checks");
-            let config = config.hunspell.as_ref().expect("Must be Some(HunspellConfig) if is_enabled returns true");
-            if let Ok(mut suggestions) = self::hunspell::HunspellChecker::check(documentation, config) {
+            let config = config
+                .hunspell
+                .as_ref()
+                .expect("Must be Some(HunspellConfig) if is_enabled returns true");
+            if let Ok(mut suggestions) =
+                self::hunspell::HunspellChecker::check(documentation, config)
+            {
                 corrections.append(&mut suggestions);
             }
         }

@@ -79,8 +79,7 @@ fn main() -> anyhow::Result<()> {
 
     // handle `config` sub command
     if args.cmd_config {
-        let config = Config::load()
-        .or_else(|e| {
+        let config = Config::load().or_else(|e| {
             if args.flag_overwrite {
                 Config::write_default_values()
             } else {
@@ -88,9 +87,8 @@ fn main() -> anyhow::Result<()> {
             }
         })?;
         println!("{}", config.to_toml()?);
-        return Ok(())
+        return Ok(());
     }
-
 
     // extract operation mode
     let mode = if args.cmd_fix || args.flag_fix {

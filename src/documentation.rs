@@ -12,6 +12,7 @@ use proc_macro2::{Spacing, TokenTree};
 pub use proc_macro2::LineColumn;
 use std::path::{Path, PathBuf};
 
+/// Collection of all the documentation entries across the project
 #[derive(Debug, Clone)]
 pub struct Documentation {
     /// Mapping of a path to documentation literals
@@ -73,7 +74,7 @@ impl Documentation {
                 let v = occupied.into_mut();
                 let cls = v.last_mut().unwrap();
                 if let Err(literal) = cls.add_adjacent(literal) {
-                    trace!(
+                    trace!(target: "documentation",
                         "appending, but failed to append: {:?} to set {:?}",
                         &literal,
                         &cls
@@ -84,7 +85,7 @@ impl Documentation {
                 }
             }
             indexmap::map::Entry::Vacant(vacant) => {
-                trace!(
+                trace!(target: "documentation",
                     "nothing for {} file yet, create new literal set",
                     path.display()
                 );
@@ -93,6 +94,7 @@ impl Documentation {
         }
     }
 
+    /// Helper function to parse a path stream and associated the found literals to `path`
     fn parse_token_tree<P: AsRef<Path>>(&mut self, path: P, stream: proc_macro2::TokenStream) {
         let path: &Path = path.as_ref();
 
@@ -129,7 +131,7 @@ impl Documentation {
                     }
                     let comment = comment.unwrap();
                     if let TokenTree::Literal(literal) = comment {
-                        trace!(
+                        trace!(target: "documentation",
                             "Found doc literal at {:?}..{:?}: {:?}",
                             literal.span().start(),
                             literal.span().end(),

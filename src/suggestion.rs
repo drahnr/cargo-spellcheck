@@ -35,7 +35,6 @@ pub enum Detector {
 //     }
 // }
 
-
 use std::fmt;
 
 impl fmt::Display for Detector {

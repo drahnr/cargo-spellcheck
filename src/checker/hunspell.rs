@@ -10,7 +10,6 @@ impl Checker for HunspellChecker {
     where
         'a: 's,
     {
-
         // let hunspell = lazy_static::lazy_static!{
         //     static ref HUNSPELL_CTX: Result<Hunspell> = {
 
@@ -19,7 +18,9 @@ impl Checker for HunspellChecker {
 
         let search_dirs = config.search_dirs();
         if search_dirs.is_empty() {
-            return Err(anyhow::anyhow!("Need some search dirs defined for Hunspell"))
+            return Err(anyhow::anyhow!(
+                "Need some search dirs defined for Hunspell"
+            ));
         }
 
         let search_path_one: &PathBuf = search_dirs.first().unwrap();
@@ -28,26 +29,39 @@ impl Checker for HunspellChecker {
         let mut hunspell = Hunspell::new(aff.to_str().unwrap(), dic.to_str().unwrap());
         for search_dir in search_dirs.iter().skip(1) {
             if !search_dir.is_dir() {
-                return Err( anyhow::anyhow!("Dictionary search path {} is not a directory", search_dir.display()))
+                return Err(anyhow::anyhow!(
+                    "Dictionary search path {} is not a directory",
+                    search_dir.display()
+                ));
             }
             let dic = search_dir.join(format!("{}.dic", config.lang()));
             if !dic.is_file() {
-                return  Err(anyhow::anyhow!("Extra dictionary {} is not a file", dic.display()))
+                return Err(anyhow::anyhow!(
+                    "Extra dictionary {} is not a file",
+                    dic.display()
+                ));
             }
             if let Some(dic) = dic.to_str() {
                 hunspell.add_dictionary(dic);
             } else {
-                return  Err(anyhow::anyhow!("Failed to convert one of the base dictionaries to a str"))
+                return Err(anyhow::anyhow!(
+                    "Failed to convert one of the base dictionaries to a str"
+                ));
             }
         }
         for extra_dic in config.extra_dictonaries().iter() {
             if !extra_dic.is_file() {
-                return  Err(anyhow::anyhow!("Extra dictionary {} is not a file", dic.display()))
+                return Err(anyhow::anyhow!(
+                    "Extra dictionary {} is not a file",
+                    dic.display()
+                ));
             }
             if let Some(extra_dic) = extra_dic.to_str() {
                 hunspell.add_dictionary(extra_dic);
             } else {
-                return  Err(anyhow::anyhow!("Failed to convert one of the extra dictionaries to a str"))
+                return Err(anyhow::anyhow!(
+                    "Failed to convert one of the extra dictionaries to a str"
+                ));
             }
         }
 

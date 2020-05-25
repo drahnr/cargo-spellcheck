@@ -7,11 +7,11 @@
 
 use crate::suggestion::Detector;
 use anyhow::{anyhow, Result};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::Read;
-use std::path::{Path, PathBuf};
 use std::io::Write;
+use std::path::{Path, PathBuf};
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Config {
     pub hunspell: Option<HunspellConfig>,
@@ -91,7 +91,11 @@ impl Config {
 
     pub fn load() -> Result<Self> {
         if let Some(base) = directories::BaseDirs::new() {
-            Self::load_from(base.config_dir().join("cargo_spellcheck").with_file_name("config.toml"))
+            Self::load_from(
+                base.config_dir()
+                    .join("cargo_spellcheck")
+                    .with_file_name("config.toml"),
+            )
         } else {
             Err(anyhow!(
                 "No idea where your config directory is located. XDG compliance would be nice."
@@ -108,10 +112,16 @@ impl Config {
 
         let s = values.to_toml()?;
 
-        let file = std::fs::OpenOptions::new().create(true).write(true).truncate(true).open(path.as_ref())?;
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(path.as_ref())?;
         let mut writer = std::io::BufWriter::new(file);
 
-        writer.write_all(s.as_bytes()).map_err(|_e| anyhow::anyhow!("Failed to write all to {}", path.as_ref().display()))?;
+        writer
+            .write_all(s.as_bytes())
+            .map_err(|_e| anyhow::anyhow!("Failed to write all to {}", path.as_ref().display()))?;
 
         Ok(values)
     }
@@ -139,18 +149,17 @@ impl Config {
 impl Default for Config {
     fn default() -> Self {
         let mut search_dirs = if cfg!(target_os = "macos") {
-            directories::BaseDirs::new().map(|base| {
-                vec![
-                    base.home_dir().to_owned().join("/Library/Spelling/"),
-                ]}).unwrap_or_else(|| { Vec::with_capacity(2)})
-            } else {
-                Vec::with_capacity(2)
-            };
+            directories::BaseDirs::new()
+                .map(|base| vec![base.home_dir().to_owned().join("/Library/Spelling/")])
+                .unwrap_or_else(|| Vec::with_capacity(2))
+        } else {
+            Vec::with_capacity(2)
+        };
 
-        #[cfg(target_os="macos")]
+        #[cfg(target_os = "macos")]
         search_dirs.push(PathBuf::from("/Library/Spelling/"));
 
-        #[cfg(target_os="linux")]
+        #[cfg(target_os = "linux")]
         search_dirs.push(PathBuf::from("/usr/share/myspell/"));
 
         Config {
@@ -165,13 +174,12 @@ impl Default for Config {
     }
 }
 
-
 // TODO figure out which ISO spec this actually is
 pub struct CommonLang(String);
 
 impl std::str::FromStr for CommonLang {
     type Err = anyhow::Error;
-    fn from_str(s: &str) -> std::result::Result<Self,Self::Err> {
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         //
         unimplemented!("Common Lang needs a ref spec")
     }
