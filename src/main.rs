@@ -83,7 +83,13 @@ fn main() -> anyhow::Result<()> {
                     .flatten()
                 {
                     if file_name.starts_with("cargo-spellcheck") {
-                        dbg!(d.argv(file_name.split('-').skip(1).map(|x| x.to_owned()).chain(argv_it)))
+                        dbg!(d.argv(
+                            file_name
+                                .split('-')
+                                .skip(1)
+                                .map(|x| x.to_owned())
+                                .chain(argv_it)
+                        ))
                     } else {
                         d
                     }
@@ -100,7 +106,7 @@ fn main() -> anyhow::Result<()> {
     let mut builder = env_logger::from_env("CARGO_SPELLCHECK");
     let verbosity = match args.flag_verbose.len() {
         _ if args.flag_quiet => log::LevelFilter::Off,
-        n if n > 4  => log::LevelFilter::Trace,
+        n if n > 4 => log::LevelFilter::Trace,
         4 => log::LevelFilter::Debug,
         3 => log::LevelFilter::Info,
         2 => log::LevelFilter::Warn,
@@ -110,7 +116,7 @@ fn main() -> anyhow::Result<()> {
 
     if args.flag_version {
         println!("cargo-spellcheck {}", env!("CARGO_PKG_VERSION"));
-        return Ok(())
+        return Ok(());
     }
 
     // handle `config` sub command

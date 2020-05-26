@@ -2,8 +2,7 @@
 
 pub use proc_macro2::LineColumn;
 
-use std::hash::{Hasher, Hash};
-
+use std::hash::{Hash, Hasher};
 
 /// Relative span in relation
 /// to the beginning of a doc comment.
@@ -22,7 +21,6 @@ impl Hash for RelativeSpan {
         self.end.column.hash(state);
     }
 }
-
 
 // Span in relation to a full Document
 #[derive(Clone, Debug, Copy, PartialEq, Eq)]

@@ -144,13 +144,21 @@ fn extract_products<P: AsRef<Path>>(manifest_dir: P) -> anyhow::Result<Vec<PathB
     let manifest_dir = manifest_dir.as_ref();
     let manifest_file = manifest_dir.join("Cargo.toml");
     let mut manifest = cargo_toml::Manifest::from_path(&manifest_file).map_err(|e| {
-        anyhow::anyhow!("Failed to parse manifest file {}: {}", manifest_file.display(), e)
+        anyhow::anyhow!(
+            "Failed to parse manifest file {}: {}",
+            manifest_file.display(),
+            e
+        )
     })?;
     // @todo verify which one is the sane one here, internally it calls `parent()`
     // but semantically it's not entirely clear.
     // manifest.complete_from_path(manifest_dir.join("Cargo.toml").as_path())?;
     manifest.complete_from_path(&manifest_file).map_err(|e| {
-        anyhow::anyhow!("Failed to complete manifest info {}: {}", manifest_file.display(), e)
+        anyhow::anyhow!(
+            "Failed to complete manifest info {}: {}",
+            manifest_file.display(),
+            e
+        )
     })?;
     Ok(manifest
         .bin
@@ -168,7 +176,7 @@ pub(crate) fn run(
     mut recurse: bool,
     config: &Config,
 ) -> anyhow::Result<()> {
-    let cwd = std::env::current_dir().map_err(|_e| { anyhow::anyhow!("Missing cwd!")})?;
+    let cwd = std::env::current_dir().map_err(|_e| anyhow::anyhow!("Missing cwd!"))?;
 
     // if there are no arguments, pretend to be told to check the whole project
     if paths.is_empty() {
@@ -230,7 +238,7 @@ pub(crate) fn run(
         // @todo merge this with the `Documentation::from` to reduce parsing of the file twice
         let mut dq = std::collections::VecDeque::<PathBuf>::with_capacity(64);
         dq.extend(paths.into_iter());
-        while let Some(path) = dq.pop_front () {
+        while let Some(path) = dq.pop_front() {
             let modules = extract_modules_from_file(&path)?;
             if path_collection.insert(path.to_owned()) {
                 dq.extend(modules.into_iter());
