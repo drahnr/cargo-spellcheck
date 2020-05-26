@@ -6,7 +6,7 @@ use super::*;
 use crate::ConsecutiveLiteralSet;
 
 use indexmap::IndexMap;
-use log::{debug, info, trace, warn};
+use log::trace;
 use proc_macro2::{Spacing, TokenTree};
 
 pub use proc_macro2::LineColumn;

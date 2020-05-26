@@ -1,6 +1,6 @@
 use crate::{LineColumn, Span};
 
-use log::{debug, info, trace, warn};
+use log::trace;
 
 #[derive(Clone, Debug, Copy)]
 /// A litteral with meta info where the first and list whitespace may be found.
