@@ -41,5 +41,8 @@ languagetool-rs = { version = "0.1", package = "languagetool", optional = true }
 
 [features]
 default = ["hunspell"]
+
 languagetool = ["languagetool-rs"]
 hunspell = ["hunspell-rs"]
+
+all = ["hunspell", "languagetool"]
