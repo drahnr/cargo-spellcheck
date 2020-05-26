@@ -83,13 +83,13 @@ fn main() -> anyhow::Result<()> {
                     .flatten()
                 {
                     if file_name.starts_with("cargo-spellcheck") {
-                        dbg!(d.argv(
+                        d.argv(
                             file_name
                                 .split('-')
                                 .skip(1)
                                 .map(|x| x.to_owned())
                                 .chain(argv_it)
-                        ))
+                        )
                     } else {
                         d
                     }

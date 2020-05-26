@@ -164,7 +164,7 @@ fn extract_products<P: AsRef<Path>>(manifest_dir: P) -> anyhow::Result<Vec<PathB
         .bin
         .into_iter()
         .filter(|product| product.doctest)
-        .filter_map(|product| dbg!(product.path))
+        .filter_map(|product| product.path)
         .map(|path_str| manifest_dir.join(path_str))
         .collect())
 }
