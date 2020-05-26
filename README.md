@@ -33,10 +33,11 @@ Error display follows `cargo` error printing style:
 * [x] Grammar check using `languagetool` http API
 * [x] False positive reduction
 * [ ] Be `markdown` aware
-* [ ] Include comments in ` ```rust` wrapped sections
-* [ ] Handle module documentation comments
+* [ ] Include doctests ( ` ```rust` code wrapped sections)
+* [x] Handle module documentation comments
 * [ ] Add `README.md` files
-* [X] Follow module declarations rather than blindly recurse
+* [x] Follow module declarations rather than blindly recurse
+* [ ] Handle cargo workspaces
 * [ ] `cargo-spellcheck fix`
 * [ ] `cargo-spellcheck fix --interactive`
 * [ ] Re-wrap doc comments

@@ -28,15 +28,18 @@ Usage:
     cargo spellcheck [(-v...|-q)] fix [[--recursive] <paths>.. ]
     cargo spellcheck [(-v...|-q)] [(--fix|--interactive)] [[--recursive] <paths>.. ]
     cargo spellcheck [(-v...|-q)] config [--overwrite]
+    cargo spellcheck --version
 
 Options:
   -h --help           Show this screen.
+  --version           Print the version and exit.
+
   --fix               Synonym to running the `fix` subcommand.
   -i --interactive    Interactively apply spelling and grammer fixes.
   -r --recursive      If a path is provided, if recursion into subdirectories is desired.
   --overwrite         Overwrite any existing configuration file.
-  -v, --verbose           Verbosity level.
-  -q, --quiet             Silences all printed messages.
+  -v --verbose        Verbosity level.
+  -q --quiet          Silences all printed messages.
 
 "#;
 
@@ -49,6 +52,7 @@ struct Args {
     flag_overwrite: bool,
     flag_verbose: Vec<bool>,
     flag_quiet: bool,
+    flag_version: bool,
     cmd_fix: bool,
     cmd_check: bool,
     cmd_config: bool,
@@ -104,6 +108,10 @@ fn main() -> anyhow::Result<()> {
     };
     builder.filter_level(verbosity).init();
 
+    if args.flag_version {
+        println!("cargo-spellcheck {}", env!("CARGO_PKG_VERSION"));
+        return Ok(())
+    }
 
     // handle `config` sub command
     if args.cmd_config {

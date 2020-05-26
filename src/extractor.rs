@@ -152,7 +152,7 @@ fn extract_products<P: AsRef<Path>>(manifest_dir: P) -> anyhow::Result<Vec<PathB
     manifest.complete_from_path(&manifest_file).map_err(|e| {
         anyhow::anyhow!("Failed to complete manifest info {}: {}", manifest_file.display(), e)
     })?;
-    Ok(dbg!(manifest)
+    Ok(manifest
         .bin
         .into_iter()
         .filter(|product| product.doctest)
