@@ -7,7 +7,7 @@ use crate::Documentation;
 
 use std::fs;
 
-use log::{debug, info, trace, warn};
+use log::{trace, warn};
 
 use std::path::{Path, PathBuf};
 
@@ -168,7 +168,7 @@ pub(crate) fn run(
     mut recurse: bool,
     config: &Config,
 ) -> anyhow::Result<()> {
-    let cwd = std::env::current_dir().map_err(|e| { anyhow::anyhow!("Missing cwd!")})?;
+    let cwd = std::env::current_dir().map_err(|_e| { anyhow::anyhow!("Missing cwd!")})?;
 
     // if there are no arguments, pretend to be told to check the whole project
     if paths.is_empty() {

@@ -179,7 +179,7 @@ pub struct CommonLang(String);
 
 impl std::str::FromStr for CommonLang {
     type Err = anyhow::Error;
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+    fn from_str(_s: &str) -> std::result::Result<Self, Self::Err> {
         //
         unimplemented!("Common Lang needs a ref spec")
     }

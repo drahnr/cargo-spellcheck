@@ -14,8 +14,8 @@ pub use self::span::*;
 pub use self::suggestion::*;
 
 use docopt::Docopt;
-use enumflags2::BitFlags;
-use log::{debug, info, trace, warn};
+
+use log::{trace, warn};
 use serde::Deserialize;
 
 use std::path::PathBuf;
