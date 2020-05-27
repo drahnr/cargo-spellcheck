@@ -4,9 +4,9 @@ mod literalset;
 mod span;
 
 mod checker;
-mod traverse;
-mod suggestion;
 mod markdown;
+mod suggestion;
+mod traverse;
 
 pub use self::config::{Config, HunspellConfig, LanguageToolConfig};
 pub use self::documentation::*;
@@ -90,7 +90,7 @@ fn main() -> anyhow::Result<()> {
                                 .split('-')
                                 .skip(1)
                                 .map(|x| x.to_owned())
-                                .chain(argv_it)
+                                .chain(argv_it),
                         )
                     } else {
                         d

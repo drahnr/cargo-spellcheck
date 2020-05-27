@@ -1,7 +1,7 @@
 use super::*;
 
-use languagetool_rs::{LanguageTool, Request};
 use crate::literalset::Range;
+use languagetool_rs::{LanguageTool, Request};
 pub struct LanguageToolChecker;
 
 impl Checker for LanguageToolChecker {
@@ -35,12 +35,10 @@ impl Checker for LanguageToolChecker {
                             log::trace!("item.message: {:?}", item.message);
                             log::trace!("item.short_message: {:?}", item.short_message);
                             // TODO convert response to offsets and errors with the matching literal
-                            for (literal, span) in
-                                plain.linear_range_to_spans(Range {
-                                    start: item.offset as usize,
-                                    end: (item.offset + item.length) as usize,
-                                })
-                            {
+                            for (literal, span) in plain.linear_range_to_spans(Range {
+                                start: item.offset as usize,
+                                end: (item.offset + item.length) as usize,
+                            }) {
                                 acc.push(Suggestion {
                                     detector: Detector::LanguageTool,
                                     span: span,

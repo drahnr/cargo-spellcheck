@@ -1,8 +1,7 @@
-use crate::{LineColumn, Span};
 use crate::markdown::PlainOverlay;
+use crate::{LineColumn, Span};
 
 use log::trace;
-
 
 pub type Range = core::ops::Range<usize>;
 
@@ -115,7 +114,6 @@ impl TrimmedLiteral {
         &self.rendered.as_str()[self.pre..(self.pre + self.len)]
     }
 }
-
 
 /// A set of consecutive literals.
 ///
@@ -248,12 +246,9 @@ impl LiteralSet {
     /// Convert a range of the linear string represnetation to a set of literal references and spans within that literal.
     pub fn linear_range_to_spans<'a>(
         &'a self,
-        range: core::ops::Range::<usize>,
+        range: core::ops::Range<usize>,
     ) -> Vec<(&'a TrimmedLiteral, Span)> {
-        let core::ops::Range::<usize> {
-            start,
-            end,
-        } = range;
+        let core::ops::Range::<usize> { start, end } = range;
         let offset = start;
         let length = end - start;
         self.find_intersection(offset, length)

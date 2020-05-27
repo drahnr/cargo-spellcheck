@@ -166,8 +166,7 @@ where
 mod tests {
     use super::*;
 
-    const TEST: &str =
-r#"/// A very good test.
+    const TEST: &str = r#"/// A very good test.
 ///
 /// Without much ado, we adhere to **King** _Ragnar_.
 struct Vikings;
@@ -192,6 +191,9 @@ struct Vikings;
         let plain = v[0].erase_markdown();
         log::info!("Plain: \n {:?}", &plain);
         assert_eq!(dbg!(plain.linear_range_to_spans(1..3)).len(), 1);
-        assert_eq!(v[0].linear_range_to_spans(2..4), plain.linear_range_to_spans(1..3));
+        assert_eq!(
+            v[0].linear_range_to_spans(2..4),
+            plain.linear_range_to_spans(1..3)
+        );
     }
 }

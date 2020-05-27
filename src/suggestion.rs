@@ -13,8 +13,8 @@
 
 use std::path::PathBuf;
 
-use crate::TrimmedLiteralRef;
 use crate::Span;
+use crate::TrimmedLiteralRef;
 
 use enumflags2::BitFlags;
 

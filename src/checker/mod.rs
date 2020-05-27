@@ -1,15 +1,14 @@
 use std::path::PathBuf;
 
 use crate::{
-    TrimmedLiteralRef, Config, LiteralSet, Detector, Documentation, LineColumn, Span,
-    Suggestion,
+    Config, Detector, Documentation, LineColumn, LiteralSet, Span, Suggestion, TrimmedLiteralRef,
 };
 
 use anyhow::Result;
 
-use log::debug;
 use crate::PlainOverlay;
 use crate::Range;
+use log::debug;
 
 #[cfg(feature = "hunspell")]
 mod hunspell;
@@ -43,11 +42,11 @@ fn tokenize(s: &str) -> Vec<Range> {
                 bananasplit.push(linear_start..linear_end);
             }
             started = false;
-            // @todo handle hyphenation
-            // if c == '\n' {
-            //     column = 0;
-            //     line += 1;
-            // }
+        // @todo handle hyphenation
+        // if c == '\n' {
+        //     column = 0;
+        //     line += 1;
+        // }
         } else {
             if !started {
                 linear_start = c_idx;
