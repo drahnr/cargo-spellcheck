@@ -1,30 +1,52 @@
 {
 	"configurations": [
-	{
-        "type": "lldb",
-        "request": "launch",
-        "name": "Debug unit tests in executable 'cargo-spellcheck'",
-        "cargo": {
-            "args": [
-                "test",
-                "--no-run",
-                "--bin=cargo-spellcheck",
-				"--package=cargo-spellcheck",
-				"combine_literals",
-				"--",
-				"--nocapture"
-            ],
-            "filter": {
-                "name": "cargo-spellcheck",
-                "kind": "bin"
-            }
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug binary in executable 'cargo-spellcheck'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=cargo-spellcheck",
+                    "--package=cargo-spellcheck"
+                ],
+                "filter": {
+                    "name": "cargo-spellcheck",
+                    "kind": "bin"
+                }
+            },
+            "env": {
+                "RUST_LOG":"cargo_spellcheck=trace",
+                "RUST_BACKTRACE":"1"
+            },
+            "args": ["spellcheck", "-v", "-r", "${workspaceFolder}/src/tests/simple.rs"],
+            "cwd": "${workspaceFolder}"
         },
-        "env": {
-            "RUST_LOG":"cargo_spellcheck=trace",
-            "RUST_BACKTRACE":"1"
-        },
-        "args": [],
-        "cwd": "${workspaceFolder}"
-	}
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'cargo-spellcheck'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=cargo-spellcheck",
+                    "--package=cargo-spellcheck",
+                    "combine_literals",
+                    "--",
+                    "--nocapture"
+                ],
+                "filter": {
+                    "name": "cargo-spellcheck",
+                    "kind": "bin"
+                }
+            },
+            "env": {
+                "RUST_LOG":"cargo_spellcheck=trace",
+                "RUST_BACKTRACE":"1"
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
 	]
 }
