@@ -3,13 +3,12 @@
 //! Resulting overlay is plain and can be fed into a grammer or spell checker.
 
 use super::*;
-use crate::{LineColumn, Span};
+use crate::Span;
 
 use log::trace;
 use pulldown_cmark::{Event, Options, Parser, Tag};
 
 use crate::literalset::{LiteralSet, Range};
-use proc_macro2::Literal;
 
 use indexmap::IndexMap;
 
@@ -55,7 +54,7 @@ impl<'a> PlainOverlay<'a> {
 
         let parser = Parser::new_ext(markdown, Options::all());
 
-        let rust_fence = pulldown_cmark::CowStr::Borrowed("rust");
+        let _rust_fence = pulldown_cmark::CowStr::Borrowed("rust");
 
         let mut code_block = false;
         for (event, offset) in parser.into_offset_iter() {
@@ -67,7 +66,7 @@ impl<'a> PlainOverlay<'a> {
                             code_block = true;
 
                             match fenced {
-                                pulldown_cmark::CodeBlockKind::Fenced(rust_fence) => {
+                                pulldown_cmark::CodeBlockKind::Fenced(_rust_fence) => {
                                     // @todo validate this as an extra document entity
                                 }
                                 _ => {}
@@ -79,21 +78,21 @@ impl<'a> PlainOverlay<'a> {
                 }
                 Event::End(tag) => {
                     match tag {
-                        Tag::Link(link_type, url, title) => {
+                        Tag::Link(_link_type, _url, title) => {
                             // @todo check links
                             Self::track(&title, offset, &mut plain, &mut mapping);
                         }
-                        Tag::Image(link_type, url, title) => {
+                        Tag::Image(_link_type, _url, title) => {
                             Self::track(&title, offset, &mut plain, &mut mapping);
                         }
-                        Tag::Heading(n) => {
+                        Tag::Heading(_n) => {
                             Self::newlines(&mut plain, 2);
                         }
                         Tag::CodeBlock(fenced) => {
                             code_block = false;
 
                             match fenced {
-                                pulldown_cmark::CodeBlockKind::Fenced(rust_fence) => {
+                                pulldown_cmark::CodeBlockKind::Fenced(_rust_fence) => {
                                     // @todo validate this as an extra document entity
                                 }
                                 _ => {}
@@ -109,13 +108,13 @@ impl<'a> PlainOverlay<'a> {
                         Self::track(&s, offset, &mut plain, &mut mapping);
                     }
                 }
-                Event::Code(s) => {
+                Event::Code(_s) => {
                     // @todo extract comments from the doc comment and in the distant
                     // future potentially also check var names with leviatan distance
                     // to wordbook entries, and only complain if there are sane suggestions
                 }
-                Event::Html(s) => {}
-                Event::FootnoteReference(s) => {
+                Event::Html(_s) => {}
+                Event::FootnoteReference(_s) => {
                     // @todo handle footnotes
                 }
                 Event::SoftBreak => {
@@ -127,7 +126,7 @@ impl<'a> PlainOverlay<'a> {
                 Event::Rule => {
                     Self::newlines(&mut plain, 1);
                 }
-                Event::TaskListMarker(b) => {}
+                Event::TaskListMarker(_b) => {}
             }
         }
         (plain, mapping)
@@ -206,7 +205,7 @@ impl<'a> fmt::Debug for PlainOverlay<'a> {
         let mut coloured_md = String::with_capacity(1024);
 
         let mut previous_md_end = 0usize;
-        for (plain_range, md_range, style) in
+        for (_plain_range, md_range, style) in
             itertools::cons_tuples(itertools::zip(self.mapping.iter(), color_cycle))
         {
             let delta = md_range.start - previous_md_end;

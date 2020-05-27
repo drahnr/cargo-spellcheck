@@ -6,7 +6,6 @@ use crate::{
 
 use anyhow::Result;
 
-use crate::PlainOverlay;
 use crate::Range;
 use log::debug;
 

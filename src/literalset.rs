@@ -144,7 +144,7 @@ impl LiteralSet {
     ///
     /// Commonly this means with suggestions applied, content can
     /// contain newlines.
-    pub fn replace_content(&mut self, content: String) {
+    pub fn replace_content(&mut self, _content: String) {
         unimplemented!("")
     }
 
