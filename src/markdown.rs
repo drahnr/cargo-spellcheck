@@ -38,10 +38,6 @@ impl<'a> PlainOverlay<'a> {
         plain.push_str(&s);
     }
 
-    fn newline(plain: &mut String) {
-        plain.push('\n');
-    }
-
     fn newlines(plain: &mut String, n: usize) {
         for _ in 0..n {
             plain.push('\n');
@@ -185,7 +181,6 @@ impl<'a> fmt::Display for PlainOverlay<'a> {
 impl<'a> fmt::Debug for PlainOverlay<'a> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         use console::Style;
-        use itertools;
 
         let styles = vec![
             Style::new().underlined().bold().dim().red(),
