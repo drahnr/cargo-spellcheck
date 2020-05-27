@@ -8,6 +8,8 @@ use crate::{
 use anyhow::Result;
 
 use log::debug;
+use crate::PlainOverlay;
+use crate::Range;
 
 #[cfg(feature = "hunspell")]
 mod hunspell;
@@ -25,81 +27,35 @@ pub(crate) trait Checker {
 /// Returns absolute offsets and the data with the token in question.
 ///
 /// Does not handle hypenation yet or partial words at boundaries.
-/// Returns the a vector of tokens as part of the string.
-fn tokenize<'a>(literal: TrimmedLiteralRef<'a>) -> Vec<(String, Span)> {
-    let mut start = LineColumn { line: 0, column: 0 };
-    let mut end;
-    let mut column = 0usize;
-    let mut line = 0usize;
+/// Returns the a vector of ranges for the input str.
+fn tokenize(s: &str) -> Vec<Range> {
     let mut started = false;
     let mut linear_start = 0usize;
     let mut linear_end;
-    let s = literal.to_string();
     let mut bananasplit = Vec::with_capacity(32);
 
-    // add additional seperator characters for tokenization
-    // which is useful to avoid pointless dict lookup failures.
-    // TODO extract markdown links first
     let blacklist = "\";:,.?!#(){}[]_-\n\r/`".to_owned();
     let is_ignore_char = |c: char| c.is_whitespace() || blacklist.contains(c);
     for (c_idx, c) in s.char_indices() {
         if is_ignore_char(c) {
             linear_end = c_idx;
-            end = LineColumn {
-                line: line,
-                column: column,
-            };
             if started {
-                // shift by abs offset
-                if literal.span().start().line == 0 {
-                    start.column += literal.span().start().column;
-                }
-                start.line += literal.span().start().line;
-
-                if literal.span().start().line == 0 {
-                    end.column += literal.span().start().column;
-                }
-                end.line += literal.span().start().line;
-
-                bananasplit.push((s[linear_start..linear_end].to_string(), Span { start, end }));
+                bananasplit.push(linear_start..linear_end);
             }
             started = false;
-            if c == '\n' {
-                column = 0;
-                line += 1;
-            }
+            // @todo handle hyphenation
+            // if c == '\n' {
+            //     column = 0;
+            //     line += 1;
+            // }
         } else {
             if !started {
                 linear_start = c_idx;
-                start = LineColumn {
-                    line: line,
-                    column: column,
-                };
                 started = true;
             }
         }
-        column += 1;
     }
     bananasplit
-}
-
-/// Tokenize a set of literals.
-///
-/// Does not handle hyphenation yet!
-fn tokenize_literals<'a, 'b>(
-    literals: &'a [LiteralSet],
-) -> Vec<(Vec<(String, Span)>, TrimmedLiteralRef<'b>)>
-where
-    'a: 'b,
-{
-    literals
-        .iter()
-        .fold(Vec::with_capacity(128), |mut acc, cls| {
-            for literal in cls.literals() {
-                acc.push((tokenize(literal.into()), literal.into()));
-            }
-            acc
-        })
 }
 
 /// Check a full document for violations using the tools we have.

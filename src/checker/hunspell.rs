@@ -67,32 +67,39 @@ impl Checker for HunspellChecker {
 
         let suggestions = docu
             .iter()
-            .fold(Vec::with_capacity(128), |mut acc, (path, literals)| {
+            .try_fold::<Vec<Suggestion>, _, Result<_>>(
+                Vec::with_capacity(128),
+                |mut acc, (path, literal_sets)| {
+                    for literal_set in literal_sets {
+                        let plain = literal_set.erase_markdown();
+                        let txt = plain.as_str();
+                        for range in tokenize(txt) {
+                            let word = &txt[range.clone()];
+                            if !hunspell.check(word) {
+                                // get rid of single character suggestions
+                                let replacements = hunspell
+                                    .suggest(word)
+                                    .into_iter()
+                                    .filter(|x| x.len() != 1)
+                                    .collect::<Vec<_>>();
 
-                for (words_with_spans, literal) in tokenize_literals(literals) {
-                    for (word, rspan) in words_with_spans {
-                        let word = word.as_str();
-                        if !hunspell.check(word) {
-                            // get rid of single character suggestions
-                            let replacements = hunspell
-                                .suggest(word)
-                                .into_iter()
-                                .filter(|x| x.len() != 1)
-                                .collect::<Vec<_>>();
+                                for (literal, span) in plain.linear_range_to_spans(range.clone()) {
+                                    acc.push(Suggestion {
+                                        detector: Detector::Hunspell,
+                                        span,
+                                        path: PathBuf::from(path),
+                                        replacements: replacements.clone(),
+                                        literal: literal.into(),
+                                        description: Some("Possible spelling mistake found.".to_owned()),
+                                    })
+                                }
+                            }
 
-                            acc.push(Suggestion {
-                                detector: Detector::Hunspell,
-                                span: rspan,
-                                path: PathBuf::from(path),
-                                replacements,
-                                literal,
-                                description: Some("Possible spelling mistake found.".to_owned()),
-                            })
                         }
                     }
+                    Ok(acc)
                 }
-                acc
-            });
+            )?;
 
         // TODO sort spans by file and line + column
         Ok(suggestions)

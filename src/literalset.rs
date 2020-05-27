@@ -260,9 +260,8 @@ impl LiteralSet {
             .map(|(literals, start, end)| {
                 assert!(!literals.is_empty());
                 trace!(
-                    "linear coverage: offset={} length{} -> end {:?}",
-                    offset,
-                    length,
+                    "linear coverage: linear-range={:?} -> end {:?}",
+                    &range,
                     end
                 );
                 let n = literals.len();
@@ -380,60 +379,5 @@ Boats float, don't they?"#;
         }
 
         assert_eq!(cls.to_string(), TEST_LITERALS_COMBINED.to_string());
-    }
-
-
-
-    #[test]
-    fn markdown() {
-        let _ = env_logger::try_init();
-
-        const TEST_MARKDOWN: &str =
-        r###"
-# title1
-
-```rust
-/// a dummy `fn`
-fn dummy() {
-    // be real sure
-    assert_eq!(1 + 1, 2);
-}
-```
-A single tick ` ` `.
-
-## title2
-
-Nested _game_ *changing* **modifiers** ~_strike_~ *_game_* _*game2*_.
-
-        "###;
-        use pulldown_cmark::{Parser,Options,Event};
-        let parser = Parser::new_ext(TEST_MARKDOWN, Options::all());
-
-        // take advantage of Display impl having removed most narstinesses
-        for (event, offset) in parser.into_offset_iter() {
-            let _ = dbg!(offset);
-            match dbg!(event) {
-                Event::Start(tag) => {},
-                Event::End(tag) => {},
-                Event::Code(tag) => {}, // @todo extract comments
-                x => { }
-            }
-        }
-    }
-
-    #[test]
-    fn funkster() {
-        const MOD_DOC : & str =
-r#"
-//! Hello again!
-//! Welcome to another round of mis-spelled shit.
-
-/// X
-// I am nothing, I do not exist.
-struct X;
-
-"#;
-        use proc_macro2::TokenStream;
-        let x_ = dbg!(syn::parse_str::<TokenStream>(MOD_DOC));
     }
 }

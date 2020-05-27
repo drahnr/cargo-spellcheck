@@ -166,11 +166,11 @@ where
 mod tests {
     use super::*;
 
-    const TEST: &str = r#"
-    /// A very good test.
-    ///
-    /// Without much ado, we adhere to **King** _Ragnar_.
-    struct Vikings;
+    const TEST: &str =
+r#"/// A very good test.
+///
+/// Without much ado, we adhere to **King** _Ragnar_.
+struct Vikings;
 "#;
 
     const TEST_EXTRACT: &str = r#" A very good test.
@@ -178,19 +178,20 @@ mod tests {
  Without much ado, we adhere to **King** _Ragnar_."#;
 
     #[test]
-    fn end2end() {
-        let _ = env_logger::try_init().unwrap();
+    fn parse_and_construct() {
+        let _ = env_logger::try_init();
 
         let test_path = PathBuf::from("/tmp/dummy");
 
         let stream = syn::parse_str(TEST).expect("Must be valid rust");
         let docs = Documentation::from((test_path.as_path(), stream));
         assert_eq!(docs.index.len(), 1);
-        let opt = docs.index.get(&test_path);
-        assert!(opt.is_some());
-        let v = opt.unwrap();
+        let v = docs.index.get(&test_path).expect("Must contain dummy path");
         assert_eq!(dbg!(v).len(), 1);
         assert_eq!(v[0].to_string(), TEST_EXTRACT.to_owned());
-        let _ = dbg!(dbg!(&v[0]).erase_markdown());
+        let plain = v[0].erase_markdown();
+        log::info!("Plain: \n {:?}", &plain);
+        assert_eq!(dbg!(plain.linear_range_to_spans(1..3)).len(), 1);
+        assert_eq!(v[0].linear_range_to_spans(2..4), plain.linear_range_to_spans(1..3));
     }
 }

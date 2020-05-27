@@ -13,8 +13,8 @@ impl Checker for LanguageToolChecker {
         let lt = LanguageTool::new(config.url.as_str())?;
         let suggestions = docu.iter().try_fold::<Vec<Suggestion>, _, Result<_>>(
             Vec::with_capacity(128),
-            |mut acc, (path, v)| {
-                for cls in v {
+            |mut acc, (path, literal_sets)| {
+                for cls in literal_sets {
                     let plain = cls.erase_markdown();
                     log::trace!("markdown erasure: {:?}", &plain);
                     let req = Request::new(plain.to_string(), "en-US".to_owned());

@@ -8,12 +8,10 @@ use crate::{LineColumn, Span};
 use log::trace;
 use pulldown_cmark::{Event, Options, Parser, Tag};
 
-use crate::literalset::LiteralSet;
+use crate::literalset::{LiteralSet, Range};
 use proc_macro2::Literal;
 
 use indexmap::IndexMap;
-
-pub type Range = core::ops::Range<usize>;
 
 /// A plain representation of markdown riddled set of trimmed literals.
 #[derive(Clone)]
@@ -27,7 +25,7 @@ pub struct PlainOverlay<'a> {
 }
 
 impl<'a> PlainOverlay<'a> {
-    fn track(s: &str, offset: Range, plain: &mut String, mapping: &mut IndexMap<Range, Range>) {
+    fn track(s: &str, markdown: Range, plain: &mut String, mapping: &mut IndexMap<Range, Range>) {
         // map the range within the plain data,
         // which is fed to the checker,
         // back to the repr with markdown modifiers
@@ -36,7 +34,7 @@ impl<'a> PlainOverlay<'a> {
                 start: plain.len(),
                 end: plain.len() + s.len(),
             },
-            offset,
+            markdown,
         );
         plain.push_str(&s);
     }
@@ -64,7 +62,7 @@ impl<'a> PlainOverlay<'a> {
             match event {
                 Event::Start(tag) => {
                     // @todo check links
-                    match dbg!(tag) {
+                    match tag {
                         Tag::CodeBlock(fenced) => {
                             code_block = true;
 
@@ -80,7 +78,7 @@ impl<'a> PlainOverlay<'a> {
                     }
                 }
                 Event::End(tag) => {
-                    match dbg!(tag) {
+                    match tag {
                         Tag::Link(link_type, url, title) => {
                             // @todo check links
                             Self::track(&title, offset, &mut plain, &mut mapping);
@@ -107,9 +105,9 @@ impl<'a> PlainOverlay<'a> {
                 }
                 Event::Text(s) => {
                     if code_block {
-                        let _ = dbg!(&s);
+
                     } else {
-                        Self::track(dbg!(&s), offset, &mut plain, &mut mapping);
+                        Self::track(&s, offset, &mut plain, &mut mapping);
                     }
                 }
                 Event::Code(s) => {
@@ -149,17 +147,36 @@ impl<'a> PlainOverlay<'a> {
         }
     }
 
+	/// Since most checkers will operate on the plain date, a indirection to map plain to markdown
+	/// and back to literals and spans
     pub fn linear_range_to_spans(&self, plain_range: Range) -> Vec<(&'a TrimmedLiteral, Span)> {
-        // check for the start index in range
+		// check for the start index in range
+		let plain_range = dbg!(plain_range);
         self.mapping
             .iter()
-            .skip_while(|(plain, _md)| plain.end <= plain_range.start)
-            .take_while(|(plain, _md)| plain.end < plain_range.end)
+			.filter(|(plain, _md)| {
+				plain.start <= plain_range.start
+				&& plain_range.end <= plain.end
+			})
             .fold(Vec::with_capacity(64), |mut acc, (plain, md)| {
-                acc.extend(self.raw.linear_range_to_spans(md.clone()).into_iter());
+				// calculate the linear shift
+				let offset = md.start - plain.start;
+				assert_eq!(md.end - plain.end, offset);
+				let extracted = Range {
+					start: plain_range.start + offset,
+					end: core::cmp::min(md.end, plain_range.end + offset),
+				};
+				let resolved = self.raw.linear_range_to_spans(extracted.clone());
+				trace!("linear range to spans: {:?} -> {:?}", extracted, resolved);
+				acc.extend(resolved.into_iter());
+
                 acc
             })
-    }
+	}
+
+	pub fn as_str(&self) -> &str {
+		self.plain.as_str()
+	}
 }
 
 use std::fmt;
@@ -190,7 +207,7 @@ impl<'a> fmt::Debug for PlainOverlay<'a> {
 
 		let markdown = self.raw.to_string();
 
-		let mut coloured_plain = String::with_capacity(1024);
+		// let mut coloured_plain = String::with_capacity(1024);
 		let mut coloured_md = String::with_capacity(1024);
 
 		let mut previous_md_end = 0usize;
@@ -265,5 +282,35 @@ And a line, or a rule.
 
         assert_eq!(plain.as_str(), PLAIN);
         assert_eq!(dbg!(mapping).len(), 19);
-    }
+	}
+
+	#[test]
+	fn range_test() {
+		let mut x = IndexMap::<Range,Range>::new();
+		x.insert(0..2, 1..3);
+		x.insert(3..4, 7..8);
+		x.insert(5..12, 11..18);
+
+		let lookmeup = 6..8;
+
+
+		let plain_range = lookmeup;
+		let v: Vec<_> = x.iter()
+		.filter(|(plain, _md)| {
+			plain.start <= plain_range.end
+			&& plain_range.start <= plain.end
+		})
+		.fold(Vec::with_capacity(64), |mut acc, (plain, md)| {
+			// calculate the linear shift
+			let offset = dbg!(md.start - plain.start);
+			assert_eq!(md.end - plain.end, offset);
+			let extracted = Range {
+				start: plain_range.start + offset,
+				end: core::cmp::min(md.end, plain_range.end + offset),
+			};
+			acc.push(extracted);
+			acc
+		});
+		assert_eq!(dbg!(v).len(), 1);
+	}
 }
