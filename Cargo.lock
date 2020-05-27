@@ -183,6 +183,7 @@ dependencies = [
  "indexmap",
  "iso_country",
  "isolang",
+ "itertools",
  "languagetool",
  "lazy_static",
  "log",
@@ -821,6 +822,15 @@ dependencies = [
  "phf",
  "phf_codegen",
  "serde",
+]
+
+[[package]]
+name = "itertools"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "284f18f85651fe11e8a991b2adb42cb078325c996ed026d994719efcfca1d54b"
+dependencies = [
+ "either",
 ]
 
 [[package]]

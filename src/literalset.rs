@@ -1,27 +1,31 @@
 use crate::{LineColumn, Span};
+use crate::markdown::PlainOverlay;
 
 use log::trace;
 
+
+pub type Range = core::ops::Range<usize>;
+
 #[derive(Clone, Debug, Copy)]
 /// A litteral with meta info where the first and list whitespace may be found.
-pub struct AnnotatedLiteralRef<'l> {
-    reference: &'l AnnotatedLiteral,
+pub struct TrimmedLiteralRef<'l> {
+    reference: &'l TrimmedLiteral,
 }
 
-impl<'l> std::ops::Deref for AnnotatedLiteralRef<'l> {
+impl<'l> std::ops::Deref for TrimmedLiteralRef<'l> {
     type Target = proc_macro2::Literal;
     fn deref(&self) -> &Self::Target {
         &self.reference.literal
     }
 }
 
-impl<'l> From<&'l AnnotatedLiteral> for AnnotatedLiteralRef<'l> {
-    fn from(anno: &'l AnnotatedLiteral) -> Self {
+impl<'l> From<&'l TrimmedLiteral> for TrimmedLiteralRef<'l> {
+    fn from(anno: &'l TrimmedLiteral) -> Self {
         Self { reference: anno }
     }
 }
 
-impl<'l> AnnotatedLiteralRef<'l> {
+impl<'l> TrimmedLiteralRef<'l> {
     pub fn pre(&self) -> usize {
         self.reference.pre
     }
@@ -38,7 +42,7 @@ impl<'l> AnnotatedLiteralRef<'l> {
 
 #[derive(Clone, Debug)]
 /// A litteral with meta info where the first and list whitespace may be found.
-pub struct AnnotatedLiteral {
+pub struct TrimmedLiteral {
     /// The literal which this annotates to.
     pub literal: proc_macro2::Literal,
     /// the complete rendered string including post and pre.
@@ -52,7 +56,7 @@ pub struct AnnotatedLiteral {
     pub len: usize,
 }
 
-impl std::cmp::PartialEq for AnnotatedLiteral {
+impl std::cmp::PartialEq for TrimmedLiteral {
     fn eq(&self, other: &Self) -> bool {
         if self.rendered != other.rendered {
             return false;
@@ -77,9 +81,9 @@ impl std::cmp::PartialEq for AnnotatedLiteral {
     }
 }
 
-impl std::cmp::Eq for AnnotatedLiteral {}
+impl std::cmp::Eq for TrimmedLiteral {}
 
-impl From<proc_macro2::Literal> for AnnotatedLiteral {
+impl From<proc_macro2::Literal> for TrimmedLiteral {
     fn from(literal: proc_macro2::Literal) -> Self {
         let rendered = literal.to_string();
         let scrap = |c: &'_ char| -> bool { c.is_whitespace() };
@@ -99,40 +103,57 @@ impl From<proc_macro2::Literal> for AnnotatedLiteral {
     }
 }
 
-impl std::ops::Deref for AnnotatedLiteral {
+impl std::ops::Deref for TrimmedLiteral {
     type Target = proc_macro2::Literal;
     fn deref(&self) -> &Self::Target {
         &self.literal
     }
 }
 
-impl AnnotatedLiteral {
+impl TrimmedLiteral {
     pub fn as_str(&self) -> &str {
         &self.rendered.as_str()[self.pre..(self.pre + self.len)]
     }
 }
 
+
+/// A set of consecutive literals.
+///
+/// Provides means to render them as a code block
 #[derive(Clone, Default, Debug, PartialEq, Eq)]
-pub struct ConsecutiveLiteralSet {
+pub struct LiteralSet {
     /// consecutive set of literals mapped by line number
-    literals: Vec<AnnotatedLiteral>,
+    literals: Vec<TrimmedLiteral>,
     /// lines spanned (start, end)
     pub coverage: (usize, usize),
 }
 
-impl ConsecutiveLiteralSet {
+impl LiteralSet {
     /// Initiate a new set based on the first literal
-    pub fn from(literal: AnnotatedLiteral) -> Self {
+    pub fn from(literal: TrimmedLiteral) -> Self {
         Self {
             coverage: (literal.span().start().line, literal.span().end().line),
             literals: vec![literal],
         }
     }
 
+    /// Create a plain overlay to work on.
+    pub fn erase_markdown(&self) -> PlainOverlay {
+        PlainOverlay::erase_markdown(self)
+    }
+
+    /// Overwrite the actuall literal content with fixed content.
+    ///
+    /// Commonly this means with suggestions applied, content can
+    /// contain newlines.
+    pub fn replace_content(&mut self, content: String) {
+        unimplemented!("")
+    }
+
     /// Add a literal to a literal set, if the previous lines literal already exists.
     ///
     /// Returns literl within the Err variant if not adjacent
-    pub fn add_adjacent(&mut self, literal: AnnotatedLiteral) -> Result<(), AnnotatedLiteral> {
+    pub fn add_adjacent(&mut self, literal: TrimmedLiteral) -> Result<(), TrimmedLiteral> {
         let previous_line = literal.span().end().line;
         if previous_line == self.coverage.1 + 1 {
             self.coverage.1 += 1;
@@ -160,7 +181,7 @@ impl ConsecutiveLiteralSet {
         &'a self,
         mut offset: usize,
         length: usize,
-    ) -> Option<(Vec<&'a AnnotatedLiteral>, LineColumn, LineColumn)> {
+    ) -> Option<(Vec<&'a TrimmedLiteral>, LineColumn, LineColumn)> {
         #[derive(Copy, Clone, Debug)]
         enum LookingFor {
             Start,
@@ -224,12 +245,17 @@ impl ConsecutiveLiteralSet {
         None
     }
 
-    /// Convert a linear offset to a set of offsets with literal references and spans within that literal.
-    pub fn linear_coverage_to_spans<'a>(
+    /// Convert a range of the linear string represnetation to a set of literal references and spans within that literal.
+    pub fn linear_range_to_spans<'a>(
         &'a self,
-        offset: usize,
-        length: usize,
-    ) -> Vec<(&'a AnnotatedLiteral, Span)> {
+        range: core::ops::Range::<usize>,
+    ) -> Vec<(&'a TrimmedLiteral, Span)> {
+        let core::ops::Range::<usize> {
+            start,
+            end,
+        } = range;
+        let offset = start;
+        let length = end - start;
         self.find_intersection(offset, length)
             .map(|(literals, start, end)| {
                 assert!(!literals.is_empty());
@@ -282,7 +308,7 @@ impl ConsecutiveLiteralSet {
             .unwrap_or_else(|| Vec::new())
     }
 
-    pub fn literals<'x>(&'x self) -> Vec<&'x AnnotatedLiteral> {
+    pub fn literals<'x>(&'x self) -> Vec<&'x TrimmedLiteral> {
         self.literals.iter().by_ref().collect()
     }
 
@@ -293,7 +319,7 @@ impl ConsecutiveLiteralSet {
 
 use std::fmt;
 
-impl<'s> fmt::Display for ConsecutiveLiteralSet {
+impl<'s> fmt::Display for LiteralSet {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let n = self.len();
         for literal in self.literals.iter().take(n - 1) {
@@ -336,10 +362,10 @@ Boats float, don't they?"#;
             .collect()
     }
 
-    fn annotated_literals() -> Vec<AnnotatedLiteral> {
+    fn annotated_literals() -> Vec<TrimmedLiteral> {
         literals()
             .into_iter()
-            .map(|literal| AnnotatedLiteral::from(literal))
+            .map(|literal| TrimmedLiteral::from(literal))
             .collect()
     }
 
@@ -348,11 +374,66 @@ Boats float, don't they?"#;
     fn combine_literals() {
         let literals = annotated_literals();
 
-        let mut cls = ConsecutiveLiteralSet::default();
+        let mut cls = LiteralSet::default();
         for literal in literals {
             assert!(cls.add_adjacent(literal).is_ok());
         }
 
         assert_eq!(cls.to_string(), TEST_LITERALS_COMBINED.to_string());
+    }
+
+
+
+    #[test]
+    fn markdown() {
+        let _ = env_logger::try_init();
+
+        const TEST_MARKDOWN: &str =
+        r###"
+# title1
+
+```rust
+/// a dummy `fn`
+fn dummy() {
+    // be real sure
+    assert_eq!(1 + 1, 2);
+}
+```
+A single tick ` ` `.
+
+## title2
+
+Nested _game_ *changing* **modifiers** ~_strike_~ *_game_* _*game2*_.
+
+        "###;
+        use pulldown_cmark::{Parser,Options,Event};
+        let parser = Parser::new_ext(TEST_MARKDOWN, Options::all());
+
+        // take advantage of Display impl having removed most narstinesses
+        for (event, offset) in parser.into_offset_iter() {
+            let _ = dbg!(offset);
+            match dbg!(event) {
+                Event::Start(tag) => {},
+                Event::End(tag) => {},
+                Event::Code(tag) => {}, // @todo extract comments
+                x => { }
+            }
+        }
+    }
+
+    #[test]
+    fn funkster() {
+        const MOD_DOC : & str =
+r#"
+//! Hello again!
+//! Welcome to another round of mis-spelled shit.
+
+/// X
+// I am nothing, I do not exist.
+struct X;
+
+"#;
+        use proc_macro2::TokenStream;
+        let x_ = dbg!(syn::parse_str::<TokenStream>(MOD_DOC));
     }
 }

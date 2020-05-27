@@ -1,7 +1,7 @@
 use super::*;
 
 use languagetool_rs::{LanguageTool, Request};
-
+use crate::literalset::Range;
 pub struct LanguageToolChecker;
 
 impl Checker for LanguageToolChecker {
@@ -15,8 +15,9 @@ impl Checker for LanguageToolChecker {
             Vec::with_capacity(128),
             |mut acc, (path, v)| {
                 for cls in v {
-                    let text: String = cls.to_string();
-                    let req = Request::new(text, "en-US".to_owned());
+                    let plain = cls.erase_markdown();
+                    log::trace!("markdown erasure: {:?}", &plain);
+                    let req = Request::new(plain.to_string(), "en-US".to_owned());
                     let resp = lt.check(req)?;
                     if let Some(software) = resp.software {
                         log::trace!("sw: {:?}", software);
@@ -25,7 +26,7 @@ impl Checker for LanguageToolChecker {
                         for item in matches {
                             if let Some(rule) = item.rule {
                                 if rule.id == "EN_QUOTES" {
-                                    // really annoying
+                                    // really annoying and pointless in code related documentation
                                     continue;
                                 }
                                 log::trace!("item.rule: {:?}", rule);
@@ -34,10 +35,12 @@ impl Checker for LanguageToolChecker {
                             log::trace!("item.message: {:?}", item.message);
                             log::trace!("item.short_message: {:?}", item.short_message);
                             // TODO convert response to offsets and errors with the matching literal
-                            for (literal, span) in cls.linear_coverage_to_spans(
-                                item.offset as usize,
-                                item.length as usize,
-                            ) {
+                            for (literal, span) in
+                                plain.linear_range_to_spans(Range {
+                                    start: item.offset as usize,
+                                    end: (item.offset + item.length) as usize,
+                                })
+                            {
                                 acc.push(Suggestion {
                                     detector: Detector::LanguageTool,
                                     span: span,

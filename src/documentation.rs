@@ -3,7 +3,7 @@
 //! So to speak documentation of project as whole.
 
 use super::*;
-use crate::ConsecutiveLiteralSet;
+use crate::LiteralSet;
 
 use indexmap::IndexMap;
 use log::trace;
@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Clone)]
 pub struct Documentation {
     /// Mapping of a path to documentation literals
-    index: IndexMap<PathBuf, Vec<ConsecutiveLiteralSet>>,
+    index: IndexMap<PathBuf, Vec<LiteralSet>>,
 }
 
 impl Documentation {
@@ -30,21 +30,21 @@ impl Documentation {
         self.index.is_empty()
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&PathBuf, &Vec<ConsecutiveLiteralSet>)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&PathBuf, &Vec<LiteralSet>)> {
         self.index.iter()
     }
 
-    pub fn into_iter(self) -> impl Iterator<Item = (PathBuf, Vec<ConsecutiveLiteralSet>)> {
+    pub fn into_iter(self) -> impl Iterator<Item = (PathBuf, Vec<LiteralSet>)> {
         self.index.into_iter()
     }
 
     pub fn join(&mut self, other: Documentation) -> &mut Self {
         other
             .into_iter()
-            .for_each(|(path, mut literals): (_, Vec<ConsecutiveLiteralSet>)| {
+            .for_each(|(path, mut literals): (_, Vec<LiteralSet>)| {
                 self.index
                     .entry(path)
-                    .and_modify(|acc: &mut Vec<ConsecutiveLiteralSet>| {
+                    .and_modify(|acc: &mut Vec<LiteralSet>| {
                         acc.append(&mut literals);
                     })
                     .or_insert_with(|| literals);
@@ -68,7 +68,7 @@ impl Documentation {
     /// Only works if the file is processed line by line, otherwise
     /// requires a adjacency list.
     pub fn append_literal(&mut self, path: &Path, literal: proc_macro2::Literal) {
-        let literal = AnnotatedLiteral::from(literal);
+        let literal = TrimmedLiteral::from(literal);
         match self.index.entry(path.to_owned()) {
             indexmap::map::Entry::Occupied(occupied) => {
                 let v = occupied.into_mut();
@@ -79,7 +79,7 @@ impl Documentation {
                         &literal,
                         &cls
                     );
-                    v.push(ConsecutiveLiteralSet::from(literal))
+                    v.push(LiteralSet::from(literal))
                 } else {
                     trace!("successfully appended to existing: {:?} to set", &cls);
                 }
@@ -89,7 +89,7 @@ impl Documentation {
                     "nothing for {} file yet, create new literal set",
                     path.display()
                 );
-                vacant.insert(vec![ConsecutiveLiteralSet::from(literal)]);
+                vacant.insert(vec![LiteralSet::from(literal)]);
             }
         }
     }
@@ -169,16 +169,16 @@ mod tests {
     const TEST: &str = r#"
     /// A very good test.
     ///
-    /// Without much ado, we adhere to king Ragnar.
+    /// Without much ado, we adhere to **King** _Ragnar_.
     struct Vikings;
 "#;
 
     const TEST_EXTRACT: &str = r#" A very good test.
 
- Without much ado, we adhere to king Ragnar."#;
+ Without much ado, we adhere to **King** _Ragnar_."#;
 
     #[test]
-    fn dummy() {
+    fn end2end() {
         let _ = env_logger::try_init().unwrap();
 
         let test_path = PathBuf::from("/tmp/dummy");
@@ -191,5 +191,6 @@ mod tests {
         let v = opt.unwrap();
         assert_eq!(dbg!(v).len(), 1);
         assert_eq!(v[0].to_string(), TEST_EXTRACT.to_owned());
+        let _ = dbg!(dbg!(&v[0]).erase_markdown());
     }
 }

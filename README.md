@@ -53,7 +53,7 @@ Error display follows `cargo` error printing style:
 # Windows: C:\Users\Alice\AppData\Roaming\cargo_spellcheck\config.toml
 # macOS:   /Users/Alice/Library/Preferences/cargo_spellcheck/config.toml
 [LanguageTool]
-url = "192.168.1.1:8010"
+url = "127.0.0.1:8010"
 
 [Hunspell]
 # lang and name of `.dic` file

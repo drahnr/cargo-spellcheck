@@ -68,8 +68,7 @@ impl Checker for HunspellChecker {
         let suggestions = docu
             .iter()
             .fold(Vec::with_capacity(128), |mut acc, (path, literals)| {
-                // FIXME literals should be passed directly to tokenize to allow
-                // for correct span calculation
+
                 for (words_with_spans, literal) in tokenize_literals(literals) {
                     for (word, rspan) in words_with_spans {
                         let word = word.as_str();

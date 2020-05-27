@@ -13,7 +13,7 @@
 
 use std::path::PathBuf;
 
-use crate::AnnotatedLiteralRef;
+use crate::TrimmedLiteralRef;
 use crate::Span;
 
 use enumflags2::BitFlags;
@@ -53,7 +53,7 @@ pub struct Suggestion<'s> {
     /// Reference to the file location.
     pub path: PathBuf,
     /// Literal we are referencing.
-    pub literal: AnnotatedLiteralRef<'s>, // TODO merge adjacent literals
+    pub literal: TrimmedLiteralRef<'s>, // TODO merge adjacent literals
     /// The span (absolute!) of where it is supposed to be used. TODO make this relative towards the literal.
     pub span: Span,
     /// Fix suggestions, might be words or the full sentence.

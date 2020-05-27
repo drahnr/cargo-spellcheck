@@ -4,12 +4,14 @@ mod literalset;
 mod span;
 
 mod checker;
-mod extractor;
+mod traverse;
 mod suggestion;
+mod markdown;
 
 pub use self::config::{Config, HunspellConfig, LanguageToolConfig};
 pub use self::documentation::*;
 pub use self::literalset::*;
+pub use self::markdown::*;
 pub use self::span::*;
 pub use self::suggestion::*;
 
@@ -150,5 +152,5 @@ fn main() -> anyhow::Result<()> {
 
     trace!("Executing: {:?}", mode);
 
-    extractor::run(mode, args.arg_paths, args.flag_recursive, &config)
+    traverse::run(mode, args.arg_paths, args.flag_recursive, &config)
 }

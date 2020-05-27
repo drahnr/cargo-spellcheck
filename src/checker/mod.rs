@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use crate::{
-    AnnotatedLiteralRef, Config, ConsecutiveLiteralSet, Detector, Documentation, LineColumn, Span,
+    TrimmedLiteralRef, Config, LiteralSet, Detector, Documentation, LineColumn, Span,
     Suggestion,
 };
 
@@ -26,7 +26,7 @@ pub(crate) trait Checker {
 ///
 /// Does not handle hypenation yet or partial words at boundaries.
 /// Returns the a vector of tokens as part of the string.
-fn tokenize<'a>(literal: AnnotatedLiteralRef<'a>) -> Vec<(String, Span)> {
+fn tokenize<'a>(literal: TrimmedLiteralRef<'a>) -> Vec<(String, Span)> {
     let mut start = LineColumn { line: 0, column: 0 };
     let mut end;
     let mut column = 0usize;
@@ -40,7 +40,7 @@ fn tokenize<'a>(literal: AnnotatedLiteralRef<'a>) -> Vec<(String, Span)> {
     // add additional seperator characters for tokenization
     // which is useful to avoid pointless dict lookup failures.
     // TODO extract markdown links first
-    let blacklist = "\";:,.?!#(){}[]_-".to_owned();
+    let blacklist = "\";:,.?!#(){}[]_-\n\r/`".to_owned();
     let is_ignore_char = |c: char| c.is_whitespace() || blacklist.contains(c);
     for (c_idx, c) in s.char_indices() {
         if is_ignore_char(c) {
@@ -87,8 +87,8 @@ fn tokenize<'a>(literal: AnnotatedLiteralRef<'a>) -> Vec<(String, Span)> {
 ///
 /// Does not handle hyphenation yet!
 fn tokenize_literals<'a, 'b>(
-    literals: &'a [ConsecutiveLiteralSet],
-) -> Vec<(Vec<(String, Span)>, AnnotatedLiteralRef<'b>)>
+    literals: &'a [LiteralSet],
+) -> Vec<(Vec<(String, Span)>, TrimmedLiteralRef<'b>)>
 where
     'a: 'b,
 {
