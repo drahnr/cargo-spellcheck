@@ -32,7 +32,7 @@ Error display follows `cargo` error printing style:
 * [x] Merge multiline doc comments
 * [x] Grammar check using `languagetool` http API
 * [x] False positive reduction
-* [ ] Be `markdown` aware
+* [x] Be `markdown` aware
 * [ ] Include doctests ( ` ```rust` code wrapped sections)
 * [x] Handle module documentation comments
 * [ ] Add `README.md` files

@@ -7,17 +7,32 @@ mod simple;
 /// Secret weapon X.
 ///
 /// Somethign very secret but also not,
-/// lets continue this on a new
+/// lets continuae thas on a nwe
 /// line.
-struct X;
+///
+/// A seprate paragraphius.
+enum X {
+	/// A nice instroment.
+	Xylophon,
+	/// Another rythmuic instrment.
+	BongoDrums,
+}
 
 
 
 impl X {
 	/// New, as in new. But also not.
+	///
 	/// Half sentence for X #2.
-	fn new() {
+	fn new() -> Self {
+		unimplemented!()
+	}
 
+	/// Old, as in really old.
+	///
+	/// But what does "old" really mean?
+	fn old(&self) {
+		unimplemented!()
 	}
 }
 
