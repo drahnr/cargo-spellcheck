@@ -26,9 +26,9 @@ const USAGE: &str = r#"
 Spellcheck all your doc comments
 
 Usage:
-    cargo spellcheck [(-v...|-q)] check [[--recursive] <paths>.. ]
-    cargo spellcheck [(-v...|-q)] fix [[--recursive] <paths>.. ]
-    cargo spellcheck [(-v...|-q)] [(--fix|--interactive)] [[--recursive] <paths>.. ]
+    cargo spellcheck [(-v...|-q)] check [[--recursive] <paths>... ]
+    cargo spellcheck [(-v...|-q)] fix [[--recursive] <paths>... ]
+    cargo spellcheck [(-v...|-q)] [(--fix|--interactive)] [[--recursive] <paths>... ]
     cargo spellcheck [(-v...|-q)] config [--overwrite]
     cargo spellcheck --version
 
@@ -52,7 +52,7 @@ struct Args {
     flag_interactive: bool,
     flag_recursive: bool,
     flag_overwrite: bool,
-    flag_verbose: Vec<bool>,
+    flag_verbose: usize,
     flag_quiet: bool,
     flag_version: bool,
     cmd_fix: bool,
@@ -105,8 +105,10 @@ fn main() -> anyhow::Result<()> {
         })
         .unwrap_or_else(|e| e.exit());
 
-    let mut builder = env_logger::from_env("CARGO_SPELLCHECK");
-    let verbosity = match args.flag_verbose.len() {
+
+    let mut builder = env_logger::from_env(env_logger::Env::new().filter_or("CARGO_SPELLCHECK", "warn"));
+
+    let verbosity = match args.flag_verbose {
         _ if args.flag_quiet => log::LevelFilter::Off,
         n if n > 4 => log::LevelFilter::Trace,
         4 => log::LevelFilter::Debug,

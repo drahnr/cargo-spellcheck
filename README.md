@@ -70,6 +70,9 @@ extra_dictonaries = []
 
 `cargo install cargo-spellcheck`
 
+To increase verbosity use `CARGO_SPELLCHECK=cargo_spellcheck=trace` to see internal details or
+add `-v` (multiple) to increase verbosity.
+
 ### Hunspell
 
 Requires the native library
