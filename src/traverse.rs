@@ -302,7 +302,10 @@ mod tests {
 
         assert_eq!(
             extract_modules_from_file(PathBuf::from(TEST_FILE_FRAGMENTS)).unwrap(),
-            vec![PathBuf::from(TEST_FILE_SIMPLE).with_file_name("simple.rs")]
+            vec![
+                PathBuf::from(TEST_FILE_SIMPLE).with_file_name("simple.rs"),
+                PathBuf::from(TEST_FILE_SIMPLE).with_file_name("enumerate.rs"),
+            ]
         );
     }
 

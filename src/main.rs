@@ -62,14 +62,14 @@ struct Args {
     cmd_spellcheck: bool,
 }
 
-/// Mode in which we operate
+/// Mode in which `cargo-spellcheck` operates
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum Mode {
     /// Fix issues without interaction if there is sufficient information
     Fix,
     /// Only show errors
     Check,
-    /// Interactively choose from candidates provided, simliar to `git add -p` .
+    /// Interactively choose from __candidates__ provided, simliar to `git add -p` .
     Interactive,
 }
 
@@ -105,8 +105,8 @@ fn main() -> anyhow::Result<()> {
         })
         .unwrap_or_else(|e| e.exit());
 
-
-    let mut builder = env_logger::from_env(env_logger::Env::new().filter_or("CARGO_SPELLCHECK", "warn"));
+    let mut builder =
+        env_logger::from_env(env_logger::Env::new().filter_or("CARGO_SPELLCHECK", "warn"));
 
     let verbosity = match args.flag_verbose {
         _ if args.flag_quiet => log::LevelFilter::Off,

@@ -1,12 +1,12 @@
 use crate::markdown::PlainOverlay;
 use crate::{LineColumn, Span};
 
-use log::{warn,trace};
+use log::{trace, warn};
 
 pub type Range = core::ops::Range<usize>;
 
 #[derive(Clone, Copy)]
-/// A litteral with meta info where the first and list whitespace may be found.
+/// A ref to a trimmed literal.
 pub struct TrimmedLiteralRef<'l> {
     reference: &'l TrimmedLiteral,
 }
@@ -42,14 +42,13 @@ impl<'l> TrimmedLiteralRef<'l> {
     }
 }
 
-
 impl<'l> fmt::Debug for TrimmedLiteralRef<'l> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.reference.fmt(formatter)
     }
 }
 
-/// A litteral with meta info where the first and list whitespace may be found.
+/// A literal with meta info where the first and list whitespace may be found.
 #[derive(Clone)]
 pub struct TrimmedLiteral {
     /// The literal which this annotates to.
@@ -60,8 +59,8 @@ pub struct TrimmedLiteral {
     pub pre: usize,
     /// Whitespace postfix len + 1
     pub post: usize,
-    /// Length without pre and post
-    /// if all whitespace, this is zer0 and the sum of pre+post is 2x len
+    /// Length of rendered **minus** `pre` and `post`.
+    /// If the literal is all empty, `pre` and `post` become `0`, and `len` covers the full length of `rendered`.
     pub len: usize,
 }
 
@@ -126,6 +125,10 @@ impl TrimmedLiteral {
         &self.rendered.as_str()[self.pre..(self.pre + self.len)]
     }
 
+    pub fn as_untrimmed_str(&self) -> &str {
+        &self.rendered.as_str()[self.pre..(self.pre + self.len)]
+    }
+
     pub fn len(&self) -> usize {
         self.len
     }
@@ -138,12 +141,99 @@ impl fmt::Debug for TrimmedLiteral {
         let pick = Style::new().on_black().underlined().dim().cyan();
         let cutoff = Style::new().on_black().bold().dim().yellow();
 
-        write!(formatter, "{}{}{}",
+        write!(
+            formatter,
+            "{}{}{}",
             cutoff.apply_to(&self.rendered.as_str()[0..self.pre]),
             pick.apply_to(&self.rendered.as_str()[self.pre..(self.pre + self.len)]),
             cutoff.apply_to(&self.rendered.as_str()[(self.pre + self.len)..]),
         )
     }
+}
+
+/// Find the trimmed literal which is covered by the range for `to_string`/`fmt::Display` created str.
+///
+/// returns a tuple of a literal and Span that is covered by the range
+/// but also the `LineColumn` in the proc_macro2 context.
+fn find_coverage<'a>(
+    literals: &'a [TrimmedLiteral],
+    range: &Range,
+) -> Option<(Vec<&'a TrimmedLiteral>, LineColumn, LineColumn)> {
+    let core::ops::Range::<usize> { start, end } = range;
+    let mut offset = *start;
+    let length = end - start;
+    assert!(length > 0);
+
+    #[derive(Copy, Clone, Debug)]
+    enum LookingFor {
+        Start,
+        End { start: LineColumn },
+    }
+
+    let mut acc = Vec::with_capacity(8);
+    let mut state = LookingFor::Start;
+    let mut it = literals.iter();
+    let mut opt = it.next();
+    loop {
+        opt = if let Some(literal) = opt {
+            // work on the string version length
+            // such that we have the paddings removed
+            // since this is what is sent to the checker
+
+            // the string repr is a concatentation of all trimmed strings
+            // so we have to account for that with the line length
+            let len = literal.as_str().len() + 1; // account for the introduced newline
+
+            assert_eq!(literal.span().start().line, literal.span().end().line);
+            state = match state {
+                LookingFor::Start => {
+                    if offset >= len {
+                        offset -= len;
+                        // offset += 1; // additional \n introduced when combining literals
+                        LookingFor::Start
+                    } else {
+                        state = LookingFor::End {
+                            start: LineColumn {
+                                line: literal.span().start().line,
+                                // add the padding again, to make for a sane global span
+                                column: literal.span().start().column + offset + literal.pre,
+                            },
+                        };
+                        // the new offset we are looking for
+                        offset += length;
+                        // do not advance the iterator, we need to check the same line for the end too!
+                        continue;
+                    }
+                }
+
+                LookingFor::End { start } => {
+                    acc.push(literal);
+                    if offset >= len {
+                        offset -= len;
+                        // offset += 1; // additional \n introduced when combining literals
+                        state
+                    } else {
+                        let end = LineColumn {
+                            // assumes start and end are on the same line for the literal
+                            line: literal.span().start().line,
+                            // add the padding again, to make for a sane global span
+                            column: literal.span().start().column + offset + literal.pre,
+                        };
+                        if !(start.line == end.line && end.column == start.column) {
+                            return Some((acc, start, end));
+                        } else {
+                            warn!("Start and end are the same: {:?} .. {:?}", start, end);
+                            LookingFor::Start
+                        }
+                    }
+                }
+            };
+            it.next()
+        } else {
+            break;
+        };
+    }
+    None
 }
 
 /// A set of consecutive literals.
@@ -200,102 +290,16 @@ impl LiteralSet {
         Err(literal)
     }
 
-    /// Find the trimmed literal which is covered by offset/length
-    ///
-    /// returns a tuple of a literal and Span that is intersected with
-    /// but also the `LineColumn` in a global context where to find it
-    /// speaking of a global context.
-    fn find_coverage<'a>(
-        &'a self,
-        mut offset: usize,
-        length: usize,
-    ) -> Option<(Vec<&'a TrimmedLiteral>, LineColumn, LineColumn)> {
-        assert!(length > 0);
-
-        #[derive(Copy, Clone, Debug)]
-        enum LookingFor {
-            Start,
-            End { start: LineColumn },
-        }
-
-        let mut acc = Vec::with_capacity(8);
-        let mut state = LookingFor::Start;
-        let mut it = self.literals.iter();
-        let mut opt = it.next();
-        loop {
-            opt = if let Some(literal) = opt {
-                // work on the string version length
-                // such that we have the paddings removed
-                // since this is what is sent to the checker
-                let len = literal.to_string().len();
-                assert_eq!(literal.span().start().line, literal.span().end().line);
-                state = match state {
-                    LookingFor::Start => {
-                        if offset > len {
-                            offset -= len;
-                            offset += 1; // additional \n introduced when combining literals
-                            LookingFor::Start
-                        } else {
-                            state = LookingFor::End {
-                                start: LineColumn {
-                                    line: literal.span().start().line,
-                                    // add the padding again, to make for a sane global span
-                                    column: literal.span().start().column + offset + literal.pre,
-                                },
-                            };
-                            // the new offset we are looking for
-                            offset += length;
-                            // do not advance the iterator, we need to check the same line for the end too!
-                            continue;
-                        }
-                    }
-
-                    LookingFor::End { start } => {
-                        acc.push(literal);
-                        if offset > len {
-                            offset -= len;
-                            offset += 1; // additional \n introduced when combining literals
-                            state
-                        } else {
-                            let end = LineColumn {
-                                // assumes start and end are on the same line for the literal
-                                line: literal.span().start().line,
-                                // add the padding again, to make for a sane global span
-                                column: literal.span().start().column + offset + literal.pre,
-                            };
-                            if !(start.line == end.line && end.column == start.column) {
-                                return Some((acc, start, end));
-                            } else {
-                                warn!("Start and end are the same: {:?} .. {:?}", start, end);
-                                LookingFor::Start
-                            }
-                        }
-                    }
-                };
-                it.next()
-            } else {
-                break;
-            };
-        }
-        None
-    }
-
-    /// Convert a range of the linear string represnetation to a set of literal references and spans within that literal.
+    /// Convert a range of the linear trimmed (but no other processing) string represnetation to a set of
+    /// literal references and spans within that literal (spans on the proc_macro2 literal).
     pub fn linear_range_to_spans<'a>(
         &'a self,
         range: core::ops::Range<usize>,
     ) -> Vec<(&'a TrimmedLiteral, Span)> {
-        let core::ops::Range::<usize> { start, end } = range;
-        let offset = start;
-        let length = end - start;
-        self.find_coverage(offset, length)
+        find_coverage(&self.literals, &range)
             .map(|(literals, start, end)| {
                 assert!(!literals.is_empty());
-                trace!(
-                    "linear coverage: linear-range={:?} -> end {:?}",
-                    &range,
-                    end
-                );
+                trace!("coverage: {:?} -> end {:?}", &range, end);
                 let n = literals.len();
                 if n > 1 {
                     let mut iter = literals.into_iter();
@@ -359,13 +363,81 @@ use std::fmt;
 impl<'s> fmt::Display for LiteralSet {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let n = self.len();
-        for literal in self.literals.iter().take(n - 1) {
-            writeln!(formatter, "{}", literal.as_str())?;
-        }
-        if let Some(literal) = self.literals.last() {
-            write!(formatter, "{}", literal.as_str())?;
+        if n > 0 {
+            for literal in self.literals.iter().take(n - 1) {
+                writeln!(formatter, "{}", literal.as_str())?;
+            }
+            if let Some(literal) = self.literals.last() {
+                write!(formatter, "{}", literal.as_str())?;
+            }
         }
         Ok(())
+    }
+}
+
+/// A printing helper.
+///
+/// Allows better display of coverage results without code duplication.
+#[derive(Debug, Clone)]
+pub(crate) struct TrimmedLiteralRangePrint<'a>(TrimmedLiteralRef<'a>, Range);
+
+impl<'a> From<(TrimmedLiteralRef<'a>, Range)> for TrimmedLiteralRangePrint<'a> {
+    fn from(tuple: (TrimmedLiteralRef<'a>, Range)) -> Self {
+        Self(tuple.0, tuple.1)
+    }
+}
+
+impl<'a> Into<(TrimmedLiteralRef<'a>, Range)> for TrimmedLiteralRangePrint<'a> {
+    fn into(self) -> (TrimmedLiteralRef<'a>, Range) {
+        (self.0, self.1)
+    }
+}
+
+impl<'a> fmt::Display for TrimmedLiteralRangePrint<'a> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use console::Style;
+
+        let cutoff = Style::new().on_black().bold().underlined().yellow();
+        let context = Style::new().on_black().bold().cyan();
+        let mistake = Style::new().on_black().bold().underlined().red();
+        let oob = Style::new().blink().bold().on_yellow().red();
+
+        let literal = self.0;
+        let start = self.1.start;
+        let end = self.1.end;
+
+        assert!(start <= end);
+
+        let data = literal.as_ref().rendered.as_str();
+
+        let (pre, ctx1) = if start > literal.pre() {
+            (
+                cutoff.apply_to(&data[..literal.pre()]).to_string(),
+                context.apply_to(&data[literal.pre()..start]).to_string(),
+            )
+        } else if start <= data.len() {
+            (cutoff.apply_to(&data[..start]).to_string(), String::new())
+        } else {
+            (String::new(), "!!!".to_owned())
+        };
+        let mistake = if end >= data.len() {
+            oob.apply_to(&data[start..data.len()]).to_string()
+        } else {
+            mistake.apply_to(&data[start..end]).to_string()
+        };
+        let post_idx = literal.pre() + literal.len();
+        let (ctx2, post) = if post_idx > end {
+            (
+                context.apply_to(&data[end..post_idx]).to_string(),
+                cutoff.apply_to(&data[post_idx..]).to_string(),
+            )
+        } else if end < data.len() {
+            (String::new(), cutoff.apply_to(&data[end..]).to_string())
+        } else {
+            (String::new(), oob.apply_to("!!!").to_string())
+        };
+
+        write!(formatter, "{}{}{}{}{}", pre, ctx1, mistake, ctx2, post)
     }
 }
 
@@ -373,49 +445,67 @@ impl<'s> fmt::Display for LiteralSet {
 mod tests {
     use super::*;
 
-    const TEST: &str = r#"
-	/// Another excellent verification pass.
-	///
-	/// Boats float, don't they?
-	struct Vikings;
+    const SKIP: usize = 3;
+
+    const EXMALIBU_START: usize = SKIP + 9;
+    const EXMALIBU_END: usize = EXMALIBU_START + 8;
+    const TEST: &str = r#"/// Another exmalibu verification pass.
+///
+/// Boats float, don't they?
+struct Vikings;
 "#;
 
-    lazy_static::lazy_static! {
-        static ref TEST_LITERALS: Vec<&'static str> = vec!["Another excellent verification pass.", "", "Boats float, don't they?"];
-    }
+    const TEST_LITERALS_COMBINED: &str = r#" Another exmalibu verification pass.
 
-    const TEST_LITERALS_COMBINED: &str = r#"Another excellent verification pass.
-
-Boats float, don't they?"#;
-
-    fn literals() -> Vec<proc_macro2::Literal> {
-        TEST_LITERALS
-            .iter()
-            .enumerate()
-            .map(|(_idx, x)| {
-                let lit = proc_macro2::Literal::string(x);
-                lit
-            })
-            .collect()
-    }
+ Boats float, don't they?"#;
 
     fn annotated_literals() -> Vec<TrimmedLiteral> {
-        literals()
+        let stream = syn::parse_str::<proc_macro2::TokenStream>(TEST).expect("Must be valid rust");
+        stream
             .into_iter()
+            .filter_map(|x| {
+                if let proc_macro2::TokenTree::Group(group) = x {
+                    Some(group.stream().into_iter())
+                } else {
+                    None
+                }
+            })
+            .flatten()
+            .filter_map(|x| {
+                if let proc_macro2::TokenTree::Literal(literal) = x {
+                    Some(literal)
+                } else {
+                    None
+                }
+            })
             .map(|literal| TrimmedLiteral::from(literal))
             .collect()
     }
 
     #[test]
-    #[ignore = "can not succeed, since all spans are (line=0,column=0)"]
     fn combine_literals() {
-        let literals = annotated_literals();
+        let literals = dbg!(annotated_literals());
 
         let mut cls = LiteralSet::default();
         for literal in literals {
-            assert!(cls.add_adjacent(literal).is_ok());
+            assert!(dbg!(&mut cls).add_adjacent(literal).is_ok());
         }
 
+        assert_eq!(cls.len(), 3);
         assert_eq!(cls.to_string(), TEST_LITERALS_COMBINED.to_string());
+    }
+
+    #[test]
+    fn coverage() {
+        let trimmed_literals = annotated_literals();
+        let range = EXMALIBU_START..EXMALIBU_END;
+        let (literals, start, _end) =
+            dbg!(find_coverage(trimmed_literals.as_slice(), &range)).unwrap();
+        let literal = literals.first().expect("Must be at least one literal");
+        let range_for_raw_str = Range {
+            start: range.start + SKIP,
+            end: range.end + SKIP,
+        };
+        assert_eq!(&TEST[range_for_raw_str], &literal.as_untrimmed_str()[range]);
     }
 }

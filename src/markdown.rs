@@ -157,7 +157,11 @@ impl<'a> PlainOverlay<'a> {
                     start: plain_range.start + offset,
                     end: min(md.end, plain_range.end + offset),
                 };
-                trace!("linear range to spans:  convert reduced={:?} -> raw={:?}", plain, md);
+                trace!(
+                    "linear range to spans:  convert reduced={:?} -> raw={:?}",
+                    plain,
+                    md
+                );
                 if extracted.start < extracted.end {
                     let resolved = self.raw.linear_range_to_spans(extracted.clone());
                     trace!("linear range to spans: {:?} -> {:?}", extracted, resolved);
@@ -226,7 +230,12 @@ impl<'a> fmt::Debug for PlainOverlay<'a> {
                     .as_str(),
             );
 
-            coloured_plain.push_str(style.apply_to(&self.plain[_plain_range.clone()]).to_string().as_str());
+            coloured_plain.push_str(
+                style
+                    .apply_to(&self.plain[_plain_range.clone()])
+                    .to_string()
+                    .as_str(),
+            );
         }
         // write!(formatter, "{}", coloured_md)?;
 

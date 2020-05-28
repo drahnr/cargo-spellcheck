@@ -5,4 +5,3 @@ enum Instrument {
 	/// An instroment.
 	Xylophon,
 }
-

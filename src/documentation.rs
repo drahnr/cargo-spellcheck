@@ -166,10 +166,11 @@ where
 mod tests {
     use super::*;
 
-
     #[test]
     fn parse_and_construct() {
-        let _ = env_logger::from_env(env_logger::Env::new().filter_or("CARGO_SPELLCHECK", "cargo_spellcheck=trace"))
+        let _ = env_logger::from_env(
+            env_logger::Env::new().filter_or("CARGO_SPELLCHECK", "cargo_spellcheck=trace"),
+        )
         .is_test(true)
         .try_init();
 
@@ -177,8 +178,7 @@ mod tests {
         struct Vikings;
         "#;
 
-            const TEST_EXTRACT: &str = r#" **A** _very_ good test."#;
-
+        const TEST_EXTRACT: &str = r#" **A** _very_ good test."#;
 
         let test_path = PathBuf::from("/tmp/dummy");
 
@@ -193,20 +193,18 @@ mod tests {
 
         let z = plain.linear_range_to_spans(3..5);
         assert_eq!(dbg!(&z).len(), 1);
-        assert_eq!(
-            v[0].linear_range_to_spans(9..11),
-            z
-        );
+        assert_eq!(v[0].linear_range_to_spans(9..11), z);
     }
 
-
     macro_rules! e2e {
-         ($name: ident, $path: literal, $n: expr) => {
+        ($name: ident, $path: literal, $n: expr) => {
             #[test]
             fn $name() {
-                let _ = env_logger::from_env(env_logger::Env::new().filter_or("CARGO_SPELLCHECK", "cargo_spellcheck=trace"))
-                    .is_test(true)
-                    .try_init();
+                let _ = env_logger::from_env(
+                    env_logger::Env::new().filter_or("CARGO_SPELLCHECK", "cargo_spellcheck=trace"),
+                )
+                .is_test(true)
+                .try_init();
 
                 const TEST: &str = include_str!($path);
                 let test_path = PathBuf::from($path);
@@ -222,7 +220,8 @@ mod tests {
                     warn!("Using default configuration!");
                     Config::default()
                 });
-                let suggestions = crate::checker::check(&docs, &config).expect("Must not fail to extract suggestions");
+                let suggestions = crate::checker::check(&docs, &config)
+                    .expect("Must not fail to extract suggestions");
                 assert_eq!(dbg!(&suggestions).len(), $n);
             }
         };

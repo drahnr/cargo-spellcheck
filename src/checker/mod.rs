@@ -1,8 +1,6 @@
 use std::path::PathBuf;
 
-use crate::{
-    Config, Detector, Documentation, Suggestion,
-};
+use crate::{Config, Detector, Documentation, Suggestion};
 
 use anyhow::Result;
 
