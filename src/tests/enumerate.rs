@@ -1,12 +1,8 @@
-/// Secret weapon X.
+/// Secret.
 ///
-/// Somethign very secret but also niet,
-/// lets continuae thas on a new
-/// line.
+/// Somethign secret.
 enum Instrument {
-	/// An nice instroment.
+	/// An instroment.
 	Xylophon,
-	/// Anoyher rhythm.
-	BongoDrums,
 }
 
