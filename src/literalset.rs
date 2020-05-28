@@ -37,6 +37,9 @@ impl<'l> TrimmedLiteralRef<'l> {
     pub fn len(&self) -> usize {
         self.reference.len
     }
+    pub fn as_ref(&self) -> &TrimmedLiteral {
+        self.reference
+    }
 }
 
 

@@ -48,7 +48,7 @@ impl fmt::Display for Detector {
 }
 
 /// A suggestion for certain offending span.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Suggestion<'s> {
     pub detector: Detector,
     /// Reference to the file location.
@@ -123,8 +123,24 @@ impl<'s> fmt::Display for Suggestion<'s> {
         let offset = if self.literal.pre() <= self.span.start.column {
             self.span.start.column - self.literal.pre()
         } else {
+            trace!("Reducing marker length!");
             // reduce the marker size
-            marker_size -= self.literal.pre() - self.span.start.column;
+            marker_size -= self.span.start.column;
+            marker_size -= self.literal.pre();
+            // @todo figure out why this is needed, currently this is a hack
+            // to make the following work:
+            //
+            // ```text
+            // error: spellcheck(Hunspell)
+            //  --> /media/supersonic1t/projects/cargo-spellcheck/./src/tests/fragments.rs:9
+            //   |
+            // 9 |  Somethign very secret but also not,
+            //   |  ^^^^^^^^^
+            //   | - Something or Sometime
+            //   |
+            //   |   Possible spelling mistake found.
+            //   |
+            // ```
             0
         };
 
@@ -145,7 +161,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
                 self.literal.post(),
                 self.span.start,
                 self.span.end,
-                self.literal,
+                self,
             );
         } else {
             log::warn!(
@@ -156,7 +172,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
                 self.literal.post(),
                 self.span.start,
                 self.span.end,
-                self.literal,
+                self,
             );
         }
 
@@ -216,10 +232,40 @@ impl<'s> fmt::Display for Suggestion<'s> {
     }
 }
 
-impl<'s> Suggestion<'s> {
-    /// Show with style
-    pub fn show(&self) -> anyhow::Result<()> {
-        println!("{}", self);
-        Ok(())
+
+impl<'s> fmt::Debug for Suggestion<'s> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use console::Style;
+        use std::cmp::{min,max};
+
+        let cutoff = Style::new().on_black().bold().underlined().yellow();
+        let context = Style::new().on_black().bold().cyan();
+        let mistake = Style::new().on_black().bold().underlined().red();
+
+        let start = self.span.start.column;
+        let end = self.span.end.column;
+
+
+        let (pre, ctx1) = if start > self.literal.pre() {
+            (cutoff.apply_to(&self.literal.as_ref().rendered.as_str()[..self.literal.pre()]).to_string(),
+            context.apply_to(&self.literal.as_ref().rendered.as_str()[self.literal.pre()..start]).to_string())
+        } else {
+            (cutoff.apply_to(&self.literal.as_ref().rendered.as_str()[..start]).to_string(),
+            String::new())
+        };
+        let mistake = mistake.apply_to(&self.literal.as_ref().rendered.as_str()[start..end]);
+        let post_idx = self.literal.pre() + self.literal.len();
+        let (ctx2, post) = if post_idx > end {
+            (context.apply_to(&self.literal.as_ref().rendered.as_str()[end..post_idx]).to_string(),
+            cutoff.apply_to(&self.literal.as_ref().rendered.as_str()[post_idx..]).to_string())
+        } else {
+            (String::new(), cutoff.apply_to(&self.literal.as_ref().rendered.as_str()[end..]).to_string())
+        };
+
+
+        write!(formatter, "{}{}{}{}{}",
+        pre, ctx1, mistake, ctx2, post
+        )
     }
+
 }

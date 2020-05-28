@@ -157,7 +157,7 @@ impl<'a> PlainOverlay<'a> {
                     start: plain_range.start + offset,
                     end: min(md.end, plain_range.end + offset),
                 };
-
+                trace!("linear range to spans:  convert reduced={:?} -> raw={:?}", plain, md);
                 if extracted.start < extracted.end {
                     let resolved = self.raw.linear_range_to_spans(extracted.clone());
                     trace!("linear range to spans: {:?} -> {:?}", extracted, resolved);

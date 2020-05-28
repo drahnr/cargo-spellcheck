@@ -147,8 +147,8 @@ fn main() -> anyhow::Result<()> {
     };
 
     // do not write the config without an explicit request
-    let config = Config::load().unwrap_or_else(|_e| {
-        warn!("Using default configuration!");
+    let config = Config::load().unwrap_or_else(|e| {
+        warn!("Using default configuration, due to: {}", e);
         Config::default()
     });
 
