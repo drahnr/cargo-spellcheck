@@ -17,6 +17,7 @@ use crate::Span;
 use crate::TrimmedLiteralRef;
 
 use enumflags2::BitFlags;
+use log::trace;
 
 /// Bitflag of available checkers by compilation / configuration.
 #[derive(Debug, Clone, Copy, BitFlags, Eq, PartialEq)]
@@ -53,7 +54,7 @@ pub struct Suggestion<'s> {
     /// Reference to the file location.
     pub path: PathBuf,
     /// Literal we are referencing.
-    pub literal: TrimmedLiteralRef<'s>, // TODO merge adjacent literals
+    pub literal: TrimmedLiteralRef<'s>,
     /// The span (absolute!) of where it is supposed to be used. TODO make this relative towards the literal.
     pub span: Span,
     /// Fix suggestions, might be words or the full sentence.
@@ -108,7 +109,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
 
         // underline the relevant part with ^^^^^
 
-        // FIXME this needs some more thought
+        // @todo this needs some more thought
         // and mostly works since it currently does not contain
         // multilines
         let mut marker_size = if self.span.end.line == self.span.start.line {

@@ -166,15 +166,19 @@ where
 mod tests {
     use super::*;
 
-    const TEST: &str = r#"/// **A** _very_ good test.
-struct Vikings;
-"#;
-
-    const TEST_EXTRACT: &str = r#" **A** _very_ good test."#;
 
     #[test]
     fn parse_and_construct() {
-        let _ = env_logger::try_init();
+        let _ = env_logger::from_env(env_logger::Env::new().filter_or("CARGO_SPELLCHECK", "cargo_spellcheck=trace"))
+        .is_test(true)
+        .try_init();
+
+        const TEST: &str = r#"/// **A** _very_ good test.
+        struct Vikings;
+        "#;
+
+            const TEST_EXTRACT: &str = r#" **A** _very_ good test."#;
+
 
         let test_path = PathBuf::from("/tmp/dummy");
 
@@ -223,7 +227,6 @@ struct Vikings;
             }
         };
     }
-
 
     e2e!(one, "./tests/justone.rs", 1);
     e2e!(two, "./tests/justtwo.rs", 2);

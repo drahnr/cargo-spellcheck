@@ -39,8 +39,8 @@ impl<'l> TrimmedLiteralRef<'l> {
     }
 }
 
-#[derive(Clone, Debug)]
 /// A litteral with meta info where the first and list whitespace may be found.
+#[derive(Clone, Debug)]
 pub struct TrimmedLiteral {
     /// The literal which this annotates to.
     pub literal: proc_macro2::Literal,
