@@ -4,21 +4,7 @@
 
 mod simple;
 
-/// Secret weapon X.
-///
-/// Somethign very secret but also not,
-/// lets continuae thas on a nwe
-/// line.
-///
-/// A seprate paragraphius.
-enum X {
-	/// A nice instroment.
-	Xylophon,
-	/// Another rythmuic instrment.
-	BongoDrums,
-}
-
-
+mod enumerate;
 
 impl X {
 	/// New, as in new. But also not.
