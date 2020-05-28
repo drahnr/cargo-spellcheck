@@ -138,25 +138,25 @@ impl<'s> fmt::Display for Suggestion<'s> {
                 .fmt(formatter)?;
             formatter.write_str("\n")?;
             log::trace!(
-                "marker_size={} [{}|{}|{}] literal {{ {:?} .. {:?} }} >> {} <<",
+                "marker_size={} [{}|{}|{}] literal {{ {:?} .. {:?} }} >> {:?} <<",
                 marker_size,
                 self.literal.pre(),
                 self.literal.len(),
                 self.literal.post(),
                 self.span.start,
                 self.span.end,
-                self.literal.to_string(),
+                self.literal,
             );
         } else {
             log::warn!(
-                "marker_size={} [{}|{}|{}] literal {{ {:?} .. {:?} }} >> {} <<",
+                "marker_size={} [{}|{}|{}] literal {{ {:?} .. {:?} }} >> {:?} <<",
                 marker_size,
                 self.literal.pre(),
                 self.literal.len(),
                 self.literal.post(),
                 self.span.start,
                 self.span.end,
-                self.literal.to_string(),
+                self.literal,
             );
         }
 

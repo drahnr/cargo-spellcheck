@@ -5,7 +5,7 @@ use log::{warn,trace};
 
 pub type Range = core::ops::Range<usize>;
 
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Copy)]
 /// A litteral with meta info where the first and list whitespace may be found.
 pub struct TrimmedLiteralRef<'l> {
     reference: &'l TrimmedLiteral,
@@ -39,8 +39,15 @@ impl<'l> TrimmedLiteralRef<'l> {
     }
 }
 
+
+impl<'l> fmt::Debug for TrimmedLiteralRef<'l> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.reference.fmt(formatter)
+    }
+}
+
 /// A litteral with meta info where the first and list whitespace may be found.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct TrimmedLiteral {
     /// The literal which this annotates to.
     pub literal: proc_macro2::Literal,
@@ -66,7 +73,7 @@ impl std::cmp::PartialEq for TrimmedLiteral {
         if self.post != other.post {
             return false;
         }
-        if self.len != other.len {
+        if self.len() != other.len() {
             return false;
         }
         if self.literal.span().start() != other.literal.span().start() {
@@ -88,12 +95,14 @@ impl From<proc_macro2::Literal> for TrimmedLiteral {
         let scrap = |c: &'_ char| -> bool { c.is_whitespace() };
         let pre = rendered.chars().take_while(scrap).count() + 1;
         let post = rendered.chars().rev().take_while(scrap).count() + 1;
+
+        let (len, pre, post) = match rendered.len() {
+            len if len >= pre + post => (len - pre - post, pre, post),
+            len => (len, 0, 0),
+        };
+
         Self {
-            len: if rendered.len() > pre + post {
-                rendered.len() - pre - post
-            } else {
-                0
-            },
+            len,
             literal,
             rendered,
             pre,
@@ -112,6 +121,25 @@ impl std::ops::Deref for TrimmedLiteral {
 impl TrimmedLiteral {
     pub fn as_str(&self) -> &str {
         &self.rendered.as_str()[self.pre..(self.pre + self.len)]
+    }
+
+    pub fn len(&self) -> usize {
+        self.len
+    }
+}
+
+impl fmt::Debug for TrimmedLiteral {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use console::Style;
+
+        let pick = Style::new().on_black().underlined().dim().cyan();
+        let cutoff = Style::new().on_black().bold().dim().yellow();
+
+        write!(formatter, "{}{}{}",
+            cutoff.apply_to(&self.rendered.as_str()[0..self.pre]),
+            pick.apply_to(&self.rendered.as_str()[self.pre..(self.pre + self.len)]),
+            cutoff.apply_to(&self.rendered.as_str()[(self.pre + self.len)..]),
+        )
     }
 }
 
