@@ -166,15 +166,11 @@ where
 mod tests {
     use super::*;
 
-    const TEST: &str = r#"/// A very good test.
-///
-/// Without much ado, we adhere to **King** _Ragnar_.
+    const TEST: &str = r#"/// **A** _very_ good test.
 struct Vikings;
 "#;
 
-    const TEST_EXTRACT: &str = r#" A very good test.
-
- Without much ado, we adhere to **King** _Ragnar_."#;
+    const TEST_EXTRACT: &str = r#" **A** _very_ good test."#;
 
     #[test]
     fn parse_and_construct() {
@@ -190,10 +186,45 @@ struct Vikings;
         assert_eq!(v[0].to_string(), TEST_EXTRACT.to_owned());
         let plain = v[0].erase_markdown();
         log::info!("Plain: \n {:?}", &plain);
-        assert_eq!(dbg!(plain.linear_range_to_spans(1..3)).len(), 1);
+
+        let z = plain.linear_range_to_spans(3..5);
+        assert_eq!(dbg!(&z).len(), 1);
         assert_eq!(
-            v[0].linear_range_to_spans(2..4),
-            plain.linear_range_to_spans(1..3)
+            v[0].linear_range_to_spans(9..11),
+            z
         );
     }
+
+
+    macro_rules! e2e {
+         ($name: ident, $path: literal, $n: expr) => {
+            #[test]
+            fn $name() {
+                let _ = env_logger::from_env(env_logger::Env::new().filter_or("CARGO_SPELLCHECK", "cargo_spellcheck=trace"))
+                    .is_test(true)
+                    .try_init();
+
+                const TEST: &str = include_str!($path);
+                let test_path = PathBuf::from($path);
+                let stream = syn::parse_str(TEST).expect("Must be valid rust");
+                let docs = Documentation::from((test_path.as_path(), stream));
+                assert_eq!(docs.index.len(), 1);
+                let v = docs.index.get(&test_path).expect("Must contain dummy path");
+                assert_eq!(dbg!(v).len(), 1);
+                let plain = v[0].erase_markdown();
+                log::info!("{:?}", &plain);
+
+                let config = crate::config::Config::load().unwrap_or_else(|_e| {
+                    warn!("Using default configuration!");
+                    Config::default()
+                });
+                let suggestions = crate::checker::check(&docs, &config).expect("Must not fail to extract suggestions");
+                assert_eq!(dbg!(&suggestions).len(), $n);
+            }
+        };
+    }
+
+
+    e2e!(one, "./tests/justone.rs", 1);
+    e2e!(two, "./tests/justtwo.rs", 2);
 }

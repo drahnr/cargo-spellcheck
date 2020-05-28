@@ -1,0 +1,2 @@
+/// Wroeng.
+struct W;

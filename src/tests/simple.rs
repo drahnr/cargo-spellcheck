@@ -1,5 +1,5 @@
-
 /// First.
-/// Second.
-/// Thurd.
+/// Secondo.
+/// Thurd number one.
+/// Another thurd.
 struct Q;

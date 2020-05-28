@@ -1,7 +1,7 @@
 use crate::markdown::PlainOverlay;
 use crate::{LineColumn, Span};
 
-use log::trace;
+use log::{warn,trace};
 
 pub type Range = core::ops::Range<usize>;
 
@@ -169,17 +169,18 @@ impl LiteralSet {
         Err(literal)
     }
 
-    /// find the annotated which offset intersects
+    /// Find the trimmed literal which is covered by offset/length
     ///
-    /// returns a tuple of a literal that is intersected with offset
-    /// and returns the relative offset within the stringified literal
+    /// returns a tuple of a literal and Span that is intersected with
     /// but also the `LineColumn` in a global context where to find it
     /// speaking of a global context.
-    fn find_intersection<'a>(
+    fn find_coverage<'a>(
         &'a self,
         mut offset: usize,
         length: usize,
     ) -> Option<(Vec<&'a TrimmedLiteral>, LineColumn, LineColumn)> {
+        assert!(length > 0);
+
         #[derive(Copy, Clone, Debug)]
         enum LookingFor {
             Start,
@@ -231,7 +232,12 @@ impl LiteralSet {
                                 // add the padding again, to make for a sane global span
                                 column: literal.span().start().column + offset + literal.pre,
                             };
-                            return Some((acc, start, end));
+                            if !(start.line == end.line && end.column == start.column) {
+                                return Some((acc, start, end));
+                            } else {
+                                warn!("Start and end are the same: {:?} .. {:?}", start, end);
+                                LookingFor::Start
+                            }
                         }
                     }
                 };
@@ -251,7 +257,7 @@ impl LiteralSet {
         let core::ops::Range::<usize> { start, end } = range;
         let offset = start;
         let length = end - start;
-        self.find_intersection(offset, length)
+        self.find_coverage(offset, length)
             .map(|(literals, start, end)| {
                 assert!(!literals.is_empty());
                 trace!(
@@ -267,13 +273,15 @@ impl LiteralSet {
                     // calculate how many lines it spans
                     let mut acc = Vec::with_capacity(n);
                     // first literal to its end
-                    acc.push((
-                        first,
-                        Span {
-                            start,
-                            end: first.span().end(),
-                        },
-                    ));
+                    if first.span().end() != start {
+                        acc.push((
+                            first,
+                            Span {
+                                start,
+                                end: first.span().end(),
+                            },
+                        ));
+                    }
 
                     // take all in between the first and the last completely
 
@@ -282,17 +290,21 @@ impl LiteralSet {
                             start: literal.span().start(),
                             end: literal.span().end(),
                         };
-                        acc.push((literal, span));
+                        if span.start != span.end {
+                            acc.push((literal, span));
+                        }
                     }
                     // add the last from the beginning to the computed end
                     let last: &'a _ = iter.skip(n - 2).next().unwrap();
-                    acc.push((
-                        last,
-                        Span {
-                            start: last.span().start(),
-                            end,
-                        },
-                    ));
+                    if last.span().start() != end {
+                        acc.push((
+                            last,
+                            Span {
+                                start: last.span().start(),
+                                end,
+                            },
+                        ));
+                    }
                     return acc;
                 } else {
                     assert_eq!(n, 1);

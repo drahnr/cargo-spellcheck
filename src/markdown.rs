@@ -54,6 +54,7 @@ impl<'a> PlainOverlay<'a> {
 
         let mut code_block = false;
         for (event, offset) in parser.into_offset_iter() {
+            trace!("Parsing event ({:?}): {:?}", &offset, &event);
             match event {
                 Event::Start(tag) => {
                     // @todo check links
@@ -144,23 +145,26 @@ impl<'a> PlainOverlay<'a> {
     /// Since most checkers will operate on the plain date, a indirection to map plain to markdown
     /// and back to literals and spans
     pub fn linear_range_to_spans(&self, plain_range: Range) -> Vec<(&'a TrimmedLiteral, Span)> {
-        // check for the start index in range
-        let plain_range = dbg!(plain_range);
+        use core::cmp::min;
+
         self.mapping
             .iter()
             .filter(|(plain, _md)| plain.start <= plain_range.start && plain_range.end <= plain.end)
             .fold(Vec::with_capacity(64), |mut acc, (plain, md)| {
-                // calculate the linear shift
                 let offset = md.start - plain.start;
                 assert_eq!(md.end - plain.end, offset);
                 let extracted = Range {
                     start: plain_range.start + offset,
-                    end: core::cmp::min(md.end, plain_range.end + offset),
+                    end: min(md.end, plain_range.end + offset),
                 };
-                let resolved = self.raw.linear_range_to_spans(extracted.clone());
-                trace!("linear range to spans: {:?} -> {:?}", extracted, resolved);
-                acc.extend(resolved.into_iter());
 
+                if extracted.start < extracted.end {
+                    let resolved = self.raw.linear_range_to_spans(extracted.clone());
+                    trace!("linear range to spans: {:?} -> {:?}", extracted, resolved);
+                    acc.extend(resolved.into_iter());
+                } else {
+                    warn!("linear range to spans: {:?} empty!", extracted);
+                }
                 acc
             })
     }
@@ -196,7 +200,7 @@ impl<'a> fmt::Debug for PlainOverlay<'a> {
 
         let markdown = self.raw.to_string();
 
-        // let mut coloured_plain = String::with_capacity(1024);
+        let mut coloured_plain = String::with_capacity(1024);
         let mut coloured_md = String::with_capacity(1024);
 
         let mut previous_md_end = 0usize;
@@ -222,12 +226,12 @@ impl<'a> fmt::Debug for PlainOverlay<'a> {
                     .as_str(),
             );
 
-            // coloured_plain.push_str(style.apply_to(&self.plain[plain_range.clone()]).to_string().as_str());
+            coloured_plain.push_str(style.apply_to(&self.plain[_plain_range.clone()]).to_string().as_str());
         }
-        write!(formatter, "{}", coloured_md)?;
+        // write!(formatter, "{}", coloured_md)?;
 
-        // write!(formatter, "Plain:\n{}", coloured_plain)?;
-        // write!(formatter, "Markdown:\n{}", coloured_md)?;
+        writeln!(formatter, "Plain:\n{}", coloured_plain)?;
+        writeln!(formatter, "Markdown:\n{}", coloured_md)?;
         Ok(())
     }
 }
@@ -281,7 +285,7 @@ And a line, or a rule.
     fn markdown_to_plain_with_mapping() {
         let (plain, mapping) = PlainOverlay::extract_plain_with_mapping(MARKDOWN);
 
-        assert_eq!(plain.as_str(), PLAIN);
+        assert_eq!(dbg!(plain).as_str(), PLAIN);
         assert_eq!(dbg!(mapping).len(), 19);
     }
 
@@ -294,6 +298,7 @@ And a line, or a rule.
 
         let lookmeup = 6..8;
 
+        // @todo keep in sync with copy pasta source, extract a func for this
         let plain_range = lookmeup;
         let v: Vec<_> = x
             .iter()
