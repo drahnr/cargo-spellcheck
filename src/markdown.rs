@@ -158,10 +158,13 @@ impl<'a> PlainOverlay<'a> {
                     end: min(md.end, plain_range.end + offset),
                 };
                 trace!(
-                    "linear range to spans:  convert reduced={:?} -> raw={:?}",
+                    "convert (offset = {}):  convert reduced={:?} -> raw={:?}",
+                    offset,
                     plain,
                     md
                 );
+                let extracted = Range { start: plain_range.start + 1, end: plain_range.end + 1 };
+
                 if extracted.start < extracted.end {
                     let resolved = self.raw.linear_range_to_spans(extracted.clone());
                     trace!("linear range to spans: {:?} -> {:?}", extracted, resolved);
@@ -291,11 +294,14 @@ And a line, or a rule.
 
 "##;
     #[test]
-    fn markdown_to_plain_with_mapping() {
-        let (plain, mapping) = PlainOverlay::extract_plain_with_mapping(MARKDOWN);
+    fn markdown_reduction_mapping() {
+        let (reduced, mapping) = PlainOverlay::extract_plain_with_mapping(MARKDOWN);
 
-        assert_eq!(dbg!(plain).as_str(), PLAIN);
-        assert_eq!(dbg!(mapping).len(), 19);
+        assert_eq!(dbg!(&reduced).as_str(), PLAIN);
+        assert_eq!(dbg!(&mapping).len(), 19);
+        for (reduced_range, markdown_range) in mapping.iter() {
+            assert_eq!(reduced[reduced_range.clone()], MARKDOWN[markdown_range.clone()]);
+        }
     }
 
     #[test]

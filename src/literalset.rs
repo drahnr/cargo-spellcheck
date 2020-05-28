@@ -379,7 +379,7 @@ impl<'s> fmt::Display for LiteralSet {
 ///
 /// Allows better display of coverage results without code duplication.
 #[derive(Debug, Clone)]
-pub(crate) struct TrimmedLiteralRangePrint<'a>(TrimmedLiteralRef<'a>, Range);
+pub(crate) struct TrimmedLiteralRangePrint<'a>(pub TrimmedLiteralRef<'a>, pub Range);
 
 impl<'a> From<(TrimmedLiteralRef<'a>, Range)> for TrimmedLiteralRangePrint<'a> {
     fn from(tuple: (TrimmedLiteralRef<'a>, Range)) -> Self {
@@ -442,7 +442,7 @@ impl<'a> fmt::Display for TrimmedLiteralRangePrint<'a> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     const SKIP: usize = 3;
@@ -459,8 +459,8 @@ struct Vikings;
 
  Boats float, don't they?"#;
 
-    fn annotated_literals() -> Vec<TrimmedLiteral> {
-        let stream = syn::parse_str::<proc_macro2::TokenStream>(TEST).expect("Must be valid rust");
+    pub(crate) fn annotated_literals(source: &str) -> Vec<TrimmedLiteral> {
+        let stream = syn::parse_str::<proc_macro2::TokenStream>(source).expect("Must be valid rust");
         stream
             .into_iter()
             .filter_map(|x| {
@@ -482,14 +482,22 @@ struct Vikings;
             .collect()
     }
 
-    #[test]
-    fn combine_literals() {
-        let literals = dbg!(annotated_literals());
+
+    pub(crate) fn gen_literal_set(source: &str) -> LiteralSet {
+        let literals = dbg!(annotated_literals(TEST));
 
         let mut cls = LiteralSet::default();
         for literal in literals {
             assert!(dbg!(&mut cls).add_adjacent(literal).is_ok());
         }
+        cls
+    }
+
+    #[test]
+    fn combine_literals() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        let cls = gen_literal_set(TEST);
 
         assert_eq!(cls.len(), 3);
         assert_eq!(cls.to_string(), TEST_LITERALS_COMBINED.to_string());
@@ -497,9 +505,11 @@ struct Vikings;
 
     #[test]
     fn coverage() {
-        let trimmed_literals = annotated_literals();
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        let trimmed_literals = annotated_literals(TEST);
         let range = EXMALIBU_START..EXMALIBU_END;
-        let (literals, start, _end) =
+        let (literals, _start, _end) =
             dbg!(find_coverage(trimmed_literals.as_slice(), &range)).unwrap();
         let literal = literals.first().expect("Must be at least one literal");
         let range_for_raw_str = Range {
@@ -508,4 +518,34 @@ struct Vikings;
         };
         assert_eq!(&TEST[range_for_raw_str], &literal.as_untrimmed_str()[range]);
     }
+
+
+    macro_rules! test_raw {
+        ($test: ident $(, $literal: literal)+ ; $range: expr, $expected: literal) => {
+            #[test]
+            fn $test() {
+                const TEST: &str = concat!("" $(, "///", $literal, "\n")+ , "struct X;");
+                const START: usize = 3;
+                let end: usize = START + vec![$($literal.len()),* ].into_iter().fold(0usize, |acc, x| acc + x);
+                let literals = annotated_literals(TEST);
+
+                let range: Range = $range;
+
+                let (literals, _start, _end) =
+                find_coverage(literals.as_slice(), &range).expect("Must find coverage");
+                let literal = literals.first().expect("Must be at least one literal");
+                let range_for_raw_str = Range {
+                    start: range.start + START,
+                    end: range.end + START,
+                };
+
+                assert_eq!(&TEST[range_for_raw_str.clone()], &literal.as_untrimmed_str()[$range]);
+                assert_eq!(&TEST[range_for_raw_str], $expected);
+            }
+        };
+    }
+
+    test_raw!(raw_extract_0, " livelyness", " yyy" ; 2..6, "ivel");
+    test_raw!(raw_extract_1, " + 12 + x0" ; 9..10, "0");
+
 }
