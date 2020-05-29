@@ -26,22 +26,24 @@ const USAGE: &str = r#"
 Spellcheck all your doc comments
 
 Usage:
-    cargo spellcheck [(-v...|-q)] check [[--recursive] <paths>... ]
-    cargo spellcheck [(-v...|-q)] fix [[--recursive] <paths>... ]
-    cargo spellcheck [(-v...|-q)] [(--fix|--interactive)] [[--recursive] <paths>... ]
-    cargo spellcheck [(-v...|-q)] config [--overwrite]
+    cargo spellcheck [(-v...|-q)] check [--checkers=<checkers>] [[--recursive] <paths>... ]
+    cargo spellcheck [(-v...|-q)] fix [--checkers=<checkers>] [[--recursive] <paths>... ]
+    cargo spellcheck [(-v...|-q)] [(--fix|--interactive)] [--checkers=<checkers>] [[--recursive] <paths>... ]
+    cargo spellcheck [(-v...|-q)] config [--overwrite] [--checkers=<checkers>]
     cargo spellcheck --version
 
 Options:
-  -h --help           Show this screen.
-  --version           Print the version and exit.
+  -h --help               Show this screen.
+  --version               Print the version and exit.
 
-  --fix               Synonym to running the `fix` subcommand.
-  -i --interactive    Interactively apply spelling and grammer fixes.
-  -r --recursive      If a path is provided, if recursion into subdirectories is desired.
-  --overwrite         Overwrite any existing configuration file.
-  -v --verbose        Verbosity level.
-  -q --quiet          Silences all printed messages.
+  --fix                   Synonym to running the `fix` subcommand.
+  -i --interactive        Interactively apply spelling and grammer fixes.
+  -r --recursive          If a path is provided, if recursion into subdirectories is desired.
+  --checkers=<checkers>   Calculate the intersection between
+                          configured by config file and the ones provided on commandline.
+  --overwrite             Overwrite any existing configuration file.
+  -v --verbose            Verbosity level.
+  -q --quiet              Silences all printed messages.
 
 "#;
 
@@ -55,6 +57,7 @@ struct Args {
     flag_verbose: usize,
     flag_quiet: bool,
     flag_version: bool,
+    flag_checkers: Option<String>,
     cmd_fix: bool,
     cmd_check: bool,
     cmd_config: bool,
@@ -123,18 +126,39 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
+
+    // do not write the config without an explicit request
+    let mut config = if args.cmd_config {
+        Config::full()
+    } else {
+        Config::load().unwrap_or_else(|e| {
+            warn!("Using default configuration, due to: {}", e);
+            Config::default()
+        })
+    };
+
+    // overwrite checkers
+    if let Some(checkers) = args.flag_checkers.clone() {
+        let checkers = checkers.split(',').map(|checker| checker.to_lowercase()).collect::<Vec<_>>();
+        if !checkers.contains(&"hunspell".to_owned()) {
+            if !config.hunspell.take().is_some() {
+                warn!("Hunspell was never configured.")
+            }
+
+        }
+        if !checkers.contains(&"languagetool".to_owned()) {
+            if !config.languagetool.take().is_some() {
+                warn!("Languagetool was never configured.")
+            }
+        }
+    }
+
     // handle `config` sub command
     if args.cmd_config {
-        let config = Config::load().or_else(|e| {
-            if args.flag_overwrite {
-                Config::write_default_values()
-            } else {
-                Err(e)
-            }
-        })?;
         println!("{}", config.to_toml()?);
         return Ok(());
     }
+
 
     // extract operation mode
     let mode = if args.cmd_fix || args.flag_fix {
@@ -145,12 +169,6 @@ fn main() -> anyhow::Result<()> {
         // check
         Mode::Check
     };
-
-    // do not write the config without an explicit request
-    let config = Config::load().unwrap_or_else(|e| {
-        warn!("Using default configuration, due to: {}", e);
-        Config::default()
-    });
 
     trace!("Executing: {:?}", mode);
 

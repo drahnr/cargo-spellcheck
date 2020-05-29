@@ -165,6 +165,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::convert::From;
 
     #[test]
     fn parse_and_construct() {
@@ -189,14 +190,31 @@ mod tests {
         assert_eq!(dbg!(v).len(), 1);
         assert_eq!(v[0].to_string(), TEST_EXTRACT.to_owned());
         let plain = v[0].erase_markdown();
-        log::info!("Plain: \n {:?}", &plain);
 
-        let z = plain.linear_range_to_spans(3..5);
-        assert_eq!(dbg!(&z).len(), 1);
-        assert_eq!(v[0].linear_range_to_spans(9..11), z);
+        println!("{:?}", &plain);
+
+        //>0123456789ABCDEF
+        //> **A** _very_ good test.
+        let expected_raw_range = 8..12;
+
+        // markdown does not care about leading spaces:
+        //>0123456789
+        //>A very good test.
+        let expected_plain_range = 2..6;
+
+
+        // @todo the range here is correct
+        assert_eq!("very", &dbg!(plain.to_string())[expected_plain_range.clone()]);
+
+        let z: Vec<(&TrimmedLiteral,Span)> = plain.linear_range_to_spans(expected_plain_range);
+        // FIXME the expected result would be
+        let (literal, span) = z.first().unwrap().clone();
+        let range = span.start.column .. span.end.column;
+        println!("full: {}", TrimmedLiteralRangePrint::from((literal, expected_raw_range.clone())) );
+        assert_eq!(dbg!(&z), dbg!(&v[0].linear_range_to_spans(expected_raw_range)));
     }
 
-    macro_rules! e2e {
+    macro_rules! end2end_file {
         ($name: ident, $path: literal, $n: expr) => {
             #[test]
             fn $name() {
@@ -227,6 +245,54 @@ mod tests {
         };
     }
 
-    e2e!(one, "./tests/justone.rs", 1);
-    e2e!(two, "./tests/justtwo.rs", 2);
+    end2end_file!(one, "./tests/justone.rs", 1);
+    end2end_file!(two, "./tests/justtwo.rs", 2);
+
+
+
+    // use crate::literalset::tests::{annotated_literals,gen_literal_set};
+    use  std::fmt::Display;
+
+    #[cfg(feature="hunspell")]
+    #[test]
+    fn end2end_chunk() {
+        let _ = env_logger::from_env(
+            env_logger::Env::new().filter_or("CARGO_SPELLCHECK", "cargo_spellcheck=trace"),
+            )
+            .is_test(true)
+            .try_init();
+
+        let config = crate::config::Config::load().unwrap_or_else(|_e| {
+            warn!("Using default configuration!");
+            Config::default()
+        });
+
+        let source =
+r#"/// A headline.
+///
+/// Erronbeous **bold** __uetchkp__
+struct X"#;
+
+        let config = crate::config::Config::default();
+        let stream = syn::parse_str::<proc_macro2::TokenStream>(source).expect("Must parse just fine");
+        let path = PathBuf::from("/tmp/virtual");
+        let docs = crate::documentation::Documentation::from((&path, stream));
+
+        let suggestions = dbg!(crate::checker::check(&docs, &config)).expect("Must not error");
+        let (path2, literal_set) = docs.iter().next().expect("Must contain exactly one");
+        assert_eq!(&path, path2);
+
+        let mut it = suggestions.iter();
+
+        let mut expected = |word: &'static str| {
+            let suggestion = it.next().expect("Must contain one missspelled word");
+            let range = suggestion.span.start.column .. suggestion.span.end.column;
+            assert_eq!(word,  &suggestion.literal.as_ref().as_untrimmed_str()[range]);
+            println!("Found word >> {} <<", word);
+        };
+
+        expected("Erronbeous");
+        expected("uetchkp");
+    }
 }
+

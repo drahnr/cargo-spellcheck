@@ -316,41 +316,4 @@ mod tests {
             vec![PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/main.rs")]
         );
     }
-
-
-    // use crate::literalset::tests::{annotated_literals,gen_literal_set};
-    use  std::fmt::Display;
-
-    #[cfg(feature="hunspell")]
-    #[test]
-    fn end2end() {
-        let _ = env_logger::try_init();
-
-        let source =
-r#"/// A headline.
-///
-/// Erronbeous **bold** __uetchkp__
-struct X"#;
-
-        let config = crate::config::Config::default();
-        let stream = syn::parse_str::<proc_macro2::TokenStream>(source).expect("Must parse just fine");
-        let path = PathBuf::from("/tmp/virtual");
-        let docs = crate::documentation::Documentation::from((&path, stream));
-
-        let suggestions = dbg!(crate::checker::check(&docs, &config)).expect("Must not error");
-        let (path2, literal_set) = docs.iter().next().expect("Must contain exactly one");
-        assert_eq!(&path, path2);
-
-        let mut it = suggestions.iter();
-
-        let mut expected = |word: &'static str| {
-            let suggestion = it.next().expect("Must contain one missspelled word");
-            let range = suggestion.span.start.column .. suggestion.span.end.column;
-            assert_eq!(word,  &suggestion.literal.as_ref().as_untrimmed_str()[range]);
-            println!("Found word >> {} <<", word);
-        };
-
-        expected("Erronbeous");
-        expected("uetchkp");
-    }
 }

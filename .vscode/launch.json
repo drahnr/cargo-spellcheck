@@ -19,7 +19,7 @@
                 "RUST_LOG":"cargo_spellcheck=trace",
                 "RUST_BACKTRACE":"1"
             },
-            "args": ["spellcheck", "-v", "-r", "${workspaceFolder}/src/tests/simple.rs"],
+            "args": ["spellcheck", "-vvvvv", "-r", "${workspaceFolder}/src/tests/simple.rs"],
             "cwd": "${workspaceFolder}"
         },
         {

@@ -381,9 +381,10 @@ impl<'s> fmt::Display for LiteralSet {
 #[derive(Debug, Clone)]
 pub(crate) struct TrimmedLiteralRangePrint<'a>(pub TrimmedLiteralRef<'a>, pub Range);
 
-impl<'a> From<(TrimmedLiteralRef<'a>, Range)> for TrimmedLiteralRangePrint<'a> {
-    fn from(tuple: (TrimmedLiteralRef<'a>, Range)) -> Self {
-        Self(tuple.0, tuple.1)
+impl<'a,R> From<(R, Range)> for TrimmedLiteralRangePrint<'a> where R: Into<TrimmedLiteralRef<'a>> {
+    fn from(tuple: (R, Range)) -> Self {
+        let tuple0 = tuple.0.into();
+        Self(tuple0, tuple.1)
     }
 }
 
@@ -392,6 +393,7 @@ impl<'a> Into<(TrimmedLiteralRef<'a>, Range)> for TrimmedLiteralRangePrint<'a> {
         (self.0, self.1)
     }
 }
+
 
 impl<'a> fmt::Display for TrimmedLiteralRangePrint<'a> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {

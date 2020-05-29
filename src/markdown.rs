@@ -242,8 +242,8 @@ impl<'a> fmt::Debug for PlainOverlay<'a> {
         }
         // write!(formatter, "{}", coloured_md)?;
 
-        writeln!(formatter, "Plain:\n{}", coloured_plain)?;
         writeln!(formatter, "Markdown:\n{}", coloured_md)?;
+        writeln!(formatter, "Plain:\n{}", coloured_plain)?;
         Ok(())
     }
 }
