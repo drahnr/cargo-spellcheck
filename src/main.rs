@@ -82,12 +82,12 @@ fn main() -> anyhow::Result<()> {
             let mut argv_it = std::env::args();
             // if ends with file name `cargo-spellcheck`, split
             if let Some(arg0) = argv_it.next() {
-                if let Some(file_name) = PathBuf::from(&arg0)
+                match PathBuf::from(&arg0)
                     .file_name()
                     .map(|x| x.to_str())
                     .flatten()
                 {
-                    if file_name.starts_with("cargo-spellcheck") {
+                    Some(file_name) if file_name.starts_with("cargo-spellcheck") => {
                         d.argv(
                             file_name
                                 .split('-')
@@ -95,11 +95,8 @@ fn main() -> anyhow::Result<()> {
                                 .map(|x| x.to_owned())
                                 .chain(argv_it),
                         )
-                    } else {
-                        d
-                    }
-                } else {
-                    d
+                    },
+                    _ => d,
                 }
             } else {
                 d
