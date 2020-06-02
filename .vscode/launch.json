@@ -19,7 +19,8 @@
                 "RUST_LOG":"cargo_spellcheck=trace",
                 "RUST_BACKTRACE":"1"
             },
-            "args": ["spellcheck", "-vvvvv", "-r", "${workspaceFolder}/src/tests/simple.rs"],
+            //"args": ["spellcheck", "-vvvvv", "-r", "${workspaceFolder}/src/tests/simple.rs"],
+            "args": ["config", "-vvvvv", "--cfg=xxx.toml"],
             "cwd": "${workspaceFolder}"
         },
         {

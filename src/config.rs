@@ -78,6 +78,10 @@ impl LanguageToolConfig {
 }
 
 impl Config {
+    const QUALIFIER: &'static str = "io";
+    const ORGANIZATION: &'static str = "spearow";
+    const APPLICATION: &'static str = "cargo_spellcheck";
+
     pub fn parse<S: AsRef<str>>(s: S) -> Result<Self> {
         let cfg =
             toml::from_str(s.as_ref()).map_err(|e| anyhow!("Failed parse toml").context(e))?;
@@ -112,20 +116,29 @@ impl Config {
         toml::to_string(self).map_err(|e| anyhow::anyhow!("Failed to convert to toml").context(e))
     }
 
-    pub fn write_default_values_to<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let values = Self::default();
+    pub fn write_values_to_path<P: AsRef<Path>>(&self, path: P) -> Result<Self> {
+        let s = self.to_toml()?;
+        let path = path.as_ref();
 
-        let s = values.to_toml()?;
+        if let Some(path) = path.parent() {
+            std::fs::create_dir_all(path).map_err(|e| {
+                anyhow::anyhow!(
+                    "Failed to create directories {}",
+                    path.display()
+                )
+                .context(e)
+            })?;
+        }
 
         let file = std::fs::OpenOptions::new()
             .create(true)
             .write(true)
             .truncate(true)
-            .open(path.as_ref())
+            .open(path)
             .map_err(|e| {
                 anyhow!(
                     "Failed to write default values to {}",
-                    path.as_ref().display()
+                    path.display()
                 )
                 .context(e)
             })?;
@@ -134,24 +147,38 @@ impl Config {
         writer.write_all(s.as_bytes()).map_err(|e| {
             anyhow::anyhow!(
                 "Failed to write default config to {}",
-                path.as_ref().display()
+                path.display()
             )
             .context(e)
         })?;
 
-        Ok(values)
+        Ok(self.clone())
+    }
+
+    pub fn write_values_to_default_path(&self) -> Result<Self> {
+        let path = Self::default_path()?;
+        self.write_values_to_path(path)
+    }
+
+    pub fn write_default_values_to<P: AsRef<Path>>(path: P) -> Result<Self> {
+        Self::default().write_values_to_path(path)
+    }
+
+    pub fn default_path() -> Result<PathBuf> {
+        if let Some(base) =
+            directories::ProjectDirs::from(Self::QUALIFIER, Self::ORGANIZATION, Self::APPLICATION)
+        {
+            Ok(base.config_dir().join("config.toml"))
+        } else {
+            Err(anyhow!(
+                "No idea where your config directory is located. `$HOME` must be set."
+            ))
+        }
     }
 
     pub fn write_default_values() -> Result<Self> {
-        if let Some(base) = directories::BaseDirs::new() {
-            let d = base.config_dir().join("cargo_spellcheck");
-            std::fs::create_dir_all(d.as_path())?;
-            Self::write_default_values_to(dbg!(d.join("config.toml")))
-        } else {
-            Err(anyhow!(
-                "No idea where your config directory is located. XDG compliance would be nice."
-            ))
-        }
+        let d = Self::default_path()?;
+        Self::write_default_values_to(dbg!(d.join("config.toml")))
     }
 
     pub fn is_enabled(&self, detector: Detector) -> bool {
@@ -167,7 +194,7 @@ impl Config {
         };
         Self {
             languagetool: Some(languagetool),
-            .. Default::default()
+            ..Default::default()
         }
     }
 }

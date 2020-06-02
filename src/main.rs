@@ -17,7 +17,7 @@ pub use self::suggestion::*;
 
 use docopt::Docopt;
 
-use log::{trace, warn};
+use log::{info, trace, warn};
 use serde::Deserialize;
 
 use std::path::PathBuf;
@@ -26,11 +26,11 @@ const USAGE: &str = r#"
 Spellcheck all your doc comments
 
 Usage:
-    cargo spellcheck [(-v...|-q)] check [--checkers=<checkers>] [[--recursive] <paths>... ]
-    cargo spellcheck [(-v...|-q)] fix [--checkers=<checkers>] [[--recursive] <paths>... ]
-    cargo spellcheck [(-v...|-q)] [(--fix|--interactive)] [--checkers=<checkers>] [[--recursive] <paths>... ]
-    cargo spellcheck [(-v...|-q)] config [--overwrite] [--checkers=<checkers>]
-    cargo spellcheck --version
+    cargo-spellcheck [(-v...|-q)] check [--cfg=<cfg>] [--checkers=<checkers>] [[--recursive] -- <paths>... ]
+    cargo-spellcheck [(-v...|-q)] fix [--cfg=<cfg>] [--checkers=<checkers>] [[--recursive] -- <paths>... ]
+    cargo-spellcheck [(-v...|-q)] config [--force] [--user] [--cfg=<cfg>]
+    cargo-spellcheck [(-v...|-q)] [--cfg=<cfg>] [(--fix|--interactive)] [--checkers=<checkers>] [[--recursive] -- <paths>... ]
+    cargo-spellcheck --version
 
 Options:
   -h --help               Show this screen.
@@ -41,9 +41,12 @@ Options:
   -r --recursive          If a path is provided, if recursion into subdirectories is desired.
   --checkers=<checkers>   Calculate the intersection between
                           configured by config file and the ones provided on commandline.
-  --overwrite             Overwrite any existing configuration file.
+  --force                 Overwrite any existing configuration file. [default=false]
+  -c --cfg=<cfg>          Use a non default configuration file.
+                          Passing a directory will attempt to open `cargo_spellcheck.toml` in that directory.
+  --user                  Lookup the configuration file the default user configuration directory. [default=false]
   -v --verbose            Verbosity level.
-  -q --quiet              Silences all printed messages.
+  -q --quiet              Silences all printed messages. Overrules `-v`.
 
 "#;
 
@@ -53,16 +56,16 @@ struct Args {
     flag_fix: bool,
     flag_interactive: bool,
     flag_recursive: bool,
-    flag_overwrite: bool,
     flag_verbose: usize,
     flag_quiet: bool,
     flag_version: bool,
     flag_checkers: Option<String>,
+    flag_cfg: Option<PathBuf>,
+    flag_force: bool,
+    flag_user: bool,
     cmd_fix: bool,
     cmd_check: bool,
     cmd_config: bool,
-    // allow both cargo_spellcheck and cargo spellcheck
-    cmd_spellcheck: bool,
 }
 
 /// Mode in which `cargo-spellcheck` operates
@@ -87,14 +90,21 @@ fn main() -> anyhow::Result<()> {
                     .map(|x| x.to_str())
                     .flatten()
                 {
-                    Some(file_name) if file_name.starts_with("cargo-spellcheck") => {
-                        d.argv(
-                            file_name
-                                .split('-')
-                                .skip(1)
-                                .map(|x| x.to_owned())
-                                .chain(argv_it),
-                        )
+                    Some(file_name) => {
+                        // allow all variants
+                        // cargo spellcheck ...
+                        // cargo-spellcheck ...
+                        // cargo-spellcheck spellcheck ...
+                        let mut next = vec!["cargo-spellcheck".to_owned()];
+
+                        match argv_it.next() {
+                            Some(arg) if file_name.starts_with("cargo-spellcheck") && arg == "spellcheck" => {},
+                            Some(arg) => next.push(arg.to_owned()),
+                            _ => {},
+                        };
+                        let collected = next.into_iter()
+                            .chain(argv_it).collect::<Vec<_>>();
+                        d.argv(dbg!(collected).into_iter())
                     },
                     _ => d,
                 }
@@ -105,9 +115,6 @@ fn main() -> anyhow::Result<()> {
         })
         .unwrap_or_else(|e| e.exit());
 
-    let mut builder =
-        env_logger::from_env(env_logger::Env::new().filter_or("CARGO_SPELLCHECK", "warn"));
-
     let verbosity = match args.flag_verbose {
         _ if args.flag_quiet => log::LevelFilter::Off,
         n if n > 4 => log::LevelFilter::Trace,
@@ -116,45 +123,87 @@ fn main() -> anyhow::Result<()> {
         2 => log::LevelFilter::Warn,
         _ => log::LevelFilter::Error,
     };
-    builder.filter_level(verbosity).init();
+
+    env_logger::from_env(env_logger::Env::new()
+        .filter_or("CARGO_SPELLCHECK", "warn"))
+        .filter_level(verbosity)
+        .init();
 
     if args.flag_version {
         println!("cargo-spellcheck {}", env!("CARGO_PKG_VERSION"));
         return Ok(());
     }
 
-
-    // do not write the config without an explicit request
-    let mut config = if args.cmd_config {
-        Config::full()
-    } else {
-        Config::load().unwrap_or_else(|e| {
-            warn!("Using default configuration, due to: {}", e);
-            Config::default()
-        })
+    let mut checkers = |config: &mut Config| {
+        // overwrite checkers
+        if let Some(checkers) = args.flag_checkers.clone() {
+            let checkers = checkers
+                .split(',')
+                .map(|checker| checker.to_lowercase())
+                .collect::<Vec<_>>();
+            if !checkers.contains(&"hunspell".to_owned()) {
+                if !config.hunspell.take().is_some() {
+                    warn!("Hunspell was never configured.")
+                }
+            }
+            if !checkers.contains(&"languagetool".to_owned()) {
+                if !config.languagetool.take().is_some() {
+                    warn!("Languagetool was never configured.")
+                }
+            }
+        }
     };
 
-    // overwrite checkers
-    if let Some(checkers) = args.flag_checkers.clone() {
-        let checkers = checkers.split(',').map(|checker| checker.to_lowercase()).collect::<Vec<_>>();
-        if !checkers.contains(&"hunspell".to_owned()) {
-            if !config.hunspell.take().is_some() {
-                warn!("Hunspell was never configured.")
-            }
-
-        }
-        if !checkers.contains(&"languagetool".to_owned()) {
-            if !config.languagetool.take().is_some() {
-                warn!("Languagetool was never configured.")
-            }
-        }
-    }
 
     // handle `config` sub command
     if args.cmd_config {
-        println!("{}", config.to_toml()?);
+        trace!("Configuration chore");
+        let mut config = Config::full();
+        checkers(&mut config);
+
+        let config_path = match args.flag_cfg.as_ref() {
+            Some(path) => Some(path.to_owned()),
+            None if args.flag_user => Some(Config::default_path()?),
+            None => None,
+        };
+
+        if let Some(path) = config_path {
+            if path.is_file() && !args.flag_force {
+                return Err(anyhow::anyhow!(
+                    "Attempting to overwrite {} requires `--force`.",
+                    path.display()
+                ));
+            }
+            info!("Writing configuration file to {}", path.display());
+            config.write_values_to_path(path)?;
+        } else {
+            println!("{}", config.to_toml()?);
+        }
         return Ok(());
+    } else {
+        trace!("Not configuration sub command");
     }
+
+
+    let (explicit_cfg, config_path) = match args.flag_cfg.as_ref() {
+        Some(path) => (true, path.to_owned()),
+        _ => (false, Config::default_path()?),
+    };
+    let mut config= match Config::load_from(&config_path) {
+        Ok(config) =>  {
+            config
+        },
+        Err(e) => {
+            if explicit_cfg {
+                return Err(anyhow::anyhow!("Explicitly given config file does not exist"));
+            } else {
+                warn!("Loading configuration from {}, due to: {}", config_path.display(), e);
+                Config::default()
+            }
+        }
+    };
+
+    checkers(&mut config);
 
 
     // extract operation mode
@@ -167,7 +216,7 @@ fn main() -> anyhow::Result<()> {
         Mode::Check
     };
 
-    trace!("Executing: {:?}", mode);
+    trace!("Executing: {:?} with {:?}", mode, &config);
 
     traverse::run(mode, args.arg_paths, args.flag_recursive, &config)
 }
