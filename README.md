@@ -36,11 +36,12 @@ Error display follows `cargo` error printing style:
 * [x] False positive reduction
 * [x] Follow module declarations rather than blindly recurse
 * [x] Be `markdown` aware
-  * [ ] Hande doctests with ` ```rust` as virtual files, removing the `#` for hidden lines.
+  * [ ] Handle doctests with ` ```rust` as virtual files, removing the `#` for hidden lines.
   * [ ] Verify all types of links: direct urls and href
-* [ ] Check `README.md` files (either [skeptic-like](https://github.com/budziq/rust-skeptic/blob/master/src/skeptic/lib.rs#L240-L259) which would be straight forward, or add an example using [doc-comment](https://crates.io/crates/doc-comment))
+* [ ] Check `README.md` files [skeptic-like](https://github.com/budziq/rust-skeptic/blob/master/src/skeptic/lib.rs#L240-L259) which would be straight forward
 * [ ] `cargo-spellcheck fix --interactive`
 * [ ] `cargo-spellcheck fix`
+* [ ] Learn topic lingo and filter false-positive-suggestions
 * [ ] Handle cargo workspaces
 * [ ] Re-wrap doc comments
 * [ ] Word split validation
