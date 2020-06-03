@@ -122,11 +122,7 @@ impl Config {
 
         if let Some(path) = path.parent() {
             std::fs::create_dir_all(path).map_err(|e| {
-                anyhow::anyhow!(
-                    "Failed to create directories {}",
-                    path.display()
-                )
-                .context(e)
+                anyhow::anyhow!("Failed to create directories {}", path.display()).context(e)
             })?;
         }
 
@@ -136,20 +132,12 @@ impl Config {
             .truncate(true)
             .open(path)
             .map_err(|e| {
-                anyhow!(
-                    "Failed to write default values to {}",
-                    path.display()
-                )
-                .context(e)
+                anyhow!("Failed to write default values to {}", path.display()).context(e)
             })?;
         let mut writer = std::io::BufWriter::new(file);
 
         writer.write_all(s.as_bytes()).map_err(|e| {
-            anyhow::anyhow!(
-                "Failed to write default config to {}",
-                path.display()
-            )
-            .context(e)
+            anyhow::anyhow!("Failed to write default config to {}", path.display()).context(e)
         })?;
 
         Ok(self.clone())

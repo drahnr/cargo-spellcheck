@@ -163,7 +163,10 @@ impl<'a> PlainOverlay<'a> {
                     plain,
                     md
                 );
-                let extracted = Range { start: plain_range.start + 1, end: plain_range.end + 1 };
+                let extracted = Range {
+                    start: plain_range.start + 1,
+                    end: plain_range.end + 1,
+                };
 
                 if extracted.start < extracted.end {
                     let resolved = self.raw.linear_range_to_spans(extracted.clone());
@@ -254,9 +257,8 @@ mod tests {
 
     #[test]
     fn markdown_reduction_mapping() {
-
-    // @todo add links
-    const MARKDOWN: &str = r##"# Title number 1
+        // @todo add links
+        const MARKDOWN: &str = r##"# Title number 1
 
 ## Title number 2
 
@@ -281,7 +283,7 @@ And a line, or a **rule**.
 
 "##;
 
-    const PLAIN: &str = r##"Title number 1
+        const PLAIN: &str = r##"Title number 1
 
 Title number 2
 
@@ -301,14 +303,15 @@ And a line, or a rule.
         assert_eq!(dbg!(&reduced).as_str(), PLAIN);
         assert_eq!(dbg!(&mapping).len(), 19);
         for (reduced_range, markdown_range) in mapping.iter() {
-            assert_eq!(reduced[reduced_range.clone()], MARKDOWN[markdown_range.clone()]);
+            assert_eq!(
+                reduced[reduced_range.clone()],
+                MARKDOWN[markdown_range.clone()]
+            );
         }
     }
 
     #[test]
     fn markdown_reduction_mapping_leading_space() {
-
-
         const MARKDOWN: &str = r#"  Some __underlined__ **bold** text."#;
         const PLAIN: &str = r#"Some underlined bold text.
 
@@ -319,7 +322,10 @@ And a line, or a rule.
         assert_eq!(dbg!(&reduced).as_str(), PLAIN);
         assert_eq!(dbg!(&mapping).len(), 5);
         for (reduced_range, markdown_range) in mapping.iter() {
-            assert_eq!(reduced[reduced_range.clone()].to_owned(), MARKDOWN[markdown_range.clone()].to_owned());
+            assert_eq!(
+                reduced[reduced_range.clone()].to_owned(),
+                MARKDOWN[markdown_range.clone()].to_owned()
+            );
         }
     }
 

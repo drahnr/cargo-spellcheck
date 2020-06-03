@@ -381,7 +381,10 @@ impl<'s> fmt::Display for LiteralSet {
 #[derive(Debug, Clone)]
 pub(crate) struct TrimmedLiteralRangePrint<'a>(pub TrimmedLiteralRef<'a>, pub Range);
 
-impl<'a,R> From<(R, Range)> for TrimmedLiteralRangePrint<'a> where R: Into<TrimmedLiteralRef<'a>> {
+impl<'a, R> From<(R, Range)> for TrimmedLiteralRangePrint<'a>
+where
+    R: Into<TrimmedLiteralRef<'a>>,
+{
     fn from(tuple: (R, Range)) -> Self {
         let tuple0 = tuple.0.into();
         Self(tuple0, tuple.1)
@@ -393,7 +396,6 @@ impl<'a> Into<(TrimmedLiteralRef<'a>, Range)> for TrimmedLiteralRangePrint<'a> {
         (self.0, self.1)
     }
 }
-
 
 impl<'a> fmt::Display for TrimmedLiteralRangePrint<'a> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -462,7 +464,8 @@ struct Vikings;
  Boats float, don't they?"#;
 
     pub(crate) fn annotated_literals(source: &str) -> Vec<TrimmedLiteral> {
-        let stream = syn::parse_str::<proc_macro2::TokenStream>(source).expect("Must be valid rust");
+        let stream =
+            syn::parse_str::<proc_macro2::TokenStream>(source).expect("Must be valid rust");
         stream
             .into_iter()
             .filter_map(|x| {
@@ -483,7 +486,6 @@ struct Vikings;
             .map(|literal| TrimmedLiteral::from(literal))
             .collect()
     }
-
 
     pub(crate) fn gen_literal_set(_source: &str) -> LiteralSet {
         let literals = dbg!(annotated_literals(TEST));
@@ -521,7 +523,6 @@ struct Vikings;
         assert_eq!(&TEST[range_for_raw_str], &literal.as_untrimmed_str()[range]);
     }
 
-
     macro_rules! test_raw {
         ($test: ident $(, $literal: literal)+ ; $range: expr, $expected: literal) => {
             #[test]
@@ -549,5 +550,4 @@ struct Vikings;
 
     test_raw!(raw_extract_0, " livelyness", " yyy" ; 2..6, "ivel");
     test_raw!(raw_extract_1, " + 12 + x0" ; 9..10, "0");
-
 }

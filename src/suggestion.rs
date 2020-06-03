@@ -235,7 +235,10 @@ impl<'s> fmt::Display for Suggestion<'s> {
 impl<'s> fmt::Debug for Suggestion<'s> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         use crate::literalset::TrimmedLiteralRangePrint;
-        let printable = TrimmedLiteralRangePrint::from((self.literal, self.span.start.column..self.span.end.column));
+        let printable = TrimmedLiteralRangePrint::from((
+            self.literal,
+            self.span.start.column..self.span.end.column,
+        ));
         write!(formatter, "({}, {:?})", &printable, printable.1)
     }
 }

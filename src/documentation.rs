@@ -202,16 +202,24 @@ mod tests {
         //>A very good test.
         let expected_plain_range = 2..6;
 
-
         // @todo the range here is correct
-        assert_eq!("very", &dbg!(plain.to_string())[expected_plain_range.clone()]);
+        assert_eq!(
+            "very",
+            &dbg!(plain.to_string())[expected_plain_range.clone()]
+        );
 
-        let z: Vec<(&TrimmedLiteral,Span)> = plain.linear_range_to_spans(expected_plain_range);
+        let z: Vec<(&TrimmedLiteral, Span)> = plain.linear_range_to_spans(expected_plain_range);
         // FIXME the expected result would be
         let (literal, span) = z.first().unwrap().clone();
-        let _range = span.start.column .. span.end.column;
-        println!("full: {}", TrimmedLiteralRangePrint::from((literal, expected_raw_range.clone())) );
-        assert_eq!(dbg!(&z), dbg!(&v[0].linear_range_to_spans(expected_raw_range)));
+        let _range = span.start.column..span.end.column;
+        println!(
+            "full: {}",
+            TrimmedLiteralRangePrint::from((literal, expected_raw_range.clone()))
+        );
+        assert_eq!(
+            dbg!(&z),
+            dbg!(&v[0].linear_range_to_spans(expected_raw_range))
+        );
     }
 
     macro_rules! end2end_file {
@@ -248,33 +256,30 @@ mod tests {
     end2end_file!(one, "./tests/justone.rs", 1);
     end2end_file!(two, "./tests/justtwo.rs", 2);
 
-
-
     // use crate::literalset::tests::{annotated_literals,gen_literal_set};
-    
 
-    #[cfg(feature="hunspell")]
+    #[cfg(feature = "hunspell")]
     #[test]
     fn end2end_chunk() {
         let _ = env_logger::from_env(
             env_logger::Env::new().filter_or("CARGO_SPELLCHECK", "cargo_spellcheck=trace"),
-            )
-            .is_test(true)
-            .try_init();
+        )
+        .is_test(true)
+        .try_init();
 
         let _config = crate::config::Config::load().unwrap_or_else(|_e| {
             warn!("Using default configuration!");
             Config::default()
         });
 
-        let source =
-r#"/// A headline.
+        let source = r#"/// A headline.
 ///
 /// Erronbeous **bold** __uetchkp__
 struct X"#;
 
         let config = crate::config::Config::default();
-        let stream = syn::parse_str::<proc_macro2::TokenStream>(source).expect("Must parse just fine");
+        let stream =
+            syn::parse_str::<proc_macro2::TokenStream>(source).expect("Must parse just fine");
         let path = PathBuf::from("/tmp/virtual");
         let docs = crate::documentation::Documentation::from((&path, stream));
 
@@ -286,8 +291,8 @@ struct X"#;
 
         let mut expected = |word: &'static str| {
             let suggestion = it.next().expect("Must contain one missspelled word");
-            let range = suggestion.span.start.column .. suggestion.span.end.column;
-            assert_eq!(word,  &suggestion.literal.as_ref().as_untrimmed_str()[range]);
+            let range = suggestion.span.start.column..suggestion.span.end.column;
+            assert_eq!(word, &suggestion.literal.as_ref().as_untrimmed_str()[range]);
             println!("Found word >> {} <<", word);
         };
 
@@ -295,4 +300,3 @@ struct X"#;
         expected("uetchkp");
     }
 }
-

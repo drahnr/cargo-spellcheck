@@ -98,14 +98,15 @@ fn main() -> anyhow::Result<()> {
                         let mut next = vec!["cargo-spellcheck".to_owned()];
 
                         match argv_it.next() {
-                            Some(arg) if file_name.starts_with("cargo-spellcheck") && arg == "spellcheck" => {},
+                            Some(arg)
+                                if file_name.starts_with("cargo-spellcheck")
+                                    && arg == "spellcheck" => {}
                             Some(arg) => next.push(arg.to_owned()),
-                            _ => {},
+                            _ => {}
                         };
-                        let collected = next.into_iter()
-                            .chain(argv_it).collect::<Vec<_>>();
+                        let collected = next.into_iter().chain(argv_it).collect::<Vec<_>>();
                         d.argv(dbg!(collected).into_iter())
-                    },
+                    }
                     _ => d,
                 }
             } else {
@@ -124,8 +125,7 @@ fn main() -> anyhow::Result<()> {
         _ => log::LevelFilter::Error,
     };
 
-    env_logger::from_env(env_logger::Env::new()
-        .filter_or("CARGO_SPELLCHECK", "warn"))
+    env_logger::from_env(env_logger::Env::new().filter_or("CARGO_SPELLCHECK", "warn"))
         .filter_level(verbosity)
         .init();
 
@@ -153,7 +153,6 @@ fn main() -> anyhow::Result<()> {
             }
         }
     };
-
 
     // handle `config` sub command
     if args.cmd_config {
@@ -184,27 +183,29 @@ fn main() -> anyhow::Result<()> {
         trace!("Not configuration sub command");
     }
 
-
     let (explicit_cfg, config_path) = match args.flag_cfg.as_ref() {
         Some(path) => (true, path.to_owned()),
         _ => (false, Config::default_path()?),
     };
-    let mut config= match Config::load_from(&config_path) {
-        Ok(config) =>  {
-            config
-        },
+    let mut config = match Config::load_from(&config_path) {
+        Ok(config) => config,
         Err(e) => {
             if explicit_cfg {
-                return Err(anyhow::anyhow!("Explicitly given config file does not exist"));
+                return Err(anyhow::anyhow!(
+                    "Explicitly given config file does not exist"
+                ));
             } else {
-                warn!("Loading configuration from {}, due to: {}", config_path.display(), e);
+                warn!(
+                    "Loading configuration from {}, due to: {}",
+                    config_path.display(),
+                    e
+                );
                 Config::default()
             }
         }
     };
 
     checkers(&mut config);
-
 
     // extract operation mode
     let mode = if args.cmd_fix || args.flag_fix {
