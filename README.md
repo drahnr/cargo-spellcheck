@@ -34,14 +34,14 @@ Error display follows `cargo` error printing style:
 * [x] Merge multiline doc comments
 * [x] Grammar check using `languagetool` http API
 * [x] False positive reduction
-* [x] Be `markdown` aware
-* [ ] Include doctests ( ` ```rust` code wrapped sections)
-* [x] Handle module documentation comments
-* [ ] Add `README.md` files
 * [x] Follow module declarations rather than blindly recurse
-* [ ] Handle cargo workspaces
-* [ ] `cargo-spellcheck fix`
+* [x] Be `markdown` aware
+  * [ ] Hande doctests with ` ```rust` as virtual files, removing the `#` for hidden lines.
+  * [ ] Verify all types of links: direct urls and href
+* [ ] Check `README.md` files (either [skeptic-like](https://github.com/budziq/rust-skeptic/blob/master/src/skeptic/lib.rs#L240-L259) which would be straight forward, or add an example using [doc-comment](https://crates.io/crates/doc-comment))
 * [ ] `cargo-spellcheck fix --interactive`
+* [ ] `cargo-spellcheck fix`
+* [ ] Handle cargo workspaces
 * [ ] Re-wrap doc comments
 * [ ] Word split validation
 
