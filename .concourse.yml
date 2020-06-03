@@ -1,0 +1,324 @@
+resource_types:
+- name: pull-request
+  type: registry-image
+  source:
+    repository: teliaoss/github-pr-resource
+
+resources:
+- name: git-clone-resource
+  type: git
+  source:
+    branch: master
+    uri: https://github.com/drahnr/cargo-spellcheck.git
+
+- name: github-release
+  type: github-release
+  source:
+    owner: drahnr
+    access_token: ((sirmergealot-github-token))
+    repository:  cargo-spellcheck
+
+- name: git-tag-resource
+  type: git
+  source:
+    tag_filter: "v[0-9]*"
+    branch: master
+    uri: https://github.com/drahnr/cargo-spellcheck.git
+
+- name: git-pull-request-resource
+  type: pull-request
+  source:
+    repo: drahnr/cargo-spellcheck
+    access_token: ((sirmergealot-github-token))
+
+
+- name: env-glibc
+  type: registry-image
+  source:
+    repository: rust
+
+jobs:
+  - name: pr-validate
+    build_logs_to_retain: 10
+    public: true
+    serial: true
+    plan:
+    - get: env-glibc
+    - get: git-pull-request-resource
+      resource: git-pull-request-resource
+      trigger: true
+
+    - in_parallel:
+      - task: validate-glibc
+        timeout: 15m
+        image: env-glibc
+        config:
+          platform: linux
+          inputs:
+          - name: git-pull-request-resource
+          run:
+            path: sh
+            args:
+            - -exc
+            - |
+              whoami
+              export CARGO_HOME="$(pwd)/../cargo"
+              rustc --version --verbose
+              cargo b
+              cargo t
+            dir: git-pull-request-resource
+          caches:
+          - path: cargo
+
+        on_success:
+          put: git-pull-request-resource
+          params:
+            path: git-pull-request-resource
+            context: compile
+            status: success
+        on_failure:
+          put: git-pull-request-resource
+          params:
+            path: git-pull-request-resource
+            context: compile
+            status: failure
+
+      - task: format-check
+        timeout: 15m
+        image: env-glibc
+        config:
+          platform: linux
+          inputs:
+          - name: git-pull-request-resource
+          run:
+            path: sh
+            args:
+            - -exc
+            - |
+              export CARGO_HOME="$(pwd)/../cargo"
+              rustc --version --verbose
+              rustup component add rustfmt-preview
+              cargo fmt -- --check
+            dir: git-pull-request-resource
+          caches:
+          - path: cargo
+
+        on_success:
+          put: git-pull-request-resource
+          params:
+            path: git-pull-request-resource
+            context: format-check
+            status: success
+
+        on_failure:
+          put: git-pull-request-resource
+          params:
+            path: git-pull-request-resource
+            context: format-check
+            status: failure
+
+      # - task: spellcheck
+      #   timeout: 15m
+      #   image: env-glibc
+      #   config:
+      #     platform: linux
+      #     inputs:
+      #     - name: git-pull-request-resource
+      #     run:
+      #       path: sh
+      #       args:
+      #       - -exc
+      #       - |
+      #         export CARGO_HOME="$(pwd)/../cargo"
+      #         rustc --version --verbose
+      #         #cargo install cargo-spellcheck
+      #         #cargo spellcheck check
+      #       dir: git-pull-request-resource
+      #     caches:
+      #     - path: cargo
+
+        # on_success:
+        #   put: git-pull-request-resource
+        #   params:
+        #     path: git-pull-request-resource
+        #     context: spellcheck
+        #     status: success
+
+        # on_failure:
+        #   put: git-pull-request-resource
+        #   params:
+        #     path: git-pull-request-resource
+        #     context: spellcheck
+        #     status: failure
+
+  - name: master-validate
+    build_logs_to_retain: 10
+    public: true
+    serial: true
+    plan:
+    - get: env-glibc
+    - get: git-repo
+      resource: git-clone-resource
+      trigger: true
+
+    - in_parallel:
+      - task: validate-compile
+        timeout: 15m
+        image: env-glibc
+        config:
+          platform: linux
+          inputs:
+          - name: git-repo
+          run:
+            path: sh
+            args:
+            - -exc
+            - |
+              export CARGO_HOME="$(pwd)/../cargo"
+              rustc --version --verbose
+              cargo b
+              cargo t
+            dir: git-repo
+          caches:
+          - path: cargo
+
+      - task: validate-meta
+        timeout: 15m
+        image: env-glibc
+        config:
+          platform: linux
+          inputs:
+          - name: git-repo
+          run:
+            path: sh
+            args:
+            - -exc
+            - |
+              export CARGO_HOME="$(pwd)/../cargo"
+              rustc --version --verbose
+              cargo fmt --check
+              #cargo spellcheck --check
+            dir: git-repo
+          caches:
+          - path: cargo
+
+
+  - name: run
+    build_logs_to_retain: 5
+    public: false
+    serial: true
+    plan:
+    - get: env-glibc
+    - get: git-repo
+      resource: git-clone-resource
+      trigger: true
+      passed: [master-validate]
+
+    - in_parallel:
+        - task: just-run
+          timeout: 15m
+          image: env-glibc
+          config:
+            platform: linux
+            inputs:
+            - name: git-repo
+            run:
+              path: sh
+              args:
+              - -exc
+              - |
+                export CARGO_HOME="$(pwd)/../cargo"
+                cargo run -- --version -vvvvvv
+              dir: git-repo
+            caches:
+            - path: cargo
+
+        - task: just-test
+          timeout: 15m
+          image: env-glibc
+          config:
+            platform: linux
+            inputs:
+            - name: git-repo
+            run:
+              path: sh
+              args:
+              - -exc
+              - |
+                export CARGO_HOME="$(pwd)/../cargo"
+                cargo test -j1 -- --nocapture
+              dir: git-repo
+            caches:
+            - path: cargo
+
+
+  - name: publish-github-release
+    build_logs_to_retain: 5
+    public: false
+    serial: true
+    plan:
+    - get: env-glibc
+    - get: git-repo
+      resource: git-tag-resource
+      trigger: true
+
+    - task: create-github-release
+      timeout: 15m
+      image: env-glibc
+      config:
+        platform: linux
+        inputs:
+        - name: git-repo
+        outputs:
+        - name: release-info
+        caches:
+        - path: cargo
+        run:
+          path: sh
+          args:
+            - -exc
+            - |
+              export CARGO_HOME="$(pwd)/cargo"
+
+              mkdir -p "../release-info"
+              export RI_BASE_DIR="../release-info"
+              export RI_ARTIFACTS_DIR="${RI_BASE_DIR}/artifacts"
+              mkdir -p "${RI_ARTIFACTS_DIR}"
+              export RI_TAG_FILE="${RI_BASE_DIR}/TAG"
+              export RI_COMMITISH_FILE="${RI_BASE_DIR}/COMMITISH"
+              export RI_NAME_FILE="${RI_BASE_DIR}/NAME"
+
+              git rev-parse HEAD > "${RI_COMMITISH_FILE}"
+              #git log -n 1 --format="%h" HEAD > "../${RI_COMMITISH_FILE}"
+              cat "${RI_COMMITISH_FILE}"
+
+              # the v-prefixed version
+              cat ./.git/ref > "${RI_TAG_FILE}"
+              cat "${RI_TAG_FILE}"
+
+              # construct cargo-spellcheck-v1.2.3
+              echo "cargo-spellcheck-$(cat ./.git/ref)" > "${RI_NAME_FILE}"
+              cat "${RI_NAME_FILE}"
+
+              # TODO cross compile to windows
+              # $ cargo build --release --target x86_64-pc-windows-gnu
+              # using the fedora provided precompiled static libs
+              # and publish target/x86_64-pc-windows-gnu/release/cargo-spellcheck.exe
+              # TODO build for more OSes, such as fuchsia and BSD platforms
+              mkdir -pv "${RI_ARTIFACTS_DIR}"
+              for TARGET in x86_64-unknown-linux-gnu ; do
+                echo "Prepping ${TARGET} ..."
+                cargo build --release --target "${TARGET}" && \
+                cp -vf "target/${TARGET}/release/cargo-spellcheck" "${RI_ARTIFACTS_DIR}/cargo-spellcheck-${TARGET}"
+                echo "Prepped ${TARGET} ."
+                echo ""
+              done
+          dir: git-repo
+
+    - put: github-release
+      params:
+        name: release-info/NAME
+        tag: release-info/TAG
+        commitish: release-info/COMMITISH
+        globs:
+        - release-info/artifacts/*
