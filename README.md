@@ -1,6 +1,8 @@
 # cargo-spellcheck
 
-**WIP** Check your spelling. **WIP**
+[![crates.io](https://img.shields.io/crates/v/cargo_spellcheck.svg)](https://crates.io/crates/cargo-spellcheck)
+
+Check your spelling with `hunspell` and/or `languagetool`.
 
 ## Usecase
 
