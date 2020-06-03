@@ -297,15 +297,22 @@ Erronbeous bold uetchkp"#;
         let docs = crate::documentation::Documentation::from((&path, stream));
 
         let suggestions = dbg!(crate::checker::check(&docs, &config)).expect("Must not error");
-        let (path2, _literal_set) = docs.iter().next().expect("Must contain exactly one");
+        let (path2, literal_set) = docs.iter().next().expect("Must contain exactly one");
         assert_eq!(&path, path2);
+
+        let literal_set_no1 = literal_set.first().expect("Must cotain at least one literalset");
+        assert_eq!(RAW, literal_set_no1.to_string().as_str());
+        assert_eq!(PLAIN, literal_set_no1.erase_markdown().as_str());
 
         let mut it = suggestions.iter();
 
         let mut expected = |word: &'static str| {
             let suggestion = dbg!(it.next()).expect("Must contain one missspelled word");
-            let range = suggestion.span.start.column..suggestion.span.end.column;
-            assert_eq!(word, &suggestion.literal.as_ref().as_str()[range]);
+            let range: Range = suggestion.span.try_into().expect("Must be a single line");
+            let s = suggestion.literal.as_ref().as_str();
+            let x = crate::TrimmedLiteralRangePrint::from((suggestion.literal.as_ref(), range.clone()));
+            println!("Foxxy funkster: {:?}", x);
+            assert_eq!(word, &s[range]);
             println!("Found word >> {} <<", word);
         };
 

@@ -118,14 +118,20 @@ impl<'s> fmt::Display for Suggestion<'s> {
             self.literal.len().saturating_sub(self.span.start.column)
         };
 
+        use crate::literalset::Range;
+        use std::convert::TryInto;
+        let literal_span: Span = Span::from(self.literal.as_ref().literal.span());
+        let marker_range_relative: Range = self.span.relative_to(literal_span).expect("Must be ok");
+
+
         // if the offset starts from 0, we still want to continue if the length
         // of the marker is at least length 1
-        let offset = if self.literal.pre() <= self.span.start.column {
-            self.span.start.column - self.literal.pre()
+        let offset = if self.literal.pre() <= marker_range_relative.start {
+            marker_range_relative.start - self.literal.pre()
         } else {
             trace!("Reducing marker length!");
             // reduce the marker size
-            marker_size -= self.span.start.column;
+            marker_size -= marker_range_relative.start;
             marker_size -= self.literal.pre();
             // @todo figure out why this is needed, currently this is a hack
             // to make the following work:

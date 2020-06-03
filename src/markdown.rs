@@ -137,7 +137,7 @@ impl<'a> PlainOverlay<'a> {
             assert!(plain_range.start <= plain_range.end);
             mapping.insert(plain_range, raw_range);
         }
-        dbg!((plain, mapping))
+        (plain, mapping)
     }
 
     // @todo consider returning a Vec<PlainOverlay<'a>> to account for list items

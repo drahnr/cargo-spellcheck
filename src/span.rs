@@ -38,6 +38,29 @@ impl Hash for Span {
     }
 }
 
+
+impl Span {
+    /// Only works for literals spanning a single line.
+    pub fn relative_to<X: Into<Span>>(&self, scope: X) -> anyhow::Result<Range> {
+        let scope: Span = scope.into();
+        let scope : Range = scope.try_into()?;
+        let me: Range = self.try_into()?;
+        if scope.start > me.start {
+            return Err(anyhow::anyhow!("start of {:?} is not inside of {:?}", me, scope))
+        }
+        if scope.end < me.end {
+            return Err(anyhow::anyhow!("end of {:?} is not inside of {:?}", me, scope))
+        }
+        let offset = me.start - scope.start;
+        let length = me.end - me.start;
+        let range = Range {
+            start: offset,
+            end: offset + length,
+        };
+        Ok(range)
+    }
+}
+
 use std::convert::{From, TryInto};
 
 
