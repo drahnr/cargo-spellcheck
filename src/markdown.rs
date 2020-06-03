@@ -252,6 +252,9 @@ impl<'a> fmt::Debug for PlainOverlay<'a> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn markdown_reduction_mapping() {
+
     // @todo add links
     const MARKDOWN: &str = r##"# Title number 1
 
@@ -293,14 +296,30 @@ Extra ~pagaph~ paragraph.
 And a line, or a rule.
 
 "##;
-    #[test]
-    fn markdown_reduction_mapping() {
         let (reduced, mapping) = PlainOverlay::extract_plain_with_mapping(MARKDOWN);
 
         assert_eq!(dbg!(&reduced).as_str(), PLAIN);
         assert_eq!(dbg!(&mapping).len(), 19);
         for (reduced_range, markdown_range) in mapping.iter() {
             assert_eq!(reduced[reduced_range.clone()], MARKDOWN[markdown_range.clone()]);
+        }
+    }
+
+    #[test]
+    fn markdown_reduction_mapping_leading_space() {
+
+
+        const MARKDOWN: &str = r#"  Some __underlined__ **bold** text."#;
+        const PLAIN: &str = r#"Some underlined bold text.
+
+"#;
+
+        let (reduced, mapping) = PlainOverlay::extract_plain_with_mapping(MARKDOWN);
+
+        assert_eq!(dbg!(&reduced).as_str(), PLAIN);
+        assert_eq!(dbg!(&mapping).len(), 5);
+        for (reduced_range, markdown_range) in mapping.iter() {
+            assert_eq!(reduced[reduced_range.clone()].to_owned(), MARKDOWN[markdown_range.clone()].to_owned());
         }
     }
 
@@ -329,6 +348,6 @@ And a line, or a rule.
                 acc.push(extracted);
                 acc
             });
-        assert_eq!(dbg!(v).len(), 1);
+        assert_eq!(v.first(), Some(&(12..14)));
     }
 }
