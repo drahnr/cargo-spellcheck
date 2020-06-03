@@ -82,7 +82,7 @@ impl Checker for HunspellChecker {
                             let replacements = hunspell
                                 .suggest(word)
                                 .into_iter()
-                                .filter(|x| x.len() <= 1)
+                                .filter(|x| x.len() >= 1)
                                 .collect::<Vec<_>>();
 
                             for (literal, span) in plain.linear_range_to_spans(range.clone()) {
