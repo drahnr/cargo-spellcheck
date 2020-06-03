@@ -5,6 +5,8 @@
 use super::*;
 use crate::LiteralSet;
 
+use std::convert::TryInto;
+
 use indexmap::IndexMap;
 use log::trace;
 use proc_macro2::{Spacing, TokenTree};
@@ -132,9 +134,8 @@ impl Documentation {
                     let comment = comment.unwrap();
                     if let TokenTree::Literal(literal) = comment {
                         trace!(target: "documentation",
-                            "Found doc literal at {:?}..{:?}: {:?}",
-                            literal.span().start(),
-                            literal.span().end(),
+                            "Found doc literal at {:?}: {:?}",
+                            <Span as TryInto<Range>>::try_into(Span::from(literal.span())),
                             literal
                         );
                         self.append_literal(path, literal);
@@ -175,23 +176,26 @@ mod tests {
         .is_test(true)
         .try_init();
 
-        const TEST: &str = r#"/// **A** _very_ good test.
+        const TEST_SOURCE: &str = r#"/// **A** _very_ good test.
         struct Vikings;
         "#;
 
-        const TEST_EXTRACT: &str = r#" **A** _very_ good test."#;
+        const TEST_RAW: &str = r#" **A** _very_ good test."#;
+        const TEST_PLAIN: &str = r#"A very good test."#;
 
         let test_path = PathBuf::from("/tmp/dummy");
 
-        let stream = syn::parse_str(TEST).expect("Must be valid rust");
+        let stream = syn::parse_str(TEST_SOURCE).expect("Must be valid rust");
         let docs = Documentation::from((test_path.as_path(), stream));
         assert_eq!(docs.index.len(), 1);
         let v = docs.index.get(&test_path).expect("Must contain dummy path");
         assert_eq!(dbg!(v).len(), 1);
-        assert_eq!(v[0].to_string(), TEST_EXTRACT.to_owned());
+        assert_eq!(v[0].to_string(), TEST_RAW.to_owned());
         let plain = v[0].erase_markdown();
 
         println!("{:?}", &plain);
+
+        assert_eq!(TEST_PLAIN, plain.as_str());
 
         //>0123456789ABCDEF
         //> **A** _very_ good test.
@@ -205,13 +209,13 @@ mod tests {
         // @todo the range here is correct
         assert_eq!(
             "very",
-            &dbg!(plain.to_string())[expected_plain_range.clone()]
+            &dbg!(plain.as_str())[expected_plain_range.clone()]
         );
 
         let z: Vec<(&TrimmedLiteral, Span)> = plain.linear_range_to_spans(expected_plain_range);
         // FIXME the expected result would be
         let (literal, span) = z.first().unwrap().clone();
-        let _range = span.start.column..span.end.column;
+        let _range: Range = span.try_into().expect("Span must be single line");
         println!(
             "full: {}",
             TrimmedLiteralRangePrint::from((literal, expected_raw_range.clone()))
@@ -272,14 +276,23 @@ mod tests {
             Config::default()
         });
 
-        let source = r#"/// A headline.
+        const SOURCE: &'static str = r#"/// A headline.
 ///
 /// Erronbeous **bold** __uetchkp__
 struct X"#;
 
+const RAW: &'static str = r#" A headline.
+
+ Erronbeous **bold** __uetchkp__"#;
+
+
+const PLAIN: &'static str = r#"A headline.
+
+Erronbeous bold uetchkp"#;
+
         let config = crate::config::Config::default();
         let stream =
-            syn::parse_str::<proc_macro2::TokenStream>(source).expect("Must parse just fine");
+            syn::parse_str::<proc_macro2::TokenStream>(SOURCE).expect("Must parse just fine");
         let path = PathBuf::from("/tmp/virtual");
         let docs = crate::documentation::Documentation::from((&path, stream));
 
@@ -290,9 +303,9 @@ struct X"#;
         let mut it = suggestions.iter();
 
         let mut expected = |word: &'static str| {
-            let suggestion = it.next().expect("Must contain one missspelled word");
+            let suggestion = dbg!(it.next()).expect("Must contain one missspelled word");
             let range = suggestion.span.start.column..suggestion.span.end.column;
-            assert_eq!(word, &suggestion.literal.as_ref().as_untrimmed_str()[range]);
+            assert_eq!(word, &suggestion.literal.as_ref().as_str()[range]);
             println!("Found word >> {} <<", word);
         };
 

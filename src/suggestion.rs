@@ -234,10 +234,11 @@ impl<'s> fmt::Display for Suggestion<'s> {
 
 impl<'s> fmt::Debug for Suggestion<'s> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use std::convert::TryInto;
         use crate::literalset::TrimmedLiteralRangePrint;
         let printable = TrimmedLiteralRangePrint::from((
             self.literal,
-            self.span.start.column..self.span.end.column,
+            self.span.try_into().expect("Must be on the same line"),
         ));
         write!(formatter, "({}, {:?})", &printable, printable.1)
     }

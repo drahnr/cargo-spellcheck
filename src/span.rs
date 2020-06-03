@@ -38,11 +38,41 @@ impl Hash for Span {
     }
 }
 
-use std::convert::TryInto;
+use std::convert::{From, TryInto};
+
+
+impl From<proc_macro2::Span> for Span {
+    fn from(original: proc_macro2::Span) -> Self {
+        Self {
+            start : original.start(),
+            end : original.end(),
+        }
+    }
+}
+
 
 use crate::Range;
 
 impl TryInto<Range> for Span {
+    type Error = anyhow::Error;
+    fn try_into(self) -> Result<Range, Self::Error> {
+        if self.start.line == self.end.line {
+            Ok(Range {
+                start: self.start.column,
+                end: self.end.column,
+            })
+        } else {
+            Err(anyhow::anyhow!(
+                "Start and end are not in the same line {} vs {}",
+                self.start.line,
+                self.end.line
+            ))
+        }
+    }
+}
+
+
+impl TryInto<Range> for &Span {
     type Error = anyhow::Error;
     fn try_into(self) -> Result<Range, Self::Error> {
         if self.start.line == self.end.line {

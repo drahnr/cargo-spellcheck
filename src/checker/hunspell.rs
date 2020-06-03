@@ -1,5 +1,7 @@
 use super::*;
 
+use log::trace;
+
 use hunspell_rs::Hunspell;
 
 pub struct HunspellChecker;
@@ -70,15 +72,17 @@ impl Checker for HunspellChecker {
             |mut acc, (path, literal_sets)| {
                 for literal_set in literal_sets {
                     let plain = literal_set.erase_markdown();
+                    trace!("{:?}", &plain);
                     let txt = plain.as_str();
                     for range in tokenize(txt) {
                         let word = &txt[range.clone()];
+                        trace!("Checking word (plain range: {:?}): {}", &range, word);
                         if !hunspell.check(word) {
                             // get rid of single character suggestions
                             let replacements = hunspell
                                 .suggest(word)
                                 .into_iter()
-                                .filter(|x| x.len() != 1)
+                                .filter(|x| x.len() <= 1)
                                 .collect::<Vec<_>>();
 
                             for (literal, span) in plain.linear_range_to_spans(range.clone()) {

@@ -44,15 +44,17 @@ impl<'a> PlainOverlay<'a> {
         }
     }
 
+    /// ranges are mapped `plain -> raw`
     fn extract_plain_with_mapping(markdown: &str) -> (String, IndexMap<Range, Range>) {
         let mut plain = String::with_capacity(markdown.len());
         let mut mapping = indexmap::IndexMap::with_capacity(128);
 
         let parser = Parser::new_ext(markdown, Options::all());
 
-        let _rust_fence = pulldown_cmark::CowStr::Borrowed("rust");
+        let rust_fence = pulldown_cmark::CodeBlockKind::Fenced(pulldown_cmark::CowStr::Borrowed("rust"));
 
         let mut code_block = false;
+
         for (event, offset) in parser.into_offset_iter() {
             trace!("Parsing event ({:?}): {:?}", &offset, &event);
             match event {
@@ -62,11 +64,8 @@ impl<'a> PlainOverlay<'a> {
                         Tag::CodeBlock(fenced) => {
                             code_block = true;
 
-                            match fenced {
-                                pulldown_cmark::CodeBlockKind::Fenced(_rust_fence) => {
-                                    // @todo validate this as an extra document entity
-                                }
-                                _ => {}
+                            if fenced == rust_fence {
+                                // @todo validate as if it was another document entity
                             }
                         }
 
@@ -88,11 +87,9 @@ impl<'a> PlainOverlay<'a> {
                         Tag::CodeBlock(fenced) => {
                             code_block = false;
 
-                            match fenced {
-                                pulldown_cmark::CodeBlockKind::Fenced(_rust_fence) => {
-                                    // @todo validate this as an extra document entity
-                                }
-                                _ => {}
+
+                            if fenced == rust_fence {
+                                // @todo validate as if it was another document entity
                             }
                         }
                         Tag::Paragraph => Self::newlines(&mut plain, 2),
@@ -126,7 +123,21 @@ impl<'a> PlainOverlay<'a> {
                 Event::TaskListMarker(_b) => {}
             }
         }
-        (plain, mapping)
+
+        // the parser yields single lines as a paragraph, for which we add trailing newlines
+        // which are pointless and clutter the test strings, so track and remove them
+        let trailing_newlines = plain.chars().rev().take_while(|x| *x == '\n').count();
+        if trailing_newlines <= plain.len() {
+            plain.truncate(plain.len() - trailing_newlines)
+        }
+        if let Some((mut plain_range, raw_range)) = mapping.pop() {
+            if plain_range.end > plain.len() {
+                plain_range.end = plain.len();
+            }
+            assert!(plain_range.start <= plain_range.end);
+            mapping.insert(plain_range, raw_range);
+        }
+        dbg!((plain, mapping))
     }
 
     // @todo consider returning a Vec<PlainOverlay<'a>> to account for list items
@@ -149,28 +160,26 @@ impl<'a> PlainOverlay<'a> {
 
         self.mapping
             .iter()
-            .filter(|(plain, _md)| plain.start <= plain_range.start && plain_range.end <= plain.end)
-            .fold(Vec::with_capacity(64), |mut acc, (plain, md)| {
-                let offset = md.start - plain.start;
-                assert_eq!(md.end - plain.end, offset);
-                let _extracted = Range {
+            .filter(|(plain, _raw)| plain.start <= plain_range.start && plain_range.end <= plain.end)
+            .fold(Vec::with_capacity(64), |mut acc, (plain, raw)| {
+                let offset = raw.start - plain.start;
+                assert_eq!(raw.end - plain.end, offset);
+                let extracted = Range {
                     start: plain_range.start + offset,
-                    end: min(md.end, plain_range.end + offset),
+                    end: min(raw.end, plain_range.end + offset),
                 };
                 trace!(
                     "convert (offset = {}):  convert reduced={:?} -> raw={:?}",
                     offset,
                     plain,
-                    md
+                    raw
                 );
-                let extracted = Range {
-                    start: plain_range.start + 1,
-                    end: plain_range.end + 1,
-                };
 
                 if extracted.start < extracted.end {
                     let resolved = self.raw.linear_range_to_spans(extracted.clone());
-                    trace!("linear range to spans: {:?} -> {:?}", extracted, resolved);
+                    trace!("linear range to spans: {:?} -> {:?}",
+                        extracted,
+                        resolved);
                     acc.extend(resolved.into_iter());
                 } else {
                     warn!("linear range to spans: {:?} empty!", extracted);
@@ -295,9 +304,7 @@ maybe not at all.
 Extra ~pagaph~ paragraph.
 
 
-And a line, or a rule.
-
-"##;
+And a line, or a rule."##;
         let (reduced, mapping) = PlainOverlay::extract_plain_with_mapping(MARKDOWN);
 
         assert_eq!(dbg!(&reduced).as_str(), PLAIN);
@@ -313,9 +320,7 @@ And a line, or a rule.
     #[test]
     fn markdown_reduction_mapping_leading_space() {
         const MARKDOWN: &str = r#"  Some __underlined__ **bold** text."#;
-        const PLAIN: &str = r#"Some underlined bold text.
-
-"#;
+        const PLAIN: &str = r#"Some underlined bold text."#;
 
         let (reduced, mapping) = PlainOverlay::extract_plain_with_mapping(MARKDOWN);
 
