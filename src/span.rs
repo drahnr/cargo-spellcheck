@@ -37,3 +37,18 @@ impl Hash for Span {
         self.end.column.hash(state);
     }
 }
+
+use std::convert::TryInto;
+
+use crate::Range;
+
+impl TryInto<Range> for Span {
+    type Error = anyhow::Error;
+    fn try_into(self) -> Result<Range, Self::Error> {
+        if self.start.line == self.end.line {
+            Ok(Range {start : self.start.column, end: self.end.column})
+        } else {
+            Err(anyhow::anyhow!("Start and end are not in the same line {} vs {}", self.start.line, self.end.line))
+        }
+    }
+}
