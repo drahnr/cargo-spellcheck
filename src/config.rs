@@ -166,7 +166,7 @@ impl Config {
 
     pub fn write_default_values() -> Result<Self> {
         let d = Self::default_path()?;
-        Self::write_default_values_to(dbg!(d.join("config.toml")))
+        Self::write_default_values_to(d.join("config.toml"))
     }
 
     pub fn is_enabled(&self, detector: Detector) -> bool {

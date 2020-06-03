@@ -105,7 +105,7 @@ fn main() -> anyhow::Result<()> {
                             _ => {}
                         };
                         let collected = next.into_iter().chain(argv_it).collect::<Vec<_>>();
-                        d.argv(dbg!(collected).into_iter())
+                        d.argv(collected.into_iter())
                     }
                     _ => d,
                 }
