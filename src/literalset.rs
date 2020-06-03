@@ -485,7 +485,7 @@ struct Vikings;
     }
 
 
-    pub(crate) fn gen_literal_set(source: &str) -> LiteralSet {
+    pub(crate) fn gen_literal_set(_source: &str) -> LiteralSet {
         let literals = dbg!(annotated_literals(TEST));
 
         let mut cls = LiteralSet::default();
@@ -528,7 +528,7 @@ struct Vikings;
             fn $test() {
                 const TEST: &str = concat!("" $(, "///", $literal, "\n")+ , "struct X;");
                 const START: usize = 3;
-                let end: usize = START + vec![$($literal.len()),* ].into_iter().fold(0usize, |acc, x| acc + x);
+                let _end: usize = START + vec![$($literal.len()),* ].into_iter().fold(0usize, |acc, x| acc + x);
                 let literals = annotated_literals(TEST);
 
                 let range: Range = $range;

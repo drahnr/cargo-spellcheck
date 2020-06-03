@@ -209,7 +209,7 @@ mod tests {
         let z: Vec<(&TrimmedLiteral,Span)> = plain.linear_range_to_spans(expected_plain_range);
         // FIXME the expected result would be
         let (literal, span) = z.first().unwrap().clone();
-        let range = span.start.column .. span.end.column;
+        let _range = span.start.column .. span.end.column;
         println!("full: {}", TrimmedLiteralRangePrint::from((literal, expected_raw_range.clone())) );
         assert_eq!(dbg!(&z), dbg!(&v[0].linear_range_to_spans(expected_raw_range)));
     }
@@ -251,7 +251,7 @@ mod tests {
 
 
     // use crate::literalset::tests::{annotated_literals,gen_literal_set};
-    use  std::fmt::Display;
+    
 
     #[cfg(feature="hunspell")]
     #[test]
@@ -262,7 +262,7 @@ mod tests {
             .is_test(true)
             .try_init();
 
-        let config = crate::config::Config::load().unwrap_or_else(|_e| {
+        let _config = crate::config::Config::load().unwrap_or_else(|_e| {
             warn!("Using default configuration!");
             Config::default()
         });
@@ -279,7 +279,7 @@ struct X"#;
         let docs = crate::documentation::Documentation::from((&path, stream));
 
         let suggestions = dbg!(crate::checker::check(&docs, &config)).expect("Must not error");
-        let (path2, literal_set) = docs.iter().next().expect("Must contain exactly one");
+        let (path2, _literal_set) = docs.iter().next().expect("Must contain exactly one");
         assert_eq!(&path, path2);
 
         let mut it = suggestions.iter();

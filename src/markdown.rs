@@ -50,7 +50,7 @@ impl<'a> PlainOverlay<'a> {
 
         let parser = Parser::new_ext(markdown, Options::all());
 
-        let rust_fence = pulldown_cmark::CowStr::Borrowed("rust");
+        let _rust_fence = pulldown_cmark::CowStr::Borrowed("rust");
 
         let mut code_block = false;
         for (event, offset) in parser.into_offset_iter() {
@@ -63,7 +63,7 @@ impl<'a> PlainOverlay<'a> {
                             code_block = true;
 
                             match fenced {
-                                pulldown_cmark::CodeBlockKind::Fenced(rust_fence) => {
+                                pulldown_cmark::CodeBlockKind::Fenced(_rust_fence) => {
                                     // @todo validate this as an extra document entity
                                 }
                                 _ => {}
@@ -89,7 +89,7 @@ impl<'a> PlainOverlay<'a> {
                             code_block = false;
 
                             match fenced {
-                                pulldown_cmark::CodeBlockKind::Fenced(rust_fence) => {
+                                pulldown_cmark::CodeBlockKind::Fenced(_rust_fence) => {
                                     // @todo validate this as an extra document entity
                                 }
                                 _ => {}
@@ -153,7 +153,7 @@ impl<'a> PlainOverlay<'a> {
             .fold(Vec::with_capacity(64), |mut acc, (plain, md)| {
                 let offset = md.start - plain.start;
                 assert_eq!(md.end - plain.end, offset);
-                let extracted = Range {
+                let _extracted = Range {
                     start: plain_range.start + offset,
                     end: min(md.end, plain_range.end + offset),
                 };

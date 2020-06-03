@@ -134,7 +134,7 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let mut checkers = |config: &mut Config| {
+    let checkers = |config: &mut Config| {
         // overwrite checkers
         if let Some(checkers) = args.flag_checkers.clone() {
             let checkers = checkers
