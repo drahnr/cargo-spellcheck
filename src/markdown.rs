@@ -50,7 +50,7 @@ impl<'a> PlainOverlay<'a> {
 
         let parser = Parser::new_ext(markdown, Options::all());
 
-        let _rust_fence = pulldown_cmark::CowStr::Borrowed("rust");
+        let rust_fence = pulldown_cmark::CowStr::Borrowed("rust");
 
         let mut code_block = false;
         for (event, offset) in parser.into_offset_iter() {
@@ -63,7 +63,7 @@ impl<'a> PlainOverlay<'a> {
                             code_block = true;
 
                             match fenced {
-                                pulldown_cmark::CodeBlockKind::Fenced(_rust_fence) => {
+                                pulldown_cmark::CodeBlockKind::Fenced(rust_fence) => {
                                     // @todo validate this as an extra document entity
                                 }
                                 _ => {}
@@ -89,7 +89,7 @@ impl<'a> PlainOverlay<'a> {
                             code_block = false;
 
                             match fenced {
-                                pulldown_cmark::CodeBlockKind::Fenced(_rust_fence) => {
+                                pulldown_cmark::CodeBlockKind::Fenced(rust_fence) => {
                                     // @todo validate this as an extra document entity
                                 }
                                 _ => {}
@@ -194,11 +194,11 @@ impl<'a> fmt::Debug for PlainOverlay<'a> {
         use console::Style;
 
         let styles = vec![
-            Style::new().underlined().bold().dim().red(),
-            Style::new().underlined().bold().dim().green(),
-            Style::new().underlined().bold().dim().yellow(),
-            Style::new().underlined().bold().dim().magenta(),
-            Style::new().underlined().bold().dim().cyan(),
+            Style::new().italic().bold().dim().red(),
+            Style::new().italic().bold().dim().green(),
+            Style::new().italic().bold().dim().yellow(),
+            Style::new().italic().bold().dim().magenta(),
+            Style::new().italic().bold().dim().cyan(),
         ];
 
         let uncovered = Style::new().bold().on_black().dim().white();

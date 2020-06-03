@@ -401,7 +401,7 @@ impl<'a> fmt::Display for TrimmedLiteralRangePrint<'a> {
 
         let cutoff = Style::new().on_black().bold().underlined().yellow();
         let context = Style::new().on_black().bold().cyan();
-        let mistake = Style::new().on_black().bold().underlined().red();
+        let mistake = Style::new().on_black().bold().underlined().red().italic();
         let oob = Style::new().blink().bold().on_yellow().red();
 
         let literal = self.0;
