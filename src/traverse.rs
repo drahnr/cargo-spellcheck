@@ -383,12 +383,11 @@ e - manually edit the current hunk
 
                     trace!("next() ---> {:?}", &opt);
 
-
                     if opt.is_none() {
                         match direction {
                             Direction::Forward => {
                                 trace!("completed file, continue to next");
-                                break // we completed this file, move on to the next
+                                break; // we completed this file, move on to the next
                             }
                             Direction::Backward => {
                                 trace!("went back, now back at the beginning");

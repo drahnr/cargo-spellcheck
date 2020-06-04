@@ -82,20 +82,23 @@ impl Checker for HunspellChecker {
                             let replacements = hunspell
                                 .suggest(word)
                                 .into_iter()
-                                .filter(|x| x.len() >= 1)
+                                .filter(|x| x.len() > 1) // single char suggestions tend to be useless
                                 .collect::<Vec<_>>();
 
                             for (literal, span) in plain.linear_range_to_spans(range.clone()) {
-                                acc.add(path.to_owned(), Suggestion {
-                                    detector: Detector::Hunspell,
-                                    span,
-                                    path: PathBuf::from(path),
-                                    replacements: replacements.clone(),
-                                    literal: literal.into(),
-                                    description: Some(
-                                        "Possible spelling mistake found.".to_owned(),
-                                    ),
-                                })
+                                acc.add(
+                                    path.to_owned(),
+                                    Suggestion {
+                                        detector: Detector::Hunspell,
+                                        span,
+                                        path: PathBuf::from(path),
+                                        replacements: replacements.clone(),
+                                        literal: literal.into(),
+                                        description: Some(
+                                            "Possible spelling mistake found.".to_owned(),
+                                        ),
+                                    },
+                                )
                             }
                         }
                     }

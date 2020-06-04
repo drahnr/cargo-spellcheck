@@ -55,10 +55,7 @@ fn tokenize(s: &str) -> Vec<Range> {
 }
 
 /// Check a full document for violations using the tools we have.
-pub fn check<'a, 's>(
-    documentation: &'a Documentation,
-    config: &Config,
-) -> Result<SuggestionSet<'s>>
+pub fn check<'a, 's>(documentation: &'a Documentation, config: &Config) -> Result<SuggestionSet<'s>>
 where
     'a: 's,
 {

@@ -38,18 +38,25 @@ impl Hash for Span {
     }
 }
 
-
 impl Span {
     /// Only works for literals spanning a single line.
     pub fn relative_to<X: Into<Span>>(&self, scope: X) -> anyhow::Result<Range> {
         let scope: Span = scope.into();
-        let scope : Range = scope.try_into()?;
+        let scope: Range = scope.try_into()?;
         let me: Range = self.try_into()?;
         if scope.start > me.start {
-            return Err(anyhow::anyhow!("start of {:?} is not inside of {:?}", me, scope))
+            return Err(anyhow::anyhow!(
+                "start of {:?} is not inside of {:?}",
+                me,
+                scope
+            ));
         }
         if scope.end < me.end {
-            return Err(anyhow::anyhow!("end of {:?} is not inside of {:?}", me, scope))
+            return Err(anyhow::anyhow!(
+                "end of {:?} is not inside of {:?}",
+                me,
+                scope
+            ));
         }
         let offset = me.start - scope.start;
         let length = me.end - me.start;
@@ -63,16 +70,14 @@ impl Span {
 
 use std::convert::{From, TryInto};
 
-
 impl From<proc_macro2::Span> for Span {
     fn from(original: proc_macro2::Span) -> Self {
         Self {
-            start : original.start(),
-            end : original.end(),
+            start: original.start(),
+            end: original.end(),
         }
     }
 }
-
 
 use crate::Range;
 
@@ -93,7 +98,6 @@ impl TryInto<Range> for Span {
         }
     }
 }
-
 
 impl TryInto<Range> for &Span {
     type Error = anyhow::Error;

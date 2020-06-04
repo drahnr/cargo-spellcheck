@@ -208,10 +208,7 @@ mod tests {
         let expected_plain_range = 2..6;
 
         // @todo the range here is correct
-        assert_eq!(
-            "very",
-            &dbg!(plain.as_str())[expected_plain_range.clone()]
-        );
+        assert_eq!("very", &dbg!(plain.as_str())[expected_plain_range.clone()]);
 
         let z: Vec<(&TrimmedLiteral, Span)> = plain.linear_range_to_spans(expected_plain_range);
         // FIXME the expected result would be
@@ -282,12 +279,11 @@ mod tests {
 /// Erronbeous **bold** __uetchkp__
 struct X"#;
 
-const RAW: &'static str = r#" A headline.
+        const RAW: &'static str = r#" A headline.
 
  Erronbeous **bold** __uetchkp__"#;
 
-
-const PLAIN: &'static str = r#"A headline.
+        const PLAIN: &'static str = r#"A headline.
 
 Erronbeous bold uetchkp"#;
 
@@ -301,7 +297,9 @@ Erronbeous bold uetchkp"#;
         let (path2, literal_set) = docs.iter().next().expect("Must contain exactly one");
         assert_eq!(&path, path2);
 
-        let literal_set_no1 = literal_set.first().expect("Must cotain at least one literalset");
+        let literal_set_no1 = literal_set
+            .first()
+            .expect("Must cotain at least one literalset");
         assert_eq!(RAW, literal_set_no1.to_string().as_str());
         assert_eq!(PLAIN, literal_set_no1.erase_markdown().as_str());
 
@@ -311,7 +309,8 @@ Erronbeous bold uetchkp"#;
             let suggestion = dbg!(it.next()).expect("Must contain one missspelled word");
             let range: Range = suggestion.span.try_into().expect("Must be a single line");
             let s = suggestion.literal.as_ref().as_str();
-            let x = crate::TrimmedLiteralRangePrint::from((suggestion.literal.as_ref(), range.clone()));
+            let x =
+                crate::TrimmedLiteralRangePrint::from((suggestion.literal.as_ref(), range.clone()));
             println!("Foxxy funkster: {:?}", x);
             assert_eq!(word, &s[range]);
             println!("Found word >> {} <<", word);

@@ -51,7 +51,8 @@ impl<'a> PlainOverlay<'a> {
 
         let parser = Parser::new_ext(markdown, Options::all());
 
-        let rust_fence = pulldown_cmark::CodeBlockKind::Fenced(pulldown_cmark::CowStr::Borrowed("rust"));
+        let rust_fence =
+            pulldown_cmark::CodeBlockKind::Fenced(pulldown_cmark::CowStr::Borrowed("rust"));
 
         let mut code_block = false;
 
@@ -86,7 +87,6 @@ impl<'a> PlainOverlay<'a> {
                         }
                         Tag::CodeBlock(fenced) => {
                             code_block = false;
-
 
                             if fenced == rust_fence {
                                 // @todo validate as if it was another document entity
@@ -160,7 +160,9 @@ impl<'a> PlainOverlay<'a> {
 
         self.mapping
             .iter()
-            .filter(|(plain, _raw)| plain.start <= plain_range.start && plain_range.end <= plain.end)
+            .filter(|(plain, _raw)| {
+                plain.start <= plain_range.start && plain_range.end <= plain.end
+            })
             .fold(Vec::with_capacity(64), |mut acc, (plain, raw)| {
                 let offset = raw.start - plain.start;
                 assert_eq!(raw.end - plain.end, offset);
@@ -177,9 +179,7 @@ impl<'a> PlainOverlay<'a> {
 
                 if extracted.start < extracted.end {
                     let resolved = self.raw.linear_range_to_spans(extracted.clone());
-                    trace!("linear range to spans: {:?} -> {:?}",
-                        extracted,
-                        resolved);
+                    trace!("linear range to spans: {:?} -> {:?}", extracted, resolved);
                     acc.extend(resolved.into_iter());
                 } else {
                     warn!("linear range to spans: {:?} empty!", extracted);

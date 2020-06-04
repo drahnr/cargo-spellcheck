@@ -39,18 +39,21 @@ impl Checker for LanguageToolChecker {
                                 start: item.offset as usize,
                                 end: (item.offset + item.length) as usize,
                             }) {
-                                acc.insert(path.to_owned(), Suggestion {
-                                    detector: Detector::LanguageTool,
-                                    span: span,
-                                    path: PathBuf::from(path),
-                                    replacements: item
-                                        .replacements
-                                        .iter()
-                                        .filter_map(|x| x.value.clone())
-                                        .collect(),
-                                    literal: literal.into(),
-                                    description: Some(item.message.clone()),
-                                });
+                                acc.insert(
+                                    path.to_owned(),
+                                    Suggestion {
+                                        detector: Detector::LanguageTool,
+                                        span: span,
+                                        path: PathBuf::from(path),
+                                        replacements: item
+                                            .replacements
+                                            .iter()
+                                            .filter_map(|x| x.value.clone())
+                                            .collect(),
+                                        literal: literal.into(),
+                                        description: Some(item.message.clone()),
+                                    },
+                                );
                             }
                         }
                     }

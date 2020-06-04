@@ -123,7 +123,6 @@ impl<'s> fmt::Display for Suggestion<'s> {
         let literal_span: Span = Span::from(self.literal.as_ref().literal.span());
         let marker_range_relative: Range = self.span.relative_to(literal_span).expect("Must be ok");
 
-
         // if the offset starts from 0, we still want to continue if the length
         // of the marker is at least length 1
         let offset = if self.literal.pre() <= marker_range_relative.start {
@@ -240,20 +239,20 @@ impl<'s> fmt::Display for Suggestion<'s> {
 
 impl<'s> fmt::Debug for Suggestion<'s> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use std::convert::TryInto;
         use crate::literalset::TrimmedLiteralRangePrint;
+        use std::convert::TryInto;
         let printable = TrimmedLiteralRangePrint::from((
             self.literal,
-            self.span.relative_to(self.literal.as_ref().literal.span() ).expect("Must be on the same line"),
+            self.span
+                .relative_to(self.literal.as_ref().literal.span())
+                .expect("Must be on the same line"),
         ));
         write!(formatter, "({}, {:?})", &printable, printable.1)
     }
 }
 
-
-
 /// A set of suggestions, associated
-pub struct SuggestionSet<'s>{
+pub struct SuggestionSet<'s> {
     per_file: indexmap::IndexMap<PathBuf, Vec<Suggestion<'s>>>,
 }
 
@@ -264,16 +263,24 @@ impl<'s> SuggestionSet<'s> {
         }
     }
 
-    pub fn iter<'a>(&'a self) -> impl DoubleEndedIterator<Item=(&'a PathBuf, &'a Vec<Suggestion<'s>>)> {
+    pub fn iter<'a>(
+        &'a self,
+    ) -> impl DoubleEndedIterator<Item = (&'a PathBuf, &'a Vec<Suggestion<'s>>)> {
         self.per_file.iter()
     }
 
     pub fn add(&mut self, path: PathBuf, suggestion: Suggestion<'s>) {
-        self.per_file.entry(path).or_insert_with(|| { Vec::with_capacity(1)}).push(suggestion);
+        self.per_file
+            .entry(path)
+            .or_insert_with(|| Vec::with_capacity(1))
+            .push(suggestion);
     }
 
     pub fn append(&mut self, path: PathBuf, suggestions: &[Suggestion<'s>]) {
-        self.per_file.entry(path).or_insert_with(|| { Vec::with_capacity(1)}).extend_from_slice(suggestions);
+        self.per_file
+            .entry(path)
+            .or_insert_with(|| Vec::with_capacity(1))
+            .extend_from_slice(suggestions);
     }
 
     pub fn entry(&mut self, path: PathBuf) -> indexmap::map::Entry<PathBuf, Vec<Suggestion<'s>>> {
@@ -281,27 +288,33 @@ impl<'s> SuggestionSet<'s> {
     }
 
     /// Iterate over all files by reference
-    pub fn files<'i,'a>(&'a mut self) -> impl DoubleEndedIterator<Item=&'i Path> where 's: 'i, 'a: 'i  {
+    pub fn files<'i, 'a>(&'a mut self) -> impl DoubleEndedIterator<Item = &'i Path>
+    where
+        's: 'i,
+        'a: 'i,
+    {
         self.per_file.keys().map(|p| p.as_path())
     }
 
     /// Iterater over all references given a path
     ///
     /// panics if there is no such path
-    pub fn suggestions<'a>(&'a self, path: &Path) -> impl DoubleEndedIterator<Item=&'a Suggestion<'s>>
+    pub fn suggestions<'a>(
+        &'a self,
+        path: &Path,
+    ) -> impl DoubleEndedIterator<Item = &'a Suggestion<'s>>
     where
-        'a: 's
+        'a: 's,
     {
-        if let Some(ref suggestions ) = self.per_file
-            .get(path) {
-                suggestions.iter()
-            } else {
-                panic!("Path must exist")
-            }
-            // intermediate does not live long enough
-            // .map(|suggestions: &'s Vec<Suggestion<'s>>| -> std::slice::Iter<'a, Suggestion<'s>> {
-            //     (suggestions).into_iter()
-            // } ).iter().flatten()
+        if let Some(ref suggestions) = self.per_file.get(path) {
+            suggestions.iter()
+        } else {
+            panic!("Path must exist")
+        }
+        // intermediate does not live long enough
+        // .map(|suggestions: &'s Vec<Suggestion<'s>>| -> std::slice::Iter<'a, Suggestion<'s>> {
+        //     (suggestions).into_iter()
+        // } ).iter().flatten()
     }
 
     /// Join two sets
@@ -309,11 +322,12 @@ impl<'s> SuggestionSet<'s> {
     /// Merges multiple keys into one.
     pub fn join(&mut self, other: Self) {
         other.per_file.into_iter().for_each(|(path, suggestions)| {
-            self.entry(path).or_insert_with(|| { Vec::with_capacity(suggestions.len()) }).extend_from_slice(suggestions.as_slice())
+            self.entry(path)
+                .or_insert_with(|| Vec::with_capacity(suggestions.len()))
+                .extend_from_slice(suggestions.as_slice())
         })
     }
 }
-
 
 impl<'s> IntoIterator for SuggestionSet<'s> {
     type Item = (PathBuf, Vec<Suggestion<'s>>);

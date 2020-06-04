@@ -92,7 +92,7 @@ impl std::cmp::PartialEq for TrimmedLiteral {
 impl std::cmp::Eq for TrimmedLiteral {}
 
 impl std::hash::Hash for TrimmedLiteral {
-    fn hash<H: std::hash::Hasher>(&self,hasher: &mut H) {
+    fn hash<H: std::hash::Hasher>(&self, hasher: &mut H) {
         self.rendered.hash(hasher);
         self.pre.hash(hasher);
         self.post.hash(hasher);
@@ -366,6 +366,10 @@ impl LiteralSet {
     pub fn len(&self) -> usize {
         self.literals.len()
     }
+
+    // pub fn path(&self) -> Option<PathBuf> {
+    //     self.literals.iter().next().map(|x| x.span().source_file().path())
+    // }
 }
 
 use std::fmt;
