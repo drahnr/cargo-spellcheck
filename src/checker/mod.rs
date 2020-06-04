@@ -85,9 +85,7 @@ where
                 .hunspell
                 .as_ref()
                 .expect("Must be Some(HunspellConfig) if is_enabled returns true");
-            if let Ok(mut suggestions) =
-                self::hunspell::HunspellChecker::check(documentation, config)
-            {
+            if let Ok(suggestions) = self::hunspell::HunspellChecker::check(documentation, config) {
                 collective.join(suggestions);
             }
         }

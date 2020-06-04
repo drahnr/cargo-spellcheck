@@ -326,7 +326,7 @@ pub(crate) fn run(
     match mode {
         Mode::Fix => unimplemented!("Unsupervised fixing is not implemented just yet"),
         Mode::Check => {
-            for (path, suggestions) in suggestions_per_path {
+            for (_path, suggestions) in suggestions_per_path {
                 for suggestion in suggestions {
                     eprintln!("{}", suggestion);
                 }
@@ -343,7 +343,7 @@ pub(crate) fn run(
                 cursor, event::Event, event::KeyCode, event::KeyEvent, style::Print,
                 QueueableCommand, Result,
             };
-            use std::io::{stdout, Write};
+            use std::io::stdout;
 
             const HELP: &'static str = r##"y - apply this suggestion
 n - do not apply the suggested correction
@@ -358,7 +358,7 @@ e - manually edit the current hunk
 "##;
 
             // @todo cluster by file
-            let mut stdout = stdout();
+            let _stdout = stdout();
 
             let mut apply = indexmap::IndexSet::<Suggestion<'_>>::new();
 
@@ -377,8 +377,8 @@ e - manually edit the current hunk
                 let mut direction = Direction::Forward;
                 loop {
                     let opt: Option<(usize, Suggestion)> = match direction {
-                        Forward => suggestions_it.next(),
-                        Backward => suggestions_it.next_back(),
+                        Direction::Forward => suggestions_it.next(),
+                        Direction::Backward => suggestions_it.next_back(),
                     };
 
                     trace!("next() ---> {:?}", &opt);
@@ -416,7 +416,7 @@ e - manually edit the current hunk
                         trace!("read() something othe than a key event an error");
                         break;
                     };
-                    let KeyEvent { code, modifiers } = event;
+                    let KeyEvent { code, modifiers: _ } = event;
 
                     match code {
                         KeyCode::Char('y') => {
@@ -475,7 +475,9 @@ mod tests {
     fn manifest_entries() {
         assert_eq!(
             extract_products(PathBuf::from(env!("CARGO_MANIFEST_DIR"))).expect("Must succeed"),
-            vec![PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/main.rs")]
+            vec![CheckItem::Source(
+                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/main.rs")
+            )]
         );
     }
 }

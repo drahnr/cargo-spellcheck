@@ -119,7 +119,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
         };
 
         use crate::literalset::Range;
-        use std::convert::TryInto;
+
         let literal_span: Span = Span::from(self.literal.as_ref().literal.span());
         let marker_range_relative: Range = self.span.relative_to(literal_span).expect("Must be ok");
 
@@ -240,7 +240,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
 impl<'s> fmt::Debug for Suggestion<'s> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         use crate::literalset::TrimmedLiteralRangePrint;
-        use std::convert::TryInto;
+
         let printable = TrimmedLiteralRangePrint::from((
             self.literal,
             self.span
@@ -252,6 +252,7 @@ impl<'s> fmt::Debug for Suggestion<'s> {
 }
 
 /// A set of suggestions, associated
+#[derive(Debug, Clone)]
 pub struct SuggestionSet<'s> {
     per_file: indexmap::IndexMap<PathBuf, Vec<Suggestion<'s>>>,
 }
@@ -326,6 +327,12 @@ impl<'s> SuggestionSet<'s> {
                 .or_insert_with(|| Vec::with_capacity(suggestions.len()))
                 .extend_from_slice(suggestions.as_slice())
         })
+    }
+
+    /// Obtain the number of items in the set
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.per_file.len()
     }
 }
 

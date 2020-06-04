@@ -306,7 +306,11 @@ Erronbeous bold uetchkp"#;
         let mut it = suggestions.iter();
 
         let mut expected = |word: &'static str| {
-            let suggestion = dbg!(it.next()).expect("Must contain one missspelled word");
+            let (_, suggestions) = dbg!(it.next()).expect("Must contain at least one file entry");
+            let suggestion = suggestions
+                .into_iter()
+                .next()
+                .expect("Must contain one missspelled word");
             let range: Range = suggestion.span.try_into().expect("Must be a single line");
             let s = suggestion.literal.as_ref().as_str();
             let x =
