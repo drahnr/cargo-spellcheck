@@ -36,12 +36,13 @@ Error display follows `cargo` error printing style:
 * [x] False positive reduction
 * [x] Follow module declarations rather than blindly recurse
 * [x] Be `markdown` aware
-  * [ ] Handle doctests with ` ```rust` as virtual files, removing the `#` for hidden lines.
+  * [ ] Handle doctests with ` ```rust` as virtual files [skeptic-like](https://github.com/budziq/rust-skeptic/blob/master/src/skeptic/lib.rs#L240-L259) which would be straight forward
   * [ ] Verify all types of links: direct urls and href
-* [ ] Check `README.md` files [skeptic-like](https://github.com/budziq/rust-skeptic/blob/master/src/skeptic/lib.rs#L240-L259) which would be straight forward
+* [ ] Check `README.md` files
 * [ ] `cargo-spellcheck fix --interactive`
 * [ ] `cargo-spellcheck fix`
-* [ ] Learn topic lingo and filter false-positive-suggestions
+* [ ] Ellipsize overly long statements with `...`
+* [ ] Learn topic lingo and filter false-positive-suggestions when `fix --interactive` is passed
 * [ ] Handle cargo workspaces
 * [ ] Re-wrap doc comments
 * [ ] Word split validation
