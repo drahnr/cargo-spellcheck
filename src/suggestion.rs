@@ -11,7 +11,7 @@
 //!     |     - you can add it to your personal dictionary to prevent future alerts.
 //! ```
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::Span;
 use crate::TrimmedLiteralRef;
@@ -20,7 +20,7 @@ use enumflags2::BitFlags;
 use log::trace;
 
 /// Bitflag of available checkers by compilation / configuration.
-#[derive(Debug, Clone, Copy, BitFlags, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, BitFlags, Eq, PartialEq, Hash)]
 #[repr(u8)]
 pub enum Detector {
     Hunspell = 0b0001,
@@ -48,7 +48,7 @@ impl fmt::Display for Detector {
 }
 
 /// A suggestion for certain offending span.
-#[derive(Clone)]
+#[derive(Clone, Hash, PartialEq, Eq)]
 pub struct Suggestion<'s> {
     pub detector: Detector,
     /// Reference to the file location.
@@ -244,8 +244,89 @@ impl<'s> fmt::Debug for Suggestion<'s> {
         use crate::literalset::TrimmedLiteralRangePrint;
         let printable = TrimmedLiteralRangePrint::from((
             self.literal,
-            self.span.try_into().expect("Must be on the same line"),
+            self.span.relative_to(self.literal.as_ref().literal.span() ).expect("Must be on the same line"),
         ));
         write!(formatter, "({}, {:?})", &printable, printable.1)
     }
 }
+
+
+
+/// A set of suggestions, associated
+pub struct SuggestionSet<'s>{
+    per_file: indexmap::IndexMap<PathBuf, Vec<Suggestion<'s>>>,
+}
+
+impl<'s> SuggestionSet<'s> {
+    pub fn new() -> Self {
+        Self {
+            per_file: indexmap::IndexMap::with_capacity(64),
+        }
+    }
+
+    pub fn iter<'a>(&'a self) -> impl DoubleEndedIterator<Item=(&'a PathBuf, &'a Vec<Suggestion<'s>>)> {
+        self.per_file.iter()
+    }
+
+    pub fn add(&mut self, path: PathBuf, suggestion: Suggestion<'s>) {
+        self.per_file.entry(path).or_insert_with(|| { Vec::with_capacity(1)}).push(suggestion);
+    }
+
+    pub fn append(&mut self, path: PathBuf, suggestions: &[Suggestion<'s>]) {
+        self.per_file.entry(path).or_insert_with(|| { Vec::with_capacity(1)}).extend_from_slice(suggestions);
+    }
+
+    pub fn entry(&mut self, path: PathBuf) -> indexmap::map::Entry<PathBuf, Vec<Suggestion<'s>>> {
+        self.per_file.entry(path)
+    }
+
+    /// Iterate over all files by reference
+    pub fn files<'i,'a>(&'a mut self) -> impl DoubleEndedIterator<Item=&'i Path> where 's: 'i, 'a: 'i  {
+        self.per_file.keys().map(|p| p.as_path())
+    }
+
+    /// Iterater over all references given a path
+    ///
+    /// panics if there is no such path
+    pub fn suggestions<'a>(&'a self, path: &Path) -> impl DoubleEndedIterator<Item=&'a Suggestion<'s>>
+    where
+        'a: 's
+    {
+        if let Some(ref suggestions ) = self.per_file
+            .get(path) {
+                suggestions.iter()
+            } else {
+                panic!("Path must exist")
+            }
+            // intermediate does not live long enough
+            // .map(|suggestions: &'s Vec<Suggestion<'s>>| -> std::slice::Iter<'a, Suggestion<'s>> {
+            //     (suggestions).into_iter()
+            // } ).iter().flatten()
+    }
+
+    /// Join two sets
+    ///
+    /// Merges multiple keys into one.
+    pub fn join(&mut self, other: Self) {
+        other.per_file.into_iter().for_each(|(path, suggestions)| {
+            self.entry(path).or_insert_with(|| { Vec::with_capacity(suggestions.len()) }).extend_from_slice(suggestions.as_slice())
+        })
+    }
+}
+
+
+impl<'s> IntoIterator for SuggestionSet<'s> {
+    type Item = (PathBuf, Vec<Suggestion<'s>>);
+    type IntoIter = indexmap::map::IntoIter<PathBuf, Vec<Suggestion<'s>>>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.per_file.into_iter()
+    }
+}
+
+// impl<'s> IntoIterator for &SuggestionSet<'s> {
+//     type Item = (&'s PathBuf, &'s Vec<Suggestion<'s>>);
+//     type IntoIter = indexmap::map::Iter<'s, &'s PathBuf, &'s Vec<Suggestion<'s>>>;
+//     fn into_iter(self) -> Self::IntoIter {
+//         self.per_file.iter()
+//     }
+// }

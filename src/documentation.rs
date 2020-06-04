@@ -18,6 +18,7 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Clone)]
 pub struct Documentation {
     /// Mapping of a path to documentation literals
+    // @todo add an intermediate enum to be able to handle markdown files as part of a document too
     index: IndexMap<PathBuf, Vec<LiteralSet>>,
 }
 

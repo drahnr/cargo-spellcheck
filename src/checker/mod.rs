@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::{Config, Detector, Documentation, Suggestion};
+use crate::{Config, Detector, Documentation, Suggestion, SuggestionSet};
 
 use anyhow::Result;
 
@@ -15,7 +15,7 @@ mod languagetool;
 /// Implementation for a checker
 pub(crate) trait Checker {
     type Config;
-    fn check<'a, 's>(docu: &'a Documentation, config: &Self::Config) -> Result<Vec<Suggestion<'s>>>
+    fn check<'a, 's>(docu: &'a Documentation, config: &Self::Config) -> Result<SuggestionSet<'s>>
     where
         'a: 's;
 }
@@ -58,11 +58,11 @@ fn tokenize(s: &str) -> Vec<Range> {
 pub fn check<'a, 's>(
     documentation: &'a Documentation,
     config: &Config,
-) -> Result<Vec<Suggestion<'s>>>
+) -> Result<SuggestionSet<'s>>
 where
     'a: 's,
 {
-    let mut corrections = Vec::<Suggestion>::with_capacity(128);
+    let mut collective = SuggestionSet::<'s>::new();
 
     #[cfg(feature = "languagetool")]
     {
@@ -75,7 +75,7 @@ where
             if let Ok(mut suggestions) =
                 self::languagetool::LanguageToolChecker::check(documentation, config)
             {
-                corrections.append(&mut suggestions);
+                collective.join(suggestions);
             }
         }
     }
@@ -91,10 +91,10 @@ where
             if let Ok(mut suggestions) =
                 self::hunspell::HunspellChecker::check(documentation, config)
             {
-                corrections.append(&mut suggestions);
+                collective.join(suggestions);
             }
         }
     }
 
-    Ok(corrections)
+    Ok(collective)
 }

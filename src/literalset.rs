@@ -5,7 +5,7 @@ use log::{trace, warn};
 
 pub type Range = core::ops::Range<usize>;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Hash, PartialEq, Eq)]
 /// A ref to a trimmed literal.
 pub struct TrimmedLiteralRef<'l> {
     reference: &'l TrimmedLiteral,
@@ -90,6 +90,16 @@ impl std::cmp::PartialEq for TrimmedLiteral {
 }
 
 impl std::cmp::Eq for TrimmedLiteral {}
+
+impl std::hash::Hash for TrimmedLiteral {
+    fn hash<H: std::hash::Hasher>(&self,hasher: &mut H) {
+        self.rendered.hash(hasher);
+        self.pre.hash(hasher);
+        self.post.hash(hasher);
+        self.len.hash(hasher);
+        Span::from(self.literal.span()).hash(hasher);
+    }
+}
 
 impl From<proc_macro2::Literal> for TrimmedLiteral {
     fn from(literal: proc_macro2::Literal) -> Self {

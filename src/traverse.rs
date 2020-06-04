@@ -139,8 +139,16 @@ fn extract_modules_from_file<P: AsRef<Path>>(path: P) -> anyhow::Result<Vec<Path
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum CheckItem {
+    Markdown(PathBuf),
+    Source(PathBuf),
+    ManifestDescription(String),
+}
+
 /// Extract all cargo manifest products / build targets.
-fn extract_products<P: AsRef<Path>>(manifest_dir: P) -> anyhow::Result<Vec<PathBuf>> {
+// @todo code with an enum to allow source and markdown files
+fn extract_products<P: AsRef<Path>>(manifest_dir: P) -> anyhow::Result<Vec<CheckItem>> {
     let manifest_dir = manifest_dir.as_ref();
     let manifest_file = manifest_dir.join("Cargo.toml");
     let mut manifest = cargo_toml::Manifest::from_path(&manifest_file).map_err(|e| {
@@ -160,13 +168,32 @@ fn extract_products<P: AsRef<Path>>(manifest_dir: P) -> anyhow::Result<Vec<PathB
             e
         )
     })?;
-    Ok(manifest
+
+    let mut items = manifest
         .bin
         .into_iter()
         .filter(|product| product.doctest)
         .filter_map(|product| product.path)
-        .map(|path_str| manifest_dir.join(path_str))
-        .collect())
+        .map(|path_str| CheckItem::Source(manifest_dir.join(path_str)))
+        .collect::<Vec<CheckItem>>();
+
+    if let Some(package) = manifest.package {
+        if let Some(readme) = package.readme {
+            let readme = PathBuf::from(readme);
+            if readme.is_file() {
+                items.push(CheckItem::Markdown(readme))
+            } else {
+                warn!(
+                    "README.md defined in Cargo.toml {} is not a file",
+                    readme.display()
+                );
+            }
+        }
+        if let Some(description) = package.description {
+            items.push(CheckItem::ManifestDescription(description.to_owned()))
+        }
+    }
+    Ok(items)
 }
 
 /// Execute execute execute.
@@ -190,20 +217,21 @@ pub(crate) fn run(
         Manifest(PathBuf),
         Missing(PathBuf),
         Source(PathBuf),
+        Markdown(PathBuf),
     }
 
     // convert all `Cargo.toml` manifest files to their respective product files
     // so after this conversion all of them are considered
-    let paths: Vec<_> = paths
+    let items: Vec<_> = paths
         .into_iter()
         .map(|path| {
             let path = if  path.is_absolute() { path } else { cwd.join(path) };
             if let Ok(meta) = path.metadata() {
                 if meta.is_file() {
-                    if path.file_name() == Some("Cargo.toml".as_ref()) {
-                        Extraction::Manifest(path)
-                    } else {
-                        Extraction::Source(path)
+                    match path.file_name().map(|x| x.to_str()).flatten() {
+                        Some(file_name) if file_name == "Cargo.toml" => Extraction::Manifest(path),
+                        Some(file_name) if file_name.ends_with(".md") => Extraction::Markdown(path),
+                        _ => Extraction::Source(path),
                     }
                 } else if meta.is_dir() {
                     let cargo_toml = path.with_file_name("Cargo.toml");
@@ -224,9 +252,13 @@ pub(crate) fn run(
             Vec::with_capacity(64),
             |mut acc, tagged_path| {
                 match tagged_path {
-                    Extraction::Manifest(ref cargo_toml_path) => acc.extend(extract_products(cargo_toml_path.parent().unwrap())?),
+                    Extraction::Manifest(ref cargo_toml_path) => {
+                        let manifest_list = extract_products(cargo_toml_path.parent().unwrap())?;
+                        acc.extend(manifest_list);
+                    },
                     Extraction::Missing(ref missing_path) => warn!("File passed as argument or listed in Cargo.toml manifest does not exist: {}", missing_path.display()),
-                    Extraction::Source(source) => acc.push(source),
+                    Extraction::Source(path) => acc.push(CheckItem::Source(path)),
+                    Extraction::Markdown(path) => acc.push(CheckItem::Markdown(path)),
                 }
                 Ok(acc)
             },
@@ -236,14 +268,16 @@ pub(crate) fn run(
         let mut path_collection = indexmap::IndexSet::<_>::with_capacity(64);
 
         // @todo merge this with the `Documentation::from` to reduce parsing of the file twice
-        let mut dq = std::collections::VecDeque::<PathBuf>::with_capacity(64);
-        dq.extend(paths.into_iter());
-        while let Some(path) = dq.pop_front() {
-            let modules = extract_modules_from_file(&path)?;
-            if path_collection.insert(path.to_owned()) {
-                dq.extend(modules.into_iter());
-            } else {
-                warn!(target: "run", "Already visited module");
+        let mut dq = std::collections::VecDeque::<CheckItem>::with_capacity(64);
+        dq.extend(items.into_iter());
+        while let Some(item) = dq.pop_front() {
+            if let CheckItem::Source(path) = item {
+                let modules = extract_modules_from_file(&path)?;
+                if path_collection.insert(CheckItem::Source(path.to_owned())) {
+                    dq.extend(modules.into_iter().map(CheckItem::Source));
+                } else {
+                    warn!(target: "run", "Already visited module");
+                }
             }
         }
 
@@ -253,35 +287,49 @@ pub(crate) fn run(
             .into_iter()
             .try_fold::<Vec<Documentation>, _, anyhow::Result<Vec<Documentation>>>(
                 Vec::with_capacity(n),
-                |mut acc, path| {
-                    let content = fs::read_to_string(&path)?;
-                    let stream = syn::parse_str(&content)?;
-                    acc.push(Documentation::from((path, stream)));
+                |mut acc, item| {
+                    match item {
+                        CheckItem::Source(path) => {
+                            let content = fs::read_to_string(&path)?;
+                            let stream = syn::parse_str(&content)?;
+                            acc.push(Documentation::from((path, stream)));
+                        }
+                        _ => unimplemented!("Did not impl this just yet"),
+                    }
                     Ok(acc)
                 },
             )?
     } else {
         trace!(target: "run","Single file");
-        paths
+        items
             .iter()
             .try_fold::<Vec<Documentation>, _, anyhow::Result<Vec<Documentation>>>(
-                Vec::with_capacity(paths.len()),
-                |mut acc, path| {
-                    let mut doc = traverse(path)?;
-                    acc.append(&mut doc);
+                Vec::with_capacity(items.len()),
+                |mut acc, item| {
+                    match item {
+                        CheckItem::Source(path) => {
+                            let mut doc = traverse(path)?;
+                            acc.append(&mut doc);
+                        }
+                        _ => {
+                            // @todo generate Documentation structs from non-file sources
+                        }
+                    }
                     Ok(acc)
                 },
             )?
     };
 
     let combined = Documentation::combine(docs);
-    let suggestions = crate::checker::check(&combined, config)?;
+    let suggestions_per_path = crate::checker::check(&combined, config)?;
 
     match mode {
         Mode::Fix => unimplemented!("Unsupervised fixing is not implemented just yet"),
         Mode::Check => {
-            for suggestion in suggestions {
-                eprintln!("{}", suggestion);
+            for (path, suggestions) in suggestions_per_path {
+                for suggestion in suggestions {
+                    eprintln!("{}", suggestion);
+                }
             }
         }
         Mode::Interactive => unimplemented!("Interactive pick & apply is not implemented just yet"),

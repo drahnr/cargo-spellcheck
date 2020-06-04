@@ -8,7 +8,7 @@ pub struct HunspellChecker;
 
 impl Checker for HunspellChecker {
     type Config = crate::config::HunspellConfig;
-    fn check<'a, 's>(docu: &'a Documentation, config: &Self::Config) -> Result<Vec<Suggestion<'s>>>
+    fn check<'a, 's>(docu: &'a Documentation, config: &Self::Config) -> Result<SuggestionSet<'s>>
     where
         'a: 's,
     {
@@ -67,8 +67,8 @@ impl Checker for HunspellChecker {
             }
         }
 
-        let suggestions = docu.iter().try_fold::<Vec<Suggestion>, _, Result<_>>(
-            Vec::with_capacity(128),
+        let suggestions = docu.iter().try_fold::<SuggestionSet, _, Result<_>>(
+            SuggestionSet::new(),
             |mut acc, (path, literal_sets)| {
                 for literal_set in literal_sets {
                     let plain = literal_set.erase_markdown();
@@ -86,7 +86,7 @@ impl Checker for HunspellChecker {
                                 .collect::<Vec<_>>();
 
                             for (literal, span) in plain.linear_range_to_spans(range.clone()) {
-                                acc.push(Suggestion {
+                                acc.add(path.to_owned(), Suggestion {
                                     detector: Detector::Hunspell,
                                     span,
                                     path: PathBuf::from(path),

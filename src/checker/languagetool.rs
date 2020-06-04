@@ -6,13 +6,13 @@ pub struct LanguageToolChecker;
 
 impl Checker for LanguageToolChecker {
     type Config = crate::config::LanguageToolConfig;
-    fn check<'a, 's>(docu: &'a Documentation, config: &Self::Config) -> Result<Vec<Suggestion<'s>>>
+    fn check<'a, 's>(docu: &'a Documentation, config: &Self::Config) -> Result<SuggestionSet<'s>>
     where
         'a: 's,
     {
         let lt = LanguageTool::new(config.url.as_str())?;
         let suggestions = docu.iter().try_fold::<Vec<Suggestion>, _, Result<_>>(
-            Vec::with_capacity(128),
+            SuggestionSet::new(),
             |mut acc, (path, literal_sets)| {
                 for cls in literal_sets {
                     let plain = cls.erase_markdown();
@@ -39,7 +39,7 @@ impl Checker for LanguageToolChecker {
                                 start: item.offset as usize,
                                 end: (item.offset + item.length) as usize,
                             }) {
-                                acc.push(Suggestion {
+                                acc.insert(path.to_owned(), Suggestion {
                                     detector: Detector::LanguageTool,
                                     span: span,
                                     path: PathBuf::from(path),
