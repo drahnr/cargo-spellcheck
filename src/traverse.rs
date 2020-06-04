@@ -181,7 +181,7 @@ fn extract_products<P: AsRef<Path>>(manifest_dir: P) -> anyhow::Result<Vec<Check
         if let Some(readme) = package.readme {
             let readme = PathBuf::from(readme);
             if readme.is_file() {
-                items.push(CheckItem::Markdown(readme))
+                items.push(CheckItem::Markdown(manifest_dir.join(readme)))
             } else {
                 warn!(
                     "README.md defined in Cargo.toml {} is not a file",
@@ -475,9 +475,13 @@ mod tests {
     fn manifest_entries() {
         assert_eq!(
             extract_products(PathBuf::from(env!("CARGO_MANIFEST_DIR"))).expect("Must succeed"),
-            vec![CheckItem::Source(
-                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/main.rs")
-            )]
+            vec![
+                CheckItem::Source(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/main.rs")),
+                CheckItem::Markdown(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("README.md")),
+                CheckItem::ManifestDescription(
+                    "Checks all doc comments for spelling mistakes".to_string()
+                ),
+            ]
         );
     }
 }
