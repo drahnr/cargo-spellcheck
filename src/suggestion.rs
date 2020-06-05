@@ -17,7 +17,7 @@ use crate::Span;
 use crate::TrimmedLiteralRef;
 
 use enumflags2::BitFlags;
-use log::trace;
+use log::{error, trace};
 
 /// Bitflag of available checkers by compilation / configuration.
 #[derive(Debug, Clone, Copy, BitFlags, Eq, PartialEq, Hash)]
@@ -109,9 +109,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
 
         // underline the relevant part with ^^^^^
 
-        // @todo this needs some more thought
-        // and mostly works since it currently does not contain
-        // multilines
+        // @todo this needs some more thought once multiline comments pop up
         let mut marker_size = if self.span.end.line == self.span.start.line {
             self.span.end.column.saturating_sub(self.span.start.column)
         } else {
@@ -128,24 +126,10 @@ impl<'s> fmt::Display for Suggestion<'s> {
         let offset = if self.literal.pre() <= marker_range_relative.start {
             marker_range_relative.start - self.literal.pre()
         } else {
-            trace!("Reducing marker length!");
+            error!("Reducing marker length! Please report a BUG!");
             // reduce the marker size
             marker_size -= marker_range_relative.start;
             marker_size -= self.literal.pre();
-            // @todo figure out why this is needed, currently this is a hack
-            // to make the following work:
-            //
-            // ```text
-            // error: spellcheck(Hunspell)
-            //  --> /media/supersonic1t/projects/cargo-spellcheck/./src/tests/fragments.rs:9
-            //   |
-            // 9 |  Somethign very secret but also not,
-            //   |  ^^^^^^^^^
-            //   | - Something or Sometime
-            //   |
-            //   |   Possible spelling mistake found.
-            //   |
-            // ```
             0
         };
 

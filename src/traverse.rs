@@ -197,12 +197,11 @@ fn extract_products<P: AsRef<Path>>(manifest_dir: P) -> anyhow::Result<Vec<Check
 }
 
 /// Execute execute execute.
-pub(crate) fn run(
-    mode: Mode,
+pub(crate) fn collect(
     mut paths: Vec<PathBuf>,
     mut recurse: bool,
     config: &Config,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<Documentation> {
     let cwd = std::env::current_dir().map_err(|_e| anyhow::anyhow!("Missing cwd!"))?;
 
     // if there are no arguments, pretend to be told to check the whole project
@@ -321,135 +320,8 @@ pub(crate) fn run(
     };
 
     let combined = Documentation::combine(docs);
-    let suggestions_per_path = crate::checker::check(&combined, config)?;
 
-    match mode {
-        Mode::Fix => unimplemented!("Unsupervised fixing is not implemented just yet"),
-        Mode::Check => {
-            for (_path, suggestions) in suggestions_per_path {
-                for suggestion in suggestions {
-                    eprintln!("{}", suggestion);
-                }
-            }
-        }
-        Mode::Interactive => {
-            // show a horizontal list of replacements, navigate left/ right by using the arrow keys
-            // .. suggestion0 [suggestion1] suggestion2 suggestion3 ..
-            // arrow left
-            // .. suggestion1 [suggestion2] suggestion3 suggestion4 ..
-            use crossterm;
-
-            use crossterm::{
-                cursor, event::Event, event::KeyCode, event::KeyEvent, style::Print,
-                QueueableCommand, Result,
-            };
-            use std::io::stdout;
-
-            const HELP: &'static str = r##"y - apply this suggestion
-n - do not apply the suggested correction
-q - quit; do not stage this hunk or any of the remaining ones
-a - stage this hunk and all later hunks in the file
-d - do not apply this suggestion and skip the rest of the file
-g - select a suggestion to go to
-j - leave this hunk undecided, see next undecided hunk
-J - leave this hunk undecided, see next hunk
-e - manually edit the current hunk
-? - print help
-"##;
-
-            // @todo cluster by file
-            let _stdout = stdout();
-
-            let mut apply = indexmap::IndexSet::<Suggestion<'_>>::new();
-
-            for (path, suggestions) in suggestions_per_path {
-                let count = suggestions.len();
-                println!("Path is {} and has {}", path.display(), count);
-
-                // juck, uggly
-                let mut suggestions_it = suggestions.clone().into_iter().enumerate();
-
-                #[derive(Debug, Clone, Copy)]
-                enum Direction {
-                    Forward,
-                    Backward,
-                }
-                let mut direction = Direction::Forward;
-                loop {
-                    let opt: Option<(usize, Suggestion)> = match direction {
-                        Direction::Forward => suggestions_it.next(),
-                        Direction::Backward => suggestions_it.next_back(),
-                    };
-
-                    trace!("next() ---> {:?}", &opt);
-
-                    if opt.is_none() {
-                        match direction {
-                            Direction::Forward => {
-                                trace!("completed file, continue to next");
-                                break; // we completed this file, move on to the next
-                            }
-                            Direction::Backward => {
-                                trace!("went back, now back at the beginning");
-                                suggestions_it = suggestions.clone().into_iter().enumerate();
-                                continue;
-                            } // go to the start
-                        }
-                    }
-                    let (idx, suggestion) = opt.expect("Must be X");
-
-                    println!("{}", suggestion);
-
-                    println!(
-                        "({nth}/{of_n}) Apply this suggestion [y,n,q,a,d,j,e,?]?",
-                        nth = idx,
-                        of_n = count
-                    );
-
-                    // read is blocking
-                    let event = if let Event::Key(event) =
-                        crossterm::event::read().map_err(|e| {
-                            anyhow::anyhow!("Something unexpected happened on the CLI: {}", e)
-                        })? {
-                        event
-                    } else {
-                        trace!("read() something othe than a key event an error");
-                        break;
-                    };
-                    let KeyEvent { code, modifiers: _ } = event;
-
-                    match code {
-                        KeyCode::Char('y') => {
-                            apply.insert(suggestion);
-                        }
-                        KeyCode::Char('n') => {}
-                        KeyCode::Char('q') => return Ok(()),
-                        KeyCode::Char('a') => {
-                            for (_, suggestion) in suggestions_it {
-                                apply.insert(suggestion);
-                            }
-                            break;
-                        }
-                        KeyCode::Char('d') => break,
-                        KeyCode::Char('j') => {
-                            direction = Direction::Backward;
-                            continue;
-                        }
-                        KeyCode::Char('e') => unimplemented!("Manual editing"),
-                        KeyCode::Char('?') => {
-                            println!("{}", HELP);
-                        }
-                        x => {
-                            trace!("Unexpected input {:?}", x);
-                        }
-                    }
-                    direction = Direction::Forward;
-                }
-            }
-        }
-    }
-
-    Ok(())
+    Ok(combined)
 }
 
 #[cfg(test)]

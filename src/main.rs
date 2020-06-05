@@ -7,6 +7,7 @@ mod checker;
 mod markdown;
 mod suggestion;
 mod traverse;
+mod action;
 
 pub use self::config::{Config, HunspellConfig, LanguageToolConfig};
 pub use self::documentation::*;
@@ -14,6 +15,7 @@ pub use self::literalset::*;
 pub use self::markdown::*;
 pub use self::span::*;
 pub use self::suggestion::*;
+pub use self::action::*;
 
 use docopt::Docopt;
 
@@ -66,17 +68,6 @@ struct Args {
     cmd_fix: bool,
     cmd_check: bool,
     cmd_config: bool,
-}
-
-/// Mode in which `cargo-spellcheck` operates
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-enum Mode {
-    /// Fix issues without interaction if there is sufficient information
-    Fix,
-    /// Only show errors
-    Check,
-    /// Interactively choose from __candidates__ provided, simliar to `git add -p` .
-    Interactive,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -208,16 +199,20 @@ fn main() -> anyhow::Result<()> {
     checkers(&mut config);
 
     // extract operation mode
-    let mode = if args.cmd_fix || args.flag_fix {
-        Mode::Fix
+    let action = if args.cmd_fix || args.flag_fix {
+        Action::Fix
     } else if args.flag_interactive {
-        Mode::Interactive
+        Action::Interactive
     } else {
         // check
-        Mode::Check
+        Action::Check
     };
 
-    trace!("Executing: {:?} with {:?}", mode, &config);
+    trace!("Executing: {:?} with {:?}", action, &config);
 
-    traverse::run(mode, args.arg_paths, args.flag_recursive, &config)
+    let combined = traverse::collect(args.arg_paths, args.flag_recursive, &config)?;
+
+    let suggestion_set = checker::check(&combined, &config)?;
+
+    action.run(suggestion_set, &config)
 }
