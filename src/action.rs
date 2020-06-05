@@ -19,50 +19,26 @@ pub enum Action {
 }
 
 impl Action {
-    /// assumes suggestions are sorted by line number and column number and must be non overlapping
-    fn correction<'s>(&self, path: PathBuf, suggestions: Vec<Suggestion<'s>>) -> Result<()> {
-        let path = path.as_path().canonicalize().map_err(|e| { anyhow!("Failed to canonicalize {}", path.display() ).context(e) })?;
-        let path = dbg!(path.as_path());
-        trace!("Attempting to open {} as read", path.display());
-        let ro = std::fs::OpenOptions::new()
-            .read(true)
-            .open(path)
-            .map_err(|e| { anyhow!("Failed to open {}", path.display()).context(e) })?;
-
-        let mut reader = std::io::BufReader::new(ro);
-
-        const TEMPORARY: &'static str = ".spellcheck.tmp";
-
-        let tmp = std::env::current_dir().expect("Must have cwd").join(TEMPORARY);
-        // let tmp = tmp.canonicalize().map_err(|e| { anyhow!("Failed to canonicalize {}", tmp.display() ).context(e) })?;
-        //trace!("Attempting to open {} as read", tmp.display());
-        let wr = OpenOptions::new()
-            .write(true)
-            .truncate(true)
-            .create(true)
-            .open(&tmp)
-            .map_err(|e| { anyhow!("Failed to open {}", path.display()).context(e) })?;
-
-        let mut writer = std::io::BufWriter::with_capacity(1024, wr);
-
+    fn correct_lines<'s>(
+        &self,
+        suggestions: Vec<Suggestion<'s>>,
+        source: impl Iterator<Item = (usize, String)>,
+        mut sink: impl Write,
+    ) -> Result<()> {
         let mut suggestions_it = suggestions.into_iter();
         let mut nxt: Option<Suggestion<'s>> = suggestions_it.next();
-
-        for (line, content) in reader
-            .lines()
-            .enumerate()
-            .map(|(lineno, content)| (lineno + 1, content))
-        {
+        for (line, content) in source {
             trace!("Processing line {}", line);
             let mut remainder_column = 0usize;
-            let content: String = content
-                .map_err(|e| anyhow!("Line {} contains invalid utf8 characters", line).context(e) )?;
+            // let content: String = content.map_err(|e| {
+            //     anyhow!("Line {} contains invalid utf8 characters", line).context(e)
+            // })?;
 
             if let Some(ref suggestion) = nxt {
                 if !suggestion.span.covers_line(line) {
-                    writer.write(content.as_bytes())?;
-                    writer.write("\n".as_bytes())?;
-                    continue
+                    sink.write(content.as_bytes())?;
+                    sink.write("\n".as_bytes())?;
+                    continue;
                 }
             }
 
@@ -75,10 +51,10 @@ impl Action {
                         .expect("There should be no multiline strings as of today");
                     // write prelude for this line between start or previous replacement
                     if range.start > remainder_column {
-                        writer.write(content[remainder_column..range.start].as_bytes())?;
+                        sink.write(content[remainder_column..range.start].as_bytes())?;
                     }
                     // write the replacement chunk
-                    writer.write(replacement.as_bytes())?;
+                    sink.write(replacement.as_bytes())?;
 
                     remainder_column = range.end;
                     nxt = suggestions_it.next();
@@ -87,9 +63,9 @@ impl Action {
                         if remainder_column < content.len() {
                             // otherwise write all
                             // not that this also covers writing a line without any suggestions
-                            writer.write(content[remainder_column..].as_bytes())?;
+                            sink.write(content[remainder_column..].as_bytes())?;
                         }
-                        writer.write("\n".as_bytes())?;
+                        sink.write("\n".as_bytes())?;
                         // break the inner loop
                         break;
                         // } else {
@@ -101,7 +77,50 @@ impl Action {
                 }
             }
         }
-        writer.flush()?;
+        sink.flush()?;
+        Ok(())
+    }
+
+    /// assumes suggestions are sorted by line number and column number and must be non overlapping
+    fn correction<'s>(&self, path: PathBuf, suggestions: Vec<Suggestion<'s>>) -> Result<()> {
+        let path = path
+            .as_path()
+            .canonicalize()
+            .map_err(|e| anyhow!("Failed to canonicalize {}", path.display()).context(e))?;
+        let path = dbg!(path.as_path());
+        trace!("Attempting to open {} as read", path.display());
+        let ro = std::fs::OpenOptions::new()
+            .read(true)
+            .open(path)
+            .map_err(|e| anyhow!("Failed to open {}", path.display()).context(e))?;
+
+        let mut reader = std::io::BufReader::new(ro);
+
+        const TEMPORARY: &'static str = ".spellcheck.tmp";
+
+        let tmp = std::env::current_dir()
+            .expect("Must have cwd")
+            .join(TEMPORARY);
+        // let tmp = tmp.canonicalize().map_err(|e| { anyhow!("Failed to canonicalize {}", tmp.display() ).context(e) })?;
+        //trace!("Attempting to open {} as read", tmp.display());
+        let wr = OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .create(true)
+            .open(&tmp)
+            .map_err(|e| anyhow!("Failed to open {}", path.display()).context(e))?;
+
+        let mut writer = std::io::BufWriter::with_capacity(1024, wr);
+
+        self.correct_lines(
+            suggestions,
+            reader
+                .lines()
+                .filter_map(|line| line.ok())
+                .enumerate()
+                .map(|(lineno, content)| (lineno + 1, content)),
+            writer,
+        )?;
 
         fs::rename(tmp, path)?;
 
@@ -210,15 +229,14 @@ e - manually edit the current hunk
                 let event = match crossterm::event::read().map_err(|e| {
                     anyhow::anyhow!("Something unexpected happened on the CLI").context(e)
                 })? {
-                     Event::Key(event) => event,
-                     sth => {
+                    Event::Key(event) => event,
+                    sth => {
                         trace!("read() something other than a key: {:?}", sth);
                         break;
-                     }
+                    }
                 };
                 trace!("registered event: {:?}", &event);
                 let KeyEvent { code, modifiers: _ } = event;
-
 
                 match code {
                     KeyCode::Char('y') => {
@@ -282,26 +300,19 @@ e - manually edit the current hunk
     }
 }
 
-
-
-
 struct ScopedRaw {
-    _dummy: u8
+    _dummy: u8,
 }
 
 impl ScopedRaw {
     fn new() -> Result<Self> {
         crossterm::terminal::enable_raw_mode()?;
-        Ok( Self {
-            _dummy: 0u8
-        })
+        Ok(Self { _dummy: 0u8 })
     }
 }
-
 
 impl Drop for ScopedRaw {
     fn drop(&mut self) {
         crossterm::terminal::disable_raw_mode();
     }
 }
-
