@@ -248,8 +248,9 @@ mod tests {
                     warn!("Using default configuration!");
                     Config::default()
                 });
-                let suggestions = crate::checker::check(&docs, &config)
+                let suggestion_set = crate::checker::check(&docs, &config)
                     .expect("Must not fail to extract suggestions");
+                let (_, suggestions) = suggestion_set.into_iter().next().expect("Must contain exactly one item");
                 assert_eq!(dbg!(&suggestions).len(), $n);
             }
         };
@@ -300,18 +301,17 @@ Erronbeous bold uetchkp"#;
         let literal_set_no1 = literal_set
             .first()
             .expect("Must cotain at least one literalset");
+        assert_eq!(literal_set.len(), 1);
         assert_eq!(RAW, literal_set_no1.to_string().as_str());
         assert_eq!(PLAIN, literal_set_no1.erase_markdown().as_str());
 
         let mut it = suggestion_set.iter();
         let (_, suggestions) = dbg!(it.next()).expect("Must contain at least one file entry");
 
-
+        let mut it = suggestions.into_iter();
         let mut expected = |word: &'static str| {
-            let suggestion = suggestions
-                .into_iter()
-                .next()
-                .expect("Must contain one mis-spelled word");
+            let suggestion = it.next()
+                    .expect("Must contain one mis-spelled word");
             let range: Range = suggestion.span.try_into().expect("Must be a single line");
             let s = dbg!(suggestion.literal.as_ref().as_untrimmed_str());
             let x =

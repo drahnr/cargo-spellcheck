@@ -73,11 +73,11 @@ impl Checker for HunspellChecker {
                 for literal_set in literal_sets {
                     let plain = literal_set.erase_markdown();
                     trace!("{:?}", &plain);
-                    let txt = plain.as_str();
-                    for range in tokenize(txt) {
+                    let txt = dbg!(plain.as_str());
+                    for range in dbg!(tokenize(txt)) {
                         let word = &txt[range.clone()];
-                        trace!("Checking word (plain range: {:?}): {}", &range, word);
                         if !hunspell.check(word) {
+                            trace!("No match for word (plain range: {:?}): {}", &range, word);
                             // get rid of single character suggestions
                             let replacements = hunspell
                                 .suggest(word)
@@ -100,6 +100,8 @@ impl Checker for HunspellChecker {
                                     },
                                 )
                             }
+                        } else {
+                            trace!("Found a match for word (plain range: {:?}): {}", &range, word);
                         }
                     }
                 }

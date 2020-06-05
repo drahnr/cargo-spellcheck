@@ -544,7 +544,7 @@ struct Vikings;
             start: range.start + SKIP,
             end: range.end + SKIP,
         };
-        assert_eq!(&TEST[range_for_raw_str], &literal.as_untrimmed_str()[range]);
+        assert_eq!(&TEST[range_for_raw_str], &literal.as_str()[range]);
     }
 
     macro_rules! test_raw {
@@ -566,7 +566,7 @@ struct Vikings;
                     end: range.end + START,
                 };
 
-                assert_eq!(&TEST[range_for_raw_str.clone()], &literal.as_untrimmed_str()[$range]);
+                assert_eq!(&TEST[range_for_raw_str.clone()], &literal.as_str()[$range]);
                 assert_eq!(&TEST[range_for_raw_str], $expected);
             }
         };

@@ -5,7 +5,7 @@ use crate::{Config, Detector, Documentation, Suggestion, SuggestionSet};
 use anyhow::Result;
 
 use crate::Range;
-use log::debug;
+use log::{warn, debug};
 
 #[cfg(feature = "hunspell")]
 mod hunspell;
@@ -29,9 +29,11 @@ fn tokenize(s: &str) -> Vec<Range> {
     let mut linear_start = 0usize;
     let mut linear_end;
     let mut bananasplit = Vec::with_capacity(32);
+    let mut fin_char_idx = 0usize;
 
-    let blacklist = "\";:,.?!#(){}[]_-\n\r/`".to_owned();
+    let blacklist = "\";:,.?!#(){}[]-\n\r/`".to_owned();
     let is_ignore_char = |c: char| c.is_whitespace() || blacklist.contains(c);
+
     for (c_idx, c) in s.char_indices() {
         if is_ignore_char(c) {
             linear_end = c_idx;
@@ -49,6 +51,17 @@ fn tokenize(s: &str) -> Vec<Range> {
                 linear_start = c_idx;
                 started = true;
             }
+        }
+    }
+    // at the end of string, assume word complete
+    // @todo for hypenation, check if line ends with a dash
+    if started {
+        if let Some((idx, _)) = s.char_indices().next_back() {
+            // increase by one, since the range's end goes one beyond
+            let linear_end = idx + 1;
+            bananasplit.push(linear_start..linear_end)
+        } else {
+            log::warn!("Most liekly lost a word when tokenizing! BUG");
         }
     }
     bananasplit
