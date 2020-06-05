@@ -415,19 +415,27 @@ impl<'a> fmt::Display for TrimmedLiteralRangePrint<'a> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         use console::Style;
 
+        // part that is hidden by the trimmed literal, but still present in the actual literal
         let cutoff = Style::new().on_black().bold().underlined().yellow();
+        // the contextual characters not covered by range `self.1`
         let context = Style::new().on_black().bold().cyan();
-        let mistake = Style::new().on_black().bold().underlined().red().italic();
+        // highlight the mistake
+        let highlight = Style::new().on_black().bold().underlined().red().italic();
+        // a special style for any errors, to visualize out of bounds access
         let oob = Style::new().blink().bold().on_yellow().red();
 
+        // simplify
         let literal = self.0;
         let start = self.1.start;
         let end = self.1.end;
 
         assert!(start <= end);
 
+        // content without quote characters
         let data = literal.as_ref().rendered.as_str();
 
+        // colour the preceding quote character
+        // and the context preceding the highlight
         let (pre, ctx1) = if start > literal.pre() {
             (
                 cutoff.apply_to(&data[..literal.pre()]).to_string(),
@@ -438,11 +446,13 @@ impl<'a> fmt::Display for TrimmedLiteralRangePrint<'a> {
         } else {
             (String::new(), "!!!".to_owned())
         };
-        let mistake = if end >= data.len() {
+        // highlight the given range
+        let highlight = if end >= data.len() {
             oob.apply_to(&data[start..data.len()]).to_string()
         } else {
-            mistake.apply_to(&data[start..end]).to_string()
+            highlight.apply_to(&data[start..end]).to_string()
         };
+        // color trailing context if any as well as the closing quote character
         let post_idx = literal.pre() + literal.len();
         let (ctx2, post) = if post_idx > end {
             (
@@ -455,7 +465,7 @@ impl<'a> fmt::Display for TrimmedLiteralRangePrint<'a> {
             (String::new(), oob.apply_to("!!!").to_string())
         };
 
-        write!(formatter, "{}{}{}{}{}", pre, ctx1, mistake, ctx2, post)
+        write!(formatter, "{}{}{}{}{}", pre, ctx1, highlight, ctx2, post)
     }
 }
 
