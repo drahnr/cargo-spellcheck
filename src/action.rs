@@ -1,5 +1,5 @@
 use super::*;
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 
 /// Mode in which `cargo-spellcheck` operates
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -13,7 +13,7 @@ pub enum Action {
 }
 
 impl Action {
-    fn fix_interactive(&self, suggestions_per_path: SuggestionSet, config: &Config) -> Result<()> {
+    fn fix_interactive(&self, suggestions_per_path: SuggestionSet, _config: &Config) -> Result<()> {
         // show a horizontal list of replacements, navigate left/ right by using the arrow keys
         // .. suggestion0 [suggestion1] suggestion2 suggestion3 ..
         // arrow left
@@ -128,7 +128,7 @@ e - manually edit the current hunk
         Ok(())
     }
 
-    fn check(&self, suggestions_per_path: SuggestionSet, config: &Config) -> Result<()> {
+    fn check(&self, suggestions_per_path: SuggestionSet, _config: &Config) -> Result<()> {
         let mut count = 0usize;
         for (_path, suggestions) in suggestions_per_path {
             count += suggestions.len();

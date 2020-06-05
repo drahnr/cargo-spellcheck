@@ -5,7 +5,7 @@ use crate::{Config, Detector, Documentation, Suggestion, SuggestionSet};
 use anyhow::Result;
 
 use crate::Range;
-use log::{debug, warn};
+use log::debug;
 
 #[cfg(feature = "hunspell")]
 mod hunspell;
@@ -29,7 +29,7 @@ fn tokenize(s: &str) -> Vec<Range> {
     let mut linear_start = 0usize;
     let mut linear_end;
     let mut bananasplit = Vec::with_capacity(32);
-    let mut fin_char_idx = 0usize;
+    let _fin_char_idx = 0usize;
 
     let blacklist = "\";:,.?!#(){}[]-\n\r/`".to_owned();
     let is_ignore_char = |c: char| c.is_whitespace() || blacklist.contains(c);

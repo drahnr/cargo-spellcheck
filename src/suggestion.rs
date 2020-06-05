@@ -17,7 +17,7 @@ use crate::Span;
 use crate::TrimmedLiteralRef;
 
 use enumflags2::BitFlags;
-use log::{error, trace};
+use log::error;
 
 /// Bitflag of available checkers by compilation / configuration.
 #[derive(Debug, Clone, Copy, BitFlags, Eq, PartialEq, Hash)]

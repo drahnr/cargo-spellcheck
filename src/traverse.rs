@@ -200,7 +200,7 @@ fn extract_products<P: AsRef<Path>>(manifest_dir: P) -> anyhow::Result<Vec<Check
 pub(crate) fn collect(
     mut paths: Vec<PathBuf>,
     mut recurse: bool,
-    config: &Config,
+    _config: &Config,
 ) -> anyhow::Result<Documentation> {
     let cwd = std::env::current_dir().map_err(|_e| anyhow::anyhow!("Missing cwd!"))?;
 
