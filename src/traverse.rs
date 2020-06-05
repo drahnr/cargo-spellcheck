@@ -275,12 +275,12 @@ pub(crate) fn collect(
                 if path_collection.insert(CheckItem::Source(path.to_owned())) {
                     dq.extend(modules.into_iter().map(CheckItem::Source));
                 } else {
-                    warn!(target: "run", "Already visited module");
+                    warn!("Already visited module");
                 }
             }
         }
 
-        trace!(target: "run", "Recursive");
+        trace!("Recursive");
         let n = path_collection.len();
         path_collection
             .into_iter()
@@ -299,7 +299,7 @@ pub(crate) fn collect(
                 },
             )?
     } else {
-        trace!(target: "run","Single file");
+        trace!("Single file");
         items
             .iter()
             .try_fold::<Vec<Documentation>, _, anyhow::Result<Vec<Documentation>>>(
