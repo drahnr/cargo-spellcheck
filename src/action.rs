@@ -1,5 +1,5 @@
 use super::*;
-use anyhow::{anyhow,Result};
+use anyhow::{anyhow, Result};
 
 /// Mode in which `cargo-spellcheck` operates
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -124,8 +124,8 @@ e - manually edit the current hunk
                 }
                 direction = Direction::Forward;
             }
-		}
-		Ok(())
+        }
+        Ok(())
     }
 
     fn check(&self, suggestions_per_path: SuggestionSet, config: &Config) -> Result<()> {
@@ -146,13 +146,13 @@ e - manually edit the current hunk
         }
     }
 
-	/// Run the requested action.
+    /// Run the requested action.
     pub fn run(&self, suggestions_per_path: SuggestionSet, config: &Config) -> Result<()> {
         match self {
             Self::Fix => unimplemented!("Unsupervised fixing is not implemented just yet"),
             Self::Check => self.check(suggestions_per_path, config)?,
             Self::Interactive => self.fix_interactive(suggestions_per_path, config)?,
-		}
-		Ok(())
+        }
+        Ok(())
     }
 }

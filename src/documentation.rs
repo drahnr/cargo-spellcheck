@@ -250,7 +250,10 @@ mod tests {
                 });
                 let suggestion_set = crate::checker::check(&docs, &config)
                     .expect("Must not fail to extract suggestions");
-                let (_, suggestions) = suggestion_set.into_iter().next().expect("Must contain exactly one item");
+                let (_, suggestions) = suggestion_set
+                    .into_iter()
+                    .next()
+                    .expect("Must contain exactly one item");
                 assert_eq!(dbg!(&suggestions).len(), $n);
             }
         };
@@ -310,8 +313,7 @@ Erronbeous bold uetchkp"#;
 
         let mut it = suggestions.into_iter();
         let mut expected = |word: &'static str| {
-            let suggestion = it.next()
-                    .expect("Must contain one mis-spelled word");
+            let suggestion = it.next().expect("Must contain one mis-spelled word");
             let range: Range = suggestion.span.try_into().expect("Must be a single line");
             let s = dbg!(suggestion.literal.as_ref().as_untrimmed_str());
             let x =

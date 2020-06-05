@@ -101,7 +101,11 @@ impl Checker for HunspellChecker {
                                 )
                             }
                         } else {
-                            trace!("Found a match for word (plain range: {:?}): {}", &range, word);
+                            trace!(
+                                "Found a match for word (plain range: {:?}): {}",
+                                &range,
+                                word
+                            );
                         }
                     }
                 }

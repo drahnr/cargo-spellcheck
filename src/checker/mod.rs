@@ -5,7 +5,7 @@ use crate::{Config, Detector, Documentation, Suggestion, SuggestionSet};
 use anyhow::Result;
 
 use crate::Range;
-use log::{warn, debug};
+use log::{debug, warn};
 
 #[cfg(feature = "hunspell")]
 mod hunspell;
