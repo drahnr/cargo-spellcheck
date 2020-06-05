@@ -136,7 +136,7 @@ impl TrimmedLiteral {
     }
 
     pub fn as_untrimmed_str(&self) -> &str {
-        &self.rendered.as_str()[self.pre..(self.pre + self.len)]
+        &self.rendered.as_str()
     }
 
     pub fn len(&self) -> usize {
