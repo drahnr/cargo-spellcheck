@@ -264,8 +264,15 @@ impl<'s> SuggestionSet<'s> {
     pub fn append(&mut self, path: PathBuf, suggestions: &[Suggestion<'s>]) {
         self.per_file
             .entry(path)
-            .or_insert_with(|| Vec::with_capacity(1))
+            .or_insert_with(|| Vec::with_capacity(32))
             .extend_from_slice(suggestions);
+    }
+
+    pub fn extend<I>(&mut self, path: PathBuf, suggestions: I) where I: IntoIterator<Item=Suggestion<'s>> {
+        let mut v: &mut Vec<Suggestion<'s>> = self.per_file
+            .entry(path)
+            .or_insert_with(|| Vec::with_capacity(32));
+        v.extend(suggestions.into_iter());
     }
 
     pub fn entry(&mut self, path: PathBuf) -> indexmap::map::Entry<PathBuf, Vec<Suggestion<'s>>> {
@@ -305,8 +312,8 @@ impl<'s> SuggestionSet<'s> {
     /// Join two sets
     ///
     /// Merges multiple keys into one.
-    pub fn join(&mut self, other: Self) {
-        other.per_file.into_iter().for_each(|(path, suggestions)| {
+    pub fn join<I>(&mut self, other: I) where I: IntoIterator<Item=(PathBuf, Vec<Suggestion<'s>>)> {
+        other.into_iter().for_each(|(path, suggestions)| {
             self.entry(path)
                 .or_insert_with(|| Vec::with_capacity(suggestions.len()))
                 .extend_from_slice(suggestions.as_slice())

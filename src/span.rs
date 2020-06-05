@@ -66,6 +66,10 @@ impl Span {
         };
         Ok(range)
     }
+
+    pub fn covers_line(&self, line: usize) -> bool {
+        self.end.line <= line && line >= self.start.line
+    }
 }
 
 use std::convert::{From, TryInto};

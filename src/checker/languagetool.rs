@@ -11,7 +11,7 @@ impl Checker for LanguageToolChecker {
         'a: 's,
     {
         let lt = LanguageTool::new(config.url.as_str())?;
-        let suggestions = docu.iter().try_fold::<Vec<Suggestion>, _, Result<_>>(
+        let suggestions = docu.iter().try_fold::<SuggestionSet, _, Result<_>>(
             SuggestionSet::new(),
             |mut acc, (path, literal_sets)| {
                 for cls in literal_sets {
@@ -39,7 +39,7 @@ impl Checker for LanguageToolChecker {
                                 start: item.offset as usize,
                                 end: (item.offset + item.length) as usize,
                             }) {
-                                acc.insert(
+                                acc.add(
                                     path.to_owned(),
                                     Suggestion {
                                         detector: Detector::LanguageTool,
