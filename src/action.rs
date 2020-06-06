@@ -3,9 +3,7 @@ use anyhow::{anyhow, Error, Result};
 use log::{debug, info, trace};
 use std::convert::{TryFrom, TryInto};
 use std::fs::{self, OpenOptions};
-use std::io::BufRead;
-use std::io::Read;
-use std::io::Write;
+use std::io::{BufRead, Read, Write};
 
 use std::path::PathBuf;
 
@@ -180,18 +178,6 @@ impl Action {
                 .map(|(lineno, content)| (lineno + 1, content)),
             &mut writer,
         )?;
-
-        // deal with trailing new lines being consumed
-        // reader.seek(SeekFrom::End(1))?;
-
-        // let mut last_char = String::with_capacity(2);
-        // match reader.read_to_string(&mut last_char)? {
-        //     n if n == 1 && last_char == "\n" => writer.write_all(last_char.as_bytes())?,
-        //     n if n == 1 => {}
-        //     n => {
-        //         Err(anyhow!("File {} was modified during operation", path.display()))?
-        //     }
-        // }
 
         writer.flush()?;
 
@@ -430,16 +416,9 @@ I like banana icecream every third day.
         let _lines = TEXT.to_owned();
         let lines = TEXT
             .lines()
-            // .chain(Some("").into_iter()) // deal with the trailing newline (1)
             .map(|line| line.to_owned())
             .enumerate()
             .map(|(lineno, content)| (lineno + 1, content));
-
-        // (1) on unix trailing newlines mark the end of a line and as such there is no line following
-        // the last newline
-        // https://stackoverflow.com/questions/729692/why-should-text-files-end-with-a-newline
-        // but rust documents don't necessarily end with a newline anymore,
-        // as such we need to be able to deal with that case too
 
         correct_lines(bandaids.into_iter(), lines, &mut sink).expect("should be able to");
 
