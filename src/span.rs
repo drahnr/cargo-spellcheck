@@ -1,28 +1,20 @@
-//! Span annotation independent of proc_macro2
+//! Span annotation independent compatible with proc_macro2
+
+use crate::Range;
 
 pub use proc_macro2::LineColumn;
 
 use std::hash::{Hash, Hasher};
 
+use anyhow::{anyhow, Error, Result};
+
+use std::convert::TryFrom;
+
 /// Relative span in relation
 /// to the beginning of a doc comment.
-#[derive(Clone, Debug, Copy, PartialEq, Eq)]
-// TODO ,Eq,PartialEq,PartialOrd,Ord
-pub struct RelativeSpan {
-    pub start: LineColumn,
-    pub end: LineColumn,
-}
-
-impl Hash for RelativeSpan {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.start.line.hash(state);
-        self.start.column.hash(state);
-        self.end.line.hash(state);
-        self.end.column.hash(state);
-    }
-}
-
-// Span in relation to a full Document
+///
+/// Line values are 1-indexed relative, lines are inclusive.
+/// Column values in UTF-8 characters in a line, 0-indexed and inclusive.
 #[derive(Clone, Debug, Copy, PartialEq, Eq)]
 pub struct Span {
     pub start: LineColumn,
@@ -40,19 +32,19 @@ impl Hash for Span {
 
 impl Span {
     /// Only works for literals spanning a single line.
-    pub fn relative_to<X: Into<Span>>(&self, scope: X) -> anyhow::Result<Range> {
+    pub fn relative_to<X: Into<Span>>(&self, scope: X) -> Result<Range> {
         let scope: Span = scope.into();
         let scope: Range = scope.try_into()?;
         let me: Range = self.try_into()?;
         if scope.start > me.start {
-            return Err(anyhow::anyhow!(
+            return Err(anyhow!(
                 "start of {:?} is not inside of {:?}",
                 me,
                 scope
             ));
         }
         if scope.end < me.end {
-            return Err(anyhow::anyhow!(
+            return Err(anyhow!(
                 "end of {:?} is not inside of {:?}",
                 me,
                 scope
@@ -83,10 +75,8 @@ impl From<proc_macro2::Span> for Span {
     }
 }
 
-use crate::Range;
-
 impl TryInto<Range> for Span {
-    type Error = anyhow::Error;
+    type Error = Error;
     fn try_into(self) -> Result<Range, Self::Error> {
         if self.start.line == self.end.line {
             Ok(Range {
@@ -94,7 +84,7 @@ impl TryInto<Range> for Span {
                 end: self.end.column,
             })
         } else {
-            Err(anyhow::anyhow!(
+            Err(anyhow!(
                 "Start and end are not in the same line {} vs {}",
                 self.start.line,
                 self.end.line
@@ -104,15 +94,15 @@ impl TryInto<Range> for Span {
 }
 
 impl TryInto<Range> for &Span {
-    type Error = anyhow::Error;
+    type Error = Error;
     fn try_into(self) -> Result<Range, Self::Error> {
         if self.start.line == self.end.line {
             Ok(Range {
                 start: self.start.column,
-                end: self.end.column,
+                end: self.end.column+1,
             })
         } else {
-            Err(anyhow::anyhow!(
+            Err(anyhow!(
                 "Start and end are not in the same line {} vs {}",
                 self.start.line,
                 self.end.line
@@ -121,17 +111,28 @@ impl TryInto<Range> for &Span {
     }
 }
 
-impl From<(usize, Range)> for Span {
-    fn from(original: (usize, Range)) -> Self {
-        Self {
-            start: LineColumn {
-                line: original.0,
-                column: original.1.start,
-            },
-            end: LineColumn {
-                line: original.0,
-                column: original.1.end,
-            },
+impl TryFrom<(usize, Range)> for Span {
+    type Error = Error;
+    fn try_from(original: (usize, Range)) -> Result<Self> {
+        if original.1.start < original.1.end {
+            Ok(Self {
+                start: LineColumn {
+                    line: original.0,
+                    column: original.1.start,
+                },
+                end: LineColumn {
+                    line: original.0,
+                    column: original.1.end - 1,
+                },
+            })
+        } else {
+            Err(anyhow!("range must be valid to be converted to a Span {}..{}", original.1.start, original.1.end))
         }
     }
 }
+
+// impl From<(usize, Range)> for Span {
+//     fn from(original: (usize, Range)) -> Self {
+//         Self::try_from(original).unwrap()
+//     }
+// }

@@ -415,15 +415,15 @@ I like banana icecream every third day.
         let mut sink: Vec<u8> = Vec::with_capacity(1024);
         let bandaids = vec![
             BandAid {
-                span: (2usize, 7..15).into(),
+                span: (2usize, 7..16).try_into().unwrap(),
                 replacement: "banana icecream".to_owned(),
             },
             BandAid {
-                span: (2usize, 22..28).into(),
+                span: (2usize, 22..29).try_into().unwrap(),
                 replacement: "third".to_owned(),
             },
             BandAid {
-                span: (2usize, 29..36).into(),
+                span: (2usize, 29..37).try_into().unwrap(),
                 replacement: "day".to_owned(),
             },
         ];
