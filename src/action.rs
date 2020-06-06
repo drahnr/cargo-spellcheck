@@ -19,8 +19,13 @@ impl<'s> TryFrom<Suggestion<'s>> for BandAid {
     type Error = Error;
     fn try_from(suggestion: Suggestion<'s>) -> Result<Self> {
         if let Some(replacement) = suggestion.replacements.into_iter().next() {
+            let mut span = suggestion.span;
+            // @todo #[doc=""] is not covered by this, only `///`
+            // @todo this is a hack
+            span.start.column += 2;
+            span.end.column += 2;
             Ok(Self {
-                span: suggestion.span,
+                span,
                 replacement: replacement.to_owned(),
             })
         } else {
