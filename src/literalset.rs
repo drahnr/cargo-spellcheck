@@ -40,6 +40,10 @@ impl<'l> TrimmedLiteralRef<'l> {
     pub fn as_ref(&self) -> &TrimmedLiteral {
         self.reference
     }
+
+    pub(crate) fn display(&self, highlight: Range) -> TrimmedLiteralDisplay {
+        self.reference.display(highlight)
+    }
 }
 
 impl<'l> fmt::Debug for TrimmedLiteralRef<'l> {
@@ -141,6 +145,10 @@ impl TrimmedLiteral {
 
     pub fn len(&self) -> usize {
         self.len
+    }
+
+    pub(crate) fn display(&self, highlight: Range) -> TrimmedLiteralDisplay {
+        TrimmedLiteralDisplay::from((self, highlight))
     }
 }
 
@@ -389,13 +397,15 @@ impl<'s> fmt::Display for LiteralSet {
     }
 }
 
-/// A printing helper.
+/// A display style wrapper for a trimmed literal.
 ///
 /// Allows better display of coverage results without code duplication.
+///
+/// Consists of literal reference and a relative range to the start of the literal.
 #[derive(Debug, Clone)]
-pub(crate) struct TrimmedLiteralRangePrint<'a>(pub TrimmedLiteralRef<'a>, pub Range);
+pub(crate) struct TrimmedLiteralDisplay<'a>(pub TrimmedLiteralRef<'a>, pub Range);
 
-impl<'a, R> From<(R, Range)> for TrimmedLiteralRangePrint<'a>
+impl<'a, R> From<(R, Range)> for TrimmedLiteralDisplay<'a>
 where
     R: Into<TrimmedLiteralRef<'a>>,
 {
@@ -405,13 +415,13 @@ where
     }
 }
 
-impl<'a> Into<(TrimmedLiteralRef<'a>, Range)> for TrimmedLiteralRangePrint<'a> {
+impl<'a> Into<(TrimmedLiteralRef<'a>, Range)> for TrimmedLiteralDisplay<'a> {
     fn into(self) -> (TrimmedLiteralRef<'a>, Range) {
         (self.0, self.1)
     }
 }
 
-impl<'a> fmt::Display for TrimmedLiteralRangePrint<'a> {
+impl<'a> fmt::Display for TrimmedLiteralDisplay<'a> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         use console::Style;
 

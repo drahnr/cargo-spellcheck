@@ -153,7 +153,7 @@ impl<'a> PlainOverlay<'a> {
         }
     }
 
-    /// Since most checkers will operate on the plain date, a indirection to map plain to markdown
+    /// Since most checkers will operate on the plain data, an indirection to map plain to markdown
     /// and back to literals and spans
     pub fn linear_range_to_spans(&self, plain_range: Range) -> Vec<(&'a TrimmedLiteral, Span)> {
         use core::cmp::min;
@@ -175,6 +175,11 @@ impl<'a> PlainOverlay<'a> {
                     offset,
                     plain,
                     raw
+                );
+                trace!(
+                    "highlight:  {:?} -> {:?}",
+                    &plain_range,
+                    &extracted
                 );
 
                 if extracted.start < extracted.end {

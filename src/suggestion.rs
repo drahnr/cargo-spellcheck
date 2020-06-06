@@ -224,9 +224,9 @@ impl<'s> fmt::Display for Suggestion<'s> {
 
 impl<'s> fmt::Debug for Suggestion<'s> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use crate::literalset::TrimmedLiteralRangePrint;
+        use crate::literalset::TrimmedLiteralDisplay;
 
-        let printable = TrimmedLiteralRangePrint::from((
+        let printable = TrimmedLiteralDisplay::from((
             self.literal,
             self.span
                 .relative_to(self.literal.as_ref().literal.span())

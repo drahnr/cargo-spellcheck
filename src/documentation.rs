@@ -216,7 +216,7 @@ mod tests {
         let _range: Range = span.try_into().expect("Span must be single line");
         println!(
             "full: {}",
-            TrimmedLiteralRangePrint::from((literal, expected_raw_range.clone()))
+            TrimmedLiteralDisplay::from((literal, expected_raw_range.clone()))
         );
         assert_eq!(
             dbg!(&z),
@@ -316,9 +316,7 @@ Erronbeous bold uetchkp"#;
             let suggestion = it.next().expect("Must contain one mis-spelled word");
             let range: Range = suggestion.span.try_into().expect("Must be a single line");
             let s = dbg!(suggestion.literal.as_ref().as_untrimmed_str());
-            let x =
-                crate::TrimmedLiteralRangePrint::from((suggestion.literal.as_ref(), range.clone()));
-            println!("Foxxy funkster: {:?}", x);
+            println!("Foxxy funkster: {:?}", suggestion.literal.display(range.clone()));
             assert_eq!(word, &s[range]);
             println!("Found word >> {} <<", word);
         };
