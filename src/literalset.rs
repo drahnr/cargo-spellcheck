@@ -232,17 +232,15 @@ fn find_coverage<'a>(
                         state
                     } else {
                         let end = LineColumn {
-                            // assumes start and end are on the same line for the literal
+                            // @todo assumes start and end are on the same line for the literal
                             line: literal.span().start().line,
                             // add the padding again, to make for a sane global span
-                            column: literal.span().start().column + offset + literal.pre,
+                            // substract -1 since line column are inclusive and offset += length yields exclusive
+                            column: literal.span().start().column + offset + literal.pre - 1,
                         };
-                        if !(start.line == end.line && end.column == start.column) {
-                            return Some((acc, start, end));
-                        } else {
-                            warn!("Start and end are the same: {:?} .. {:?}", start, end);
-                            LookingFor::Start
-                        }
+                        assert_eq!(start.line, end.line);
+                        // if start and end column are equiv, this is a one character match
+                        return Some((acc, start, end));
                     }
                 }
             };
@@ -485,8 +483,9 @@ pub(crate) mod tests {
 
     const SKIP: usize = 3;
 
-    const EXMALIBU_START: usize = SKIP + 9;
-    const EXMALIBU_END: usize = EXMALIBU_START + 8;
+    const EXMALIBU_RANGE_START: usize = SKIP + 9;
+    const EXMALIBU_RANGE_END: usize = EXMALIBU_RANGE_START + 8;
+    const EXMALIBU_RANGE: Range = EXMALIBU_RANGE_START .. EXMALIBU_RANGE_END;
     const TEST: &str = r#"/// Another exmalibu verification pass.
 ///
 /// Boats float, don't they?
@@ -546,24 +545,27 @@ struct Vikings;
         let _ = env_logger::builder().is_test(true).try_init();
 
         let trimmed_literals = annotated_literals(TEST);
-        let range = EXMALIBU_START..EXMALIBU_END;
         let (literals, _start, _end) =
-            dbg!(find_coverage(trimmed_literals.as_slice(), &range)).unwrap();
+            dbg!(find_coverage(trimmed_literals.as_slice(), &EXMALIBU_RANGE)).unwrap();
         let literal = literals.first().expect("Must be at least one literal");
-        let range_for_raw_str = Range {
-            start: range.start + SKIP,
-            end: range.end + SKIP,
+
+        let range_for_raw_test_str = Range {
+            start: EXMALIBU_RANGE_START - SKIP,
+            end: EXMALIBU_RANGE_END - SKIP,
         };
-        assert_eq!(&TEST[range_for_raw_str], &literal.as_str()[range]);
+        assert_eq!("exmalibu", &literal.as_str()[range_for_raw_test_str.clone()]);
+        assert_eq!(&TEST[EXMALIBU_RANGE], &literal.as_str()[range_for_raw_test_str]);
     }
 
     macro_rules! test_raw {
         ($test: ident $(, $literal: literal)+ ; $range: expr, $expected: literal) => {
             #[test]
             fn $test() {
+                let _ = env_logger::builder().filter(None, log::LevelFilter::Trace).is_test(true).try_init();
+
                 const TEST: &str = concat!("" $(, "///", $literal, "\n")+ , "struct X;");
                 const START: usize = 3;
-                let _end: usize = START + vec![$($literal.len()),* ].into_iter().fold(0usize, |acc, x| acc + x);
+                let _end: usize = START + vec![$($literal.len()),* ].into_iter().sum::<usize>();
                 let literals = annotated_literals(TEST);
 
                 let range: Range = $range;
