@@ -50,12 +50,13 @@ impl fmt::Display for Detector {
 /// A suggestion for certain offending span.
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub struct Suggestion<'s> {
+    /// Which checker suggested the change.
     pub detector: Detector,
-    /// Reference to the file location.
+    /// Reference to the file location the `span` and `literal` relate to.
     pub path: PathBuf,
     /// Literal we are referencing.
     pub literal: TrimmedLiteralRef<'s>,
-    /// The span (absolute!) of where it is supposed to be used. TODO make this relative towards the literal.
+    /// The span (absolute!) of where it is supposed to be used.
     pub span: Span,
     /// Fix suggestions, might be words or the full sentence.
     pub replacements: Vec<String>,
@@ -235,7 +236,7 @@ impl<'s> fmt::Debug for Suggestion<'s> {
     }
 }
 
-/// A set of suggestions, associated
+/// A set of suggestions across multiple files, clustered per file
 #[derive(Debug, Clone)]
 pub struct SuggestionSet<'s> {
     per_file: indexmap::IndexMap<PathBuf, Vec<Suggestion<'s>>>,
@@ -279,6 +280,7 @@ impl<'s> SuggestionSet<'s> {
         v.extend(suggestions.into_iter());
     }
 
+    /// Obtain an accessor `Entry` for the given `path`
     pub fn entry(&mut self, path: PathBuf) -> indexmap::map::Entry<PathBuf, Vec<Suggestion<'s>>> {
         self.per_file.entry(path)
     }
@@ -342,10 +344,10 @@ impl<'s> IntoIterator for SuggestionSet<'s> {
     }
 }
 
-// impl<'s> IntoIterator for &SuggestionSet<'s> {
-//     type Item = (&'s PathBuf, &'s Vec<Suggestion<'s>>);
-//     type IntoIter = indexmap::map::Iter<'s, &'s PathBuf, &'s Vec<Suggestion<'s>>>;
-//     fn into_iter(self) -> Self::IntoIter {
-//         self.per_file.iter()
-//     }
-// }
+impl<'s> IntoIterator for &'s SuggestionSet<'s> {
+    type Item = (&'s PathBuf, &'s Vec<Suggestion<'s>>);
+    type IntoIter = indexmap::map::Iter<'s, PathBuf, Vec<Suggestion<'s>>>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.per_file.iter()
+    }
+}

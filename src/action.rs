@@ -387,7 +387,7 @@ impl ScopedRaw {
 
 impl Drop for ScopedRaw {
     fn drop(&mut self) {
-        crossterm::terminal::disable_raw_mode();
+        let _ = crossterm::terminal::disable_raw_mode();
     }
 }
 
