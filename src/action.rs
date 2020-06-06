@@ -18,12 +18,22 @@ struct BandAid {
 impl<'s> TryFrom<Suggestion<'s>> for BandAid {
     type Error = Error;
     fn try_from(suggestion: Suggestion<'s>) -> Result<Self> {
+        let literal = &suggestion.literal.as_ref().literal;
+        let literal_file_span = literal.span();
+        trace!("proc_macro literal span of doc comment: ({},{})..({},{})",
+            literal_file_span.start().line,
+            literal_file_span.start().column,
+            literal_file_span.end().line,
+            literal_file_span.end().column);
+
         if let Some(replacement) = suggestion.replacements.into_iter().next() {
             let mut span = suggestion.span;
-            // @todo #[doc=""] is not covered by this, only `///`
-            // @todo this is a hack
-            span.start.column += 2;
-            span.end.column += 2;
+            // @todo this is a hack and should be documented better
+            let doc_comment_to_file_offset = 2;
+            // @todo this is supposed to work imho, but it does not...
+            // = literal_file_span.start().column + suggestion.literal.as_ref().pre;
+            span.start.column += doc_comment_to_file_offset;
+            span.end.column += doc_comment_to_file_offset;
             Ok(Self {
                 span,
                 replacement: replacement.to_owned(),
