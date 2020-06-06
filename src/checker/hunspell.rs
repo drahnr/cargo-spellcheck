@@ -77,7 +77,7 @@ impl Checker for HunspellChecker {
                     for range in dbg!(tokenize(txt)) {
                         let word = &txt[range.clone()];
                         if !hunspell.check(word) {
-                            trace!("No match for word (plain range: {:?}): {}", &range, word);
+                            trace!("No match for word (plain range: {:?}): >{}<", &range, word);
                             // get rid of single character suggestions
                             let replacements = hunspell
                                 .suggest(word)
@@ -102,7 +102,7 @@ impl Checker for HunspellChecker {
                             }
                         } else {
                             trace!(
-                                "Found a match for word (plain range: {:?}): {}",
+                                "Found a match for word (plain range: {:?}): >{}<",
                                 &range,
                                 word
                             );
