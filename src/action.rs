@@ -7,7 +7,7 @@ use std::io::BufRead;
 use std::io::Read;
 use std::io::Write;
 
-use std::path::{PathBuf};
+use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
 struct BandAid {

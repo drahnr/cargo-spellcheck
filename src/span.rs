@@ -121,7 +121,6 @@ impl TryInto<Range> for &Span {
     }
 }
 
-
 impl From<(usize, Range)> for Span {
     fn from(original: (usize, Range)) -> Self {
         Self {
