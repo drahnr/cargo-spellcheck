@@ -1,11 +1,123 @@
 use super::*;
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Error, Result};
 use log::{debug, info, trace};
-use std::convert::TryInto;
+use std::convert::{TryFrom, TryInto};
 use std::fs::{self, OpenOptions};
 use std::io::BufRead;
+use std::io::Read;
 use std::io::Write;
+use std::io::{Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+
+#[derive(Debug, Clone)]
+struct BandAid {
+    /// a span, where the first line has index 1, columns are base 1 too
+    pub span: Span,
+    /// replacement text for the given span
+    pub replacement: String,
+}
+
+impl<'s> TryFrom<Suggestion<'s>> for BandAid {
+    type Error = Error;
+    fn try_from(suggestion: Suggestion<'s>) -> Result<Self> {
+        if let Some(replacement) = suggestion.replacements.into_iter().next() {
+            Ok(Self {
+                span: suggestion.span,
+                replacement: replacement.to_owned(),
+            })
+        } else {
+            Err(anyhow!("Does not contain any replacements"))
+        }
+    }
+}
+
+/// correct all lines
+/// `bandaids` are the fixes to be applied to the lines
+///
+/// Note that `Lines` as created by `(x as BufLines).lines()` does
+/// not preserve trailing newlines, so either the iterator
+/// needs to be modified to yield an extra (i.e. with `.chain("".to_owned())`)
+/// or a manual newlines has to be written to the `sink`.
+fn correct_lines<'s>(
+    mut bandaids: impl Iterator<Item = BandAid>,
+    source: impl Iterator<Item = (usize, String)>,
+    mut sink: impl Write,
+) -> Result<()> {
+    let mut nxt: Option<BandAid> = bandaids.next();
+    for (line_number, content) in source {
+        trace!("Processing line {}", line_number);
+        let mut remainder_column = 0usize;
+        // let content: String = content.map_err(|e| {
+        //     anyhow!("Line {} contains invalid utf8 characters", line_number).context(e)
+        // })?;
+
+        if nxt.is_none() {
+            // no candidates remaining, just keep going
+            sink.write(content.as_bytes())?;
+            sink.write("\n".as_bytes())?;
+            continue;
+        }
+
+        if let Some(ref bandaid) = nxt {
+            if !bandaid.span.covers_line(line_number) {
+                sink.write(content.as_bytes())?;
+                sink.write("\n".as_bytes())?;
+                continue;
+            }
+        }
+
+        while let Some(bandaid) = nxt.take() {
+            trace!("Applying next bandaid {:?}", bandaid);
+            trace!("where line {} is: >{}<", line_number, content);
+            let range: Range = bandaid
+                .span
+                .try_into()
+                .expect("There should be no multiline strings as of today");
+            // write prelude for this line between start or previous replacement
+            if dbg!(&range).start > remainder_column {
+                sink.write(content[remainder_column..range.start].as_bytes())?;
+            }
+            // write the replacement chunk
+            sink.write(bandaid.replacement.as_bytes())?;
+
+            remainder_column = range.end;
+            nxt = bandaids.next();
+            let complet_current_line = if let Some(ref bandaid) = nxt {
+                // if `nxt` is also targeting the current line, don't complete the line
+                !bandaid.span.covers_line(line_number)
+            } else {
+                true
+            };
+            if complet_current_line {
+                // the last replacement may be the end of content
+                if remainder_column < content.len() {
+                    debug!(
+                        "line {} len is {}, and remainder column is {}",
+                        line_number,
+                        content.len(),
+                        remainder_column
+                    );
+                    // otherwise write all
+                    // not that this also covers writing a line without any suggestions
+                    sink.write(content[remainder_column..].as_bytes())?;
+                } else {
+                    debug!(
+                        "line {} len is {}, and remainder column is {}",
+                        line_number,
+                        content.len(),
+                        remainder_column
+                    );
+                }
+                sink.write("\n".as_bytes())?;
+                // break the inner loop
+                break;
+                // } else {
+                // next suggestion covers same line
+            }
+        }
+    }
+    Ok(())
+}
 
 /// Mode in which `cargo-spellcheck` operates
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -19,68 +131,6 @@ pub enum Action {
 }
 
 impl Action {
-    fn correct_lines<'s>(
-        &self,
-        suggestions: Vec<Suggestion<'s>>,
-        source: impl Iterator<Item = (usize, String)>,
-        mut sink: impl Write,
-    ) -> Result<()> {
-        let mut suggestions_it = suggestions.into_iter();
-        let mut nxt: Option<Suggestion<'s>> = suggestions_it.next();
-        for (line, content) in source {
-            trace!("Processing line {}", line);
-            let mut remainder_column = 0usize;
-            // let content: String = content.map_err(|e| {
-            //     anyhow!("Line {} contains invalid utf8 characters", line).context(e)
-            // })?;
-
-            if let Some(ref suggestion) = nxt {
-                if !suggestion.span.covers_line(line) {
-                    sink.write(content.as_bytes())?;
-                    sink.write("\n".as_bytes())?;
-                    continue;
-                }
-            }
-
-            while let Some(suggestion) = nxt.take() {
-                trace!("Processing suggestion {}", suggestion);
-                if let Some(replacement) = suggestion.replacements.first() {
-                    let range: Range = suggestion
-                        .span
-                        .try_into()
-                        .expect("There should be no multiline strings as of today");
-                    // write prelude for this line between start or previous replacement
-                    if range.start > remainder_column {
-                        sink.write(content[remainder_column..range.start].as_bytes())?;
-                    }
-                    // write the replacement chunk
-                    sink.write(replacement.as_bytes())?;
-
-                    remainder_column = range.end;
-                    nxt = suggestions_it.next();
-                    if !suggestion.span.covers_line(line) {
-                        // the last replacement may be the end of content
-                        if remainder_column < content.len() {
-                            // otherwise write all
-                            // not that this also covers writing a line without any suggestions
-                            sink.write(content[remainder_column..].as_bytes())?;
-                        }
-                        sink.write("\n".as_bytes())?;
-                        // break the inner loop
-                        break;
-                        // } else {
-                        // next suggestion covers same line
-                    }
-                } else {
-                    debug!("Suggestion dues not contain any replacements, skipping");
-                    nxt = suggestions_it.next();
-                }
-            }
-        }
-        sink.flush()?;
-        Ok(())
-    }
-
     /// assumes suggestions are sorted by line number and column number and must be non overlapping
     fn correction<'s>(&self, path: PathBuf, suggestions: Vec<Suggestion<'s>>) -> Result<()> {
         let path = path
@@ -112,15 +162,38 @@ impl Action {
 
         let mut writer = std::io::BufWriter::with_capacity(1024, wr);
 
-        self.correct_lines(
-            suggestions,
-            reader
+        correct_lines(
+            suggestions
+                .into_iter()
+                .filter_map(|suggestion: Suggestion| -> Option<BandAid> {
+                    BandAid::try_from(suggestion)
+                        .or_else(|e| {
+                            warn!("Suggestion does not contain any replacements");
+                            Err(e)
+                        })
+                        .ok()
+                }),
+            (&mut reader)
                 .lines()
                 .filter_map(|line| line.ok())
                 .enumerate()
                 .map(|(lineno, content)| (lineno + 1, content)),
-            writer,
+            &mut writer,
         )?;
+
+        // deal with trailing new lines being consumed
+        // reader.seek(SeekFrom::End(1))?;
+
+        // let mut last_char = String::with_capacity(2);
+        // match reader.read_to_string(&mut last_char)? {
+        //     n if n == 1 && last_char == "\n" => writer.write_all(last_char.as_bytes())?,
+        //     n if n == 1 => {}
+        //     n => {
+        //         Err(anyhow!("File {} was modified during operation", path.display()))?
+        //     }
+        // }
+
+        writer.flush()?;
 
         fs::rename(tmp, path)?;
 
@@ -314,5 +387,62 @@ impl ScopedRaw {
 impl Drop for ScopedRaw {
     fn drop(&mut self) {
         crossterm::terminal::disable_raw_mode();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const TEXT: &'static str = r#"
+I like unicorns every second Mondays.
+
+"#;
+
+    const CORRECTED: &'static str = r#"
+I like banana icecream every third day.
+
+"#;
+
+    #[test]
+    fn replace_unicorns() {
+        let _ = env_logger::Builder::new()
+            .filter(None, log::LevelFilter::Trace)
+            .is_test(true)
+            .try_init();
+
+        let mut sink: Vec<u8> = Vec::with_capacity(1024);
+        let bandaids = vec![
+            BandAid {
+                span: (2usize, 7..15).into(),
+                replacement: "banana icecream".to_owned(),
+            },
+            BandAid {
+                span: (2usize, 22..28).into(),
+                replacement: "third".to_owned(),
+            },
+            BandAid {
+                span: (2usize, 29..36).into(),
+                replacement: "day".to_owned(),
+            },
+        ];
+
+        let lines = TEXT.to_owned();
+        let lines = TEXT
+            .lines()
+            // .chain(Some("").into_iter()) // deal with the trailing newline (1)
+            .map(|line| line.to_owned())
+            .enumerate()
+            .map(|(lineno, content)| (lineno + 1, content));
+
+        // (1) on unix trailing newlines mark the end of a line and as such there is no line following
+        // the last newline
+        // https://stackoverflow.com/questions/729692/why-should-text-files-end-with-a-newline
+        // but rust documents don't necessarily end with a newline anymore,
+        // as such we need to be able to deal with that case too
+
+        correct_lines(bandaids.into_iter(), lines, &mut sink).expect("should be able to");
+
+        assert_eq!(String::from_utf8_lossy(sink.as_slice()), CORRECTED);
     }
 }

@@ -120,3 +120,19 @@ impl TryInto<Range> for &Span {
         }
     }
 }
+
+
+impl From<(usize, Range)> for Span {
+    fn from(original: (usize, Range)) -> Self {
+        Self {
+            start: LineColumn {
+                line: original.0,
+                column: original.1.start,
+            },
+            end: LineColumn {
+                line: original.0,
+                column: original.1.end,
+            },
+        }
+    }
+}
