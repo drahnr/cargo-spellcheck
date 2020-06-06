@@ -215,7 +215,7 @@ impl Default for Config {
     }
 }
 
-// TODO figure out which ISO spec this actually is
+// @todo figure out which ISO spec this actually is
 pub struct CommonLang(String);
 
 impl std::str::FromStr for CommonLang {

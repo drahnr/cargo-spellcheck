@@ -31,7 +31,10 @@ impl Hash for Span {
 }
 
 impl Span {
-    /// Only works for literals spanning a single line.
+    /// Converts a span to a range, where `self` is converted to a range reltive to the
+    /// passed span `scope`.
+    /// Only works for literals spanning a single line and the scope full contains
+    /// `self, otherwise an an `Err(..)` is returned.
     pub fn relative_to<X: Into<Span>>(&self, scope: X) -> Result<Range> {
         let scope: Span = scope.into();
         let scope: Range = scope.try_into()?;
@@ -59,6 +62,7 @@ impl Span {
         Ok(range)
     }
 
+    /// Check if `self` span covers provided `line` number, which is 1-indexed.
     pub fn covers_line(&self, line: usize) -> bool {
         self.end.line <= line && line >= self.start.line
     }
@@ -77,29 +81,18 @@ impl From<proc_macro2::Span> for Span {
 
 impl TryInto<Range> for Span {
     type Error = Error;
-    fn try_into(self) -> Result<Range, Self::Error> {
-        if self.start.line == self.end.line {
-            Ok(Range {
-                start: self.start.column,
-                end: self.end.column,
-            })
-        } else {
-            Err(anyhow!(
-                "Start and end are not in the same line {} vs {}",
-                self.start.line,
-                self.end.line
-            ))
-        }
+    fn try_into(self) -> Result<Range> {
+        (&self).try_into()
     }
 }
 
 impl TryInto<Range> for &Span {
     type Error = Error;
-    fn try_into(self) -> Result<Range, Self::Error> {
+    fn try_into(self) -> Result<Range> {
         if self.start.line == self.end.line {
             Ok(Range {
                 start: self.start.column,
-                end: self.end.column+1,
+                end: self.end.column + 1,
             })
         } else {
             Err(anyhow!(
@@ -136,3 +129,29 @@ impl TryFrom<(usize, Range)> for Span {
 //         Self::try_from(original).unwrap()
 //     }
 // }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn back_and_forth() {
+        const TEXT: &'static str = "Ey you!! Yes.., you there!";
+        let span = Span {
+            start: LineColumn {
+                line: 0usize,
+                column: 3usize,
+            },
+            end: LineColumn {
+                line: 0usize,
+                column: 7usize,
+            },
+        };
+
+        let range = ((&span).try_into() as Result<Range>).unwrap();
+        assert_eq!(range, 3..8);
+        assert_eq!(&TEXT[range], "you!!");
+        assert_eq!(span, (0usize, 3..8).try_into().unwrap());
+    }
+}
