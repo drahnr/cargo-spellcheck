@@ -269,7 +269,7 @@ impl<'s> SuggestionSet<'s> {
     }
 
     pub fn extend<I>(&mut self, path: PathBuf, suggestions: I) where I: IntoIterator<Item=Suggestion<'s>> {
-        let mut v: &mut Vec<Suggestion<'s>> = self.per_file
+        let v: &mut Vec<Suggestion<'s>> = self.per_file
             .entry(path)
             .or_insert_with(|| Vec::with_capacity(32));
         v.extend(suggestions.into_iter());

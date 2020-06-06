@@ -6,8 +6,8 @@ use std::fs::{self, OpenOptions};
 use std::io::BufRead;
 use std::io::Read;
 use std::io::Write;
-use std::io::{Seek, SeekFrom};
-use std::path::{Path, PathBuf};
+
+use std::path::{PathBuf};
 
 #[derive(Debug, Clone)]
 struct BandAid {
@@ -204,7 +204,7 @@ impl Action {
     pub fn write_changes_to_disk(
         &self,
         ratified_suggestions_per_path: SuggestionSet,
-        config: &Config,
+        _config: &Config,
     ) -> Result<()> {
         info!("Writing changes back to disk");
         for (path, suggestions) in ratified_suggestions_per_path {
@@ -427,7 +427,7 @@ I like banana icecream every third day.
             },
         ];
 
-        let lines = TEXT.to_owned();
+        let _lines = TEXT.to_owned();
         let lines = TEXT
             .lines()
             // .chain(Some("").into_iter()) // deal with the trailing newline (1)
