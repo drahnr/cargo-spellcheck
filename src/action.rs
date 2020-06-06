@@ -19,19 +19,19 @@ impl<'s> TryFrom<Suggestion<'s>> for BandAid {
     type Error = Error;
     fn try_from(suggestion: Suggestion<'s>) -> Result<Self> {
         let literal = &suggestion.literal.as_ref().literal;
-        let literal_file_span = literal.span();
+        let literal_file_span = suggestion.span;
         trace!("proc_macro literal span of doc comment: ({},{})..({},{})",
-            literal_file_span.start().line,
-            literal_file_span.start().column,
-            literal_file_span.end().line,
-            literal_file_span.end().column);
+            literal_file_span.start.line,
+            literal_file_span.start.column,
+            literal_file_span.end.line,
+            literal_file_span.end.column);
 
         if let Some(replacement) = suggestion.replacements.into_iter().next() {
             let mut span = suggestion.span;
             // @todo this is a hack and should be documented better
+            // @todo not sure why the offset of two is necessary
+            // @todo but it works consistently
             let doc_comment_to_file_offset = 2;
-            // @todo this is supposed to work imho, but it does not...
-            // = literal_file_span.start().column + suggestion.literal.as_ref().pre;
             span.start.column += doc_comment_to_file_offset;
             span.end.column += doc_comment_to_file_offset;
             Ok(Self {
