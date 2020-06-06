@@ -106,3 +106,29 @@ where
 
     Ok(collective)
 }
+
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const TEXT: &'static str = "With markdown removed, for sure.";
+    lazy_static::lazy_static! {
+        static ref TOKENS: Vec<&'static str> = vec![
+            "With",
+            "markdown",
+            "removed",
+            "for",
+            "sure"
+        ];
+    }
+
+    #[test]
+    fn tokens() {
+        let ranges: Vec<Range> = tokenize(TEXT);
+        for (range, expect) in ranges.into_iter().zip(TOKENS.iter()) {
+            assert_eq!(&&TEXT[range], expect);
+        }
+    }
+}
