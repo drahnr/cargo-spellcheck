@@ -259,8 +259,8 @@ mod tests {
         };
     }
 
-    end2end_file!(one, "./tests/justone.rs", 1);
-    end2end_file!(two, "./tests/justtwo.rs", 2);
+    end2end_file!(one, "../demo/src/nested/justone.rs", 1);
+    end2end_file!(two, "../demo/src/nested/justtwo.rs", 2);
 
     // use crate::literalset::tests::{annotated_literals,gen_literal_set};
 
