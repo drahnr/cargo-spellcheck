@@ -112,7 +112,8 @@ impl<'s> fmt::Display for Suggestion<'s> {
 
         // @todo this needs some more thought once multiline comments pop up
         let mut marker_size = if self.span.end.line == self.span.start.line {
-            self.span.end.column.saturating_sub(self.span.start.column)
+            // column bounds are inclusive, so for a correct length we need to add + 1
+            self.span.end.column.saturating_sub(self.span.start.column) + 1
         } else {
             self.literal.len().saturating_sub(self.span.start.column)
         };
