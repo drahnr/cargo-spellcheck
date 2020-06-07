@@ -316,7 +316,10 @@ Erronbeous bold uetchkp"#;
             let suggestion = it.next().expect("Must contain one mis-spelled word");
             let range: Range = suggestion.span.try_into().expect("Must be a single line");
             let s = dbg!(suggestion.literal.as_ref().as_untrimmed_str());
-            println!("Foxxy funkster: {:?}", suggestion.literal.display(range.clone()));
+            println!(
+                "Foxxy funkster: {:?}",
+                suggestion.literal.display(range.clone())
+            );
             assert_eq!(word, &s[range]);
             println!("Found word >> {} <<", word);
         };

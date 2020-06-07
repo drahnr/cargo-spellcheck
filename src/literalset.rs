@@ -1,7 +1,7 @@
 use crate::markdown::PlainOverlay;
 use crate::{LineColumn, Span};
 
-use log::{trace};
+use log::trace;
 
 pub type Range = core::ops::Range<usize>;
 
@@ -485,7 +485,7 @@ pub(crate) mod tests {
 
     const EXMALIBU_RANGE_START: usize = SKIP + 9;
     const EXMALIBU_RANGE_END: usize = EXMALIBU_RANGE_START + 8;
-    const EXMALIBU_RANGE: Range = EXMALIBU_RANGE_START .. EXMALIBU_RANGE_END;
+    const EXMALIBU_RANGE: Range = EXMALIBU_RANGE_START..EXMALIBU_RANGE_END;
     const TEST: &str = r#"/// Another exmalibu verification pass.
 ///
 /// Boats float, don't they?
@@ -553,8 +553,14 @@ struct Vikings;
             start: EXMALIBU_RANGE_START - SKIP,
             end: EXMALIBU_RANGE_END - SKIP,
         };
-        assert_eq!("exmalibu", &literal.as_str()[range_for_raw_test_str.clone()]);
-        assert_eq!(&TEST[EXMALIBU_RANGE], &literal.as_str()[range_for_raw_test_str]);
+        assert_eq!(
+            "exmalibu",
+            &literal.as_str()[range_for_raw_test_str.clone()]
+        );
+        assert_eq!(
+            &TEST[EXMALIBU_RANGE],
+            &literal.as_str()[range_for_raw_test_str]
+        );
     }
 
     macro_rules! test_raw {

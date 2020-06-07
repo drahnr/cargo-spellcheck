@@ -107,8 +107,6 @@ where
     Ok(collective)
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use super::*;

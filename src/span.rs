@@ -40,18 +40,10 @@ impl Span {
         let scope: Range = scope.try_into()?;
         let me: Range = self.try_into()?;
         if scope.start > me.start {
-            return Err(anyhow!(
-                "start of {:?} is not inside of {:?}",
-                me,
-                scope
-            ));
+            return Err(anyhow!("start of {:?} is not inside of {:?}", me, scope));
         }
         if scope.end < me.end {
-            return Err(anyhow!(
-                "end of {:?} is not inside of {:?}",
-                me,
-                scope
-            ));
+            return Err(anyhow!("end of {:?} is not inside of {:?}", me, scope));
         }
         let offset = me.start - scope.start;
         let length = me.end - me.start;
@@ -119,7 +111,11 @@ impl TryFrom<(usize, Range)> for Span {
                 },
             })
         } else {
-            Err(anyhow!("range must be valid to be converted to a Span {}..{}", original.1.start, original.1.end))
+            Err(anyhow!(
+                "range must be valid to be converted to a Span {}..{}",
+                original.1.start,
+                original.1.end
+            ))
         }
     }
 }
@@ -129,7 +125,6 @@ impl TryFrom<(usize, Range)> for Span {
 //         Self::try_from(original).unwrap()
 //     }
 // }
-
 
 #[cfg(test)]
 mod tests {

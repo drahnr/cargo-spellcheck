@@ -176,11 +176,7 @@ impl<'a> PlainOverlay<'a> {
                     plain,
                     raw
                 );
-                trace!(
-                    "highlight:  {:?} -> {:?}",
-                    &plain_range,
-                    &extracted
-                );
+                trace!("highlight:  {:?} -> {:?}", &plain_range, &extracted);
 
                 if extracted.start < extracted.end {
                     let resolved = self.raw.linear_range_to_spans(extracted.clone());

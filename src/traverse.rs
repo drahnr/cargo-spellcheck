@@ -38,7 +38,7 @@ impl TraverseModulesIter {
         I: IntoIterator<Item = P, IntoIter = J>,
     {
         let mut me = Self::default();
-        for path in entries.into_iter().map(|p| { p.as_ref().to_owned() } ) {
+        for path in entries.into_iter().map(|p| p.as_ref().to_owned()) {
             me.queue.push_back(path);
         }
         Ok(me)
@@ -52,7 +52,8 @@ impl TraverseModulesIter {
 
     pub fn collect_modules(&mut self, path: &Path) -> Result<()> {
         if path.is_file() {
-            self.queue.extend(extract_modules_from_file(path)?.into_iter());
+            self.queue
+                .extend(extract_modules_from_file(path)?.into_iter());
         } else if path.is_dir() {
             walkdir::WalkDir::new(path)
                 .max_depth(1)
@@ -69,12 +70,17 @@ impl TraverseModulesIter {
                         .map(|x| x.to_owned())
                         .filter(|path| path.ends_with(".rs"))
                         .is_some()
-                }).try_for_each::<_,Result<()>>(|path| {
-                    self.queue.extend(extract_modules_from_file(path)?.into_iter());
+                })
+                .try_for_each::<_, Result<()>>(|path| {
+                    self.queue
+                        .extend(extract_modules_from_file(path)?.into_iter());
                     Ok(())
                 })?;
         } else {
-            warn!("Only dealing with dirs or files, dropping {}", path.display());
+            warn!(
+                "Only dealing with dirs or files, dropping {}",
+                path.display()
+            );
         }
         Ok(())
     }
@@ -92,7 +98,7 @@ impl Iterator for TraverseModulesIter {
     }
 }
 
-fn traverse_source_files(path: &Path) -> Result<impl Iterator<Item = PathBuf>>  {
+fn traverse_source_files(path: &Path) -> Result<impl Iterator<Item = PathBuf>> {
     Ok(TraverseModulesIter::new(path)?)
 }
 
@@ -164,14 +170,17 @@ fn extract_modules_inner<P: AsRef<Path>>(path: P, stream: TokenStream) -> Result
                         let path1 = base.join(&mod_name).join("mod.rs");
                         let path2 = base.join(&mod_name).with_extension("rs");
                         let path3 = base
-                            .join(path.file_stem().expect("If parent exists, should work (TM)"))
+                            .join(
+                                path.file_stem()
+                                    .expect("If parent exists, should work (TM)"),
+                            )
                             .join(mod_name)
                             .with_extension("rs");
                         match (path1.is_file(), path2.is_file(), path3.is_file()) {
                             (true, _, _) => acc.push(path1),
                             (false, true, _) => acc.push(path2),
                             (false, false, true) => acc.push(path3),
-                            (true, true, _) | (true, _, true)  | (_, true, true) => {
+                            (true, true, _) | (true, _, true) | (_, true, true) => {
                                 return Err(anyhow::anyhow!(
                                     "Detected both module entry files: {} and {} and {}",
                                     path1.display(),

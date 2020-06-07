@@ -19,11 +19,13 @@ impl<'s> TryFrom<Suggestion<'s>> for BandAid {
     type Error = Error;
     fn try_from(suggestion: Suggestion<'s>) -> Result<Self> {
         let literal_file_span = suggestion.span;
-        trace!("proc_macro literal span of doc comment: ({},{})..({},{})",
+        trace!(
+            "proc_macro literal span of doc comment: ({},{})..({},{})",
             literal_file_span.start.line,
             literal_file_span.start.column,
             literal_file_span.end.line,
-            literal_file_span.end.column);
+            literal_file_span.end.column
+        );
 
         if let Some(replacement) = suggestion.replacements.into_iter().next() {
             let mut span = suggestion.span;
