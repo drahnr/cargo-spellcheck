@@ -39,9 +39,10 @@ Error display follows `cargo` error printing style:
   * [ ] Handle doctests with ` ```rust` as virtual files [skeptic-like](https://github.com/budziq/rust-skeptic/blob/master/src/skeptic/lib.rs#L240-L259) which would be straight forward
   * [ ] Verify all types of links: direct urls and href
 * [ ] Check `README.md` files
-* [ ] `cargo-spellcheck fix --interactive`
-* [ ] `cargo-spellcheck fix`
+* [x] `cargo-spellcheck fix --interactive`
+* [ ] Improve interactive user interface with `crossterm`
 * [ ] Ellipsize overly long statements with `...`
+* [ ] `cargo-spellcheck fix`
 * [ ] Learn topic lingo and filter false-positive-suggestions when `fix --interactive` is passed
 * [ ] Handle cargo workspaces
 * [ ] Re-wrap doc comments
@@ -82,7 +83,14 @@ add `-v` (multiple) to increase verbosity.
 Requires the native library
 
 ```sh
+# Fedora 30+
 dnf install -y hunspell-devel
+
+# Ubuntu 19.10+
+apt install -y hunspell-dev
+
+# Mac OS X
+brew install hunspell
 ```
 
 and building should succeed just fine.
