@@ -88,7 +88,7 @@ fn correct_lines<'s>(
                 .try_into()
                 .expect("There should be no multiline strings as of today");
             // write prelude for this line between start or previous replacement
-            if dbg!(&range).start > remainder_column {
+            if range.start > remainder_column {
                 sink.write(content[remainder_column..range.start].as_bytes())?;
             }
             // write the replacement chunk
