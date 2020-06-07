@@ -17,6 +17,8 @@ fn cwd() -> Result<PathBuf> {
     std::env::current_dir().map_err(|_e| anyhow::anyhow!("Missing cwd!"))
 }
 
+
+#[cfg(test)]
 fn manifest_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
@@ -31,6 +33,7 @@ struct TraverseModulesIter {
 }
 
 impl TraverseModulesIter {
+    #[allow(unused)]
     pub fn with_multi<P, J, I>(entries: I) -> Result<Self>
     where
         P: AsRef<Path>,
@@ -90,16 +93,14 @@ impl Iterator for TraverseModulesIter {
     type Item = PathBuf;
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(path) = self.queue.pop_front() {
-            self.collect_modules(dbg!(path.as_path()));
+            // ignore the error here, there is nothing we can do really
+            // @todo potentially consider returning a result covering this
+            let _ = self.collect_modules(dbg!(path.as_path()));
             Some(path)
         } else {
             None
         }
     }
-}
-
-fn traverse_source_files(path: &Path) -> Result<impl Iterator<Item = PathBuf>> {
-    Ok(TraverseModulesIter::new(path)?)
 }
 
 pub(crate) fn traverse(path: &Path) -> Result<impl Iterator<Item = Documentation>> {
@@ -177,8 +178,8 @@ fn extract_modules_inner<P: AsRef<Path>>(path: P, stream: TokenStream) -> Result
                             .join(mod_name)
                             .with_extension("rs");
                         match (path1.is_file(), path2.is_file(), path3.is_file()) {
-                            (true, _, _) => acc.push(path1),
-                            (false, true, _) => acc.push(path2),
+                            (true, false, false) => acc.push(path1),
+                            (false, true, false) => acc.push(path2),
                             (false, false, true) => acc.push(path3),
                             (true, true, _) | (true, _, true) | (_, true, true) => {
                                 return Err(anyhow::anyhow!(
@@ -472,7 +473,7 @@ mod tests {
         .map(|sub| demo_dir().join(sub))
         .collect::<indexmap::set::IndexSet<PathBuf>>();
 
-        let found = traverse_source_files(manifest_path.as_path())
+        let found = TraverseModulesIter::new(manifest_path.as_path())
             .expect("Must succeed to traverse file tree.")
             .into_iter()
             .collect::<Vec<PathBuf>>();

@@ -41,6 +41,7 @@ impl<'l> TrimmedLiteralRef<'l> {
         self.reference
     }
 
+    #[allow(unused)]
     pub(crate) fn display(&self, highlight: Range) -> TrimmedLiteralDisplay {
         self.reference.display(highlight)
     }
