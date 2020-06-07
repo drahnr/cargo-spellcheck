@@ -1,2 +1,0 @@
-/// Nested;
-struct Nest;

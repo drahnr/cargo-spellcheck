@@ -1,0 +1,23 @@
+[package]
+name = "cargo-spellcheck-demo"
+version = "1.0.0"
+authors = ["Bernhard Schuster <bernhard@ahoi.io>"]
+edition = "2018"
+publish = false
+description = "A silly demo with plenty of spelling mistakes for cargo-spellcheck demos and CI"
+readme = "README.md"
+
+[lib]
+crate-type = ["staticlib"]
+path = "src/lib.rs"
+bench = false
+test = false
+
+[[bin]]
+name = "vacays"
+path = "src/main.rs"
+bench = false
+test = false
+
+
+[dependencies]

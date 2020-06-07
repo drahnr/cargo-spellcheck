@@ -6,6 +6,8 @@ mod simple;
 
 mod enumerate;
 
+struct X;
+
 impl X {
 	/// New, as in new. But also not.
 	///
