@@ -1,7 +1,7 @@
 use crate::markdown::PlainOverlay;
 use crate::{LineColumn, Span};
 
-use log::{trace, warn};
+use log::{trace};
 
 pub type Range = core::ops::Range<usize>;
 
