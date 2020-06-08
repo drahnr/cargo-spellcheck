@@ -140,7 +140,7 @@ pub enum Action {
     Fix,
     /// Only show errors
     Check,
-    /// Interactively choose from __candidates__ provided, simliar to `git add -p` .
+    /// Interactively choose from __candidates__ provided, similar to `git add -p` .
     Interactive,
 }
 
@@ -375,6 +375,8 @@ e - manually edit the current hunk
     }
 }
 
+
+/// Helper struct to assure we leave the terminals raw mode
 struct ScopedRaw {
     _dummy: u8,
 }

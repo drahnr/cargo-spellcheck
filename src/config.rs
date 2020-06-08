@@ -1,6 +1,6 @@
 //! Configure cargo-spellcheck
 //!
-//! Supporst `Hunspell` and `LanguageTool` scopes.
+//! Supports `Hunspell` and `LanguageTool` scopes.
 //!
 //! A default configuration will be generated in the default
 //! location by default. Default. Default default default.

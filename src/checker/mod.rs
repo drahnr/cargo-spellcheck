@@ -22,7 +22,7 @@ pub(crate) trait Checker {
 
 /// Returns absolute offsets and the data with the token in question.
 ///
-/// Does not handle hypenation yet or partial words at boundaries.
+/// Does not handle hyphenation yet or partial words at boundaries.
 /// Returns the a vector of ranges for the input str.
 fn tokenize(s: &str) -> Vec<Range> {
     let mut started = false;

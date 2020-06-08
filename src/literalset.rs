@@ -278,7 +278,7 @@ impl LiteralSet {
         PlainOverlay::erase_markdown(self)
     }
 
-    /// Overwrite the actuall literal content with fixed content.
+    /// Overwrite the actual literal content with fixed content.
     ///
     /// Commonly this means with suggestions applied, content can
     /// contain newlines.
@@ -307,7 +307,7 @@ impl LiteralSet {
         Err(literal)
     }
 
-    /// Convert a range of the linear trimmed (but no other processing) string represnetation to a set of
+    /// Convert a range of the linear trimmed (but no other processing) string representation to a set of
     /// literal references and spans within that literal (spans on the proc_macro2 literal).
     pub fn linear_range_to_spans<'a>(
         &'a self,

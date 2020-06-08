@@ -25,7 +25,7 @@ fn manifest_dir() -> PathBuf {
 
 use std::collections::VecDeque;
 
-/// An iterator traversing module hirarchies yielding paths
+/// An iterator traversing module hierarchies yielding paths
 
 #[derive(Default, Debug, Clone)]
 struct TraverseModulesIter {

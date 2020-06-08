@@ -295,7 +295,7 @@ impl<'s> SuggestionSet<'s> {
         self.per_file.keys().map(|p| p.as_path())
     }
 
-    /// Iterater over all references given a path
+    /// Iterate over all references given a path
     ///
     /// panics if there is no such path
     pub fn suggestions<'a>(
