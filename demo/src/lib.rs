@@ -6,20 +6,17 @@ pub fn a() {
 
 }
 
-/// Pick option b also known as door #2.
+#[doc = "Pick option b also known as door #2."]
 pub fn b() {
 
 }
 
-
-/// Pick option c also known as door #3.
+#[doc = r"Pick option c also known as door #3."]
 pub fn c() {
 
 }
 
-
-
-/// Risk is not your thing, just tkae the money and run.
+#[doc = r#"Risk is not your thing, just tkae the money and run."#]
 pub fn take_the_money_and_leave() {
 
 }
