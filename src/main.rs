@@ -30,9 +30,9 @@ Spellcheck all your doc comments
 Usage:
     cargo-spellcheck [(-v...|-q)] check [--cfg=<cfg>] [--checkers=<checkers>] [[--recursive] -- <paths>... ]
     cargo-spellcheck [(-v...|-q)] fix [--cfg=<cfg>] [--checkers=<checkers>] [[--recursive] -- <paths>... ]
-    cargo-spellcheck [(-v...|-q)] config (--user|--stdout|--cfg=<cfg>) [--force]
+    cargo-spellcheck [(-v...|-q)] config (--user|--stdout|--cfg=<cfg>) [-f|--force]
     cargo-spellcheck [(-v...|-q)] [--cfg=<cfg>] (--fix|--interactive) [--checkers=<checkers>] [[--recursive] -- <paths>... ]
-    cargo-spellcheck (--help|-h)
+    cargo-spellcheck (-h|--help)
     cargo-spellcheck --version
 
 Options:
@@ -44,10 +44,10 @@ Options:
   -r --recursive          If a path is provided, if recursion into subdirectories is desired.
   --checkers=<checkers>   Calculate the intersection between
                           configured by config file and the ones provided on commandline.
-  --force                 Overwrite any existing configuration file. [default=false]
+  -f --force              Overwrite any existing configuration file. [default=false]
   -c --cfg=<cfg>          Use a non default configuration file.
                           Passing a directory will attempt to open `cargo_spellcheck.toml` in that directory.
-  --user                  Write the configuration file in the default user configuration directory. [default=false]
+  --user                  Write the configuration file to the default user configuration directory.
   --stdout                Print the configuration file to stdout without writing it.
   -v --verbose            Verbosity level.
   -q --quiet              Silences all printed messages. Overrules `-v`.
