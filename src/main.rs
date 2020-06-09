@@ -32,7 +32,7 @@ Usage:
     cargo-spellcheck [(-v...|-q)] fix [--cfg=<cfg>] [--checkers=<checkers>] [[--recursive] -- <paths>... ]
     cargo-spellcheck [(-v...|-q)] config (--user|--stdout|--cfg=<cfg>) [-f|--force]
     cargo-spellcheck [(-v...|-q)] [--cfg=<cfg>] (--fix|--interactive) [--checkers=<checkers>] [[--recursive] -- <paths>... ]
-    cargo-spellcheck (-h|--help)
+    cargo-spellcheck --help
     cargo-spellcheck --version
 
 Options:
@@ -48,7 +48,7 @@ Options:
   -c --cfg=<cfg>          Use a non default configuration file.
                           Passing a directory will attempt to open `cargo_spellcheck.toml` in that directory.
   --user                  Write the configuration file to the default user configuration directory.
-  --stdout                Print the configuration file to stdout without writing it.
+  --stdout                Print the configuration file to stdout and exit.
   -v --verbose            Verbosity level.
   -q --quiet              Silences all printed messages. Overrules `-v`.
 
