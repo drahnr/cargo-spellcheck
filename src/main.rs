@@ -32,6 +32,7 @@ Usage:
     cargo-spellcheck [(-v...|-q)] fix [--cfg=<cfg>] [--checkers=<checkers>] [[--recursive] -- <paths>... ]
     cargo-spellcheck [(-v...|-q)] config [--force] [--user] [--cfg=<cfg>]
     cargo-spellcheck [(-v...|-q)] [--cfg=<cfg>] [(--fix|--interactive)] [--checkers=<checkers>] [[--recursive] -- <paths>... ]
+    cargo-spellcheck (--help|-h)
     cargo-spellcheck --version
 
 Options:
@@ -56,6 +57,7 @@ Options:
 struct Args {
     arg_paths: Vec<PathBuf>,
     flag_fix: bool,
+    flag_help: bool,
     flag_interactive: bool,
     flag_recursive: bool,
     flag_verbose: usize,
@@ -122,6 +124,11 @@ fn main() -> anyhow::Result<()> {
 
     if args.flag_version {
         println!("cargo-spellcheck {}", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
+
+    if args.flag_help {
+        println!("{}", USAGE);
         return Ok(());
     }
 
