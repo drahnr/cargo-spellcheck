@@ -30,8 +30,8 @@ Spellcheck all your doc comments
 Usage:
     cargo-spellcheck [(-v...|-q)] check [--cfg=<cfg>] [--checkers=<checkers>] [[--recursive] -- <paths>... ]
     cargo-spellcheck [(-v...|-q)] fix [--cfg=<cfg>] [--checkers=<checkers>] [[--recursive] -- <paths>... ]
-    cargo-spellcheck [(-v...|-q)] config [--force] [--user] [--cfg=<cfg>]
-    cargo-spellcheck [(-v...|-q)] [--cfg=<cfg>] [(--fix|--interactive)] [--checkers=<checkers>] [[--recursive] -- <paths>... ]
+    cargo-spellcheck [(-v...|-q)] config (--user|--stdout) [--force] [--cfg=<cfg>]
+    cargo-spellcheck [(-v...|-q)] [--cfg=<cfg>] (--fix|--interactive) [--checkers=<checkers>] [[--recursive] -- <paths>... ]
     cargo-spellcheck (--help|-h)
     cargo-spellcheck --version
 
@@ -47,7 +47,8 @@ Options:
   --force                 Overwrite any existing configuration file. [default=false]
   -c --cfg=<cfg>          Use a non default configuration file.
                           Passing a directory will attempt to open `cargo_spellcheck.toml` in that directory.
-  --user                  Lookup the configuration file the default user configuration directory. [default=false]
+  --user                  Lookup the configuration file in the default user configuration directory. [default=false]
+  --stdout                Print the configuration file on stdout.
   -v --verbose            Verbosity level.
   -q --quiet              Silences all printed messages. Overrules `-v`.
 
@@ -57,16 +58,17 @@ Options:
 struct Args {
     arg_paths: Vec<PathBuf>,
     flag_fix: bool,
-    flag_help: bool,
     flag_interactive: bool,
     flag_recursive: bool,
     flag_verbose: usize,
     flag_quiet: bool,
     flag_version: bool,
+    flag_help: bool,
     flag_checkers: Option<String>,
     flag_cfg: Option<PathBuf>,
     flag_force: bool,
     flag_user: bool,
+    flag_stdout: bool,
     cmd_fix: bool,
     cmd_check: bool,
     cmd_config: bool,
@@ -159,22 +161,23 @@ fn main() -> anyhow::Result<()> {
         checkers(&mut config);
 
         let config_path = match args.flag_cfg.as_ref() {
-            Some(path) => Some(path.to_owned()),
-            None if args.flag_user => Some(Config::default_path()?),
-            None => None,
+            Some(path) => path.to_owned(),
+            None => Config::default_path()?,
         };
 
-        if let Some(path) = config_path {
-            if path.is_file() && !args.flag_force {
+        if args.flag_stdout {
+            println!("{}", config.to_toml()?);
+        }
+        if args.flag_user {
+            // write config
+            if config_path.is_file() && !args.flag_force {
                 return Err(anyhow::anyhow!(
                     "Attempting to overwrite {} requires `--force`.",
-                    path.display()
+                    config_path.display()
                 ));
             }
-            info!("Writing configuration file to {}", path.display());
-            config.write_values_to_path(path)?;
-        } else {
-            println!("{}", config.to_toml()?);
+            info!("Writing configuration file to {}", config_path.display());
+            config.write_values_to_path(config_path)?;
         }
         return Ok(());
     } else {
