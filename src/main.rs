@@ -30,8 +30,9 @@ Spellcheck all your doc comments
 Usage:
     cargo-spellcheck [(-v...|-q)] check [--cfg=<cfg>] [--checkers=<checkers>] [[--recursive] -- <paths>... ]
     cargo-spellcheck [(-v...|-q)] fix [--cfg=<cfg>] [--checkers=<checkers>] [[--recursive] -- <paths>... ]
-    cargo-spellcheck [(-v...|-q)] config [--force] [--user] [--cfg=<cfg>]
-    cargo-spellcheck [(-v...|-q)] [--cfg=<cfg>] [(--fix|--interactive)] [--checkers=<checkers>] [[--recursive] -- <paths>... ]
+    cargo-spellcheck [(-v...|-q)] config (--user|--stdout|--cfg=<cfg>) [-f|--force]
+    cargo-spellcheck [(-v...|-q)] [--cfg=<cfg>] (--fix|--interactive) [--checkers=<checkers>] [[--recursive] -- <paths>... ]
+    cargo-spellcheck --help
     cargo-spellcheck --version
 
 Options:
@@ -43,10 +44,11 @@ Options:
   -r --recursive          If a path is provided, if recursion into subdirectories is desired.
   --checkers=<checkers>   Calculate the intersection between
                           configured by config file and the ones provided on commandline.
-  --force                 Overwrite any existing configuration file. [default=false]
+  -f --force              Overwrite any existing configuration file. [default=false]
   -c --cfg=<cfg>          Use a non default configuration file.
                           Passing a directory will attempt to open `cargo_spellcheck.toml` in that directory.
-  --user                  Lookup the configuration file the default user configuration directory. [default=false]
+  --user                  Write the configuration file to the default user configuration directory.
+  --stdout                Print the configuration file to stdout and exit.
   -v --verbose            Verbosity level.
   -q --quiet              Silences all printed messages. Overrules `-v`.
 
@@ -61,10 +63,12 @@ struct Args {
     flag_verbose: usize,
     flag_quiet: bool,
     flag_version: bool,
+    flag_help: bool,
     flag_checkers: Option<String>,
     flag_cfg: Option<PathBuf>,
     flag_force: bool,
     flag_user: bool,
+    flag_stdout: bool,
     cmd_fix: bool,
     cmd_check: bool,
     cmd_config: bool,
@@ -125,6 +129,11 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
+    if args.flag_help {
+        println!("{}", USAGE);
+        return Ok(());
+    }
+
     let checkers = |config: &mut Config| {
         // overwrite checkers
         if let Some(checkers) = args.flag_checkers.clone() {
@@ -157,6 +166,11 @@ fn main() -> anyhow::Result<()> {
             None => None,
         };
 
+        if args.flag_stdout {
+            println!("{}", config.to_toml()?);
+            return Ok(());
+        }
+
         if let Some(path) = config_path {
             if path.is_file() && !args.flag_force {
                 return Err(anyhow::anyhow!(
@@ -166,8 +180,6 @@ fn main() -> anyhow::Result<()> {
             }
             info!("Writing configuration file to {}", path.display());
             config.write_values_to_path(path)?;
-        } else {
-            println!("{}", config.to_toml()?);
         }
         return Ok(());
     } else {
