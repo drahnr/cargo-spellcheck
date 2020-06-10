@@ -28,10 +28,10 @@ const USAGE: &str = r#"
 Spellcheck all your doc comments
 
 Usage:
-    cargo-spellcheck [(-v...|-q)] check [--cfg=<cfg>] [--checkers=<checkers>] [[--recursive] -- <paths>... ]
-    cargo-spellcheck [(-v...|-q)] fix [--cfg=<cfg>] [--checkers=<checkers>] [[--recursive] -- <paths>... ]
+    cargo-spellcheck [(-v...|-q)] check [--cfg=<cfg>] [--checkers=<checkers>] [[--recursive] <paths>... ]
+    cargo-spellcheck [(-v...|-q)] fix [--cfg=<cfg>] [--interactive] [--checkers=<checkers>] [[--recursive] <paths>... ]
     cargo-spellcheck [(-v...|-q)] config (--user|--stdout|--cfg=<cfg>) [--force]
-    cargo-spellcheck [(-v...|-q)] [--cfg=<cfg>] (--fix|--interactive) [--checkers=<checkers>] [[--recursive] -- <paths>... ]
+    cargo-spellcheck [(-v...|-q)] [--cfg=<cfg>] [--fix [--interactive]] [--checkers=<checkers>] [[--recursive] <paths>... ]
     cargo-spellcheck --help
     cargo-spellcheck --version
 
@@ -211,10 +211,10 @@ fn main() -> anyhow::Result<()> {
     checkers(&mut config);
 
     // extract operation mode
-    let action = if args.cmd_fix || args.flag_fix {
-        Action::Fix
-    } else if args.flag_interactive {
+    let action = if args.flag_interactive {
         Action::Interactive
+    } else if args.cmd_fix || args.flag_fix {
+        Action::Fix
     } else {
         // check
         Action::Check
