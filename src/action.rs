@@ -331,6 +331,7 @@ e - manually edit the current hunk
                     }
                     KeyCode::Char('e') => unimplemented!("Manual editing"),
                     KeyCode::Char('?') => {
+                        drop(_guard);
                         println!("{}", HELP);
                     }
                     x => {
