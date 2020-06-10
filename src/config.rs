@@ -65,6 +65,23 @@ impl HunspellConfig {
             &[]
         }
     }
+
+    pub fn sanitize_paths(&mut self, base: &Path) -> Result<()> {
+
+        if let Some(ref mut search_dirs) = &mut self.search_dirs {
+            for path in search_dirs.iter_mut() {
+                let abspath = if !path.is_absolute() {
+                    base.join(path.clone())
+                } else {
+                    path.to_owned()
+                };
+                let abspath = std::fs::canonicalize(abspath)?;
+                trace!("Sanitized ({} + {}) -> {}", base.display(), path.display(), abspath.display());
+                *path = abspath;
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -83,6 +100,16 @@ impl Config {
     const ORGANIZATION: &'static str = "spearow";
     const APPLICATION: &'static str = "cargo_spellcheck";
 
+
+    /// Sanitize all relative paths to absolute paths
+    /// in relation to `base`.
+    fn sanitize_paths(&mut self, base: &Path) -> Result<()> {
+        if let Some(ref mut hunspell) = self.hunspell {
+            hunspell.sanitize_paths(base)?;
+        }
+        Ok(())
+    }
+
     pub fn parse<S: AsRef<str>>(s: S) -> Result<Self> {
         let cfg =
             toml::from_str(s.as_ref()).map_err(|e| anyhow!("Failed parse toml").context(e))?;
@@ -96,7 +123,12 @@ impl Config {
         file.read_to_string(&mut contents).map_err(|e| {
             anyhow!("Failed to read from file {}", path.as_ref().display()).context(e)
         })?;
-        Self::parse(&contents)
+        Self::parse(&contents).and_then(|mut cfg| {
+            if let Some(base) = path.as_ref().parent() {
+                cfg.sanitize_paths(base)?;
+            }
+            Ok(cfg)
+        })
     }
 
     pub fn load() -> Result<Self> {
