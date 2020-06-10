@@ -30,7 +30,7 @@ Spellcheck all your doc comments
 Usage:
     cargo-spellcheck [(-v...|-q)] check [--cfg=<cfg>] [--checkers=<checkers>] [[--recursive] -- <paths>... ]
     cargo-spellcheck [(-v...|-q)] fix [--cfg=<cfg>] [--checkers=<checkers>] [[--recursive] -- <paths>... ]
-    cargo-spellcheck [(-v...|-q)] config (--user|--stdout|--cfg=<cfg>) [-f|--force]
+    cargo-spellcheck [(-v...|-q)] config (--user|--stdout|--cfg=<cfg>) [--force]
     cargo-spellcheck [(-v...|-q)] [--cfg=<cfg>] (--fix|--interactive) [--checkers=<checkers>] [[--recursive] -- <paths>... ]
     cargo-spellcheck --help
     cargo-spellcheck --version
