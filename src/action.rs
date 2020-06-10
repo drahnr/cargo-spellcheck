@@ -375,7 +375,6 @@ e - manually edit the current hunk
     }
 }
 
-
 /// Helper struct to assure we leave the terminals raw mode
 struct ScopedRaw {
     _dummy: u8,

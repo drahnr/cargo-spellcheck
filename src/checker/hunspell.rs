@@ -22,9 +22,7 @@ impl Checker for HunspellChecker {
 
         let search_dirs = config.search_dirs();
         if search_dirs.is_empty() {
-            return Err(anyhow!(
-                "Need some search dirs defined for Hunspell"
-            ));
+            return Err(anyhow!("Need some search dirs defined for Hunspell"));
         }
 
         let search_path_one: &PathBuf = search_dirs.first().unwrap();
@@ -40,16 +38,11 @@ impl Checker for HunspellChecker {
             }
             let dic = search_dir.join(format!("{}.dic", config.lang()));
             if !dic.is_file() {
-                return Err(anyhow!(
-                    "Extra dictionary {} is not a file",
-                    dic.display()
-                ));
+                return Err(anyhow!("Extra dictionary {} is not a file", dic.display()));
             }
             if let Some(dic) = dic.to_str() {
                 if !hunspell.add_dictionary(dic) {
-                    return Err(anyhow!(
-                        "Failed to add additional dict to hunspell"
-                    ));
+                    return Err(anyhow!("Failed to add additional dict to hunspell"));
                 }
             } else {
                 return Err(anyhow!(
@@ -60,16 +53,11 @@ impl Checker for HunspellChecker {
         for extra_dic in config.extra_dictonaries().iter() {
             trace!("Adding extra hunspell dictionary {}", extra_dic.display());
             if !extra_dic.is_file() {
-                return Err(anyhow!(
-                    "Extra dictionary {} is not a file",
-                    dic.display()
-                ));
+                return Err(anyhow!("Extra dictionary {} is not a file", dic.display()));
             }
             if let Some(extra_dic) = extra_dic.to_str() {
                 if !hunspell.add_dictionary(extra_dic) {
-                    return Err(anyhow!(
-                        "Failed to add additional dict to hunspell"
-                    ));
+                    return Err(anyhow!("Failed to add additional dict to hunspell"));
                 }
             } else {
                 return Err(anyhow!(

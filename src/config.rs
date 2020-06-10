@@ -6,13 +6,13 @@
 //! location by default. Default. Default default default.
 
 use crate::suggestion::Detector;
-use anyhow::{anyhow, Result, Error};
+use anyhow::{anyhow, Error, Result};
+use log::trace;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::Read;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use log::trace;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Config {
@@ -67,7 +67,6 @@ impl HunspellConfig {
     }
 
     pub fn sanitize_paths(&mut self, base: &Path) -> Result<()> {
-
         if let Some(ref mut search_dirs) = &mut self.search_dirs {
             for path in search_dirs.iter_mut() {
                 let abspath = if !path.is_absolute() {
@@ -76,7 +75,12 @@ impl HunspellConfig {
                     path.to_owned()
                 };
                 let abspath = std::fs::canonicalize(abspath)?;
-                trace!("Sanitized ({} + {}) -> {}", base.display(), path.display(), abspath.display());
+                trace!(
+                    "Sanitized ({} + {}) -> {}",
+                    base.display(),
+                    path.display(),
+                    abspath.display()
+                );
                 *path = abspath;
             }
         }
@@ -99,7 +103,6 @@ impl Config {
     const QUALIFIER: &'static str = "io";
     const ORGANIZATION: &'static str = "spearow";
     const APPLICATION: &'static str = "cargo_spellcheck";
-
 
     /// Sanitize all relative paths to absolute paths
     /// in relation to `base`.
