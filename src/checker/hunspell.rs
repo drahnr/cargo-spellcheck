@@ -46,7 +46,11 @@ impl Checker for HunspellChecker {
                 ));
             }
             if let Some(dic) = dic.to_str() {
-                hunspell.add_dictionary(dic);
+                if !hunspell.add_dictionary(dic) {
+                    return Err(anyhow!(
+                        "Failed to add additional dict to hunspell"
+                    ));
+                }
             } else {
                 return Err(anyhow!(
                     "Failed to convert one of the base dictionaries to a str"
@@ -54,7 +58,7 @@ impl Checker for HunspellChecker {
             }
         }
         for extra_dic in config.extra_dictonaries().iter() {
-            trace!("Attempting to add extra hunspell dictionary {}", extra_dic.display());
+            trace!("Adding extra hunspell dictionary {}", extra_dic.display());
             if !extra_dic.is_file() {
                 return Err(anyhow!(
                     "Extra dictionary {} is not a file",
@@ -62,8 +66,11 @@ impl Checker for HunspellChecker {
                 ));
             }
             if let Some(extra_dic) = extra_dic.to_str() {
-                trace!("Attempting to add extra hunspell dictionary {}", extra_dic.display());
-                hunspell.add_dictionary(extra_dic);
+                if !hunspell.add_dictionary(extra_dic) {
+                    return Err(anyhow!(
+                        "Failed to add additional dict to hunspell"
+                    ));
+                }
             } else {
                 return Err(anyhow!(
                     "Failed to convert one of the extra dictionaries to a str"
