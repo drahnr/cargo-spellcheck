@@ -6,12 +6,13 @@
 //! location by default. Default. Default default default.
 
 use crate::suggestion::Detector;
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Result, Error};
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::Read;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use log::trace;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Config {
@@ -38,7 +39,7 @@ impl HunspellConfig {
     }
 
     pub fn search_dirs(&self) -> &[PathBuf] {
-        if let Some(ref search_dirs) = self.search_dirs {
+        if let Some(ref search_dirs) = &self.search_dirs {
             search_dirs.as_slice()
         } else {
             lazy_static::lazy_static! {
@@ -113,7 +114,7 @@ impl Config {
     }
 
     pub fn to_toml(&self) -> Result<String> {
-        toml::to_string(self).map_err(|e| anyhow::anyhow!("Failed to convert to toml").context(e))
+        toml::to_string(self).map_err(|e| anyhow!("Failed to convert to toml").context(e))
     }
 
     pub fn write_values_to_path<P: AsRef<Path>>(&self, path: P) -> Result<Self> {
@@ -122,7 +123,7 @@ impl Config {
 
         if let Some(path) = path.parent() {
             std::fs::create_dir_all(path).map_err(|e| {
-                anyhow::anyhow!("Failed to create directories {}", path.display()).context(e)
+                anyhow!("Failed to create directories {}", path.display()).context(e)
             })?;
         }
 
@@ -137,7 +138,7 @@ impl Config {
         let mut writer = std::io::BufWriter::new(file);
 
         writer.write_all(s.as_bytes()).map_err(|e| {
-            anyhow::anyhow!("Failed to write default config to {}", path.display()).context(e)
+            anyhow!("Failed to write default config to {}", path.display()).context(e)
         })?;
 
         Ok(self.clone())
@@ -219,7 +220,7 @@ impl Default for Config {
 pub struct CommonLang(String);
 
 impl std::str::FromStr for CommonLang {
-    type Err = anyhow::Error;
+    type Err = Error;
     fn from_str(_s: &str) -> std::result::Result<Self, Self::Err> {
         //
         unimplemented!("Common Lang needs a ref spec")
