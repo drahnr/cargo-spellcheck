@@ -74,42 +74,43 @@ struct Args {
     cmd_config: bool,
 }
 
-fn main() -> anyhow::Result<()> {
-    let args: Args = Docopt::new(USAGE)
-        .and_then(|d| {
-            let mut argv_it = std::env::args();
-            // if ends with file name `cargo-spellcheck`, split
-            if let Some(arg0) = argv_it.next() {
-                match PathBuf::from(&arg0)
-                    .file_name()
-                    .map(|x| x.to_str())
-                    .flatten()
-                {
-                    Some(file_name) => {
-                        // allow all variants
-                        // cargo spellcheck ...
-                        // cargo-spellcheck ...
-                        // cargo-spellcheck spellcheck ...
-                        let mut next = vec!["cargo-spellcheck".to_owned()];
+fn parse_args(mut argv_iter: impl Iterator<Item = String>) -> Result<Args, docopt::Error> {
+    Docopt::new(USAGE).and_then(|d| {
+        // if ends with file name `cargo-spellcheck`, split
+        if let Some(arg0) = argv_iter.next() {
+            match PathBuf::from(&arg0)
+                .file_name()
+                .map(|x| x.to_str())
+                .flatten()
+            {
+                Some(file_name) => {
+                    // allow all variants
+                    // cargo spellcheck ...
+                    // cargo-spellcheck ...
+                    // cargo-spellcheck spellcheck ...
+                    let mut next = vec!["cargo-spellcheck".to_owned()];
 
-                        match argv_it.next() {
-                            Some(arg)
-                                if file_name.starts_with("cargo-spellcheck")
-                                    && arg == "spellcheck" => {}
-                            Some(arg) => next.push(arg.to_owned()),
-                            _ => {}
-                        };
-                        let collected = next.into_iter().chain(argv_it).collect::<Vec<_>>();
-                        d.argv(collected.into_iter())
-                    }
-                    _ => d,
+                    match argv_iter.next() {
+                        Some(arg)
+                            if file_name.starts_with("cargo-spellcheck") && arg == "spellcheck" => {
+                        }
+                        Some(arg) => next.push(arg.to_owned()),
+                        _ => {}
+                    };
+                    let collected = next.into_iter().chain(argv_iter).collect::<Vec<_>>();
+                    d.argv(collected.into_iter())
                 }
-            } else {
-                d
+                _ => d,
             }
-            .deserialize()
-        })
-        .unwrap_or_else(|e| e.exit());
+        } else {
+            d
+        }
+        .deserialize()
+    })
+}
+
+fn main() -> anyhow::Result<()> {
+    let args = parse_args(std::env::args()).unwrap_or_else(|e| e.exit());
 
     let verbosity = match args.flag_verbose {
         _ if args.flag_quiet => log::LevelFilter::Off,
@@ -227,4 +228,40 @@ fn main() -> anyhow::Result<()> {
     let suggestion_set = checker::check(&combined, &config)?;
 
     action.run(suggestion_set, &config)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn commandline_to_iter(s: &'static str) -> impl Iterator<Item = String> {
+        s.split(' ').map(|s| s.to_owned()).into_iter()
+    }
+
+    #[test]
+    fn docopt() {
+        let commands = vec![
+            "cargo spellcheck",
+            "cargo spellcheck -vvvv",
+            "cargo spellcheck --fix",
+            "cargo spellcheck --fix --interactive",
+            "cargo spellcheck fix",
+            "cargo spellcheck fix --interactive",
+            "cargo spellcheck fix --interactive -r file.rs",
+            "cargo spellcheck -q fix --interactive Cargo.toml",
+            "cargo spellcheck -v fix --interactive Cargo.toml",
+            "cargo-spellcheck",
+            "cargo-spellcheck -vvvv",
+            "cargo-spellcheck --fix",
+            "cargo-spellcheck --fix --interactive",
+            "cargo-spellcheck fix",
+            "cargo-spellcheck fix --interactive",
+            "cargo-spellcheck fix --interactive -r file.rs",
+            "cargo-spellcheck -q fix --interactive Cargo.toml",
+            "cargo spellcheck -v fix --interactive Cargo.toml",
+        ];
+        for command in commands {
+            assert!(parse_args(commandline_to_iter(command)).is_ok());
+        }
+    }
 }
