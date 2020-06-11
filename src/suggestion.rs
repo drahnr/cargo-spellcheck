@@ -335,6 +335,11 @@ impl<'s> SuggestionSet<'s> {
     pub fn len(&self) -> usize {
         self.per_file.len()
     }
+
+    /// Count the number of suggestions accress file in total
+    pub fn count(&self) -> usize {
+        self.per_file.iter().map(|(_path, vec)| vec.len()).sum()
+    }
 }
 
 impl<'s> IntoIterator for SuggestionSet<'s> {
