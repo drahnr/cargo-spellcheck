@@ -116,13 +116,10 @@ impl UserPicked {
             .background(Color::Black)
             .foreground(Color::Green);
 
-        // render  all replacements in a vertical list
-
-        let start = crossterm::cursor::position()?;
+        // render all replacements in a vertical list
 
         stdout.queue(cursor::SavePosition).unwrap();
         let _ = stdout.flush();
-
 
         suggestion
             .replacements
@@ -182,8 +179,6 @@ impl UserPicked {
             stdout()
                 .queue(terminal::ScrollUp(suggestion.replacements.len() as u16))
                 .unwrap(); // @todo deal with error conversion
-
-            drop(guard);
         }
 
         // which index to show as highlighted
