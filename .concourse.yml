@@ -57,13 +57,13 @@ jobs:
           inputs:
           - name: git-pull-request-resource
           run:
-            user: root
+            # user: root
             path: sh
             args:
             - -exc
             - |
-              whoami
               export CARGO_HOME="$(pwd)/../cargo"
+              sudo chown $(whoami): -Rf ${CARGO_HOME} .
               rustc +stable --version --verbose
               cargo +stable b
               cargo +stable t
@@ -92,13 +92,13 @@ jobs:
           inputs:
           - name: git-pull-request-resource
           run:
-            user: root
+            # user: root
             path: sh
             args:
             - -exc
             - |
-              whoami
               export CARGO_HOME="$(pwd)/../cargo"
+              sudo chown $(whoami): -Rf ${CARGO_HOME} .
               rustc +stable --version --verbose
               rustup component add rustfmt-preview
               cargo +stable fmt -- --check
@@ -173,16 +173,17 @@ jobs:
           inputs:
           - name: git-repo
           run:
-            user: root
+            # user: root
             path: sh
             args:
             - -exc
             - |
-              whoami
+              sudo chown $(whoami): -Rf .
               export CARGO_HOME="$(pwd)/../cargo"
+              sudo chown $(whoami): -Rf ${CARGO_HOME} .
               rustc +stable --version --verbose
               cargo +stable b
-              cargo +stbale t
+              cargo +stable t
             dir: git-repo
           caches:
           - path: cargo
@@ -195,15 +196,16 @@ jobs:
           inputs:
           - name: git-repo
           run:
-            user: root
+            # user: root
             path: sh
             args:
             - -exc
             - |
               export CARGO_HOME="$(pwd)/../cargo"
+              sudo chown $(whoami): -Rf ${CARGO_HOME} .
               rustc +stable --version --verbose
-              cargo +stable fmt --check
-              #cargo spellcheck --check
+              cargo +stable fmt -- --check
+              cargo spellcheck check && echo "Actually no spelling mistakes found!" || echo "Well, just testdrive anyways"
             dir: git-repo
           caches:
           - path: cargo
@@ -229,12 +231,13 @@ jobs:
             inputs:
             - name: git-repo
             run:
-              user: root
+              # user: root
               path: sh
               args:
               - -exc
               - |
                 export CARGO_HOME="$(pwd)/../cargo"
+                sudo chown $(whoami): -Rf ${CARGO_HOME} .
                 cargo +stable run -- --version -vvvvvv
               dir: git-repo
             caches:
@@ -252,6 +255,7 @@ jobs:
               args:
               - -exc
               - |
+                sudo chown $(whoami): -Rf .
                 export CARGO_HOME="$(pwd)/../cargo"
                 cargo +stable test -j1 -- --nocapture
               dir: git-repo
@@ -286,6 +290,7 @@ jobs:
             - -exc
             - |
               export CARGO_HOME="$(pwd)/cargo"
+              sudo chown $(whoami): -Rf ${CARGO_HOME} .
 
               mkdir -p "../release-info"
               export RI_BASE_DIR="../release-info"

@@ -34,7 +34,7 @@ cargo spellcheck check
 
 ### Interactive fixing
 
-```
+```zsh
 cargo spellcheck fix --interactive
 ```
 
