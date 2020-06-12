@@ -25,6 +25,10 @@ j - leave this hunk undecided, see next undecided hunk
 J - leave this hunk undecided, see next hunk
 e - manually edit the current hunk
 ? - print help
+
+
+
+
 "##;
 
 /// Helper strict to assure we leave the terminals raw mode
@@ -56,7 +60,6 @@ pub(super) enum Pick {
     Replacement(BandAid),
     Skip,
     Previous,
-    Help,
     SkipFile,
     Quit,
 }
@@ -269,7 +272,11 @@ impl UserPicked {
                 KeyCode::Char('q') | KeyCode::Esc => return Ok(Pick::Quit),
                 KeyCode::Char('d') => return Ok(Pick::SkipFile),
                 KeyCode::Char('e') => unimplemented!("Manual editing is a TODO"),
-                KeyCode::Char('?') => return Ok(Pick::Help),
+                KeyCode::Char('?') => {
+                    println!("{}", HELP);
+                    return self.user_input(suggestion, running_idx);
+                    //return Ok(Pick::Help),
+                }
                 x => {
                     trace!("Unexpected input {:?}", x);
                 }
@@ -330,10 +337,6 @@ impl UserPicked {
                     Pick::Skip => {}
                     Pick::Previous => {
                         unimplemented!("Requires a iterator which works bidrectionally")
-                    }
-                    Pick::Help => {
-                        println!("{}", HELP);
-                        break;
                     }
                     Pick::Replacement(bandaid) => {
                         picked.add_bandaid(&path, bandaid);
