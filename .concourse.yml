@@ -35,7 +35,7 @@ resources:
 - name: env-glibc
   type: registry-image
   source:
-    repository: rust
+    repository: quay.io/drahnr/rust-glibc-builder
 
 jobs:
   - name: pr-validate
