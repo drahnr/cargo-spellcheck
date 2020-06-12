@@ -1,8 +1,8 @@
-use anyhow::{anyhow, Error, Result};
-use log::{debug, info, trace};
-use std::convert::{TryFrom, TryInto};
-use crate::suggestion::Suggestion;
 use crate::span::Span;
+use crate::suggestion::Suggestion;
+use anyhow::{anyhow, Error, Result};
+use log::trace;
+use std::convert::TryFrom;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BandAid {
     /// a span, where the first line has index 1, columns are base 1 too
@@ -40,7 +40,6 @@ impl<'s> TryFrom<(&Suggestion<'s>, usize)> for BandAid {
         }
     }
 }
-
 
 impl<'s> TryFrom<(Suggestion<'s>, usize)> for BandAid {
     type Error = Error;

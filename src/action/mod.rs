@@ -1,18 +1,17 @@
 use super::*;
-use anyhow::{anyhow, Error, Result};
-use log::{debug, info, trace};
-use std::convert::{TryFrom, TryInto};
+use anyhow::{anyhow, Result};
+use log::{debug, trace};
+use std::convert::TryInto;
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, Read, Write};
 
 use std::path::PathBuf;
 
-pub mod interactive;
 pub mod bandaid;
+pub mod interactive;
 
-
-use interactive::*;
 pub(crate) use bandaid::*;
+use interactive::*;
 
 /// correct all lines
 /// `bandaids` are the fixes to be applied to the lines
@@ -115,7 +114,11 @@ pub enum Action {
 
 impl Action {
     /// assumes suggestions are sorted by line number and column number and must be non overlapping
-    fn correction<'s>(&self, path: PathBuf, bandaids: impl IntoIterator<Item=BandAid>) -> Result<()> {
+    fn correction<'s>(
+        &self,
+        path: PathBuf,
+        bandaids: impl IntoIterator<Item = BandAid>,
+    ) -> Result<()> {
         let path = path
             .as_path()
             .canonicalize()
@@ -163,11 +166,7 @@ impl Action {
     }
 
     // consume self, doing the same thing again would cause garbage file content.
-    pub fn write_changes_to_disk(
-        &self,
-        userpicked: UserPicked,
-        _config: &Config,
-    ) -> Result<()> {
+    pub fn write_changes_to_disk(&self, userpicked: UserPicked, _config: &Config) -> Result<()> {
         if userpicked.count() > 0 {
             debug!("Writing changes back to disk");
             for (path, bandaids) in userpicked.bandaids.into_iter() {
@@ -204,14 +203,14 @@ impl Action {
             Self::Fix => unimplemented!("Unsupervised fixing is not implemented just yet"),
             Self::Check => self.check(suggestions_per_path, config)?,
             Self::Interactive => {
-                let picked = interactive::UserPicked::select_interactive(suggestions_per_path, config)?;
+                let picked =
+                    interactive::UserPicked::select_interactive(suggestions_per_path, config)?;
                 self.write_changes_to_disk(picked, config)?;
             }
         }
         Ok(())
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -256,8 +255,7 @@ I like banana icecream every third day.
             .enumerate()
             .map(|(lineno, content)| (lineno + 1, content));
 
-        correct_lines(bandaids.into_iter(), lines, &mut sink)
-            .expect("should be able to");
+        correct_lines(bandaids.into_iter(), lines, &mut sink).expect("should be able to");
 
         assert_eq!(String::from_utf8_lossy(sink.as_slice()), CORRECTED);
     }

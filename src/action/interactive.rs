@@ -171,9 +171,8 @@ impl UserPicked {
 
     /// Wait for user input and process it into a `Pick` enum
     fn user_input<'i>(&self, suggestion: &'i Suggestion) -> Result<Pick> {
-
         {
-            let guard = ScopedRaw::new();
+            let _guard = ScopedRaw::new();
 
             // a new suggestion, so prepare for the number of items that are visible
             stdout()
