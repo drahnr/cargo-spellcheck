@@ -57,15 +57,16 @@ jobs:
           inputs:
           - name: git-pull-request-resource
           run:
+            user: root
             path: sh
             args:
             - -exc
             - |
               whoami
               export CARGO_HOME="$(pwd)/../cargo"
-              rustc --version --verbose
-              cargo b
-              cargo t
+              rustc +stable --version --verbose
+              cargo +stable b
+              cargo +stable t
             dir: git-pull-request-resource
           caches:
           - path: cargo
@@ -91,14 +92,16 @@ jobs:
           inputs:
           - name: git-pull-request-resource
           run:
+            user: root
             path: sh
             args:
             - -exc
             - |
+              whoami
               export CARGO_HOME="$(pwd)/../cargo"
-              rustc --version --verbose
+              rustc +stable --version --verbose
               rustup component add rustfmt-preview
-              cargo fmt -- --check
+              cargo +stable fmt -- --check
             dir: git-pull-request-resource
           caches:
           - path: cargo
@@ -170,14 +173,16 @@ jobs:
           inputs:
           - name: git-repo
           run:
+            user: root
             path: sh
             args:
             - -exc
             - |
+              whoami
               export CARGO_HOME="$(pwd)/../cargo"
-              rustc --version --verbose
-              cargo b
-              cargo t
+              rustc +stable --version --verbose
+              cargo +stable b
+              cargo +stbale t
             dir: git-repo
           caches:
           - path: cargo
@@ -190,13 +195,14 @@ jobs:
           inputs:
           - name: git-repo
           run:
+            user: root
             path: sh
             args:
             - -exc
             - |
               export CARGO_HOME="$(pwd)/../cargo"
-              rustc --version --verbose
-              cargo fmt --check
+              rustc +stable --version --verbose
+              cargo +stable fmt --check
               #cargo spellcheck --check
             dir: git-repo
           caches:
@@ -223,12 +229,13 @@ jobs:
             inputs:
             - name: git-repo
             run:
+              user: root
               path: sh
               args:
               - -exc
               - |
                 export CARGO_HOME="$(pwd)/../cargo"
-                cargo run -- --version -vvvvvv
+                cargo +stable run -- --version -vvvvvv
               dir: git-repo
             caches:
             - path: cargo
@@ -246,7 +253,7 @@ jobs:
               - -exc
               - |
                 export CARGO_HOME="$(pwd)/../cargo"
-                cargo test -j1 -- --nocapture
+                cargo +stable test -j1 -- --nocapture
               dir: git-repo
             caches:
             - path: cargo
