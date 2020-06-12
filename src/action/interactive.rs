@@ -25,6 +25,10 @@ j - leave this hunk undecided, see next undecided hunk
 J - leave this hunk undecided, see next hunk
 e - manually edit the current hunk
 ? - print help
+
+
+
+
 "##;
 
 /// Helper strict to assure we leave the terminals raw mode
@@ -322,7 +326,12 @@ impl UserPicked {
                 }
                 println!("{}", suggestion);
 
-                match picked.user_input(&suggestion, (idx, count))? {
+                let mut pick = picked.user_input(&suggestion, (idx, count))?;
+                while pick == Pick::Help {
+                    println!("{}", HELP);
+                    pick = picked.user_input(&suggestion, (idx, count))?;
+                }
+                match pick {
                     Pick::Quit => {
                         unimplemented!("Quit properly and cleanly");
                     }
@@ -331,10 +340,7 @@ impl UserPicked {
                     Pick::Previous => {
                         unimplemented!("Requires a iterator which works bidrectionally")
                     }
-                    Pick::Help => {
-                        println!("{}", HELP);
-                        break;
-                    }
+                    Pick::Help => unreachable!(),
                     Pick::Replacement(bandaid) => {
                         picked.add_bandaid(&path, bandaid);
                     }
