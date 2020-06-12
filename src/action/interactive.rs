@@ -275,7 +275,6 @@ impl UserPicked {
                 KeyCode::Char('?') => {
                     println!("{}", HELP);
                     return self.user_input(suggestion, running_idx);
-                    //return Ok(Pick::Help),
                 }
                 x => {
                     trace!("Unexpected input {:?}", x);
