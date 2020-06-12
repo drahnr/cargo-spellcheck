@@ -109,13 +109,12 @@ impl UserPicked {
 
         let highlight = ContentStyle::new()
             .background(Color::Black)
-            .foreground(Color::Blue)
-            .attribute(Attribute::Underlined);
+            .foreground(Color::Green)
+            .attribute(Attribute::Bold);
 
         let others = ContentStyle::new()
             .background(Color::Black)
-            .foreground(Color::Blue)
-            .attribute(Attribute::Underlined);
+            .foreground(Color::Green);
 
         // render  all replacements in a vertical list
 
