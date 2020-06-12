@@ -60,6 +60,7 @@ pub(super) enum Pick {
     Replacement(BandAid),
     Skip,
     Previous,
+    Help,
     SkipFile,
     Quit,
 }
@@ -272,10 +273,7 @@ impl UserPicked {
                 KeyCode::Char('q') | KeyCode::Esc => return Ok(Pick::Quit),
                 KeyCode::Char('d') => return Ok(Pick::SkipFile),
                 KeyCode::Char('e') => unimplemented!("Manual editing is a TODO"),
-                KeyCode::Char('?') => {
-                    println!("{}", HELP);
-                    return self.user_input(suggestion, running_idx);
-                }
+                KeyCode::Char('?') => return Ok(Pick::Help),
                 x => {
                     trace!("Unexpected input {:?}", x);
                 }
@@ -328,7 +326,12 @@ impl UserPicked {
                 }
                 println!("{}", suggestion);
 
-                match picked.user_input(&suggestion, (idx, count))? {
+                let mut pick = picked.user_input(&suggestion, (idx, count))?;
+                while pick == Pick::Help {
+                    println!("{}", HELP);
+                    pick = picked.user_input(&suggestion, (idx, count))?;
+                }
+                match pick {
                     Pick::Quit => {
                         unimplemented!("Quit properly and cleanly");
                     }
@@ -337,6 +340,7 @@ impl UserPicked {
                     Pick::Previous => {
                         unimplemented!("Requires a iterator which works bidrectionally")
                     }
+                    Pick::Help => {}
                     Pick::Replacement(bandaid) => {
                         picked.add_bandaid(&path, bandaid);
                     }
