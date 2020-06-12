@@ -54,9 +54,11 @@ impl TraverseModulesIter {
 
     pub fn collect_modules(&mut self, path: &Path) -> Result<()> {
         if path.is_file() {
+            trace!("collecting mods declared in file {}", path.display());
             self.queue
                 .extend(extract_modules_from_file(path)?.into_iter());
         } else if path.is_dir() {
+            trace!("collecting mods declared in directory {}", path.display());
             walkdir::WalkDir::new(path)
                 .max_depth(1)
                 .same_file_system(true)
@@ -94,7 +96,7 @@ impl Iterator for TraverseModulesIter {
         if let Some(path) = self.queue.pop_front() {
             // ignore the error here, there is nothing we can do really
             // @todo potentially consider returning a result covering this
-            let _ = self.collect_modules(dbg!(path.as_path()));
+            let _ = self.collect_modules(path.as_path());
             Some(path)
         } else {
             None

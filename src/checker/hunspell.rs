@@ -72,8 +72,8 @@ impl Checker for HunspellChecker {
                 for literal_set in literal_sets {
                     let plain = literal_set.erase_markdown();
                     trace!("{:?}", &plain);
-                    let txt = dbg!(plain.as_str());
-                    for range in dbg!(tokenize(txt)) {
+                    let txt = plain.as_str();
+                    for range in tokenize(txt) {
                         let word = &txt[range.clone()];
                         if !hunspell.check(word) {
                             trace!("No match for word (plain range: {:?}): >{}<", &range, word);
