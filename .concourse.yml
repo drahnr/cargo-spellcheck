@@ -28,7 +28,7 @@ resources:
 - name: git-pull-request-resource
   type: pull-request
   source:
-    repo: drahnr/cargo-spellcheck
+    repository: drahnr/cargo-spellcheck
     access_token: ((sirmergealot-github-token))
 
 
