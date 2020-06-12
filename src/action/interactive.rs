@@ -114,7 +114,7 @@ impl UserPicked {
 
         let others = ContentStyle::new()
             .background(Color::Black)
-            .foreground(Color::Green);
+            .foreground(Color::Blue);
 
         // render all replacements in a vertical list
 
@@ -170,14 +170,60 @@ impl UserPicked {
     }
 
     /// Wait for user input and process it into a `Pick` enum
-    fn user_input<'i>(&self, suggestion: &'i Suggestion) -> Result<Pick> {
+    fn user_input<'i>(
+        &self,
+        suggestion: &'i Suggestion,
+        running_idx: (usize, usize),
+    ) -> Result<Pick> {
         {
             let _guard = ScopedRaw::new();
 
+            let boring = ContentStyle::new()
+                .foreground(Color::Blue)
+                .attribute(Attribute::Bold);
+
+            let question = format!(
+                "({nth}/{of_n}) Apply this suggestion [y,n,q,a,d,j,e,?]?",
+                nth = running_idx.0 + 1,
+                of_n = running_idx.1
+            );
+
             // a new suggestion, so prepare for the number of items that are visible
+            // and also overwrite the last lines of the regular print which would
+            // already contain the suggestions
             stdout()
+                .queue(cursor::Hide)
+                .unwrap()
+                .queue(cursor::MoveToColumn(0))
+                .unwrap()
+                .queue(cursor::MoveUp(5))
+                .unwrap()
+                .queue(cursor::MoveToColumn(0))
+                .unwrap()
+                .queue(terminal::Clear(terminal::ClearType::CurrentLine))
+                .unwrap()
+                .queue(cursor::MoveDown(1))
+                .unwrap()
+                .queue(cursor::MoveToColumn(0))
+                .unwrap()
+                .queue(terminal::Clear(terminal::ClearType::CurrentLine))
+                .unwrap()
+                .queue(cursor::MoveToColumn(0))
+                .unwrap()
+                .queue(PrintStyledContent(StyledContent::new(boring, question)))
+                .unwrap()
+                .queue(cursor::MoveToColumn(0))
+                .unwrap()
+                .queue(cursor::MoveDown(1))
+                .unwrap()
+                .queue(terminal::Clear(terminal::ClearType::CurrentLine))
+                .unwrap()
+                .queue(cursor::MoveDown(1))
+                .unwrap()
+                .queue(terminal::Clear(terminal::ClearType::CurrentLine))
+                .unwrap() // @todo deal with error conversion
                 .queue(terminal::ScrollUp(suggestion.replacements.len() as u16))
-                .unwrap(); // @todo deal with error conversion
+                .unwrap();
         }
 
         // which index to show as highlighted
@@ -276,15 +322,7 @@ impl UserPicked {
                 }
                 println!("{}", suggestion);
 
-                println!(
-                    "({nth}/{of_n}) Apply this suggestion [y,n,q,a,d,j,e,?]?",
-                    nth = idx,
-                    of_n = count
-                );
-
-                println!(">");
-
-                match picked.user_input(&suggestion)? {
+                match picked.user_input(&suggestion, (idx, count))? {
                     Pick::Quit => {
                         unimplemented!("Quit properly and cleanly");
                     }
