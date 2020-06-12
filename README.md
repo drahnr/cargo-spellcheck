@@ -41,22 +41,22 @@ cargo spellcheck fix --interactive
 Improvement requests tracked in [issue #7](https://github.com/drahnr/cargo-spellcheck/issues/7).
 
 <pre><font color="#CC0000"><b>error</b></font><font color="#D3D7CF"><b>: spellcheck(Hunspell)</b></font>
-<font color="#3465A4">  --&gt;</font> /media/supersonic1t/projects/cargo-spellcheck/demo/src/nested/justtwo.rs:1
+<font color="#3465A4">  --&gt;</font> /media/supersonic1t/projects/cargo-spellcheck/demo/src/nested/justtwo.rs:2
 <font color="#3465A4"><b>   |</b></font>
-<font color="#3465A4"><b> 1 |</b></font>  Alphy
-<font color="#3465A4"><b>   |</b></font><font color="#C4A000"><b>  ^^^^^</b></font>
+<font color="#3465A4"><b> 2 |</b></font>  Beto
+<font color="#3465A4"><b>   |</b></font><font color="#C4A000"><b>  ^^^^</b></font>
 
-(1/2) Apply this suggestion [y,n,q,a,d,j,e,?]?
+<font color="#729FCF"><b>(2/2) Apply this suggestion [y,n,q,a,d,j,e,?]?</b></font>
 
-   <span style="background-color:#2E3436"><font color="#729FCF"><u style="text-decoration-style:single">Beeton</u></font></span>
-   <span style="background-color:#2E3436"><font color="#729FCF"><u style="text-decoration-style:single">Bet o</u></font></span>
- <font color="#8AE234"><b>»</b></font> <span style="background-color:#2E3436"><font color="#729FCF"><u style="text-decoration-style:single">Beta</u></font></span>
-   <span style="background-color:#2E3436"><font color="#729FCF"><u style="text-decoration-style:single">Bets</u></font></span>
-   <span style="background-color:#2E3436"><font color="#729FCF"><u style="text-decoration-style:single">Bet</u></font></span>
-   <span style="background-color:#2E3436"><font color="#729FCF"><u style="text-decoration-style:single">Be-to</u></font></span>
-   <span style="background-color:#2E3436"><font color="#729FCF"><u style="text-decoration-style:single">Be to</u></font></span>
-   <span style="background-color:#2E3436"><font color="#729FCF"><u style="text-decoration-style:single">Veto</u></font></span>
-   <span style="background-color:#2E3436"><font color="#729FCF"><u style="text-decoration-style:single">Beth</u></font></span>
+   <span style="background-color:#2E3436"><font color="#729FCF">Beeton</font></span>
+   <span style="background-color:#2E3436"><font color="#729FCF">Bet o</font></span>
+ <font color="#8AE234"><b>»</b></font> <span style="background-color:#2E3436"><font color="#8AE234"><b>Beta</b></font></span>
+   <span style="background-color:#2E3436"><font color="#729FCF">Bets</font></span>
+   <span style="background-color:#2E3436"><font color="#729FCF">Bet</font></span>
+   <span style="background-color:#2E3436"><font color="#729FCF">Be-to</font></span>
+   <span style="background-color:#2E3436"><font color="#729FCF">Be to</font></span>
+   <span style="background-color:#2E3436"><font color="#729FCF">Veto</font></span>
+   <span style="background-color:#2E3436"><font color="#729FCF">Beth</font></span>
 </pre>
 
 ## Features
