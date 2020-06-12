@@ -340,7 +340,7 @@ impl UserPicked {
                     Pick::Previous => {
                         unimplemented!("Requires a iterator which works bidrectionally")
                     }
-                    Pick::Help => {}
+                    Pick::Help => unreachable!(),
                     Pick::Replacement(bandaid) => {
                         picked.add_bandaid(&path, bandaid);
                     }
