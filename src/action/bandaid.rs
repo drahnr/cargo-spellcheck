@@ -11,6 +11,30 @@ pub struct BandAid {
     pub replacement: String,
 }
 
+impl BandAid {
+    pub fn new(replacement: &str, span: &Span) -> Self {
+        trace!(
+            "proc_macro literal span of doc comment: ({},{})..({},{})",
+            span.start.line,
+            span.start.column,
+            span.end.line,
+            span.end.column
+        );
+
+        let mut span = span.clone();
+        // @todo this is a hack and should be documented better
+        // @todo not sure why the offset of two is necessary
+        // @todo but it works consistently
+        let doc_comment_to_file_offset = 2;
+        span.start.column += doc_comment_to_file_offset;
+        span.end.column += doc_comment_to_file_offset;
+        Self {
+            span,
+            replacement: replacement.to_owned(),
+        }
+    }
+}
+
 impl<'s> TryFrom<(&Suggestion<'s>, usize)> for BandAid {
     type Error = Error;
     fn try_from((suggestion, pick_idx): (&Suggestion<'s>, usize)) -> Result<Self> {
@@ -24,17 +48,7 @@ impl<'s> TryFrom<(&Suggestion<'s>, usize)> for BandAid {
         );
 
         if let Some(replacement) = suggestion.replacements.iter().nth(pick_idx) {
-            let mut span = suggestion.span.clone();
-            // @todo this is a hack and should be documented better
-            // @todo not sure why the offset of two is necessary
-            // @todo but it works consistently
-            let doc_comment_to_file_offset = 2;
-            span.start.column += doc_comment_to_file_offset;
-            span.end.column += doc_comment_to_file_offset;
-            Ok(Self {
-                span,
-                replacement: replacement.to_owned(),
-            })
+            Ok(Self::new(replacement.as_str(), &suggestion.span))
         } else {
             Err(anyhow!("Does not contain any replacements"))
         }
