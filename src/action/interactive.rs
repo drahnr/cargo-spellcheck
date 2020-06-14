@@ -13,7 +13,7 @@ use crossterm::{
     terminal, QueueableCommand,
 };
 
-use std::io::stdout;
+use std::io::{stdout, stdin};
 use std::path::Path;
 
 const HELP: &'static str = r##"y - apply this suggestion
@@ -278,7 +278,45 @@ impl UserPicked {
                 KeyCode::Char('c') if modifiers == KeyModifiers::CONTROL => return Ok(Pick::Quit),
                 KeyCode::Char('q') | KeyCode::Esc => return Ok(Pick::Quit),
                 KeyCode::Char('d') => return Ok(Pick::SkipFile),
-                KeyCode::Char('e') => unimplemented!("Manual editing is a TODO"),
+                KeyCode::Char('e') => {
+                    let guard = ScopedRaw::new();
+                    stdout()
+                        .queue(cursor::MoveToNextLine(0))    
+                        .unwrap()
+                        .queue(terminal::Clear(terminal::ClearType::CurrentLine))
+                        .unwrap()
+                        .queue(Print("replacement: "))
+                        .unwrap();
+                    let _ = stdout().flush();
+                    drop(guard);
+
+                    let mut replacement = String::new();
+                    loop {
+                        let event = match crossterm::event::read()
+                            .map_err(|e| anyhow::anyhow!("Something unexpected happened on the CLI: {}", e))?
+                        {
+                            Event::Key(event) => event,
+                            sth => {
+                                trace!("read() something other than a key: {:?}", sth);
+                                break;
+                            }
+                        };
+            
+                        trace!("registered event: {:?}", &event);
+                        let KeyEvent { code, modifiers: _ } = event;
+            
+                        match code {
+                            KeyCode::Enter => break,
+                            KeyCode::Char(c) => {
+                                replacement.push(c);
+                            },
+                            _ => continue,
+                        }
+                    }
+
+                    let bandaid = BandAid::new(&replacement, &suggestion.span);
+                    return Ok(Pick::Replacement(bandaid));
+                },
                 KeyCode::Char('?') => return Ok(Pick::Help),
                 x => {
                     trace!("Unexpected input {:?}", x);
