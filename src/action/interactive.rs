@@ -241,6 +241,10 @@ impl UserPicked {
                 .map_err(|e| anyhow::anyhow!("Something unexpected happened on the CLI: {}", e))?
             {
                 Event::Key(event) => event,
+                Event::Resize(..) => {
+                    drop(guard);
+                    continue
+                }
                 sth => {
                     trace!("read() something other than a key: {:?}", sth);
                     break;
