@@ -86,6 +86,7 @@ impl UserPicked {
     }
 
     /// Apply multiple bandaids.
+    #[allow(unused)]
     fn add_bandaids<I>(&mut self, path: &Path, fixes: I)
     where
         I: IntoIterator<Item = BandAid>,
