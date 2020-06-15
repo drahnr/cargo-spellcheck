@@ -245,9 +245,9 @@ jobs:
               export CARGO_HOME="$(pwd)/../cargo"
               sudo chown $(whoami): -Rf ${CARGO_HOME} .
               cargo +stable run -- --version
-              cargo +stable run -- spellcheck demo/Cargo.toml
-              cargo +stable run -- spellcheck demo/src/main.rs
-              cargo +stable run -- spellcheck demo/
+              cargo +stable run -- spellcheck demo/Cargo.toml || echo "$?"
+              cargo +stable run -- spellcheck demo/src/main.rs || echo "$?"
+              cargo +stable run -- spellcheck demo/ || echo "$?"
             dir: git-repo
           caches:
           - path: cargo
