@@ -13,7 +13,8 @@ use crossterm::{
     terminal, QueueableCommand,
 };
 
-use std::io::{stdout, stdin};
+use std::convert::TryFrom;
+use std::io::{stdin, stdout};
 use std::path::Path;
 
 const HELP: &'static str = r##"y - apply this suggestion
@@ -58,11 +59,78 @@ enum Direction {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum Pick {
     Replacement(BandAid),
+    /// Skip this suggestion and move on to the next suggestion.
     Skip,
+    /// Jump to the previous suggestion.
     Previous,
+    /// Print the help message and exit.
     Help,
+    /// Skip the remaining fixes for the current file.
     SkipFile,
+    /// Stop execution.
     Quit,
+    /// continue as if whatever returned this was never called.
+    Nop,
+}
+
+/// Statefulness for the selection process
+struct State<'s, 't>
+where
+    't: 's,
+{
+    /// Which suggestion is operated upon.
+    pub suggestion: &'s Suggestion<'t>,
+    /// The content the user provided for the suggestion, if any.
+    pub custom_replacement: String,
+    /// Which index to show as highlighted.
+    pub pick_idx: usize,
+    /// Total number of pickable slots.
+    pub n_items: usize,
+}
+
+impl<'s, 't> From<&'s Suggestion<'t>> for State<'s, 't> {
+    fn from(suggestion: &'s Suggestion<'t>) -> Self {
+        Self {
+            suggestion,
+            custom_replacement: String::new(),
+            pick_idx: 0usize,
+            // all items provided by the checkers plus the user provided
+            n_items: suggestion.replacements.len() + 1,
+        }
+    }
+}
+
+impl<'s, 't> State<'s, 't>
+where
+    't: 's,
+{
+    pub fn select_next(&mut self) {
+        self.pick_idx = (self.pick_idx + 1).rem_euclid(self.n_items);
+    }
+
+    pub fn select_previous(&mut self) {
+        self.pick_idx = (self.pick_idx + self.n_items - 1).rem_euclid(self.n_items);
+    }
+
+    pub fn select_custom(&mut self) {
+        self.pick_idx = self.n_items - 1;
+    }
+    /// the last one is user input
+    pub fn is_custom_entry(&self) -> bool {
+        self.pick_idx + 1 == self.n_items
+    }
+
+    pub fn to_bandaid(&self) -> BandAid {
+        if self.is_custom_entry() {
+            BandAid::from((
+                self.custom_replacement.clone(),
+                self.suggestion.span.clone(),
+            ))
+        } else {
+            BandAid::try_from((self.suggestion, self.pick_idx))
+                .expect("Was constructed around this suggestion.")
+        }
+    }
 }
 
 /// The selection of used suggestion replacements
@@ -98,6 +166,26 @@ impl UserPicked {
             .extend(iter);
     }
 
+    /// Provide a replacement that was not provided by the backend
+    fn custom_replacement(&self, state: &mut State, event: KeyEvent) -> Result<Pick> {
+        let KeyEvent { code, modifiers } = event;
+
+        match code {
+            KeyCode::Up => state.select_previous(),
+            KeyCode::Down => state.select_next(),
+            KeyCode::Enter => {
+                let bandaid = BandAid::new(&state.custom_replacement, &state.suggestion.span);
+                return Ok(Pick::Replacement(bandaid));
+            }
+            KeyCode::Esc => return Ok(Pick::Quit),
+            KeyCode::Char('c') if modifiers == KeyModifiers::CONTROL => return Ok(Pick::Quit),
+            KeyCode::Char(c) => state.custom_replacement.push(c), // @todo handle cursors and insert / delete mode
+            _ => {}
+        }
+
+        Ok(Pick::Nop)
+    }
+
     /// only print the list of replacements to the user
     // initial thougth was to show a horizontal list of replacements, navigate left/ right
     // by using the arrow keys
@@ -105,7 +193,7 @@ impl UserPicked {
     // arrow left
     // .. suggestion1 [suggestion2] suggestion3 suggestion4 ..
     // but now it's only a very simple list for now
-    fn print_replacements_list(&self, suggestion: &Suggestion, active_idx: usize) -> Result<()> {
+    fn print_replacements_list(&self, state: &State) -> Result<()> {
         let mut stdout = stdout();
 
         let tick = ContentStyle::new()
@@ -121,12 +209,57 @@ impl UserPicked {
             .background(Color::Black)
             .foreground(Color::Blue);
 
+        let custom = ContentStyle::new()
+            .background(Color::Black)
+            .foreground(Color::Yellow);
+
         // render all replacements in a vertical list
 
         stdout.queue(cursor::SavePosition).unwrap();
         let _ = stdout.flush();
 
-        suggestion
+        let active_idx = state.pick_idx;
+
+        let custom_content = if state.custom_replacement.is_empty() {
+            "..."
+        } else {
+            state.custom_replacement.as_str()
+        };
+        if state.n_items != active_idx + 1 {
+            stdout
+                .queue(cursor::MoveUp(1))
+                .unwrap()
+                .queue(terminal::Clear(terminal::ClearType::CurrentLine))
+                .unwrap()
+                .queue(cursor::MoveToColumn(4))
+                .unwrap()
+                .queue(PrintStyledContent(StyledContent::new(
+                    custom,
+                    custom_content,
+                )))
+                .unwrap();
+        } else {
+            stdout
+                .queue(cursor::MoveUp(1))
+                .unwrap()
+                .queue(terminal::Clear(terminal::ClearType::CurrentLine))
+                .unwrap()
+                .queue(cursor::MoveToColumn(2))
+                .unwrap()
+                .queue(PrintStyledContent(StyledContent::new(tick.clone(), '»')))
+                .unwrap()
+                .queue(cursor::MoveToColumn(4))
+                .unwrap()
+                .queue(PrintStyledContent(StyledContent::new(
+                    custom,
+                    custom_content,
+                )))
+                .unwrap();
+        }
+        let _ = stdout.flush();
+
+        state
+            .suggestion
             .replacements
             .iter()
             .enumerate()
@@ -175,11 +308,7 @@ impl UserPicked {
     }
 
     /// Wait for user input and process it into a `Pick` enum
-    fn user_input<'i>(
-        &self,
-        suggestion: &'i Suggestion,
-        running_idx: (usize, usize),
-    ) -> Result<Pick> {
+    fn user_input(&self, state: &mut State, running_idx: (usize, usize)) -> Result<Pick> {
         {
             let _guard = ScopedRaw::new();
 
@@ -201,15 +330,13 @@ impl UserPicked {
                 .unwrap()
                 .queue(cursor::MoveToColumn(0))
                 .unwrap()
-                .queue(cursor::MoveUp(5))
+                .queue(cursor::MoveUp(5)) // erase the 5 last lines of suggestion print
                 .unwrap()
                 .queue(cursor::MoveToColumn(0))
                 .unwrap()
                 .queue(terminal::Clear(terminal::ClearType::CurrentLine))
                 .unwrap()
                 .queue(cursor::MoveDown(1))
-                .unwrap()
-                .queue(cursor::MoveToColumn(0))
                 .unwrap()
                 .queue(terminal::Clear(terminal::ClearType::CurrentLine))
                 .unwrap()
@@ -227,16 +354,14 @@ impl UserPicked {
                 .unwrap()
                 .queue(terminal::Clear(terminal::ClearType::CurrentLine))
                 .unwrap() // @todo deal with error conversion
-                .queue(terminal::ScrollUp(suggestion.replacements.len() as u16))
+                .queue(terminal::ScrollUp((state.n_items) as u16))
                 .unwrap();
         }
 
-        // which index to show as highlighted
-        let mut pick_idx = 0usize;
         loop {
-            let guard = ScopedRaw::new();
+            let mut guard = ScopedRaw::new();
 
-            self.print_replacements_list(suggestion, pick_idx)?;
+            self.print_replacements_list(state)?;
 
             let event = match crossterm::event::read()
                 .map_err(|e| anyhow::anyhow!("Something unexpected happened on the CLI: {}", e))?
@@ -251,25 +376,31 @@ impl UserPicked {
                     break;
                 }
             };
+
+            if state.is_custom_entry() {
+                drop(guard);
+                info!("Custom entry mode");
+                guard = ScopedRaw::new();
+                match self.custom_replacement(state, event)? {
+                    Pick::Nop => continue,
+                    other => return Ok(other),
+                }
+            }
+
             drop(guard);
             // print normally again
-
             trace!("registered event: {:?}", &event);
+
             let KeyEvent { code, modifiers } = event;
 
-            let n_replacements = suggestion.replacements.len();
+            // n provided by backends and one provided by the user
+            let n_replacements = state.suggestion.replacements.len() + 1;
 
             match code {
-                KeyCode::Left | KeyCode::Up => {
-                    pick_idx = (pick_idx + 1).rem_euclid(n_replacements);
-                }
-                KeyCode::Down | KeyCode::Right => {
-                    pick_idx = (pick_idx + n_replacements - 1).rem_euclid(n_replacements);
-                }
+                KeyCode::Up => state.select_next(),
+                KeyCode::Down => state.select_previous(),
                 KeyCode::Enter | KeyCode::Char('y') => {
-                    // current: must succeed, suggestions with replacements
-                    // are supposed to considered earlier
-                    let bandaid: BandAid = ((suggestion, pick_idx)).try_into()?;
+                    let bandaid: BandAid = state.to_bandaid();
                     // @todo handle interactive intput for those where there are no suggestions
                     return Ok(Pick::Replacement(bandaid));
                 }
@@ -279,44 +410,9 @@ impl UserPicked {
                 KeyCode::Char('q') | KeyCode::Esc => return Ok(Pick::Quit),
                 KeyCode::Char('d') => return Ok(Pick::SkipFile),
                 KeyCode::Char('e') => {
-                    let guard = ScopedRaw::new();
-                    stdout()
-                        .queue(cursor::MoveToNextLine(0))    
-                        .unwrap()
-                        .queue(terminal::Clear(terminal::ClearType::CurrentLine))
-                        .unwrap()
-                        .queue(Print("replacement: "))
-                        .unwrap();
-                    let _ = stdout().flush();
-                    drop(guard);
-
-                    let mut replacement = String::new();
-                    loop {
-                        let event = match crossterm::event::read()
-                            .map_err(|e| anyhow::anyhow!("Something unexpected happened on the CLI: {}", e))?
-                        {
-                            Event::Key(event) => event,
-                            sth => {
-                                trace!("read() something other than a key: {:?}", sth);
-                                break;
-                            }
-                        };
-            
-                        trace!("registered event: {:?}", &event);
-                        let KeyEvent { code, modifiers: _ } = event;
-            
-                        match code {
-                            KeyCode::Enter => break,
-                            KeyCode::Char(c) => {
-                                replacement.push(c);
-                            },
-                            _ => continue,
-                        }
-                    }
-
-                    let bandaid = BandAid::new(&replacement, &suggestion.span);
-                    return Ok(Pick::Replacement(bandaid));
-                },
+                    // jump to the user input entry
+                    state.select_custom();
+                }
                 KeyCode::Char('?') => return Ok(Pick::Help),
                 x => {
                     trace!("Unexpected input {:?}", x);
@@ -363,31 +459,33 @@ impl UserPicked {
                         } // go to the start
                     }
                 }
-                let (idx, suggestion) = opt.expect("Must be X");
+                let (idx, suggestion) = opt.expect("Must be Some(_)");
                 if suggestion.replacements.is_empty() {
                     trace!("Suggestion did not contain a replacement, skip");
                     continue;
                 }
                 println!("{}", suggestion);
 
-                let mut pick = picked.user_input(&suggestion, (idx, count))?;
+                let mut state = State::from(&suggestion);
+
+                let mut pick = picked.user_input(&mut state, (idx, count))?;
                 while pick == Pick::Help {
                     println!("{}", HELP);
-                    pick = picked.user_input(&suggestion, (idx, count))?;
+                    pick = picked.user_input(&mut state, (idx, count))?;
                 }
                 match pick {
-                    Pick::Quit => {
-                        unimplemented!("Quit properly and cleanly");
-                    }
+                    Pick::Quit => return Ok(picked),
                     Pick::SkipFile => break, // break the inner loop
-                    Pick::Skip => {}
                     Pick::Previous => {
                         unimplemented!("Requires a iterator which works bidrectionally")
                     }
-                    Pick::Help => unreachable!(),
+                    Pick::Help => {
+                        unreachable!("Help must not be reachable here, it is handled before")
+                    }
                     Pick::Replacement(bandaid) => {
                         picked.add_bandaid(&path, bandaid);
                     }
+                    _ => continue,
                 };
 
                 direction = Direction::Forward;

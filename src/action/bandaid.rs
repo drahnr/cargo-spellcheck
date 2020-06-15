@@ -61,3 +61,9 @@ impl<'s> TryFrom<(Suggestion<'s>, usize)> for BandAid {
         Self::try_from((&suggestion, pick_idx))
     }
 }
+
+impl From<(String, Span)> for BandAid {
+    fn from((replacement, span): (String, Span)) -> Self {
+        Self { span, replacement }
+    }
+}
