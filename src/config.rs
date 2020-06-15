@@ -25,7 +25,6 @@ pub struct HunspellConfig {
     pub lang: Option<String>, // TODO impl a custom xx_YY code deserializer based on iso crates
     // must be option so it can be omitted in the config
     pub search_dirs: Option<Vec<PathBuf>>,
-    pub extra_affixes: Option<Vec<PathBuf>>,
     pub extra_dictonaries: Option<Vec<PathBuf>>,
 }
 
@@ -47,14 +46,6 @@ impl HunspellConfig {
             };
 
             LOOKUP_DIRS.as_slice()
-        }
-    }
-
-    pub fn extra_affixes(&self) -> &[PathBuf] {
-        if let Some(ref extra_affixes) = self.extra_affixes {
-            extra_affixes.as_slice()
-        } else {
-            &[]
         }
     }
 
@@ -249,7 +240,6 @@ impl Default for Config {
             hunspell: Some(HunspellConfig {
                 lang: Some("en_US".to_owned()),
                 search_dirs: Some(search_dirs),
-                extra_affixes: Some(Vec::new()),
                 extra_dictonaries: Some(Vec::new()),
             }),
             languagetool: None,
@@ -283,7 +273,6 @@ url = "127.0.0.1:8010/"
 lang = "en_US"
 search_dirs = ["/usr/lib64/hunspell"]
 extra_dictonaries = ["/home/bernhard/test.dic"]
-extra_affixes = ["/home/bernhard/test/f.aff"]
 			"#,
         )
         .unwrap();
@@ -305,7 +294,6 @@ extra_affixes = ["/home/bernhard/test/f.aff"]
 lang = "en_US"
 search_dirs = ["/usr/lib64/hunspell"]
 extra_dictonaries = ["/home/bernhard/test.dic"]
-extra_affixes = ["/home/bernhard/test/f.aff"]
 			"#,
         )
         .unwrap();
@@ -321,7 +309,6 @@ extra_affixes = ["/home/bernhard/test/f.aff"]
 lang = "en_US"
 search_dirs = ["/usr/lib64/hunspell"]
 extra_dictonaries = ["/home/bernhard/test.dic"]
-extra_affixes = ["/home/bernhard/test/f.aff"]
 			"#,
         )
         .unwrap();
@@ -335,7 +322,6 @@ extra_affixes = ["/home/bernhard/test/f.aff"]
 lang = "en_US"
 search_dirs = ["/usr/lib64/hunspell"]
 extra_dictonaries = ["/home/bernhard/test.dic"]
-extra_affixes = ["/home/bernhard/test/f.aff"]
 			"#,
         )
         .unwrap();
