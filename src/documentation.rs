@@ -273,11 +273,6 @@ mod tests {
         .is_test(true)
         .try_init();
 
-        let _config = crate::config::Config::load().unwrap_or_else(|_e| {
-            warn!("Using default configuration!");
-            Config::default()
-        });
-
         const SOURCE: &'static str = r#"/// A headline.
 ///
 /// Erronbeous **bold** __uetchkp__
