@@ -237,7 +237,13 @@ impl Default for Config {
         search_dirs.push(PathBuf::from("/Library/Spelling/"));
 
         #[cfg(target_os = "linux")]
-        search_dirs.push(PathBuf::from("/usr/share/myspell/"));
+        search_dirs.extend(vec![
+            // Fedora
+            PathBuf::from("/usr/share/myspell/"),
+            // Arch Linux
+            PathBuf::from("/usr/share/hunspell/"),
+            PathBuf::from("/usr/share/myspell/dicts/"),
+        ]);
 
         Self {
             hunspell: Some(HunspellConfig {
