@@ -1,7 +1,7 @@
-use super::{tokenize, Checker, Config, Detector, Documentation, Suggestion, SuggestionSet};
-use std::path::{Path, PathBuf};
+use super::{tokenize, Checker, Detector, Documentation, Suggestion, SuggestionSet};
+use std::path::PathBuf;
 
-use log::{debug, trace, warn};
+use log::{debug, trace};
 
 use hunspell_rs::Hunspell;
 
