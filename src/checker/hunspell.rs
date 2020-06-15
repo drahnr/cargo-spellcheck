@@ -21,35 +21,43 @@ impl Checker for HunspellChecker {
         // };
 
         let search_dirs = config.search_dirs();
-        if search_dirs.is_empty() {
-            return Err(anyhow!("Need some search dirs defined for Hunspell"));
-        }
 
-        let search_path_one: &PathBuf = search_dirs.first().unwrap();
-        let aff = search_path_one.join(format!("{}.aff", config.lang()));
-        let dic = search_path_one.join(format!("{}.dic", config.lang()));
-        let mut hunspell = Hunspell::new(aff.to_str().unwrap(), dic.to_str().unwrap());
-        for search_dir in search_dirs.iter().skip(1) {
-            if !search_dir.is_dir() {
-                return Err(anyhow!(
-                    "Dictionary search path {} is not a directory",
-                    search_dir.display()
-                ));
-            }
-            let dic = search_dir.join(format!("{}.dic", config.lang()));
-            if !dic.is_file() {
-                return Err(anyhow!("Extra dictionary {} is not a file", dic.display()));
-            }
-            if let Some(dic) = dic.to_str() {
-                if !hunspell.add_dictionary(dic) {
-                    return Err(anyhow!("Failed to add additional dict to hunspell"));
+        // lookup paths are really just an attempt to provide a dictionary, so be more forgiving
+        // when encountering errors here
+        let (dic, aff): (PathBuf, PathBuf) = search_dirs
+            .into_iter()
+            .find_map(|search_dir| {
+                if !search_dir.is_dir() {
+                    // search_dir also contains the default paths, so just silently ignore these
+                    debug!(
+                        "Dictionary search path {} is not a directory",
+                        search_dir.display()
+                    );
+                    return None;
                 }
-            } else {
-                return Err(anyhow!(
-                    "Failed to convert one of the base dictionaries to a str"
-                ));
-            }
-        }
+                let dic = search_dir.join(format!("{}.dic", config.lang()));
+                if !dic.is_file() {
+                    debug!(
+                        "Dictionary path dervied from search dir {} is not a file",
+                        dic.display()
+                    );
+                    return None;
+                }
+                let aff = search_dir.join(format!("{}.aff", config.lang()));
+                if !aff.is_file() {
+                    debug!(
+                        "Affixes path dervied from search dir {} is not a file",
+                        dic.display()
+                    );
+                    return None;
+                }
+                Some((aff, dic))
+            })
+            .ok_or_else(|| anyhow!("Need some search dirs defined for Hunspell"))?;
+
+        let mut hunspell = Hunspell::new(aff.to_str().unwrap(), dic.to_str().unwrap());
+
+        // be more strict about the extra dictionaries, they have to exist
         for extra_dic in config.extra_dictonaries().iter() {
             trace!("Adding extra hunspell dictionary {}", extra_dic.display());
             if !extra_dic.is_file() {
