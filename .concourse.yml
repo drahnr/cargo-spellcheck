@@ -49,6 +49,23 @@ jobs:
       trigger: true
 
     - in_parallel:
+      - put: git-pull-request-resource
+        params:
+          path: git-pull-request-resource
+          context: meta-check
+          status: pending
+      - put: git-pull-request-resource
+        params:
+          path: git-pull-request-resource
+          context: compile
+          status: pending
+      - put: git-pull-request-resource
+        params:
+          path: git-pull-request-resource
+          context: run-check
+          status: pending
+
+    - in_parallel:
       - task: validate-glibc
         timeout: 15m
         image: env-glibc
@@ -100,7 +117,7 @@ jobs:
               export CARGO_HOME="$(pwd)/../cargo"
               sudo chown $(whoami): -Rf ${CARGO_HOME} .
               rustc +stable --version --verbose
-              rustup component add rustfmt-preview
+              rustup component add rustfmt
               cargo +stable fmt -- --check
             dir: git-pull-request-resource
           caches:
@@ -110,49 +127,52 @@ jobs:
           put: git-pull-request-resource
           params:
             path: git-pull-request-resource
-            context: format-check
+            context: meta-check
             status: success
 
         on_failure:
           put: git-pull-request-resource
           params:
             path: git-pull-request-resource
-            context: format-check
+            context: meta-check
             status: failure
 
-      # - task: spellcheck
-      #   timeout: 15m
-      #   image: env-glibc
-      #   config:
-      #     platform: linux
-      #     inputs:
-      #     - name: git-pull-request-resource
-      #     run:
-      #       path: sh
-      #       args:
-      #       - -exc
-      #       - |
-      #         export CARGO_HOME="$(pwd)/../cargo"
-      #         rustc --version --verbose
-      #         #cargo install cargo-spellcheck
-      #         #cargo spellcheck check
-      #       dir: git-pull-request-resource
-      #     caches:
-      #     - path: cargo
+    - task: run-check
+      timeout: 15m
+      image: env-glibc
+      config:
+        platform: linux
+        inputs:
+        - name: git-pull-request-resource
+        run:
+          # user: root
+          path: sh
+          args:
+          - -exc
+          - |
+            export CARGO_HOME="$(pwd)/../cargo"
+            sudo chown $(whoami): -Rf ${CARGO_HOME} .
+            cargo +stable run -- --version
+            cargo +stable run -- spellcheck demo/Cargo.toml || echo "$? - Found some errors"
+            cargo +stable run -- spellcheck demo/src/main.rs || echo "$? - Found some errors"
+            cargo +stable run -- spellcheck demo/ || echo "$? - Found some errors"
+          dir: git-pull-request-resource
+        caches:
+        - path: cargo
 
-        # on_success:
-        #   put: git-pull-request-resource
-        #   params:
-        #     path: git-pull-request-resource
-        #     context: spellcheck
-        #     status: success
+      on_success:
+        put: git-pull-request-resource
+        params:
+          path: git-pull-request-resource
+          context: run-check
+          status: success
 
-        # on_failure:
-        #   put: git-pull-request-resource
-        #   params:
-        #     path: git-pull-request-resource
-        #     context: spellcheck
-        #     status: failure
+      on_failure:
+        put: git-pull-request-resource
+        params:
+          path: git-pull-request-resource
+          context: run-check
+          status: failure
 
   - name: master-validate
     build_logs_to_retain: 10
@@ -178,7 +198,6 @@ jobs:
             args:
             - -exc
             - |
-              sudo chown $(whoami): -Rf .
               export CARGO_HOME="$(pwd)/../cargo"
               sudo chown $(whoami): -Rf ${CARGO_HOME} .
               rustc +stable --version --verbose
@@ -210,60 +229,28 @@ jobs:
           caches:
           - path: cargo
 
-
-  - name: run
-    build_logs_to_retain: 5
-    public: false
-    serial: true
-    plan:
-    - get: env-glibc
-    - get: git-repo
-      resource: git-clone-resource
-      trigger: true
-      passed: [master-validate]
-
-    - in_parallel:
-        - task: just-run
-          timeout: 15m
-          image: env-glibc
-          config:
-            platform: linux
-            inputs:
-            - name: git-repo
-            run:
-              # user: root
-              path: sh
-              args:
-              - -exc
-              - |
-                export CARGO_HOME="$(pwd)/../cargo"
-                sudo chown $(whoami): -Rf ${CARGO_HOME} .
-                cargo +stable run -- --version
-                cargo +stable run -- spellcheck demo/Cargo.toml
-                cargo +stable run -- spellcheck demo/src/main.rs
-                cargo +stable run -- spellcheck demo/
-              dir: git-repo
-            caches:
-            - path: cargo
-
-        - task: just-test
-          timeout: 15m
-          image: env-glibc
-          config:
-            platform: linux
-            inputs:
-            - name: git-repo
-            run:
-              path: sh
-              args:
-              - -exc
-              - |
-                export CARGO_HOME="$(pwd)/../cargo"
-                sudo chown $(whoami): -Rf ${CARGO_HOME} .
-                cargo +stable test -j1 -- --nocapture
-              dir: git-repo
-            caches:
-            - path: cargo
+      - task: just-run
+        timeout: 15m
+        image: env-glibc
+        config:
+          platform: linux
+          inputs:
+          - name: git-repo
+          run:
+            # user: root
+            path: sh
+            args:
+            - -exc
+            - |
+              export CARGO_HOME="$(pwd)/../cargo"
+              sudo chown $(whoami): -Rf ${CARGO_HOME} .
+              cargo +stable run -- --version
+              cargo +stable run -- spellcheck demo/Cargo.toml
+              cargo +stable run -- spellcheck demo/src/main.rs
+              cargo +stable run -- spellcheck demo/
+            dir: git-repo
+          caches:
+          - path: cargo
 
 
   - name: publish-github-release
