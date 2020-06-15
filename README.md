@@ -121,7 +121,7 @@ Requires the native library
 dnf install -y hunspell-devel
 
 # Ubuntu 19.10+
-apt install -y hunspell-dev
+apt install -y libhunspell-dev
 
 # Mac OS X
 brew install hunspell
