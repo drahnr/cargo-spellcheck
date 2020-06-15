@@ -289,16 +289,19 @@ jobs:
           args:
             - -exc
             - |
-              export CARGO_HOME="$(pwd)/cargo"
+              export CARGO_HOME="$(pwd)/../cargo"
               sudo chown $(whoami): -Rf ${CARGO_HOME} .
 
-              mkdir -p "../release-info"
+
               export RI_BASE_DIR="../release-info"
               export RI_ARTIFACTS_DIR="${RI_BASE_DIR}/artifacts"
-              mkdir -p "${RI_ARTIFACTS_DIR}"
               export RI_TAG_FILE="${RI_BASE_DIR}/TAG"
               export RI_COMMITISH_FILE="${RI_BASE_DIR}/COMMITISH"
               export RI_NAME_FILE="${RI_BASE_DIR}/NAME"
+
+              sudo install -o $(whoami) -d "${RI_BASE_DIR}" || echo "failed to create dir"
+              sudo install -o $(whoami) -d "${RI_ARTIFACTS_DIR}" || echo "failed to create dir"
+
 
               git rev-parse HEAD > "${RI_COMMITISH_FILE}"
               #git log -n 1 --format="%h" HEAD > "../${RI_COMMITISH_FILE}"
@@ -317,7 +320,7 @@ jobs:
               # using the fedora provided precompiled static libs
               # and publish target/x86_64-pc-windows-gnu/release/cargo-spellcheck.exe
               # TODO build for more OSes, such as fuchsia and BSD platforms
-              mkdir -pv "${RI_ARTIFACTS_DIR}"
+
               for TARGET in x86_64-unknown-linux-gnu ; do
                 echo "Prepping ${TARGET} ..."
                 cargo build --release --target "${TARGET}" && \
