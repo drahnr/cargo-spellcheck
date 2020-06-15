@@ -8,7 +8,7 @@ use crossterm;
 
 use crossterm::{
     cursor,
-    event::{Event, KeyCode, KeyEvent},
+    event::{Event, KeyCode, KeyEvent, KeyModifiers},
     style::{style, Attribute, Color, ContentStyle, Print, PrintStyledContent, StyledContent},
     terminal, QueueableCommand,
 };
@@ -250,7 +250,7 @@ impl UserPicked {
             // print normally again
 
             trace!("registered event: {:?}", &event);
-            let KeyEvent { code, modifiers: _ } = event;
+            let KeyEvent { code, modifiers } = event;
 
             let n_replacements = suggestion.replacements.len();
 
@@ -270,6 +270,7 @@ impl UserPicked {
                 }
                 KeyCode::Char('n') => return Ok(Pick::Skip),
                 KeyCode::Char('j') => return Ok(Pick::Previous),
+                KeyCode::Char('c') if modifiers == KeyModifiers::CONTROL => return Ok(Pick::Quit),
                 KeyCode::Char('q') | KeyCode::Esc => return Ok(Pick::Quit),
                 KeyCode::Char('d') => return Ok(Pick::SkipFile),
                 KeyCode::Char('e') => unimplemented!("Manual editing is a TODO"),
