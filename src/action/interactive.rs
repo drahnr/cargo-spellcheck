@@ -171,8 +171,8 @@ impl UserPicked {
         let KeyEvent { code, modifiers } = event;
 
         match code {
-            KeyCode::Up => state.select_previous(),
-            KeyCode::Down => state.select_next(),
+            KeyCode::Up => state.select_next(),
+            KeyCode::Down => state.select_previous(),
             KeyCode::Enter => {
                 let bandaid = BandAid::new(&state.custom_replacement, &state.suggestion.span);
                 return Ok(Pick::Replacement(bandaid));
