@@ -393,9 +393,6 @@ impl UserPicked {
 
             let KeyEvent { code, modifiers } = event;
 
-            // n provided by backends and one provided by the user
-            let n_replacements = state.suggestion.replacements.len() + 1;
-
             match code {
                 KeyCode::Up => state.select_next(),
                 KeyCode::Down => state.select_previous(),
