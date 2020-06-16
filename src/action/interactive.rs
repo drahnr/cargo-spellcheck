@@ -82,6 +82,9 @@ where
     pub suggestion: &'s Suggestion<'t>,
     /// The content the user provided for the suggestion, if any.
     pub custom_replacement: String,
+    pub i_custom_replacement_end_index: (u16, u16),
+    pub i_custom_replacement_start_column: u16,
+    pub i_cursor_index: u16,
     /// Which index to show as highlighted.
     pub pick_idx: usize,
     /// Total number of pickable slots.
@@ -93,6 +96,9 @@ impl<'s, 't> From<&'s Suggestion<'t>> for State<'s, 't> {
         Self {
             suggestion,
             custom_replacement: String::new(),
+            i_custom_replacement_end_index: (0, 0),
+            i_custom_replacement_start_column: 0,
+            i_cursor_index: 0,
             pick_idx: 0usize,
             // all items provided by the checkers plus the user provided
             n_items: suggestion.replacements.len() + 1,
@@ -171,15 +177,33 @@ impl UserPicked {
         let KeyEvent { code, modifiers } = event;
 
         match code {
-            KeyCode::Up => state.select_next(),
-            KeyCode::Down => state.select_previous(),
+            KeyCode::Left => {
+                state.i_cursor_index = state.i_cursor_index.checked_sub(1).unwrap_or_default()
+            }
+            KeyCode::Right => {
+                state.i_cursor_index =
+                    (state.i_cursor_index + 1).min(state.custom_replacement.len() as u16)
+            }
+            KeyCode::Up => {
+                state.i_cursor_index = state.custom_replacement.len() as u16;
+                state.select_next();
+            }
+            KeyCode::Down => {
+                state.i_cursor_index = state.custom_replacement.len() as u16;
+                state.select_previous();
+            }
             KeyCode::Enter => {
                 let bandaid = BandAid::new(&state.custom_replacement, &state.suggestion.span);
                 return Ok(Pick::Replacement(bandaid));
             }
             KeyCode::Esc => return Ok(Pick::Quit),
             KeyCode::Char('c') if modifiers == KeyModifiers::CONTROL => return Ok(Pick::Quit),
-            KeyCode::Char(c) => state.custom_replacement.push(c), // @todo handle cursors and insert / delete mode
+            KeyCode::Char(c) => {
+                state
+                    .custom_replacement
+                    .insert(state.i_cursor_index as usize, c);
+                state.i_cursor_index += 1;
+            } // @todo handle cursors and insert / delete mode
             _ => {}
         }
 
@@ -193,7 +217,7 @@ impl UserPicked {
     // arrow left
     // .. suggestion1 [suggestion2] suggestion3 suggestion4 ..
     // but now it's only a very simple list for now
-    fn print_replacements_list(&self, state: &State) -> Result<()> {
+    fn print_replacements_list(&self, state: &mut State) -> Result<()> {
         let mut stdout = stdout();
 
         let tick = ContentStyle::new()
@@ -257,6 +281,9 @@ impl UserPicked {
                 .unwrap();
         }
         let _ = stdout.flush();
+
+        state.i_custom_replacement_end_index = cursor::position().unwrap();
+        state.i_custom_replacement_start_column = 3;
 
         state
             .suggestion
@@ -363,6 +390,21 @@ impl UserPicked {
 
             self.print_replacements_list(state)?;
 
+            if state.is_custom_entry() {
+                info!("Custom entry mode");
+
+                stdout().queue(cursor::SavePosition).unwrap();
+                stdout()
+                    .queue(cursor::Show)
+                    .unwrap()
+                    .queue(cursor::MoveTo(
+                        state.i_cursor_index + state.i_custom_replacement_start_column,
+                        state.i_custom_replacement_end_index.1,
+                    ))
+                    .unwrap();
+                stdout().flush().unwrap();
+            }
+
             let event = match crossterm::event::read()
                 .map_err(|e| anyhow::anyhow!("Something unexpected happened on the CLI: {}", e))?
             {
@@ -381,7 +423,16 @@ impl UserPicked {
                 drop(guard);
                 info!("Custom entry mode");
                 guard = ScopedRaw::new();
-                match self.custom_replacement(state, event)? {
+
+                let pick = self.custom_replacement(state, event)?;
+
+                stdout()
+                    .queue(cursor::Hide)
+                    .unwrap()
+                    .queue(cursor::RestorePosition)
+                    .unwrap();
+
+                match pick {
                     Pick::Nop => continue,
                     other => return Ok(other),
                 }
