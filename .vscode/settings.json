@@ -17,5 +17,7 @@
 		"titleBar.inactiveBackground": "#13948399",
 		"titleBar.inactiveForeground": "#e7e7ff99"
 	},
-	"peacock.remoteColor": "#139483"
+	"peacock.remoteColor": "#139483",
+	"rust-analyzer.cargo.loadOutDirsFromCheck": true,
+	"rust-analyzer.debug.openDebugPane": true
 }
