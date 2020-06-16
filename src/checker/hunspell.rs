@@ -21,7 +21,7 @@ impl Checker for HunspellChecker {
         //     }
         // };
 
-        let search_dirs = dbg!(config.search_dirs());
+        let search_dirs = config.search_dirs();
 
         let lang = config.lang();
 
