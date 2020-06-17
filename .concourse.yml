@@ -43,10 +43,12 @@ jobs:
     public: true
     serial: true
     plan:
-    - get: env-glibc
     - get: git-pull-request-resource
       resource: git-pull-request-resource
+      version: every
       trigger: true
+
+    - get: env-glibc
 
     - in_parallel:
       - put: git-pull-request-resource
