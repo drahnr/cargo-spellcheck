@@ -292,7 +292,6 @@ impl UserPicked {
                 if idx != active_idx as u16 {
                     // @todo figure out a way to deal with those errors better
                     stdout
-                        // .queue(cursor::MoveTo(start.0 + idx, start.1)).unwrap()
                         .queue(cursor::MoveUp(1))
                         .unwrap()
                         .queue(terminal::Clear(terminal::ClearType::CurrentLine))
@@ -306,7 +305,6 @@ impl UserPicked {
                         .unwrap();
                 } else {
                     stdout
-                        // .queue(cursor::MoveTo(start.0 + idx, start.1)).unwrap()
                         .queue(cursor::MoveUp(1))
                         .unwrap()
                         .queue(terminal::Clear(terminal::ClearType::CurrentLine))
@@ -349,36 +347,28 @@ impl UserPicked {
             // a new suggestion, so prepare for the number of items that are visible
             // and also overwrite the last lines of the regular print which would
             // already contain the suggestions
+            // @todo deal with error conversion
+
+            const ERASE: u16 = 5;
+            // space + question + space
+            const QUESTION: u16 = 3;
+            let extra_rows_to_flush = (state.n_items - (ERASE - QUESTION) as usize) as u16;
             stdout()
                 .queue(cursor::Hide)
                 .unwrap()
-                .queue(cursor::MoveToColumn(0))
+                .queue(cursor::MoveUp(ERASE)) // erase the 5 last lines of suggestion print
                 .unwrap()
-                .queue(cursor::MoveUp(5)) // erase the 5 last lines of suggestion print
+                .queue(terminal::Clear(terminal::ClearType::FromCursorDown))
                 .unwrap()
-                .queue(cursor::MoveToColumn(0))
-                .unwrap()
-                .queue(terminal::Clear(terminal::ClearType::CurrentLine))
-                .unwrap()
-                .queue(cursor::MoveDown(1))
-                .unwrap()
-                .queue(terminal::Clear(terminal::ClearType::CurrentLine))
-                .unwrap()
-                .queue(cursor::MoveToColumn(0))
+                .queue(cursor::MoveDown(1)) // add a space between the question and the error
                 .unwrap()
                 .queue(PrintStyledContent(StyledContent::new(boring, question)))
                 .unwrap()
+                .queue(terminal::ScrollUp(extra_rows_to_flush))
+                .unwrap()
                 .queue(cursor::MoveToColumn(0))
                 .unwrap()
-                .queue(cursor::MoveDown(1))
-                .unwrap()
-                .queue(terminal::Clear(terminal::ClearType::CurrentLine))
-                .unwrap()
-                .queue(cursor::MoveDown(1))
-                .unwrap()
-                .queue(terminal::Clear(terminal::ClearType::CurrentLine))
-                .unwrap() // @todo deal with error conversion
-                .queue(terminal::ScrollUp((state.n_items) as u16))
+                .queue(cursor::MoveDown(extra_rows_to_flush))
                 .unwrap();
         }
 
@@ -398,7 +388,7 @@ impl UserPicked {
                     .unwrap()
                     .queue(cursor::MoveToColumn(4 + state.cursor_offset))
                     .unwrap();
-                stdout().flush().unwrap();
+                let _ = stdout().flush();
             }
 
             let event = match crossterm::event::read()
