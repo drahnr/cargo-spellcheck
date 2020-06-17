@@ -174,13 +174,8 @@ impl UserPicked {
 
         let length = state.custom_replacement.len() as u16;
         match code {
-            KeyCode::Left => {
-                state.cursor_offset = state.cursor_offset.saturating_sub(1)
-            }
-            KeyCode::Right => {
-                state.cursor_offset =
-                    (state.cursor_offset + 1).min(length)
-            }
+            KeyCode::Left => state.cursor_offset = state.cursor_offset.saturating_sub(1),
+            KeyCode::Right => state.cursor_offset = (state.cursor_offset + 1).min(length),
             KeyCode::Up => {
                 state.cursor_offset = length;
                 state.select_next();
