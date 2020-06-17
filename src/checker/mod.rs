@@ -106,8 +106,10 @@ where
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
+    use proc_macro2::{LineColumn, Literal};
+    use std::path::PathBuf;
 
     const TEXT: &'static str = "With markdown removed, for sure.";
     lazy_static::lazy_static! {
@@ -125,6 +127,64 @@ mod tests {
         let ranges: Vec<Range> = tokenize(TEXT);
         for (range, expect) in ranges.into_iter().zip(TOKENS.iter()) {
             assert_eq!(&&TEXT[range], expect);
+        }
+    }
+
+    pub struct TestChecker;
+
+    impl Checker for TestChecker {
+        type Config = ();
+
+        fn check<'a, 's>(docu: &'a Documentation, _: &Self::Config) -> Result<SuggestionSet<'s>>
+        where
+            'a: 's,
+        {
+            let suggestions = docu.iter().try_fold::<SuggestionSet, _, Result<_>>(
+                SuggestionSet::new(),
+                |mut acc, (path, literal_sets)| {
+                    let plain = literal_sets.iter().next().unwrap().erase_markdown();
+                    for range in tokenize(plain.as_str()) {
+                        let detector = Detector::Hunspell;
+                        for (literal, span) in plain.linear_range_to_spans(range.clone()) {
+                            let replacements = vec!["literal".to_string(); 1];
+                            let suggestion = Suggestion {
+                                detector,
+                                span: span,
+                                path: PathBuf::from(path),
+                                replacements,
+                                literal: literal.into(),
+                                description: None,
+                            };
+                            acc.add(PathBuf::from(path), suggestion);
+                        }
+                    }
+                    Ok(acc)
+                },
+            )?;
+
+            Ok(suggestions)
+        }
+    }
+
+    #[test]
+    fn test_checker() {
+        let mut d = Documentation::new();
+        let dummy_path = PathBuf::from("dummy/dummy.rs");
+        d.append_literal(&dummy_path, Literal::string("literal"));
+        let c = TestChecker::check(&d, &()).expect("TestChecker failed");
+
+        assert_eq!(c.len(), 1);
+        for (path, suggestions) in c {
+            assert_eq!(path, dummy_path);
+            let s = suggestions.iter().next().unwrap();
+            assert_eq!(
+                s.span,
+                crate::span::Span {
+                    start: LineColumn { line: 1, column: 1 },
+                    end: LineColumn { line: 1, column: 7 },
+                }
+            );
+            assert_eq!(s.replacements, vec!["literal".to_string(); 1]);
         }
     }
 }

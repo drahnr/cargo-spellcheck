@@ -3,6 +3,8 @@ use crate::suggestion::Suggestion;
 use anyhow::{anyhow, Error, Result};
 use log::trace;
 use std::convert::TryFrom;
+
+#[doc = r#"A choosen sugestion for a certain span"#]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BandAid {
     /// a span, where the first line has index 1, columns are base 1 too
@@ -65,5 +67,83 @@ impl<'s> TryFrom<(Suggestion<'s>, usize)> for BandAid {
 impl From<(String, Span)> for BandAid {
     fn from((replacement, span): (String, Span)) -> Self {
         Self { span, replacement }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::checker::tests::TestChecker;
+    use crate::checker::Checker;
+    use crate::documentation::*;
+    use proc_macro2::{LineColumn, Literal};
+    use std::path::PathBuf;
+
+    #[test]
+    fn try_from_string_works() {
+        let mut d = Documentation::new();
+        let dummy_path = PathBuf::from("dummy/dummy.rs");
+        d.append_literal(&dummy_path, Literal::string("literal"));
+        let c = TestChecker::check(&d, &()).expect("TestChecker failed");
+
+        assert_eq!(c.len(), 1);
+        for (_, suggestion) in c {
+            let bandaid =
+                BandAid::try_from((suggestion.iter().nth(0).unwrap(), 0)).expect("try_from failed");
+            assert_eq!(bandaid.replacement, "literal");
+        }
+    }
+
+    #[test]
+    fn try_from_raw_string_works() {
+        let mut d = Documentation::new();
+        let dummy_path = PathBuf::from("dummy/dummy.rs");
+        d.append_literal(&dummy_path, Literal::string(r#"literal"#));
+        let c = TestChecker::check(&d, &()).expect("TestChecker failed");
+
+        assert_eq!(c.len(), 1);
+        for (_, suggestion) in c {
+            let bandaid =
+                BandAid::try_from((suggestion.iter().nth(0).unwrap(), 0)).expect("try_from failed");
+            assert_eq!(bandaid.replacement, "literal");
+            assert_eq!(
+                bandaid.span,
+                crate::span::Span {
+                    start: LineColumn { line: 1, column: 3 },
+                    end: LineColumn { line: 1, column: 9 },
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn try_from_multiple_works() {
+        let mut d = Documentation::new();
+        let dummy_path = PathBuf::from("dummy/dummy.rs");
+        let dummy_path2 = PathBuf::from("dummy/dummy2.rs");
+        d.append_literal(&dummy_path, Literal::string("this is a literal"));
+        d.append_literal(&dummy_path2, Literal::string("another one"));
+
+        let c = TestChecker::check(&d, &()).expect("TestChecker failed");
+        assert_eq!(c.len(), 2);
+
+        let mut count = 0;
+        for (_, suggestion) in c {
+            let bandaid =
+                BandAid::try_from((suggestion.iter().nth(0).unwrap(), 0)).expect("failed");
+            trace!("{:?}", bandaid);
+            assert_eq!(bandaid.replacement, "literal");
+            assert_eq!(
+                bandaid.span,
+                crate::span::Span {
+                    start: LineColumn { line: 1, column: 3 },
+                    end: LineColumn {
+                        line: 1,
+                        column: count * 3 + 6
+                    },
+                }
+            );
+            count += 1;
+        }
     }
 }
