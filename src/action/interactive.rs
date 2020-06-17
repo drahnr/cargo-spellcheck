@@ -192,6 +192,14 @@ impl UserPicked {
                 state.cursor_index = state.custom_replacement.len() as u16;
                 state.select_previous();
             }
+            KeyCode::Backspace => {
+                if state.cursor_index > 0 {
+                    state.cursor_index -= 1;
+                    state
+                        .custom_replacement
+                        .remove(state.cursor_index as usize);
+                }
+            }
             KeyCode::Enter => {
                 let bandaid = BandAid::new(&state.custom_replacement, &state.suggestion.span);
                 return Ok(Pick::Replacement(bandaid));
