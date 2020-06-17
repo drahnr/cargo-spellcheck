@@ -82,9 +82,7 @@ where
     pub suggestion: &'s Suggestion<'t>,
     /// The content the user provided for the suggestion, if any.
     pub custom_replacement: String,
-    pub custom_replacement_row: u16,
-    pub custom_replacement_start_column: u16,
-    pub cursor_index: u16,
+    pub cursor_offset: u16,
     /// Which index to show as highlighted.
     pub pick_idx: usize,
     /// Total number of pickable slots.
@@ -96,9 +94,7 @@ impl<'s, 't> From<&'s Suggestion<'t>> for State<'s, 't> {
         Self {
             suggestion,
             custom_replacement: String::new(),
-            custom_replacement_row: 0,
-            custom_replacement_start_column: 0,
-            cursor_index: 0,
+            cursor_offset: 0,
             pick_idx: 0usize,
             // all items provided by the checkers plus the user provided
             n_items: suggestion.replacements.len() + 1,
@@ -176,28 +172,29 @@ impl UserPicked {
     fn custom_replacement(&self, state: &mut State, event: KeyEvent) -> Result<Pick> {
         let KeyEvent { code, modifiers } = event;
 
+        let length = state.custom_replacement.len() as u16;
         match code {
             KeyCode::Left => {
-                state.cursor_index = state.cursor_index.checked_sub(1).unwrap_or_default()
+                state.cursor_offset = state.cursor_offset.saturating_sub(1)
             }
             KeyCode::Right => {
-                state.cursor_index =
-                    (state.cursor_index + 1).min(state.custom_replacement.len() as u16)
+                state.cursor_offset =
+                    (state.cursor_offset + 1).min(length)
             }
             KeyCode::Up => {
-                state.cursor_index = state.custom_replacement.len() as u16;
+                state.cursor_offset = length;
                 state.select_previous();
             }
             KeyCode::Down => {
-                state.cursor_index = state.custom_replacement.len() as u16;
+                state.cursor_offset = length;
                 state.select_next();
             }
             KeyCode::Backspace => {
-                if state.cursor_index > 0 {
-                    state.cursor_index -= 1;
+                if state.cursor_offset > 0 {
+                    state.cursor_offset -= 1;
                     state
                         .custom_replacement
-                        .remove(state.cursor_index as usize);
+                        .remove(state.cursor_offset as usize);
                 }
             }
             KeyCode::Enter => {
@@ -209,8 +206,8 @@ impl UserPicked {
             KeyCode::Char(c) => {
                 state
                     .custom_replacement
-                    .insert(state.cursor_index as usize, c);
-                state.cursor_index += 1;
+                    .insert(state.cursor_offset as usize, c);
+                state.cursor_offset += 1;
             }
             _ => {}
         }
@@ -289,9 +286,6 @@ impl UserPicked {
                 .unwrap();
         }
         let _ = stdout.flush();
-
-        state.custom_replacement_row = cursor::position()?.1;
-        state.custom_replacement_start_column = 3;
 
         state
             .suggestion
@@ -405,10 +399,9 @@ impl UserPicked {
                 stdout()
                     .queue(cursor::Show)
                     .unwrap()
-                    .queue(cursor::MoveTo(
-                        state.cursor_index + state.custom_replacement_start_column,
-                        state.custom_replacement_row,
-                    ))
+                    .queue(cursor::MoveToPreviousLine(1))
+                    .unwrap()
+                    .queue(cursor::MoveToColumn(4 + state.cursor_offset))
                     .unwrap();
                 stdout().flush().unwrap();
             }
