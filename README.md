@@ -74,7 +74,7 @@ cargo spellcheck fix --interactive
 * [x] Improve interactive user interface with `crossterm`
 * [ ] Ellipsize overly long statements with `...` [#42](https://github.com/drahnr/cargo-spellcheck/issues/42)
 * [ ] Learn topic lingo and filter false-positive-suggestions when `fix --interactive` is passed [#41](https://github.com/drahnr/cargo-spellcheck/issues/41)
-* [ ] Handle cargo workspaces [#38](https://github.com/drahnr/cargo-spellcheck/issues/38)
+* [x] Handle cargo workspaces [#38](https://github.com/drahnr/cargo-spellcheck/issues/38)
 * [ ] Re-wrap doc comments [#39](https://github.com/drahnr/cargo-spellcheck/issues/39)
 * [ ] Word split validation [#40](https://github.com/drahnr/cargo-spellcheck/issues/40)
 * [ ] `cargo-spellcheck fix` [#45](https://github.com/drahnr/cargo-spellcheck/issues/45)
