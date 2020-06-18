@@ -233,9 +233,7 @@ pub enum CheckItem {
     ManifestDescription(String),
 }
 
-/// Extract all cargo manifest products / build targets.
-// @todo code with an enum to allow source and markdown files
-fn extract_products<P: AsRef<Path>>(manifest_dir: P) -> Result<Vec<CheckItem>> {
+fn load_manifest<P: AsRef<Path>>(manifest_dir: P) -> Result<cargo_toml::Manifest> {
     let manifest_dir = manifest_dir.as_ref();
     let manifest_file = manifest_dir.join("Cargo.toml");
     let mut manifest = cargo_toml::Manifest::from_path(&manifest_file).map_err(|e| {
@@ -255,10 +253,61 @@ fn extract_products<P: AsRef<Path>>(manifest_dir: P) -> Result<Vec<CheckItem>> {
             e
         )
     })?;
+    Ok(manifest)
+}
 
-    let mut items = manifest
+/// can convert manifest with or without Cargo.toml into the dir that contains the manifest
+fn to_manifest_dir<P: AsRef<Path>>(manifest_dir: P) -> Result<PathBuf> {
+    let manifest_dir: &Path = manifest_dir.as_ref();
+    if manifest_dir.ends_with("Cargo.toml") {
+        manifest_dir.parent().unwrap()
+    } else {
+        manifest_dir
+    }
+    .canonicalize()
+    .map_err(|e| {
+        Error::from(e).context(anyhow!(
+            "Failed to canonicalize path {}",
+            manifest_dir.display()
+        ))
+    })
+}
+
+fn handle_manifest<P: AsRef<Path>>(manifest_dir: P) -> Result<Vec<CheckItem>> {
+    let manifest_dir = to_manifest_dir(manifest_dir)?;
+    trace!("Handle manifest in dir: {}", manifest_dir.display());
+
+    let manifest_dir = manifest_dir.as_path();
+    let manifest = load_manifest(manifest_dir)?;
+    if let Some(workspace) = manifest.workspace {
+        trace!("Handling manifest workspace");
+        workspace
+            .members
+            .into_iter()
+            .try_fold(Vec::new(), |mut acc, item| {
+                let d = manifest_dir.join(&item);
+                trace!("Handling manifest member {} -> {}", &item, d.display());
+                acc.extend(extract_products(d)?.into_iter());
+                Ok(acc)
+            })
+    } else {
+        trace!("Handling normal manifest");
+        extract_products(manifest_dir)
+    }
+}
+
+/// Extract all cargo manifest products / build targets.
+// @todo code with an enum to allow source and markdown files
+fn extract_products<P: AsRef<Path>>(manifest_dir: P) -> Result<Vec<CheckItem>> {
+    let manifest_dir = manifest_dir.as_ref();
+    let manifest = load_manifest(manifest_dir)?;
+
+    let iter = manifest
         .bin
         .into_iter()
+        .chain(manifest.lib.into_iter().map(|x| x));
+
+    let mut items = iter
         .filter(|product| product.doctest)
         .filter_map(|product| product.path)
         .map(|path_str| CheckItem::Source(manifest_dir.join(path_str)))
@@ -283,8 +332,8 @@ fn extract_products<P: AsRef<Path>>(manifest_dir: P) -> Result<Vec<CheckItem>> {
     Ok(items)
 }
 
-/// Execute execute execute.
-pub(crate) fn collect(
+/// Extract all chunks from
+pub(crate) fn extract(
     mut paths: Vec<PathBuf>,
     mut recurse: bool,
     _config: &Config,
@@ -309,21 +358,28 @@ pub(crate) fn collect(
     // so after this conversion all of them are considered
     let items: Vec<_> = paths
         .into_iter()
-        .map(|path| {
-            let path = if path.is_absolute() {
-                path
+        .filter_map(|path_in| {
+            let path = if path_in.is_absolute() {
+                path_in.to_owned()
             } else {
-                cwd.join(path)
-            };
-            if let Ok(meta) = path.metadata() {
+                cwd.join(&path_in)
+            }
+            .canonicalize()
+            .unwrap();
+            info!("Processing {} -> {}", path_in.display(), path.display());
+            Some(if let Ok(meta) = path.metadata() {
                 if meta.is_file() {
                     match path.file_name().map(|x| x.to_str()).flatten() {
                         Some(file_name) if file_name == "Cargo.toml" => Extraction::Manifest(path),
                         Some(file_name) if file_name.ends_with(".md") => Extraction::Markdown(path),
-                        _ => Extraction::Source(path),
+                        Some(file_name) if file_name.ends_with(".rs") => Extraction::Source(path),
+                        _ => {
+                            warn!("Unexpected item made it into the items {}", path.display());
+                            return None;
+                        }
                     }
                 } else if meta.is_dir() {
-                    let cargo_toml = path.with_file_name("Cargo.toml");
+                    let cargo_toml = to_manifest_dir(path).unwrap().join("Cargo.toml");
                     if cargo_toml.is_file() {
                         Extraction::Manifest(cargo_toml)
                     } else {
@@ -335,12 +391,12 @@ pub(crate) fn collect(
                 }
             } else {
                 Extraction::Missing(path)
-            }
+            })
         })
         .try_fold::<Vec<_>, _, Result<_>>(Vec::with_capacity(64), |mut acc, tagged_path| {
             match tagged_path {
                 Extraction::Manifest(ref cargo_toml_path) => {
-                    let manifest_list = extract_products(cargo_toml_path.parent().unwrap())?;
+                    let manifest_list = handle_manifest(cargo_toml_path)?;
                     acc.extend(manifest_list);
                 }
                 Extraction::Missing(ref missing_path) => warn!(
@@ -443,6 +499,7 @@ mod tests {
             extract_products(demo_dir()).expect("Must succeed"),
             vec![
                 CheckItem::Source(demo_dir().join("src/main.rs")),
+                CheckItem::Source(demo_dir().join("src/lib.rs")),
                 CheckItem::Markdown(demo_dir().join("README.md")),
                 CheckItem::ManifestDescription(
                     "A silly demo with plenty of spelling mistakes for cargo-spellcheck demos and CI".to_string()
