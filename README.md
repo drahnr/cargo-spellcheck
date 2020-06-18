@@ -70,17 +70,17 @@ Improvement requests tracked in [issue #7](https://github.com/drahnr/cargo-spell
 * [x] False positive reduction
 * [x] Follow module declarations rather than blindly recurse
 * [x] Be `markdown` aware
-  * [ ] Handle doctests with ` ```rust` as virtual files [skeptic-like](https://github.com/budziq/rust-skeptic/blob/master/src/skeptic/lib.rs#L240-L259)
-  * [ ] Verify all types of links: direct urls and href
-* [ ] Check `README.md` files
+  * [ ] Handle doctests with ` ```rust` as virtual files [skeptic-like](https://github.com/budziq/rust-skeptic/blob/master/src/skeptic/lib.rs#L240-L259) #43
+  * [ ] Verify all types of links #44
+* [ ] Check `README.md` files #37
 * [x] `cargo-spellcheck fix --interactive`
 * [x] Improve interactive user interface with `crossterm`
-* [ ] Ellipsize overly long statements with `...`
-* [ ] `cargo-spellcheck fix`
-* [ ] Learn topic lingo and filter false-positive-suggestions when `fix --interactive` is passed
-* [ ] Handle cargo workspaces
-* [ ] Re-wrap doc comments
-* [ ] Word split validation
+* [ ] Ellipsize overly long statements with `...` #42
+* [ ] Learn topic lingo and filter false-positive-suggestions when `fix --interactive` is passed #41
+* [ ] Handle cargo workspaces #38
+* [ ] Re-wrap doc comments #39
+* [ ] Word split validation #40
+* [ ] `cargo-spellcheck fix` #45
 
 `hunspell` and `languagetool` are currently the two supported featuresets.
 
