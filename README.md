@@ -15,7 +15,7 @@ Meant as a helper simplifying review as well as possibly improving CI
 after a learning phase for custom/topic specifc lingo.
 `cargo spellcheck` has a return code `1` if any unknown words are found, and `0` on success.
 
-## Test Cases
+## Use Cases
 
 ### Check
 
@@ -59,7 +59,7 @@ Improvement requests tracked in [issue #7](https://github.com/drahnr/cargo-spell
    <span style="background-color:#2E3436"><font color="#729FCF">Beth</font></span>
 </pre>
 
-## Features
+## Implemented Features + Roadmap
 
 * [x] Parse doc comments from arbitrary files
 * [x] Decent error printing
