@@ -70,17 +70,17 @@ Improvement requests tracked in [issue #7](https://github.com/drahnr/cargo-spell
 * [x] False positive reduction
 * [x] Follow module declarations rather than blindly recurse
 * [x] Be `markdown` aware
-  * [ ] Handle doctests with ` ```rust` as virtual files [skeptic-like](https://github.com/budziq/rust-skeptic/blob/master/src/skeptic/lib.rs#L240-L259) #43
-  * [ ] Verify all types of links #44
-* [ ] Check `README.md` files #37
+  * [ ] Handle doctests with ` ```rust` as virtual files [#43](https://github.com/drahnr/cargo-spellcheck/issues/43)
+  * [ ] Verify all types of links [#44](https://github.com/drahnr/cargo-spellcheck/issues/44)
+* [ ] Check `README.md` files [#37](https://github.com/drahnr/cargo-spellcheck/issues/37)
 * [x] `cargo-spellcheck fix --interactive`
 * [x] Improve interactive user interface with `crossterm`
-* [ ] Ellipsize overly long statements with `...` #42
-* [ ] Learn topic lingo and filter false-positive-suggestions when `fix --interactive` is passed #41
-* [ ] Handle cargo workspaces #38
-* [ ] Re-wrap doc comments #39
-* [ ] Word split validation #40
-* [ ] `cargo-spellcheck fix` #45
+* [ ] Ellipsize overly long statements with `...` [#42](https://github.com/drahnr/cargo-spellcheck/issues/42)
+* [ ] Learn topic lingo and filter false-positive-suggestions when `fix --interactive` is passed [#41](https://github.com/drahnr/cargo-spellcheck/issues/41)
+* [ ] Handle cargo workspaces [#38](https://github.com/drahnr/cargo-spellcheck/issues/38)
+* [ ] Re-wrap doc comments [#39](https://github.com/drahnr/cargo-spellcheck/issues/39)
+* [ ] Word split validation [#40](https://github.com/drahnr/cargo-spellcheck/issues/40)
+* [ ] `cargo-spellcheck fix` [#45](https://github.com/drahnr/cargo-spellcheck/issues/45)
 
 `hunspell` and `languagetool` are currently the two supported featuresets.
 
