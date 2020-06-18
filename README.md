@@ -2,7 +2,7 @@
 
 [![crates.io](https://img.shields.io/crates/v/cargo_spellcheck.svg)](https://crates.io/crates/cargo-spellcheck)
 [![CI](https://ci.spearow.io/api/v1/teams/main/pipelines/cargo-spellcheck/jobs/master-validate/badge)](https://ci.spearow.io/teams/main/pipelines/cargo-spellcheck/jobs/master-validate)
-[![](https://img.shields.io/github/commits-since/drahnr/cargo-spellcheck/latest.svg)]()
+![commits-since](https://img.shields.io/github/commits-since/drahnr/cargo-spellcheck/latest.svg)
 
 Check your spelling with `hunspell` and/or `languagetool`.
 
