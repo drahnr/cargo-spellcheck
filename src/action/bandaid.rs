@@ -27,7 +27,7 @@ impl BandAid {
         // @todo this is a hack and should be documented better
         // @todo not sure why the offset of two is necessary
         // @todo but it works consistently
-        let doc_comment_to_file_offset = 2;
+        let doc_comment_to_file_offset = 0;
         span.start.column += doc_comment_to_file_offset;
         span.end.column += doc_comment_to_file_offset;
         Self {
@@ -126,31 +126,20 @@ mod tests {
     fn try_from_multiple_works() {
         let mut d = Documentation::new();
         let dummy_path = PathBuf::from("dummy/dummy.rs");
-        //let dummy_path2 = PathBuf::from("dummy/dummy2.rs");
+        let dummy_path2 = PathBuf::from("dummy/dummy2.rs");
         d.append_literal(&dummy_path, Literal::string("this is a literal"));
-        //d.append_literal(&dummy_path2, Literal::string("another one"));
+        d.append_literal(&dummy_path2, Literal::string(" another one"));
 
         let c = TestChecker::check(&d, &()).expect("TestChecker failed");
-        assert_eq!(c.len(), 1);
-        assert_eq!(c.count(), 4);
+        assert_eq!(c.len(), 2);
+        assert_eq!(c.count(), 6);
 
-        let mut count = 0;
         for (_, suggestion) in c {
             let bandaid =
                 BandAid::try_from((suggestion.iter().nth(0).unwrap(), 0)).expect("failed");
             trace!("{:?}", bandaid);
             assert_eq!(bandaid.replacement, "literal");
-            assert_eq!(
-                bandaid.span,
-                Span {
-                    start: LineColumn { line: 1, column: 3 },
-                    end: LineColumn {
-                        line: 1,
-                        column: count * 3 + 6
-                    },
-                }
-            );
-            count += 1;
+            assert_eq!(bandaid.span, suggestion.iter().next().unwrap().span);
         }
     }
 }
