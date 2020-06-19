@@ -279,21 +279,22 @@ fn handle_manifest<P: AsRef<Path>>(manifest_dir: P) -> Result<Vec<CheckItem>> {
 
     let manifest_dir = manifest_dir.as_path();
     let manifest = load_manifest(manifest_dir)?;
+
+    let mut acc = extract_products(manifest_dir)?;
+
     if let Some(workspace) = manifest.workspace {
         trace!("Handling manifest workspace");
         workspace
             .members
             .into_iter()
-            .try_fold(Vec::new(), |mut acc, item| {
+            .try_for_each::<_, Result<()>>(|item| {
                 let d = manifest_dir.join(&item);
                 trace!("Handling manifest member {} -> {}", &item, d.display());
                 acc.extend(extract_products(d)?.into_iter());
-                Ok(acc)
-            })
-    } else {
-        trace!("Handling normal manifest");
-        extract_products(manifest_dir)
+                Ok(())
+            })?;
     }
+    Ok(acc)
 }
 
 /// Extract all cargo manifest products / build targets.
