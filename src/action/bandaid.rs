@@ -73,8 +73,7 @@ impl From<(String, Span)> for BandAid {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::checker::tests::TestChecker;
-    use crate::checker::Checker;
+    use crate::checker::{Checker, dummy::DummyChecker};
     use crate::documentation::*;
     use crate::span::Span;
     use log::debug;
@@ -91,16 +90,16 @@ mod tests {
         let mut d = Documentation::new();
         let dummy_path = PathBuf::from("dummy/dummy.rs");
         d.append_literal(&dummy_path, Literal::string("This has four literals"));
-        let c = TestChecker::check(&d, &()).expect("TestChecker failed");
+        let suggestion_set = DummyChecker::check(&d, &()).expect("DummyChecker failed");
 
-        assert_eq!(c.len(), 1);
-        assert_eq!(c.count(), 4);
-        for (_, suggestion) in c {
+        assert_eq!(suggestion_set.len(), 1);
+        assert_eq!(suggestion_set.total_count(), 4);
+        for (_, suggestion) in suggestion_set {
             let bandaid =
                 BandAid::try_from((suggestion.iter().nth(0).unwrap(), 0)).expect("try_from failed");
             debug!("{:?}", &bandaid);
             debug!("Sug span: {:?}", suggestion.iter().nth(0).unwrap().span);
-            assert_eq!(bandaid.replacement, "literal");
+            assert_eq!(bandaid.replacement, "replacement_0");
             assert_eq!(bandaid.span, suggestion.iter().nth(0).unwrap().span);
         }
     }
@@ -110,11 +109,11 @@ mod tests {
         let mut d = Documentation::new();
         let dummy_path = PathBuf::from("dummy/dummy.rs");
         d.append_literal(&dummy_path, Literal::string(r#"Some raw string"#));
-        let c = TestChecker::check(&d, &()).expect("TestChecker failed");
+        let literal_set = DummyChecker::check(&d, &()).expect("DummyChecker failed");
 
-        assert_eq!(c.len(), 1);
-        assert_eq!(c.count(), 3);
-        for (_, suggestion) in c {
+        assert_eq!(literal_set.len(), 1);
+        assert_eq!(literal_set.total_count(), 3);
+        for (_, suggestion) in literal_set {
             let bandaid =
                 BandAid::try_from((suggestion.iter().nth(0).unwrap(), 0)).expect("try_from failed");
             assert_eq!(bandaid.replacement, "literal");
@@ -130,11 +129,11 @@ mod tests {
         d.append_literal(&dummy_path, Literal::string("this is a literal"));
         d.append_literal(&dummy_path2, Literal::string(" another one"));
 
-        let c = TestChecker::check(&d, &()).expect("TestChecker failed");
-        assert_eq!(c.len(), 2);
-        assert_eq!(c.count(), 6);
+        let literal_set = DummyChecker::check(&d, &()).expect("DummyChecker failed");
+        assert_eq!(literal_set.len(), 2);
+        assert_eq!(literal_set.total_count(), 6);
 
-        for (_, suggestion) in c {
+        for (_, suggestion) in literal_set {
             let bandaid =
                 BandAid::try_from((suggestion.iter().nth(0).unwrap(), 0)).expect("failed");
             trace!("{:?}", bandaid);

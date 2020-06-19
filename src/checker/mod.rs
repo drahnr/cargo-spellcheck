@@ -55,7 +55,7 @@ fn tokenize(s: &str) -> Vec<Range> {
     // @todo for hypenation, check if line ends with a dash
     if started {
         if let Some((idx, _)) = s.char_indices().next_back() {
-            // increase by one, since the range's end goes one beyond
+            // increase by one, since the range's end goes one beyond, end bounds is _exclusive_ for ranges
             let linear_end = idx + 1;
             bananasplit.push(linear_start..linear_end)
         } else {
@@ -106,10 +106,14 @@ where
 }
 
 #[cfg(test)]
+pub mod dummy;
+
+#[cfg(test)]
 pub mod tests {
     use super::*;
     use proc_macro2::{LineColumn, Literal};
     use std::path::PathBuf;
+    use crate::span::Span;
 
     const TEXT: &'static str = "With markdown removed, for sure.";
     lazy_static::lazy_static! {
@@ -130,47 +134,8 @@ pub mod tests {
         }
     }
 
-    pub struct TestChecker;
 
-    impl Checker for TestChecker {
-        type Config = ();
-
-        fn check<'a, 's>(docu: &'a Documentation, _: &Self::Config) -> Result<SuggestionSet<'s>>
-        where
-            'a: 's,
-        {
-            let suggestions = docu.iter().try_fold::<SuggestionSet, _, Result<_>>(
-                SuggestionSet::new(),
-                |mut acc, (path, literal_sets)| {
-                    let plain = literal_sets.iter().next().unwrap().erase_markdown();
-                    for range in tokenize(plain.as_str()) {
-                        let detector = Detector::Hunspell;
-                        trace!("Range = {:?}", &range);
-                        for (literal, span) in plain.linear_range_to_spans(range.clone()) {
-                            trace!("TestChecker: Span    {:?}", &span);
-                            trace!("TestChecker: literal {:?}", &literal);
-                            let replacements = vec!["literal".to_string(); 1];
-                            let suggestion = Suggestion {
-                                detector,
-                                span: span,
-                                path: PathBuf::from(path),
-                                replacements,
-                                literal: literal.into(),
-                                description: None,
-                            };
-                            acc.add(PathBuf::from(path), suggestion);
-                        }
-                    }
-                    Ok(acc)
-                },
-            )?;
-
-            Ok(suggestions)
-        }
-    }
-
-    #[test]
-    fn extracting_suggestions_from_literals_works() {
+    fn extraction_test_body(content: &'static str, expected_spans: &[Span]) {
         let _ = env_logger::builder()
             .filter(None, log::LevelFilter::Trace)
             .is_test(true)
@@ -178,37 +143,55 @@ pub mod tests {
 
         let mut d = Documentation::new();
         let dummy_path = PathBuf::from("dummy/dummy.rs");
-        d.append_literal(&dummy_path, Literal::string("two  literals "));
-        let c = TestChecker::check(&d, &()).expect("TestChecker failed");
+        d.append_literal(&dummy_path, Literal::string(content));
+        let suggestion_set = dummy::DummyChecker::check(&d, &()).expect("Dummy extraction must never fail");
 
-        assert_eq!(c.len(), 1);
-        assert_eq!(c.count(), 2);
-        let (path, suggestions) = c.iter().next().unwrap();
-        let mut s_iter = suggestions.iter();
+        // one file
+        assert_eq!(suggestion_set.len(), 1);
+        // with two suggestions
+        assert_eq!(suggestion_set.total_count(), expected_spans.len());
+        let (path, suggestions) = suggestion_set.iter().next().expect("Must have valid 1st suggestion");
 
-        let s = s_iter.next().unwrap();
-        assert_eq!(path, &dummy_path);
-        assert_eq!(
-            s.span,
-            crate::span::Span {
+        for (index, (suggestion, expected_span)) in suggestions.iter().zip(expected_spans.iter()).enumerate() {
+            assert_eq!(suggestion.replacements, vec![format!("replacement_{}", index)]);
+            assert_eq!(suggestion.span, *expected_span);
+        }
+    }
+
+    #[test]
+    fn extract_suggestions_left_aligned() {
+        const SIMPLE: &'static str = "two  literals ";
+
+        /// keep in mind, `Span` bounds are inclusive, unlike Ranges, where range.end is _exclusive_
+        const EXPECTED_SPANS: &[Span] = &[
+            Span {
                 start: LineColumn { line: 1, column: 0 },
                 end: LineColumn { line: 1, column: 2 },
-            }
-        );
-        assert_eq!(s.replacements, vec!["literal".to_string(); 1]);
-
-        let s = s_iter.next().unwrap();
-        assert_eq!(path, &dummy_path);
-        assert_eq!(
-            s.span,
-            crate::span::Span {
+            },
+            Span {
                 start: LineColumn { line: 1, column: 5 },
-                end: LineColumn {
-                    line: 1,
-                    column: 12
-                },
+                end: LineColumn { line: 1, column: 12 },
             }
-        );
-        assert_eq!(s.replacements, vec!["literal".to_string(); 1]);
+        ];
+        extraction_test_body(SIMPLE, EXPECTED_SPANS);
+    }
+
+
+    #[test]
+    fn extract_suggestions_3spaces() {
+        const SIMPLE: &'static str = "   3rd  testcase ";
+
+        /// keep in mind, `Span` bounds are inclusive, unlike Ranges, where range.end is _exclusive_
+        const EXPECTED_SPANS: &[Span] = &[
+            Span {
+                start: LineColumn { line: 1, column: 3 },
+                end: LineColumn { line: 1, column: 5 },
+            },
+            Span {
+                start: LineColumn { line: 1, column: 8 },
+                end: LineColumn { line: 1, column: 15 },
+            }
+        ];
+        extraction_test_body(SIMPLE, EXPECTED_SPANS);
     }
 }
