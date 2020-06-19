@@ -256,7 +256,7 @@ fn find_coverage<'a>(
 /// A set of consecutive literals.
 ///
 /// Provides means to render them as a code block
-#[derive(Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Clone, Default, Debug, Hash, PartialEq, Eq)]
 pub struct LiteralSet {
     /// consecutive set of literals mapped by line number
     literals: Vec<TrimmedLiteral>,
