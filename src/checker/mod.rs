@@ -146,6 +146,8 @@ pub mod tests {
                     for range in tokenize(plain.as_str()) {
                         let detector = Detector::Hunspell;
                         for (literal, span) in plain.linear_range_to_spans(range.clone()) {
+                            debug!("TestChecker: Span    {:?}", &span);
+                            debug!("TestChecker: literal {:?}", &literal);
                             let replacements = vec!["literal".to_string(); 1];
                             let suggestion = Suggestion {
                                 detector,
