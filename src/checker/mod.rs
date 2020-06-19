@@ -3,7 +3,7 @@ use crate::{Config, Detector, Documentation, Suggestion, SuggestionSet};
 use anyhow::Result;
 
 use crate::Range;
-use log::debug;
+use log::{debug, trace};
 
 #[cfg(feature = "hunspell")]
 mod hunspell;
@@ -145,9 +145,10 @@ pub mod tests {
                     let plain = literal_sets.iter().next().unwrap().erase_markdown();
                     for range in tokenize(plain.as_str()) {
                         let detector = Detector::Hunspell;
+                        trace!("Range = {:?}", &range);
                         for (literal, span) in plain.linear_range_to_spans(range.clone()) {
-                            debug!("TestChecker: Span    {:?}", &span);
-                            debug!("TestChecker: literal {:?}", &literal);
+                            trace!("TestChecker: Span    {:?}", &span);
+                            trace!("TestChecker: literal {:?}", &literal);
                             let replacements = vec!["literal".to_string(); 1];
                             let suggestion = Suggestion {
                                 detector,
@@ -169,24 +170,45 @@ pub mod tests {
     }
 
     #[test]
-    fn test_checker() {
+    fn extracting_suggestions_from_literals_works() {
+        let _ = env_logger::builder()
+            .filter(None, log::LevelFilter::Trace)
+            .is_test(true)
+            .try_init();
+
         let mut d = Documentation::new();
         let dummy_path = PathBuf::from("dummy/dummy.rs");
-        d.append_literal(&dummy_path, Literal::string("literal"));
+        d.append_literal(&dummy_path, Literal::string("two  literals "));
         let c = TestChecker::check(&d, &()).expect("TestChecker failed");
 
         assert_eq!(c.len(), 1);
-        for (path, suggestions) in c {
-            assert_eq!(path, dummy_path);
-            let s = suggestions.iter().next().unwrap();
-            assert_eq!(
-                s.span,
-                crate::span::Span {
-                    start: LineColumn { line: 1, column: 1 },
-                    end: LineColumn { line: 1, column: 7 },
-                }
-            );
-            assert_eq!(s.replacements, vec!["literal".to_string(); 1]);
-        }
+        assert_eq!(c.count(), 2);
+        let (path, suggestions) = c.iter().next().unwrap();
+        let mut s_iter = suggestions.iter();
+
+        let s = s_iter.next().unwrap();
+        assert_eq!(path, &dummy_path);
+        assert_eq!(
+            s.span,
+            crate::span::Span {
+                start: LineColumn { line: 1, column: 0 },
+                end: LineColumn { line: 1, column: 2 },
+            }
+        );
+        assert_eq!(s.replacements, vec!["literal".to_string(); 1]);
+
+        let s = s_iter.next().unwrap();
+        assert_eq!(path, &dummy_path);
+        assert_eq!(
+            s.span,
+            crate::span::Span {
+                start: LineColumn { line: 1, column: 5 },
+                end: LineColumn {
+                    line: 1,
+                    column: 12
+                },
+            }
+        );
+        assert_eq!(s.replacements, vec!["literal".to_string(); 1]);
     }
 }
