@@ -73,72 +73,103 @@ impl From<(String, Span)> for BandAid {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::checker::{Checker, dummy::DummyChecker};
+    use crate::checker::{dummy::DummyChecker, Checker};
     use crate::documentation::*;
     use crate::span::Span;
     use log::debug;
     use proc_macro2::{LineColumn, Literal};
     use std::path::PathBuf;
 
-    #[test]
-    fn try_from_string_works() {
+    fn try_from_test_body(content: &'static str, expected_spans: &[Span]) {
         let _ = env_logger::builder()
-            .filter(None, log::LevelFilter::Debug)
+            .filter(None, log::LevelFilter::Trace)
             .is_test(true)
             .try_init();
 
         let mut d = Documentation::new();
         let dummy_path = PathBuf::from("dummy/dummy.rs");
-        d.append_literal(&dummy_path, Literal::string("This has four literals"));
-        let suggestion_set = DummyChecker::check(&d, &()).expect("DummyChecker failed");
+        d.append_literal(&dummy_path, Literal::string(content));
+        let suggestion_set = DummyChecker::check(&d, &()).expect("DummyChecker must not fail");
 
+        // one file
         assert_eq!(suggestion_set.len(), 1);
-        assert_eq!(suggestion_set.total_count(), 4);
-        for (_, suggestion) in suggestion_set {
-            let bandaid =
-                BandAid::try_from((suggestion.iter().nth(0).unwrap(), 0)).expect("try_from failed");
-            debug!("{:?}", &bandaid);
-            debug!("Sug span: {:?}", suggestion.iter().nth(0).unwrap().span);
-            assert_eq!(bandaid.replacement, "replacement_0");
-            assert_eq!(bandaid.span, suggestion.iter().nth(0).unwrap().span);
+        // with two suggestions
+        assert_eq!(suggestion_set.total_count(), expected_spans.len());
+        let (_, suggestions) = suggestion_set
+            .iter()
+            .next()
+            .expect("Must have valid 1st suggestion");
+
+        for (index, (suggestion, expected_span)) in
+            suggestions.iter().zip(expected_spans.iter()).enumerate()
+        {
+            debug!("Suggestion: {:?}, index {}", suggestion.replacements, index);
+            let bandaid = BandAid::try_from((suggestion, 0)).expect("TryFrom suggestion failed");
+            assert_eq!(
+                suggestion.replacements,
+                vec![format!("replacement_{}", index)]
+            );
+            assert_eq!(suggestion.span, *expected_span);
+            assert_eq!(bandaid.replacement, format!("replacement_{}", index));
+            assert_eq!(bandaid.span, *expected_span);
+            trace!("Bandaid {:?}", bandaid.replacement);
         }
+    }
+
+    #[test]
+    fn try_from_string_works() {
+        const CONTENT: &'static str = "This has four literals";
+        const EXPECTED: &[Span] = &[
+            Span {
+                start: LineColumn { line: 1, column: 1 },
+                end: LineColumn { line: 1, column: 4 },
+            },
+            Span {
+                start: LineColumn { line: 1, column: 6 },
+                end: LineColumn { line: 1, column: 8 },
+            },
+            Span {
+                start: LineColumn {
+                    line: 1,
+                    column: 10,
+                },
+                end: LineColumn {
+                    line: 1,
+                    column: 13,
+                },
+            },
+            Span {
+                start: LineColumn {
+                    line: 1,
+                    column: 15,
+                },
+                end: LineColumn {
+                    line: 1,
+                    column: 22,
+                },
+            },
+        ];
+
+        try_from_test_body(CONTENT, EXPECTED);
     }
 
     #[test]
     fn try_from_raw_string_works() {
-        let mut d = Documentation::new();
-        let dummy_path = PathBuf::from("dummy/dummy.rs");
-        d.append_literal(&dummy_path, Literal::string(r#"Some raw string"#));
-        let literal_set = DummyChecker::check(&d, &()).expect("DummyChecker failed");
+        const CONTENT: &'static str = r#"raw string"#;
+        const EXPECTED: &[Span] = &[
+            Span {
+                start: LineColumn { line: 1, column: 1 },
+                end: LineColumn { line: 1, column: 3 },
+            },
+            Span {
+                start: LineColumn { line: 1, column: 5 },
+                end: LineColumn {
+                    line: 1,
+                    column: 10,
+                },
+            },
+        ];
 
-        assert_eq!(literal_set.len(), 1);
-        assert_eq!(literal_set.total_count(), 3);
-        for (_, suggestion) in literal_set {
-            let bandaid =
-                BandAid::try_from((suggestion.iter().nth(0).unwrap(), 0)).expect("try_from failed");
-            assert_eq!(bandaid.replacement, "literal");
-            assert_eq!(bandaid.span, suggestion.iter().nth(0).unwrap().span);
-        }
-    }
-
-    #[test]
-    fn try_from_multiple_works() {
-        let mut d = Documentation::new();
-        let dummy_path = PathBuf::from("dummy/dummy.rs");
-        let dummy_path2 = PathBuf::from("dummy/dummy2.rs");
-        d.append_literal(&dummy_path, Literal::string("this is a literal"));
-        d.append_literal(&dummy_path2, Literal::string(" another one"));
-
-        let literal_set = DummyChecker::check(&d, &()).expect("DummyChecker failed");
-        assert_eq!(literal_set.len(), 2);
-        assert_eq!(literal_set.total_count(), 6);
-
-        for (_, suggestion) in literal_set {
-            let bandaid =
-                BandAid::try_from((suggestion.iter().nth(0).unwrap(), 0)).expect("failed");
-            trace!("{:?}", bandaid);
-            assert_eq!(bandaid.replacement, "literal");
-            assert_eq!(bandaid.span, suggestion.iter().next().unwrap().span);
-        }
+        try_from_test_body(CONTENT, EXPECTED);
     }
 }

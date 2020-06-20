@@ -183,13 +183,6 @@ fn find_coverage<'a>(
     let length = end - start;
     assert!(length > 0);
 
-    trace!(
-        "Looking for coverage: {:?} = {:?} .. {:?}",
-        range,
-        start,
-        end
-    );
-
     #[derive(Copy, Clone, Debug)]
     enum LookingFor {
         Start,
@@ -218,6 +211,12 @@ fn find_coverage<'a>(
                         // offset += 1; // additional \n introduced when combining literals
                         LookingFor::Start
                     } else {
+                        trace!(
+                            "Start = {} + {} + {}",
+                            literal.span().start().column,
+                            offset,
+                            literal.pre
+                        );
                         state = LookingFor::End {
                             start: LineColumn {
                                 line: literal.span().start().line,
@@ -225,7 +224,6 @@ fn find_coverage<'a>(
                                 column: literal.span().start().column + offset + literal.pre,
                             },
                         };
-                        trace!("Found start: {:?}", state);
                         // the new offset we are looking for
                         offset += length;
                         // do not advance the iterator, we need to check the same line for the end too!
@@ -240,6 +238,12 @@ fn find_coverage<'a>(
                         // offset += 1; // additional \n introduced when combining literals
                         state
                     } else {
+                        trace!(
+                            "End = {} + {} + {} - 1",
+                            literal.span().start().column,
+                            offset,
+                            literal.pre
+                        );
                         let end = LineColumn {
                             // @todo assumes start and end are on the same line for the literal
                             line: literal.span().start().line,
@@ -247,7 +251,6 @@ fn find_coverage<'a>(
                             // substract -1 since line column are inclusive and offset += length yields exclusive
                             column: literal.span().start().column + offset + literal.pre - 1,
                         };
-                        trace!("Found end: {:?}", end);
                         assert_eq!(start.line, end.line);
                         // if start and end column are equiv, this is a one character match
                         return Some((acc, start, end));

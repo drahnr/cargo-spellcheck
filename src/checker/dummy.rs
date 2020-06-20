@@ -1,12 +1,10 @@
-use crate::suggestion::{Detector, SuggestionSet,Suggestion};
-use crate::config::Config;
-use crate::documentation::Documentation;
-use std::path::PathBuf;
-use std::path::Path;
-use super::Checker;
-use anyhow::{anyhow, Result, Error};
-use log::{trace,warn,info};
 use super::tokenize;
+use super::Checker;
+use crate::documentation::Documentation;
+use crate::suggestion::{Detector, Suggestion, SuggestionSet};
+use anyhow::{anyhow, Error, Result};
+use log::{info, trace, warn};
+use std::path::PathBuf;
 
 /// A test checker that tokenizes and marks everything as wrong
 pub struct DummyChecker;
@@ -22,16 +20,17 @@ impl Checker for DummyChecker {
             SuggestionSet::new(),
             |mut acc, (path, literal_sets)| {
                 let plain = literal_sets.iter().next().unwrap().erase_markdown();
-                for range in tokenize(plain.as_str()) {
+                for (index, range) in tokenize(plain.as_str()).into_iter().enumerate() {
                     let detector = Detector::Dummy;
                     trace!("Range = {:?}", &range);
-                    for (index, (literal, span)) in plain
-                        .linear_range_to_spans(range.clone())
-                        .into_iter()
-                        .enumerate()
-                    {
-                        trace!("Span    {:?}", &span);
-                        trace!("literal {:?}", &literal);
+                    for (literal, span) in plain.linear_range_to_spans(range.clone()) {
+                        trace!(
+                            "literal pre {}, post {}, len {}",
+                            literal.pre,
+                            literal.post,
+                            literal.len
+                        );
+                        trace!("index {}", index);
                         let replacements = vec![format!("replacement_{}", index)];
                         let suggestion = Suggestion {
                             detector,
