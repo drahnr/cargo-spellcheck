@@ -2,8 +2,8 @@ use super::tokenize;
 use super::Checker;
 use crate::documentation::Documentation;
 use crate::suggestion::{Detector, Suggestion, SuggestionSet};
-use anyhow::{anyhow, Error, Result};
-use log::{info, trace, warn};
+use anyhow::Result;
+use log::trace;
 use std::path::PathBuf;
 
 /// A test checker that tokenizes and marks everything as wrong
