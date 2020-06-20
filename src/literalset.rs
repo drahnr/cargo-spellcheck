@@ -109,9 +109,11 @@ impl std::hash::Hash for TrimmedLiteral {
 impl From<proc_macro2::Literal> for TrimmedLiteral {
     fn from(literal: proc_macro2::Literal) -> Self {
         let rendered = literal.to_string();
+        let raw_start = if rendered.starts_with("r#\"") { 2 } else { 0 };
+        let raw_end = if rendered.ends_with("\"#") { 1 } else { 0 };
         let scrap = |c: &'_ char| -> bool { c.is_whitespace() };
-        let pre = rendered.chars().take_while(scrap).count() + 1;
-        let post = rendered.chars().rev().take_while(scrap).count() + 1;
+        let pre = rendered.chars().take_while(scrap).count() + 1 + raw_start;
+        let post = rendered.chars().rev().take_while(scrap).count() + 1 + raw_end;
 
         let (len, pre, post) = match rendered.len() {
             len if len >= pre + post => (len - pre - post, pre, post),
