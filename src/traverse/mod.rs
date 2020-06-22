@@ -334,31 +334,35 @@ pub(crate) fn extract(
         })?;
 
     // stage 4 - expand from the passed source files, if recursive, recurse down the module train
-    let docs: Vec<Documentation> = files_to_check
-        .iter()
-        .try_fold::<Vec<Documentation>, _, Result<Vec<Documentation>>>(
-            Vec::with_capacity(files_to_check.len()),
-            |mut acc, item| {
+    let combined: Documentation = files_to_check
+        .into_iter()
+        .try_fold::<Documentation, _, Result<Documentation>>(
+            Documentation::new(),
+            |mut docs, item| {
                 match item {
                     CheckEntity::Source(path) => {
                         if recurse {
-                            acc.extend(traverse(path.as_path())?)
+                            docs.extend(traverse(path.as_path())?)
                         } else {
                             let content = fs::read_to_string(&path)?;
                             let stream = syn::parse_str(&content)?;
-                            acc.push(Documentation::from((dbg!(path), stream)));
+                            let cluster = Clusters::from(stream);
+                            let chunks = Vec::<CheckableChunk>::from(cluster);
+                            docs.add(ContentSource::RustSourceFile(path.to_owned()), chunks);
                         }
+                    }
+                    CheckEntity::Markdown(path) => {
+                        let content = std::fs::read_to_string(&path).unwrap(); // @todo error handling
+                        docs.add(ContentSource::CommonMarkFile(path), content);
                     }
                     other => {
                         warn!("Did not impl handling of {:?} type files", other);
                         // @todo generate Documentation structs from non-file sources
                     }
                 }
-                Ok(dbg!(acc))
+                Ok(dbg!(docs))
             },
         )?;
-
-    let combined = Documentation::combine(docs);
 
     Ok(combined)
 }

@@ -123,15 +123,7 @@ impl Iterator for TraverseModulesIter {
 /// traverse path with a depth limit, if the path is a directory all its children will be collected
 /// instead
 pub(crate) fn traverse(path: &Path) -> Result<impl Iterator<Item = Documentation>> {
-    let it = TraverseModulesIter::new(path)?
-        .filter_map(|path: PathBuf| -> Option<Documentation> {
-            fs::read_to_string(&path)
-                .ok()
-                .and_then(|content: String| syn::parse_str(&content).ok())
-                .map(|stream| Documentation::from((path, stream)))
-        })
-        .filter(|documentation| !documentation.is_empty());
-    Ok(it)
+    traverse_with_depth_limit(path, usize::MAX)
 }
 
 /// traverse path with a depth limit, if the path is a directory all its children will be collected
@@ -145,7 +137,7 @@ pub(crate) fn traverse_with_depth_limit(
             fs::read_to_string(&path)
                 .ok()
                 .and_then(|content: String| syn::parse_str(&content).ok())
-                .map(|stream| Documentation::from((path, stream)))
+                .map(|stream| Documentation::from((ContentSource::RustSourceFile(path), stream)))
         })
         .filter(|documentation| !documentation.is_empty());
     Ok(it)

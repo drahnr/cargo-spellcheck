@@ -274,16 +274,9 @@ impl LiteralSet {
     }
 
     /// Create a plain overlay to work on.
+    // @todo must live in `documentation::cluster::Clusters`
     pub fn erase_markdown(&self) -> PlainOverlay {
         PlainOverlay::erase_markdown(self)
-    }
-
-    /// Overwrite the actual literal content with fixed content.
-    ///
-    /// Commonly this means with suggestions applied, content can
-    /// contain newlines.
-    pub fn replace_content(&mut self, _content: String) {
-        unimplemented!("")
     }
 
     /// Add a literal to a literal set, if the previous lines literal already exists.
@@ -309,6 +302,7 @@ impl LiteralSet {
 
     /// Convert a range of the linear trimmed (but no other processing) string representation to a set of
     /// literal references and spans within that literal (spans on the proc_macro2 literal).
+    // @todo move this to `documentation::cluster::Clusters`
     pub fn linear_range_to_spans<'a>(
         &'a self,
         range: core::ops::Range<usize>,
