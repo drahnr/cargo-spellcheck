@@ -19,6 +19,8 @@ use crate::TrimmedLiteralRef;
 use enumflags2::BitFlags;
 use log::error;
 
+use crate::documentation::ContentSource;
+
 /// Bitflag of available checkers by compilation / configuration.
 #[derive(Debug, Clone, Copy, BitFlags, Eq, PartialEq, Hash)]
 #[repr(u8)]
@@ -53,7 +55,7 @@ pub struct Suggestion<'s> {
     /// Which checker suggested the change.
     pub detector: Detector,
     /// Reference to the file location the `span` and `literal` relate to.
-    pub path: PathBuf,
+    pub origin: ContentSource,
     /// Literal we are referencing.
     pub literal: TrimmedLiteralRef<'s>,
     /// The span (absolute!) of where it is supposed to be used.
@@ -88,11 +90,17 @@ impl<'s> fmt::Display for Suggestion<'s> {
             .apply_to(format!("{:>width$}", "-->", width = indent + 1))
             .fmt(formatter)?;
 
+        let x = self.span.start.line;
+        let (path, line) = match self.origin {
+            ContentSource::RustSourceFile(path) => (path.display(), x),
+            ContentSource::RustDocTest(path, span) => (path.display(), x + span.start.line),
+            ContentSource::CommonMark(path) => (path.display(), x),
+        };
         writeln!(
             formatter,
             " {path}:{line}",
-            path = self.path.display(),
-            line = self.span.start.line
+            path = path,
+            line = line
         )?;
         context_marker
             .apply_to(format!("{:>width$}", "|", width = indent))

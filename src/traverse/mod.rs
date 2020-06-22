@@ -12,6 +12,7 @@ use log::{trace, warn};
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Error, Result};
+use indexmap::IndexMap;
 
 fn cwd() -> Result<PathBuf> {
     std::env::current_dir().map_err(|_e| anyhow::anyhow!("Missing cwd!"))
@@ -353,7 +354,8 @@ pub(crate) fn extract(
                     }
                     CheckEntity::Markdown(path) => {
                         let content = std::fs::read_to_string(&path).unwrap(); // @todo error handling
-                        docs.add(ContentSource::CommonMarkFile(path), content);
+                        let source_mapping = IndexMap::new(); // @todo source map should be trivial, start to end
+                        docs.add(ContentSource::CommonMarkFile(path.to_owned()), vec![CheckableChunk::from_string(content, source_mapping)]);
                     }
                     other => {
                         warn!("Did not impl handling of {:?} type files", other);
