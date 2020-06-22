@@ -3,6 +3,7 @@
 use super::*;
 use crate::{Range, Span};
 use anyhow::{anyhow, Error, Result};
+
 use indexmap::IndexMap;
 
 /// Definition of the source of a checkable chunk
@@ -14,12 +15,23 @@ pub enum ContentSource {
 }
 
 /// A chunk of documentation that is supposed to be checked
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct CheckableChunk {
     /// Rendered contents
     content: String,
     /// Mapping from range within `content` and `Span` referencing the location within the file
     source_mapping: IndexMap<Range, Span>,
+}
+
+
+impl std::hash::Hash for CheckableChunk {
+    fn hash<H: std::hash::Hasher>(&self, hasher: &mut H) {
+		self.content.hash(hasher);
+		// order is consistent
+        self.source_mapping.iter().for_each(|t| {
+			t.hash(hasher);
+		});
+    }
 }
 
 impl CheckableChunk {
@@ -49,6 +61,8 @@ impl From<Clusters> for Vec<CheckableChunk> {
         clusters
             .set
             .into_iter()
-            .map(|literal_set| CheckableChunk::from_literalset(literal_set)).collet()
+            .map(|literal_set| {
+				CheckableChunk::from_literalset(literal_set)
+			}).collect::<Vec<_>>()
     }
 }
