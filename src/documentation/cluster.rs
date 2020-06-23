@@ -3,8 +3,8 @@
 use super::*;
 use indexmap::IndexMap;
 use anyhow::{anyhow, Result, Error};
-use crate::{Range, Span};
-use super::chunk::{ContentSource, CheckableChunk};
+use crate::Span;
+use crate::documentation::{CheckableChunk, ContentOrigin, Range};
 
 /// Cluster literals for one file
 #[derive(Debug)]
@@ -17,20 +17,20 @@ impl Clusters {
     /// requires a adjacency list.
     fn process_literal(&mut self, literal: proc_macro2::Literal) {
         let literal = TrimmedLiteral::from(literal);
-        if let Some(ref mut cls) = self.set.last_mut() {
+        if let Some(cls) = self.set.last_mut() {
             if let Err(literal) = cls.add_adjacent(literal) {
                 trace!(target: "documentation",
                     "appending, but failed to append: {:?} to set {:?}",
                     &literal,
                     &cls
                 );
-                cls.push(LiteralSet::from(literal))
+                self.set.push(LiteralSet::from(literal))
             } else {
                 trace!("successfully appended to existing: {:?} to set", &cls);
+                return;
             }
         } else {
-            // the very first literal
-            self.set = vec![LiteralSet::from(literal)];
+            self.set.push(LiteralSet::from(literal))
         }
     }
 

@@ -138,32 +138,32 @@ where
 /// The selection of used suggestion replacements
 #[derive(Debug, Clone, Default)]
 pub struct UserPicked {
-    pub bandaids: indexmap::IndexMap<PathBuf, Vec<BandAid>>,
+    pub bandaids: indexmap::IndexMap<ContentOrigin, Vec<BandAid>>,
 }
 
 impl UserPicked {
     /// Count the number of suggestions accress file in total
     pub fn count(&self) -> usize {
-        self.bandaids.iter().map(|(_path, vec)| vec.len()).sum()
+        self.bandaids.iter().map(|(_origin, vec)| vec.len()).sum()
     }
 
     /// Apply a single bandaid.
-    fn add_bandaid<'u>(&mut self, path: &Path, fix: BandAid) {
+    fn add_bandaid<'u>(&mut self, origin: &ContentOrigin, fix: BandAid) {
         self.bandaids
-            .entry(path.to_owned())
+            .entry(origin.clone())
             .or_insert_with(|| Vec::with_capacity(10))
             .push(fix);
     }
 
     /// Apply multiple bandaids.
     #[allow(unused)]
-    fn add_bandaids<I>(&mut self, path: &Path, fixes: I)
+    fn add_bandaids<I>(&mut self, origin: &ContentOrigin, fixes: I)
     where
         I: IntoIterator<Item = BandAid>,
     {
         let iter = fixes.into_iter();
         self.bandaids
-            .entry(path.to_owned())
+            .entry(origin.clone())
             .or_insert_with(|| Vec::with_capacity(iter.size_hint().0))
             .extend(iter);
     }
@@ -464,9 +464,9 @@ impl UserPicked {
 
         trace!("Select the ones to actully use");
 
-        for (path, suggestions) in suggestions_per_path {
+        for (origin, suggestions) in suggestions_per_path {
             let count = suggestions.len();
-            println!("Path is {} and has {}", path.display(), count);
+            println!("Path is {:?} and has {}", &origin, count);
 
             // @todo juck, uggly
             let mut suggestions_it = suggestions.clone().into_iter().enumerate();
@@ -517,7 +517,7 @@ impl UserPicked {
                         unreachable!("Help must not be reachable here, it is handled before")
                     }
                     Pick::Replacement(bandaid) => {
-                        picked.add_bandaid(&path, bandaid);
+                        picked.add_bandaid(&origin, bandaid);
                     }
                     _ => continue,
                 };

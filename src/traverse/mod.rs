@@ -130,7 +130,7 @@ pub(crate) fn extract_modules_from_file<P: AsRef<Path>>(path: P) -> Result<Vec<P
         let s = std::fs::read_to_string(path_str).map_err(|e| {
             Error::from(e).context(anyhow!("Failed to read file content of {}", path_str))
         })?;
-        let stream = syn::parse_str(s.as_str())
+        let stream = syn::parse_str::<proc_macro2::TokenStream>(s.as_str())
             .map_err(|e| Error::from(e).context(anyhow!("File {} has syntax errors", path_str)))?;
         extract_modules_inner(path.to_owned(), stream)
     } else {
@@ -343,19 +343,20 @@ pub(crate) fn extract(
                 match item {
                     CheckEntity::Source(path) => {
                         if recurse {
-                            docs.extend(traverse(path.as_path())?)
+                            let mut iter = traverse(path.as_path())?;
+                            docs.extend(iter);
                         } else {
-                            let content = fs::read_to_string(&path)?;
-                            let stream = syn::parse_str(&content)?;
+                            let content: String = fs::read_to_string(&path)?;
+                            let stream = syn::parse_str::<proc_macro2::TokenStream>(content.as_str())?;
                             let cluster = Clusters::from(stream);
                             let chunks = Vec::<CheckableChunk>::from(cluster);
-                            docs.add(ContentSource::RustSourceFile(path.to_owned()), chunks);
+                            docs.add(ContentOrigin::RustSourceFile(path.to_owned()), chunks);
                         }
                     }
                     CheckEntity::Markdown(path) => {
                         let content = std::fs::read_to_string(&path).unwrap(); // @todo error handling
                         let source_mapping = IndexMap::new(); // @todo source map should be trivial, start to end
-                        docs.add(ContentSource::CommonMarkFile(path.to_owned()), vec![CheckableChunk::from_string(content, source_mapping)]);
+                        docs.add(ContentOrigin::CommonMarkFile(path.to_owned()), vec![CheckableChunk::from_string(content, source_mapping)]);
                     }
                     other => {
                         warn!("Did not impl handling of {:?} type files", other);

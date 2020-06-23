@@ -3,19 +3,18 @@
 //! Resulting overlay is plain and can be fed into a grammer or spell checker.
 
 use super::*;
-use crate::Span;
 
 use log::trace;
 use pulldown_cmark::{Event, Options, Parser, Tag};
-
-use crate::literalset::{LiteralSet, Range};
-
 use indexmap::IndexMap;
+
+use crate::Span;
+use crate::documentation::{CheckableChunk, Range};
 
 /// A plain representation of markdown riddled set of trimmed literals.
 #[derive(Clone)]
 pub struct PlainOverlay<'a> {
-    raw: &'a LiteralSet,
+    raw: &'a CheckableChunk,
     plain: String,
     // require a sorted map, so we have the chance of binary search
     // key: plain string range
@@ -141,13 +140,12 @@ impl<'a> PlainOverlay<'a> {
     }
 
     // @todo consider returning a Vec<PlainOverlay<'a>> to account for list items
-    // or other chunked information which might not pass a grammar check as a whole
-    pub fn erase_markdown(literal_set: &'a LiteralSet) -> Self {
-        let markdown = literal_set.to_string();
+    // or other non-linear information which might not pass a grammar check as a whole
+    pub fn erase_markdown(chunk: &'a CheckableChunk) -> Self {
 
-        let (plain, mapping) = Self::extract_plain_with_mapping(markdown.as_str());
+        let (plain, mapping) = Self::extract_plain_with_mapping(chunk.as_str());
         Self {
-            raw: literal_set,
+            raw: chunk,
             plain,
             mapping,
         }
@@ -155,38 +153,37 @@ impl<'a> PlainOverlay<'a> {
 
     /// Since most checkers will operate on the plain data, an indirection to map plain to markdown
     /// and back to literals and spans
-    pub fn linear_range_to_spans(&self, plain_range: Range) -> Vec<(&'a TrimmedLiteral, Span)> {
-        use core::cmp::min;
+    pub fn linear_range_to_spans(&self, plain_range: Range) -> Vec<Span> {
+        unimplemented!("Should only return a `Vec<Span>` for the entity we work on")
+        // self.mapping
+        //     .iter()
+        //     .filter(|(plain, _raw)| {
+        //         plain.start <= plain_range.start && plain_range.end <= plain.end
+        //     })
+        //     .fold(Vec::with_capacity(64), |mut acc, (plain, raw)| {
+        //         let offset = raw.start - plain.start;
+        //         assert_eq!(raw.end - plain.end, offset);
+        //         let extracted = Range {
+        //             start: plain_range.start + offset,
+        //             end: min(raw.end, plain_range.end + offset),
+        //         };
+        //         trace!(
+        //             "convert (offset = {}):  convert reduced={:?} -> raw={:?}",
+        //             offset,
+        //             plain,
+        //             raw
+        //         );
+        //         trace!("highlight:  {:?} -> {:?}", &plain_range, &extracted);
 
-        self.mapping
-            .iter()
-            .filter(|(plain, _raw)| {
-                plain.start <= plain_range.start && plain_range.end <= plain.end
-            })
-            .fold(Vec::with_capacity(64), |mut acc, (plain, raw)| {
-                let offset = raw.start - plain.start;
-                assert_eq!(raw.end - plain.end, offset);
-                let extracted = Range {
-                    start: plain_range.start + offset,
-                    end: min(raw.end, plain_range.end + offset),
-                };
-                trace!(
-                    "convert (offset = {}):  convert reduced={:?} -> raw={:?}",
-                    offset,
-                    plain,
-                    raw
-                );
-                trace!("highlight:  {:?} -> {:?}", &plain_range, &extracted);
-
-                if extracted.start < extracted.end {
-                    let resolved = self.raw.linear_range_to_spans(extracted.clone());
-                    trace!("linear range to spans: {:?} -> {:?}", extracted, resolved);
-                    acc.extend(resolved.into_iter());
-                } else {
-                    warn!("linear range to spans: {:?} empty!", extracted);
-                }
-                acc
-            })
+        //         if extracted.start < extracted.end {
+        //             let resolved = self.raw.linear_range_to_spans(extracted.clone());
+        //             trace!("linear range to spans: {:?} -> {:?}", extracted, resolved);
+        //             acc.extend(resolved.into_iter());
+        //         } else {
+        //             warn!("linear range to spans: {:?} empty!", extracted);
+        //         }
+        //         acc
+        //     })
     }
 
     pub fn as_str(&self) -> &str {
@@ -218,7 +215,7 @@ impl<'a> fmt::Debug for PlainOverlay<'a> {
 
         let color_cycle = styles.iter().cycle();
 
-        let markdown = self.raw.to_string();
+        let markdown = self.raw.as_str().to_owned();
 
         let mut coloured_plain = String::with_capacity(1024);
         let mut coloured_md = String::with_capacity(1024);

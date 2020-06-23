@@ -13,9 +13,9 @@ impl Checker for LanguageToolChecker {
         let lt = LanguageTool::new(config.url.as_str())?;
         let suggestions = docu.iter().try_fold::<SuggestionSet, _, Result<_>>(
             SuggestionSet::new(),
-            |mut acc, (path, literal_sets)| {
-                for cls in literal_sets {
-                    let plain = cls.erase_markdown();
+            |mut acc, (origin, chunks)| {
+                for chunk in chunks {
+                    let plain = chunk.erase_markdown();
                     log::trace!("markdown erasure: {:?}", &plain);
                     let req = Request::new(plain.to_string(), "en-US".to_owned());
                     let resp = lt.check(req)?;
@@ -35,22 +35,22 @@ impl Checker for LanguageToolChecker {
                             log::trace!("item.message: {:?}", item.message);
                             log::trace!("item.short_message: {:?}", item.short_message);
                             // TODO convert response to offsets and errors with the matching literal
-                            for (literal, span) in plain.linear_range_to_spans(Range {
+                            for span in plain.linear_range_to_spans(Range {
                                 start: item.offset as usize,
                                 end: (item.offset + item.length) as usize,
                             }) {
                                 acc.add(
-                                    path.to_owned(),
+                                    origin.clone(),
                                     Suggestion {
                                         detector: Detector::LanguageTool,
-                                        span: span,
-                                        path: PathBuf::from(path),
+                                        span,
+                                        origin: origin.clone(),
                                         replacements: item
                                             .replacements
                                             .iter()
                                             .filter_map(|x| x.value.clone())
                                             .collect(),
-                                        literal: literal.into(),
+                                        chunk: chunk,
                                         description: Some(item.message.clone()),
                                     },
                                 );

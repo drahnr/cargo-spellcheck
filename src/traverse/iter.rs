@@ -136,8 +136,8 @@ pub(crate) fn traverse_with_depth_limit(
         .filter_map(|path: PathBuf| -> Option<Documentation> {
             fs::read_to_string(&path)
                 .ok()
-                .and_then(|content: String| syn::parse_str(&content).ok())
-                .map(|stream| Documentation::from((ContentSource::RustSourceFile(path), stream)))
+                .and_then(|content: String| syn::parse_str::<proc_macro2::TokenStream>(&content).ok())
+                .map(|stream| Documentation::from((ContentOrigin::RustSourceFile(path), stream)))
         })
         .filter(|documentation| !documentation.is_empty());
     Ok(it)

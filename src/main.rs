@@ -1,19 +1,14 @@
 mod config;
 mod documentation;
-mod literalset;
 mod span;
-
 mod action;
 mod checker;
-mod markdown;
 mod suggestion;
 mod traverse;
 
 pub use self::action::*;
 pub use self::config::{Config, HunspellConfig, LanguageToolConfig};
 pub use self::documentation::*;
-pub use self::literalset::*;
-pub use self::markdown::*;
 pub use self::span::*;
 pub use self::suggestion::*;
 

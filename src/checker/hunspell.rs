@@ -100,9 +100,9 @@ impl Checker for HunspellChecker {
 
         let suggestions = docu.iter().try_fold::<SuggestionSet, _, Result<_>>(
             SuggestionSet::new(),
-            |mut acc, (path, literal_sets)| {
-                for literal_set in literal_sets {
-                    let plain = literal_set.erase_markdown();
+            |mut acc, (origin, chunks)| {
+                for chunk in chunks {
+                    let plain = chunk.erase_markdown();
                     trace!("{:?}", &plain);
                     let txt = plain.as_str();
                     for range in tokenize(txt) {
@@ -116,15 +116,15 @@ impl Checker for HunspellChecker {
                                 .filter(|x| x.len() > 1) // single char suggestions tend to be useless
                                 .collect::<Vec<_>>();
 
-                            for (literal, span) in plain.linear_range_to_spans(range.clone()) {
+                            for span in plain.linear_range_to_spans(range.clone()) {
                                 acc.add(
-                                    path.to_owned(),
+                                    origin.clone(),
                                     Suggestion {
                                         detector: Detector::Hunspell,
                                         span,
-                                        path: PathBuf::from(path),
+                                        origin: origin.clone(),
                                         replacements: replacements.clone(),
-                                        literal: literal.into(),
+                                        chunk,
                                         description: Some(
                                             "Possible spelling mistake found.".to_owned(),
                                         ),
