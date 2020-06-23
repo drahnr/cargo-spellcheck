@@ -113,8 +113,17 @@ pub enum Action {
 }
 
 impl Action {
+    fn correction<'s>(&self, origin: ContentOrigin, bandaids: impl IntoIterator<Item = BandAid>) -> Result<()> {
+        match origin {
+            ContentOrigin::CommonMarkFile(path) => self.correct_file(path, bandaids),
+            ContentOrigin::RustSourceFile(path) => self.correct_file(path, bandaids),
+            //@todo bandaids are relative to the doc-test, so fix the span with the one provided
+            ContentOrigin::RustDocTest(path, _span) => self.correct_file(path, bandaids),
+        }
+    }
+
     /// assumes suggestions are sorted by line number and column number and must be non overlapping
-    fn correction<'s>(
+    fn correct_file<'s>(
         &self,
         path: PathBuf,
         bandaids: impl IntoIterator<Item = BandAid>,
@@ -198,13 +207,13 @@ impl Action {
     }
 
     /// Run the requested action.
-    pub fn run(self, suggestions_per_path: SuggestionSet, config: &Config) -> Result<()> {
+    pub fn run(self, suggestions: SuggestionSet, config: &Config) -> Result<()> {
         match self {
             Self::Fix => unimplemented!("Unsupervised fixing is not implemented just yet"),
-            Self::Check => self.check(suggestions_per_path, config)?,
+            Self::Check => self.check(suggestions, config)?,
             Self::Interactive => {
                 let picked =
-                    interactive::UserPicked::select_interactive(suggestions_per_path, config)?;
+                    interactive::UserPicked::select_interactive(suggestions, config)?;
                 self.write_changes_to_disk(picked, config)?;
             }
         }

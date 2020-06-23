@@ -1,9 +1,8 @@
-use crate::markdown::PlainOverlay;
 use crate::{LineColumn, Span};
 
 use log::trace;
 
-pub type Range = core::ops::Range<usize>;
+use super::Range;
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
 /// A ref to a trimmed literal.
@@ -174,11 +173,12 @@ impl fmt::Debug for TrimmedLiteral {
 ///
 /// returns a tuple of a literal and Span that is covered by the range
 /// but also the `LineColumn` in the proc_macro2 context.
+/// @todo should not work on `TrimmedLiteral` but on `CheckableChunk`s
 fn find_coverage<'a>(
     literals: &'a [TrimmedLiteral],
     range: &Range,
 ) -> Option<(Vec<&'a TrimmedLiteral>, LineColumn, LineColumn)> {
-    let core::ops::Range::<usize> { start, end } = range;
+    let Range { start, end } = range;
     let mut offset = *start;
     let length = end - start;
     assert!(length > 0);
@@ -273,12 +273,6 @@ impl LiteralSet {
         }
     }
 
-    /// Create a plain overlay to work on.
-    // @todo must live in `documentation::cluster::Clusters`
-    pub fn erase_markdown(&self) -> PlainOverlay {
-        PlainOverlay::erase_markdown(self)
-    }
-
     /// Add a literal to a literal set, if the previous lines literal already exists.
     ///
     /// Returns literl within the Err variant if not adjacent
@@ -300,65 +294,6 @@ impl LiteralSet {
         Err(literal)
     }
 
-    /// Convert a range of the linear trimmed (but no other processing) string representation to a set of
-    /// literal references and spans within that literal (spans on the proc_macro2 literal).
-    // @todo move this to `documentation::cluster::Clusters`
-    pub fn linear_range_to_spans<'a>(
-        &'a self,
-        range: core::ops::Range<usize>,
-    ) -> Vec<(&'a TrimmedLiteral, Span)> {
-        find_coverage(&self.literals, &range)
-            .map(|(literals, start, end)| {
-                assert!(!literals.is_empty());
-                trace!("coverage: {:?} -> end {:?}", &range, end);
-                let n = literals.len();
-                if n > 1 {
-                    let mut iter = literals.into_iter();
-                    let first: &'a _ = iter.next().unwrap();
-
-                    // calculate how many lines it spans
-                    let mut acc = Vec::with_capacity(n);
-                    // first literal to its end
-                    if first.span().end() != start {
-                        acc.push((
-                            first,
-                            Span {
-                                start,
-                                end: first.span().end(),
-                            },
-                        ));
-                    }
-
-                    // take all in between the first and the last completely
-
-                    for literal in iter.clone().take(n - 2) {
-                        let span = Span {
-                            start: literal.span().start(),
-                            end: literal.span().end(),
-                        };
-                        if span.start != span.end {
-                            acc.push((literal, span));
-                        }
-                    }
-                    // add the last from the beginning to the computed end
-                    let last: &'a _ = iter.skip(n - 2).next().unwrap();
-                    if last.span().start() != end {
-                        acc.push((
-                            last,
-                            Span {
-                                start: last.span().start(),
-                                end,
-                            },
-                        ));
-                    }
-                    return acc;
-                } else {
-                    assert_eq!(n, 1);
-                    return vec![(literals.first().unwrap(), Span { start, end })];
-                }
-            })
-            .unwrap_or_else(|| Vec::new())
-    }
 
     pub fn literals<'x>(&'x self) -> Vec<&'x TrimmedLiteral> {
         self.literals.iter().by_ref().collect()

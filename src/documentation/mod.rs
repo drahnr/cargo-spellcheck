@@ -3,28 +3,32 @@
 //! So to speak documentation of project as whole.
 
 use super::*;
-use crate::LiteralSet;
 
 use std::convert::TryInto;
-
-use indexmap::IndexMap;
-use log::trace;
-use proc_macro2::{Spacing, TokenTree};
-
-pub use proc_macro2::LineColumn;
 use std::path::{Path, PathBuf};
+use log::trace;
+use indexmap::IndexMap;
 
+use proc_macro2::{Spacing, TokenTree};
+pub use proc_macro2::LineColumn;
+
+
+pub type Range = core::ops::Range<usize>;
+
+mod literalset;
 mod chunk;
 mod cluster;
+mod markdown;
 
+pub use literalset::*;
 pub use chunk::*;
 pub use cluster::*;
-
+pub use markdown::*;
 /// Collection of all the documentation entries across the project
 #[derive(Debug, Clone)]
 pub struct Documentation {
     /// Mapping of a path to documentation literals
-    index: IndexMap<ContentSource, Vec<CheckableChunk>>,
+    index: IndexMap<ContentOrigin, Vec<CheckableChunk>>,
 }
 
 impl Documentation {
@@ -38,11 +42,11 @@ impl Documentation {
         self.index.is_empty()
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&ContentSource, &Vec<CheckableChunk>)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&ContentOrigin, &Vec<CheckableChunk>)> {
         self.index.iter()
     }
 
-    pub fn into_iter(self) -> impl Iterator<Item = (ContentSource, Vec<CheckableChunk>)> {
+    pub fn into_iter(self) -> impl Iterator<Item = (ContentOrigin, Vec<CheckableChunk>)> {
         self.index.into_iter()
     }
 
@@ -55,18 +59,17 @@ impl Documentation {
         self
     }
 
-    pub fn extend<I,J,T>(&mut self, mut docs: I)
+    pub fn extend<I,J>(&mut self, mut docs: I)
     where
         I: IntoIterator<Item = Documentation, IntoIter=J>,
         J: Iterator<Item = Documentation>,
-        T: Eq,
     {
         docs.into_iter().for_each(|other| {
             self.join(other);
         });
     }
 
-    pub fn add(&mut self, source: ContentSource, chunks: Vec<CheckableChunk>) {
+    pub fn add(&mut self, source: ContentOrigin, mut chunks: Vec<CheckableChunk>) {
         self.index
             .entry(source)
             .and_modify(|acc: &mut Vec<CheckableChunk>| {
@@ -79,8 +82,8 @@ impl Documentation {
 
 
 /// only a shortcut to avoid duplicate code
-impl From<(ContentSource, proc_macro2::TokenStream)> for Documentation {
-    fn from((source, stream): (ContentSource, proc_macro2::TokenStream)) -> Self {
+impl From<(ContentOrigin, proc_macro2::TokenStream)> for Documentation {
+    fn from((source, stream): (ContentOrigin, proc_macro2::TokenStream)) -> Self {
         let cluster = Clusters::from(stream);
         let chunks = Vec::<CheckableChunk>::from(cluster);
         let mut docs = Documentation::new();
@@ -112,7 +115,7 @@ mod tests {
 
         let test_path = PathBuf::from("/tmp/dummy");
 
-        let stream = syn::parse_str(TEST_SOURCE).expect("Must be valid rust");
+        let stream = syn::parse_str::<proc_macro2::TokenStream>(TEST_SOURCE).expect("Must be valid rust");
         let docs = Documentation::from((test_path.as_path(), stream));
         assert_eq!(docs.index.len(), 1);
         let v = docs.index.get(&test_path).expect("Must contain dummy path");
@@ -162,7 +165,7 @@ mod tests {
 
                 const TEST: &str = include_str!($path);
                 let test_path = PathBuf::from($path);
-                let stream = syn::parse_str(TEST).expect("Must be valid rust");
+                let stream = syn::parse_str::<proc_macro2::TokenStream>(TEST).expect("Must be valid rust");
                 let docs = Documentation::from((test_path.as_path(), stream));
                 assert_eq!(docs.index.len(), 1);
                 let v = docs.index.get(&test_path).expect("Must contain dummy path");
