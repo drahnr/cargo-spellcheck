@@ -43,10 +43,12 @@ jobs:
     public: true
     serial: true
     plan:
-    - get: env-glibc
     - get: git-pull-request-resource
       resource: git-pull-request-resource
+      version: every
       trigger: true
+
+    - get: env-glibc
 
     - in_parallel:
       - put: git-pull-request-resource
@@ -137,42 +139,42 @@ jobs:
             context: meta-check
             status: failure
 
-    - task: run-check
-      timeout: 15m
-      image: env-glibc
-      config:
-        platform: linux
-        inputs:
-        - name: git-pull-request-resource
-        run:
-          # user: root
-          path: sh
-          args:
-          - -exc
-          - |
-            export CARGO_HOME="$(pwd)/../cargo"
-            sudo chown $(whoami): -Rf ${CARGO_HOME} .
-            cargo +stable run -- --version
-            cargo +stable run -- spellcheck demo/Cargo.toml || echo "$? - Found some errors"
-            cargo +stable run -- spellcheck demo/src/main.rs || echo "$? - Found some errors"
-            cargo +stable run -- spellcheck demo/ || echo "$? - Found some errors"
-          dir: git-pull-request-resource
-        caches:
-        - path: cargo
+      - task: run-check
+        timeout: 15m
+        image: env-glibc
+        config:
+          platform: linux
+          inputs:
+          - name: git-pull-request-resource
+          run:
+            # user: root
+            path: sh
+            args:
+            - -exc
+            - |
+              export CARGO_HOME="$(pwd)/../cargo"
+              sudo chown $(whoami): -Rf ${CARGO_HOME} .
+              cargo +stable run -- --version
+              cargo +stable run -- spellcheck demo/Cargo.toml || echo "$? - Found some errors"
+              cargo +stable run -- spellcheck demo/src/main.rs || echo "$? - Found some errors"
+              cargo +stable run -- spellcheck demo/ || echo "$? - Found some errors"
+            dir: git-pull-request-resource
+          caches:
+          - path: cargo
 
-      on_success:
-        put: git-pull-request-resource
-        params:
-          path: git-pull-request-resource
-          context: run-check
-          status: success
+        on_success:
+          put: git-pull-request-resource
+          params:
+            path: git-pull-request-resource
+            context: run-check
+            status: success
 
-      on_failure:
-        put: git-pull-request-resource
-        params:
-          path: git-pull-request-resource
-          context: run-check
-          status: failure
+        on_failure:
+          put: git-pull-request-resource
+          params:
+            path: git-pull-request-resource
+            context: run-check
+            status: failure
 
   - name: master-validate
     build_logs_to_retain: 10

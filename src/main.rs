@@ -223,7 +223,7 @@ fn main() -> anyhow::Result<()> {
 
     trace!("Executing: {:?} with {:?}", action, &config);
 
-    let combined = traverse::collect(args.arg_paths, args.flag_recursive, &config)?;
+    let combined = traverse::extract(args.arg_paths, args.flag_recursive, &config)?;
 
     let suggestion_set = checker::check(&combined, &config)?;
 

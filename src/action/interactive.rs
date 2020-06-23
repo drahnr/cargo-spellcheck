@@ -82,6 +82,7 @@ where
     pub suggestion: &'s Suggestion<'t>,
     /// The content the user provided for the suggestion, if any.
     pub custom_replacement: String,
+    pub cursor_offset: u16,
     /// Which index to show as highlighted.
     pub pick_idx: usize,
     /// Total number of pickable slots.
@@ -93,6 +94,7 @@ impl<'s, 't> From<&'s Suggestion<'t>> for State<'s, 't> {
         Self {
             suggestion,
             custom_replacement: String::new(),
+            cursor_offset: 0,
             pick_idx: 0usize,
             // all items provided by the checkers plus the user provided
             n_items: suggestion.replacements.len() + 1,
@@ -170,16 +172,38 @@ impl UserPicked {
     fn custom_replacement(&self, state: &mut State, event: KeyEvent) -> Result<Pick> {
         let KeyEvent { code, modifiers } = event;
 
+        let length = state.custom_replacement.len() as u16;
         match code {
-            KeyCode::Up => state.select_previous(),
-            KeyCode::Down => state.select_next(),
+            KeyCode::Left => state.cursor_offset = state.cursor_offset.saturating_sub(1),
+            KeyCode::Right => state.cursor_offset = (state.cursor_offset + 1).min(length),
+            KeyCode::Up => {
+                state.cursor_offset = length;
+                state.select_next();
+            }
+            KeyCode::Down => {
+                state.cursor_offset = length;
+                state.select_previous();
+            }
+            KeyCode::Backspace => {
+                if state.cursor_offset > 0 {
+                    state.cursor_offset -= 1;
+                    state
+                        .custom_replacement
+                        .remove(state.cursor_offset as usize);
+                }
+            }
             KeyCode::Enter => {
                 let bandaid = BandAid::new(&state.custom_replacement, &state.suggestion.span);
                 return Ok(Pick::Replacement(bandaid));
             }
             KeyCode::Esc => return Ok(Pick::Quit),
             KeyCode::Char('c') if modifiers == KeyModifiers::CONTROL => return Ok(Pick::Quit),
-            KeyCode::Char(c) => state.custom_replacement.push(c), // @todo handle cursors and insert / delete mode
+            KeyCode::Char(c) => {
+                state
+                    .custom_replacement
+                    .insert(state.cursor_offset as usize, c);
+                state.cursor_offset += 1;
+            }
             _ => {}
         }
 
@@ -193,7 +217,7 @@ impl UserPicked {
     // arrow left
     // .. suggestion1 [suggestion2] suggestion3 suggestion4 ..
     // but now it's only a very simple list for now
-    fn print_replacements_list(&self, state: &State) -> Result<()> {
+    fn print_replacements_list(&self, state: &mut State) -> Result<()> {
         let mut stdout = stdout();
 
         let tick = ContentStyle::new()
@@ -268,7 +292,6 @@ impl UserPicked {
                 if idx != active_idx as u16 {
                     // @todo figure out a way to deal with those errors better
                     stdout
-                        // .queue(cursor::MoveTo(start.0 + idx, start.1)).unwrap()
                         .queue(cursor::MoveUp(1))
                         .unwrap()
                         .queue(terminal::Clear(terminal::ClearType::CurrentLine))
@@ -282,7 +305,6 @@ impl UserPicked {
                         .unwrap();
                 } else {
                     stdout
-                        // .queue(cursor::MoveTo(start.0 + idx, start.1)).unwrap()
                         .queue(cursor::MoveUp(1))
                         .unwrap()
                         .queue(terminal::Clear(terminal::ClearType::CurrentLine))
@@ -325,36 +347,28 @@ impl UserPicked {
             // a new suggestion, so prepare for the number of items that are visible
             // and also overwrite the last lines of the regular print which would
             // already contain the suggestions
+            // @todo deal with error conversion
+
+            const ERASE: u16 = 5;
+            // space + question + space
+            const QUESTION: u16 = 3;
+            let extra_rows_to_flush = (state.n_items - (ERASE - QUESTION) as usize) as u16;
             stdout()
                 .queue(cursor::Hide)
                 .unwrap()
-                .queue(cursor::MoveToColumn(0))
+                .queue(cursor::MoveUp(ERASE)) // erase the 5 last lines of suggestion print
                 .unwrap()
-                .queue(cursor::MoveUp(5)) // erase the 5 last lines of suggestion print
+                .queue(terminal::Clear(terminal::ClearType::FromCursorDown))
                 .unwrap()
-                .queue(cursor::MoveToColumn(0))
-                .unwrap()
-                .queue(terminal::Clear(terminal::ClearType::CurrentLine))
-                .unwrap()
-                .queue(cursor::MoveDown(1))
-                .unwrap()
-                .queue(terminal::Clear(terminal::ClearType::CurrentLine))
-                .unwrap()
-                .queue(cursor::MoveToColumn(0))
+                .queue(cursor::MoveDown(1)) // add a space between the question and the error
                 .unwrap()
                 .queue(PrintStyledContent(StyledContent::new(boring, question)))
                 .unwrap()
+                .queue(terminal::ScrollUp(extra_rows_to_flush))
+                .unwrap()
                 .queue(cursor::MoveToColumn(0))
                 .unwrap()
-                .queue(cursor::MoveDown(1))
-                .unwrap()
-                .queue(terminal::Clear(terminal::ClearType::CurrentLine))
-                .unwrap()
-                .queue(cursor::MoveDown(1))
-                .unwrap()
-                .queue(terminal::Clear(terminal::ClearType::CurrentLine))
-                .unwrap() // @todo deal with error conversion
-                .queue(terminal::ScrollUp((state.n_items) as u16))
+                .queue(cursor::MoveDown(extra_rows_to_flush))
                 .unwrap();
         }
 
@@ -362,6 +376,20 @@ impl UserPicked {
             let mut guard = ScopedRaw::new();
 
             self.print_replacements_list(state)?;
+
+            if state.is_custom_entry() {
+                info!("Custom entry mode");
+
+                stdout().queue(cursor::SavePosition).unwrap();
+                stdout()
+                    .queue(cursor::Show)
+                    .unwrap()
+                    .queue(cursor::MoveToPreviousLine(1))
+                    .unwrap()
+                    .queue(cursor::MoveToColumn(4 + state.cursor_offset))
+                    .unwrap();
+                let _ = stdout().flush();
+            }
 
             let event = match crossterm::event::read()
                 .map_err(|e| anyhow::anyhow!("Something unexpected happened on the CLI: {}", e))?
@@ -381,7 +409,16 @@ impl UserPicked {
                 drop(guard);
                 info!("Custom entry mode");
                 guard = ScopedRaw::new();
-                match self.custom_replacement(state, event)? {
+
+                let pick = self.custom_replacement(state, event)?;
+
+                stdout()
+                    .queue(cursor::Hide)
+                    .unwrap()
+                    .queue(cursor::RestorePosition)
+                    .unwrap();
+
+                match pick {
                     Pick::Nop => continue,
                     other => return Ok(other),
                 }
