@@ -112,64 +112,72 @@ impl<'s> fmt::Display for Suggestion<'s> {
             ))
             .fmt(formatter)?;
 
-        // @todo must be implemented based on chunks
-        //
-        // writeln!(formatter, " {}", self.literal.as_str())?;
-        //
-        // // underline the relevant part with ^^^^^
-        // let mut marker_size = if self.span.end.line == self.span.start.line {
-        //     // column bounds are inclusive, so for a correct length we need to add + 1
-        //     self.span.end.column.saturating_sub(self.span.start.column) + 1
-        // } else {
-        //     self.literal.len().saturating_sub(self.span.start.column)
-        // };
+        let max_chars = 120usize; //@TODO: find compatible to size of terminal.
+        if self.literal.len() > max_chars {
+            writeln!(formatter, " {} ...", self.literal.truncate(max_chars))?;
+        }
+        else {
+            writeln!(formatter, " {}", self.literal.as_str())?;
+        }
 
-        // let literal_span: Span = Span::from(self.literal.as_ref().literal.span());
-        // let marker_range_relative: Range = self.span.relative_to(literal_span).expect("Must be ok");
+        // underline the relevant part with ^^^^^
 
-        // // if the offset starts from 0, we still want to continue if the length
-        // // of the marker is at least length 1
-        // let offset = if self.literal.pre() <= marker_range_relative.start {
-        //     marker_range_relative.start - self.literal.pre()
-        // } else {
-        //     error!("Reducing marker length! Please report a BUG!");
-        //     // reduce the marker size
-        //     marker_size -= marker_range_relative.start;
-        //     marker_size -= self.literal.pre();
-        //     0
-        // };
+        // @todo this needs some more thought once multiline comments pop up
+        let mut marker_size = if self.span.end.line == self.span.start.line {
+            // column bounds are inclusive, so for a correct length we need to add + 1
+            self.span.end.column.saturating_sub(self.span.start.column) + 1
+        } else {
+            self.literal.len().saturating_sub(self.span.start.column)
+        };
 
-        // if marker_size > 0 {
-        //     context_marker
-        //         .apply_to(format!("{:>width$}", "|", width = indent))
-        //         .fmt(formatter)?;
-        //     help.apply_to(format!(" {:>offset$}", "", offset = offset))
-        //         .fmt(formatter)?;
-        //     help.apply_to(format!("{:^>size$}", "", size = marker_size))
-        //         .fmt(formatter)?;
-        //     formatter.write_str("\n")?;
-        //     log::trace!(
-        //         "marker_size={} [{}|{}|{}] literal {{ {:?} .. {:?} }} >> {:?} <<",
-        //         marker_size,
-        //         self.literal.pre(),
-        //         self.literal.len(),
-        //         self.literal.post(),
-        //         self.span.start,
-        //         self.span.end,
-        //         self,
-        //     );
-        // } else {
-        //     log::warn!(
-        //         "marker_size={} [{}|{}|{}] literal {{ {:?} .. {:?} }} >> {:?} <<",
-        //         marker_size,
-        //         self.literal.pre(),
-        //         self.literal.len(),
-        //         self.literal.post(),
-        //         self.span.start,
-        //         self.span.end,
-        //         self,
-        //     );
-        // }
+        use crate::literalset::Range;
+
+        let literal_span: Span = Span::from(self.literal.as_ref().literal.span());
+        let marker_range_relative: Range = self.span.relative_to(literal_span).expect("Must be ok");
+
+        // if the offset starts from 0, we still want to continue if the length
+        // of the marker is at least length 1
+        let offset = if self.literal.pre() <= marker_range_relative.start {
+            marker_range_relative.start - self.literal.pre()
+        } else {
+            error!("Reducing marker length! Please report a BUG!");
+            // reduce the marker size
+            marker_size -= marker_range_relative.start;
+            marker_size -= self.literal.pre();
+            0
+        };
+
+        if marker_size > 0 {
+            context_marker
+                .apply_to(format!("{:>width$}", "|", width = indent))
+                .fmt(formatter)?;
+            help.apply_to(format!(" {:>offset$}", "", offset = offset))
+                .fmt(formatter)?;
+            help.apply_to(format!("{:^>size$}", "", size = marker_size))
+                .fmt(formatter)?;
+            formatter.write_str("\n")?;
+            log::trace!(
+                "marker_size={} [{}|{}|{}] literal {{ {:?} .. {:?} }} >> {:?} <<",
+                marker_size,
+                self.literal.pre(),
+                self.literal.len(),
+                self.literal.post(),
+                self.span.start,
+                self.span.end,
+                self,
+            );
+        } else {
+            log::warn!(
+                "marker_size={} [{}|{}|{}] literal {{ {:?} .. {:?} }} >> {:?} <<",
+                marker_size,
+                self.literal.pre(),
+                self.literal.len(),
+                self.literal.post(),
+                self.span.start,
+                self.span.end,
+                self,
+            );
+        }
 
         context_marker
             .apply_to(format!("{:>width$}", "|", width = indent))
