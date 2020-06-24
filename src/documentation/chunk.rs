@@ -38,8 +38,7 @@ impl std::hash::Hash for CheckableChunk {
 impl CheckableChunk {
     /// Specific to rust source code, either as part of doc test comments or file scope
     pub fn from_literalset(set: LiteralSet) -> Self {
-        // @todo figure out the range to span mapping here
-        Self::from_string(set.to_string(), IndexMap::<Range, Span>::new())
+        set.into_chunk()
     }
 
     /// Load content from string, may contain markdown content
@@ -55,71 +54,49 @@ impl CheckableChunk {
     }
 
 
+    /// Obtain an accessor object containing mapping and string repr, removing the markdown anotations.
     pub fn erase_markdown(&self) -> PlainOverlay {
         PlainOverlay::erase_markdown(self)
     }
 
 
-
-    /// Convert a range of the linear trimmed (but no other processing) string representation to a set of
-    /// literal references and spans for the file the chunk resides in.
-    // @todo check if this still needed, or if we just need range mappings
-    pub fn linear_range_to_spans(
+    /// Find which part of the range maps to which span.
+    /// Note that Range can very well be split into multiple fragments
+    /// where each of them can be mapped to a potentially non-continuous
+    /// span
+    pub(super) fn find_spans(
         &self,
         range: Range,
-    ) -> Vec<Span> {
-        unimplemented!("Should return only a Vec<Span>, we don't care about literals anymore")
-        // find_coverage(&self.literals, &range)
-        //     .map(|(literals, start, end)| {
-        //         assert!(!literals.is_empty());
-        //         trace!("coverage: {:?} -> end {:?}", &range, end);
-        //         let n = literals.len();
-        //         if n > 1 {
-        //             let mut iter = literals.into_iter();
-        //             let first: &'a _ = iter.next().unwrap();
-
-        //             // calculate how many lines it spans
-        //             let mut acc = Vec::with_capacity(n);
-        //             // first literal to its end
-        //             if first.span().end() != start {
-        //                 acc.push((
-        //                     first,
-        //                     Span {
-        //                         start,
-        //                         end: first.span().end(),
-        //                     },
-        //                 ));
-        //             }
-
-        //             // take all in between the first and the last completely
-
-        //             for literal in iter.clone().take(n - 2) {
-        //                 let span = Span {
-        //                     start: literal.span().start(),
-        //                     end: literal.span().end(),
-        //                 };
-        //                 if span.start != span.end {
-        //                     acc.push((literal, span));
-        //                 }
-        //             }
-        //             // add the last from the beginning to the computed end
-        //             let last: &'a _ = iter.skip(n - 2).next().unwrap();
-        //             if last.span().start() != end {
-        //                 acc.push((
-        //                     last,
-        //                     Span {
-        //                         start: last.span().start(),
-        //                         end,
-        //                     },
-        //                 ));
-        //             }
-        //             return acc;
-        //         } else {
-        //             assert_eq!(n, 1);
-        //             return vec![(literals.first().unwrap(), Span { start, end })];
-        //         }
-        //     })
-        //     .unwrap_or_else(|| Vec::new())
+    ) -> IndexMap<Range,Span> {
+        let Range { start, end } = range;
+        let mut active = false;
+        self.source_mapping.iter().filter_map(|(range, span)| {
+            if range.contains(&start) {
+                active = true;
+                if end > 0 && range.contains(&(end-1)) {
+                    Some(start..end)
+                } else {
+                    Some(start..range.end)
+                }
+            } else if active {
+                Some(range.clone())
+            } else if range.contains(&end) {
+                active = false;
+                Some(range.start..end)
+            } else {
+                None
+            }.map(|fract_range| {
+                // @todo handle multiline here
+                // @todo requires knowledge of how many items are remaining in the line
+                // @todo which needs to be extracted from
+                assert_eq!(span.start.line, span.end.line);
+                let mut span = span.clone();
+                span.start.column += fract_range.start - range.start;
+                span.end.column -= range.end - fract_range.end;
+                assert!(span.start.column <= span.end.column);
+                (fract_range, span)
+            })
+        }).collect::<IndexMap<_,_>>()
     }
 
     pub fn as_str(&self) -> &str {
