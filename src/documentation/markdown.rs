@@ -4,6 +4,7 @@
 
 use super::*;
 
+use core::cmp::min;
 use log::trace;
 use pulldown_cmark::{Event, Options, Parser, Tag};
 use indexmap::IndexMap;
@@ -43,7 +44,7 @@ impl<'a> PlainOverlay<'a> {
         }
     }
 
-    /// ranges are mapped `plain -> raw`
+    /// ranges are mapped `cmakr reduced/plain -> raw`
     fn extract_plain_with_mapping(markdown: &str) -> (String, IndexMap<Range, Range>) {
         let mut plain = String::with_capacity(markdown.len());
         let mut mapping = indexmap::IndexMap::with_capacity(128);
@@ -151,39 +152,39 @@ impl<'a> PlainOverlay<'a> {
         }
     }
 
-    /// Since most checkers will operate on the plain data, an indirection to map plain to markdown
-    /// and back to literals and spans
-    pub fn linear_range_to_spans(&self, plain_range: Range) -> Vec<Span> {
-        unimplemented!("Should only return a `Vec<Span>` for the entity we work on")
-        // self.mapping
-        //     .iter()
-        //     .filter(|(plain, _raw)| {
-        //         plain.start <= plain_range.start && plain_range.end <= plain.end
-        //     })
-        //     .fold(Vec::with_capacity(64), |mut acc, (plain, raw)| {
-        //         let offset = raw.start - plain.start;
-        //         assert_eq!(raw.end - plain.end, offset);
-        //         let extracted = Range {
-        //             start: plain_range.start + offset,
-        //             end: min(raw.end, plain_range.end + offset),
-        //         };
-        //         trace!(
-        //             "convert (offset = {}):  convert reduced={:?} -> raw={:?}",
-        //             offset,
-        //             plain,
-        //             raw
-        //         );
-        //         trace!("highlight:  {:?} -> {:?}", &plain_range, &extracted);
+    /// Since most checkers will operate on the plain data, an indirection to map cmark reduced / plain
+    /// back to raw ranges, which are then mapped back to `Span`s.
+    /// The returned key `Ranges` are in the plain domain.
+    pub fn find_spans(&self, plain_range: Range) -> IndexMap<Range,Span> {
+        self.mapping
+            .iter()
+            .filter(|(plain, _raw)| {
+                plain.start <= plain_range.start && plain_range.end <= plain.end
+            })
+            .fold(IndexMap::with_capacity(64), |mut acc, (plain, raw)| {
+                let offset = raw.start - plain.start;
+                assert_eq!(raw.end - plain.end, offset);
+                let extracted = Range {
+                    start: plain_range.start + offset,
+                    end: min(raw.end, plain_range.end + offset),
+                };
+                trace!(
+                    "convert (offset = {}):  convert reduced={:?} -> raw={:?}",
+                    offset,
+                    plain,
+                    raw
+                );
+                trace!("highlight:  {:?} -> {:?}", &plain_range, &extracted);
 
-        //         if extracted.start < extracted.end {
-        //             let resolved = self.raw.linear_range_to_spans(extracted.clone());
-        //             trace!("linear range to spans: {:?} -> {:?}", extracted, resolved);
-        //             acc.extend(resolved.into_iter());
-        //         } else {
-        //             warn!("linear range to spans: {:?} empty!", extracted);
-        //         }
-        //         acc
-        //     })
+                if extracted.start < extracted.end {
+                    let resolved = self.raw.find_spans(extracted.clone());
+                    trace!("linear range to spans: {:?} -> {:?}", extracted, resolved);
+                    acc.extend(resolved.into_iter());
+                } else {
+                    warn!("linear range to spans: {:?} empty!", extracted);
+                }
+                acc
+            })
     }
 
     pub fn as_str(&self) -> &str {
