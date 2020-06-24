@@ -116,7 +116,7 @@ impl Checker for HunspellChecker {
                                 .filter(|x| x.len() > 1) // single char suggestions tend to be useless
                                 .collect::<Vec<_>>();
 
-                            for (range, span) in plain.find_spans(range.clone()) {
+                            for (_range, span) in plain.find_spans(range.clone()) {
                                 acc.add(
                                     origin.clone(),
                                     Suggestion {

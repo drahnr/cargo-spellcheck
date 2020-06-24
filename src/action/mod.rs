@@ -113,7 +113,11 @@ pub enum Action {
 }
 
 impl Action {
-    fn correction<'s>(&self, origin: ContentOrigin, bandaids: impl IntoIterator<Item = BandAid>) -> Result<()> {
+    fn correction<'s>(
+        &self,
+        origin: ContentOrigin,
+        bandaids: impl IntoIterator<Item = BandAid>,
+    ) -> Result<()> {
         match origin {
             ContentOrigin::CommonMarkFile(path) => self.correct_file(path, bandaids),
             ContentOrigin::RustSourceFile(path) => self.correct_file(path, bandaids),
@@ -212,8 +216,7 @@ impl Action {
             Self::Fix => unimplemented!("Unsupervised fixing is not implemented just yet"),
             Self::Check => self.check(suggestions, config)?,
             Self::Interactive => {
-                let picked =
-                    interactive::UserPicked::select_interactive(suggestions, config)?;
+                let picked = interactive::UserPicked::select_interactive(suggestions, config)?;
                 self.write_changes_to_disk(picked, config)?;
             }
         }

@@ -4,25 +4,24 @@
 
 use super::*;
 
-use std::convert::TryInto;
-use std::path::{Path, PathBuf};
-use log::trace;
 use indexmap::IndexMap;
+use log::trace;
+use std::convert::TryInto;
+use std::path::PathBuf;
 
-use proc_macro2::{Spacing, TokenTree};
 pub use proc_macro2::LineColumn;
-
+use proc_macro2::{Spacing, TokenTree};
 
 pub type Range = core::ops::Range<usize>;
 
-mod literalset;
 mod chunk;
 mod cluster;
+mod literalset;
 mod markdown;
 
-pub use literalset::*;
 pub use chunk::*;
 pub use cluster::*;
+pub use literalset::*;
 pub use markdown::*;
 /// Collection of all the documentation entries across the project
 #[derive(Debug, Clone)]
@@ -59,9 +58,9 @@ impl Documentation {
         self
     }
 
-    pub fn extend<I,J>(&mut self, mut docs: I)
+    pub fn extend<I, J>(&mut self, docs: I)
     where
-        I: IntoIterator<Item = Documentation, IntoIter=J>,
+        I: IntoIterator<Item = Documentation, IntoIter = J>,
         J: Iterator<Item = Documentation>,
     {
         docs.into_iter().for_each(|other| {
@@ -80,7 +79,6 @@ impl Documentation {
     }
 }
 
-
 /// only a shortcut to avoid duplicate code
 impl From<(ContentOrigin, proc_macro2::TokenStream)> for Documentation {
     fn from((source, stream): (ContentOrigin, proc_macro2::TokenStream)) -> Self {
@@ -91,7 +89,6 @@ impl From<(ContentOrigin, proc_macro2::TokenStream)> for Documentation {
         docs
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -115,7 +112,8 @@ mod tests {
 
         let test_path = PathBuf::from("/tmp/dummy");
 
-        let stream = syn::parse_str::<proc_macro2::TokenStream>(TEST_SOURCE).expect("Must be valid rust");
+        let stream =
+            syn::parse_str::<proc_macro2::TokenStream>(TEST_SOURCE).expect("Must be valid rust");
         let docs = Documentation::from((test_path.as_path(), stream));
         assert_eq!(docs.index.len(), 1);
         let v = docs.index.get(&test_path).expect("Must contain dummy path");
@@ -165,7 +163,8 @@ mod tests {
 
                 const TEST: &str = include_str!($path);
                 let test_path = PathBuf::from($path);
-                let stream = syn::parse_str::<proc_macro2::TokenStream>(TEST).expect("Must be valid rust");
+                let stream =
+                    syn::parse_str::<proc_macro2::TokenStream>(TEST).expect("Must be valid rust");
                 let docs = Documentation::from((test_path.as_path(), stream));
                 assert_eq!(docs.index.len(), 1);
                 let v = docs.index.get(&test_path).expect("Must contain dummy path");

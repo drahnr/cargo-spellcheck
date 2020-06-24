@@ -1,10 +1,8 @@
 //! Cluster `proc_macro2::Literal`s into `LiteralSets`
 
 use super::*;
-use indexmap::IndexMap;
-use anyhow::{anyhow, Result, Error};
+use crate::documentation::Range;
 use crate::Span;
-use crate::documentation::{CheckableChunk, ContentOrigin, Range};
 
 /// Cluster literals for one file
 #[derive(Debug)]
@@ -88,9 +86,8 @@ impl Clusters {
     }
 }
 
-impl From<proc_macro2::TokenStream> for Clusters
-{
-    fn from( stream: proc_macro2::TokenStream) -> Self {
+impl From<proc_macro2::TokenStream> for Clusters {
+    fn from(stream: proc_macro2::TokenStream) -> Self {
         let mut chunk = Self {
             set: Vec::with_capacity(64),
         };
