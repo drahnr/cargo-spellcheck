@@ -11,15 +11,10 @@
 //!     |     - you can add it to your personal dictionary to prevent future alerts.
 //! ```
 
-use std::path::{Path, PathBuf};
-
+use crate::documentation::{CheckableChunk, ContentOrigin};
 use crate::Span;
-use crate::{TrimmedLiteralRef, TrimmedLiteralDisplay};
-use crate::documentation::{ContentOrigin, CheckableChunk, Range};
 
 use enumflags2::BitFlags;
-use log::error;
-
 
 /// Bitflag of available checkers by compilation / configuration.
 #[derive(Debug, Clone, Copy, BitFlags, Eq, PartialEq, Hash)]
@@ -75,7 +70,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
         let arrow_marker = Style::new().blue();
         let context_marker = Style::new().bold().blue();
         let fix = Style::new().green();
-        let help = Style::new().yellow().bold();
+        let _help = Style::new().yellow().bold();
 
         let line_number_digit_count = self.span.start.line.to_string().len();
         let indent = 3 + line_number_digit_count;
@@ -93,15 +88,12 @@ impl<'s> fmt::Display for Suggestion<'s> {
         let x = self.span.start.line;
         let (path, line) = match self.origin {
             ContentOrigin::RustSourceFile(ref path) => (path.display().to_string(), x),
-            ContentOrigin::RustDocTest(ref path, ref span) => (path.display().to_string(), x + span.start.line),
+            ContentOrigin::RustDocTest(ref path, ref span) => {
+                (path.display().to_string(), x + span.start.line)
+            }
             ContentOrigin::CommonMarkFile(ref path) => (path.display().to_string(), x),
         };
-        writeln!(
-            formatter,
-            " {path}:{line}",
-            path = path,
-            line = line
-        )?;
+        writeln!(formatter, " {path}:{line}", path = path, line = line)?;
         context_marker
             .apply_to(format!("{:>width$}", "|", width = indent))
             .fmt(formatter)?;
@@ -114,9 +106,6 @@ impl<'s> fmt::Display for Suggestion<'s> {
             ))
             .fmt(formatter)?;
 
-
-
-
         // @todo must be implemented based on chunks
         //
         // writeln!(formatter, " {}", self.literal.as_str())?;
@@ -128,7 +117,6 @@ impl<'s> fmt::Display for Suggestion<'s> {
         // } else {
         //     self.literal.len().saturating_sub(self.span.start.column)
         // };
-
 
         // let literal_span: Span = Span::from(self.literal.as_ref().literal.span());
         // let marker_range_relative: Range = self.span.relative_to(literal_span).expect("Must be ok");
@@ -234,8 +222,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
 }
 
 impl<'s> fmt::Debug for Suggestion<'s> {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-
+    fn fmt(&self, _formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         unimplemented!("Suggestion display is lacking")
         // @todo rename `TrimmedLiteralDisplay` to `ChunkHighlighDisplay`
         // let printable = TrimmedLiteralDisplay::from((
@@ -293,7 +280,10 @@ impl<'s> SuggestionSet<'s> {
     }
 
     /// Obtain an accessor `Entry` for the given `origin`
-    pub fn entry(&mut self, origin: ContentOrigin) -> indexmap::map::Entry<ContentOrigin, Vec<Suggestion<'s>>> {
+    pub fn entry(
+        &mut self,
+        origin: ContentOrigin,
+    ) -> indexmap::map::Entry<ContentOrigin, Vec<Suggestion<'s>>> {
         self.per_file.entry(origin)
     }
 

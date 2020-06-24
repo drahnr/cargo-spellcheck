@@ -1,6 +1,4 @@
-use crate::{LineColumn, Span};
-
-use log::trace;
+use crate::Span;
 
 use super::Range;
 use crate::documentation::CheckableChunk;
@@ -170,7 +168,6 @@ impl fmt::Debug for TrimmedLiteral {
     }
 }
 
-
 /// A set of consecutive literals.
 ///
 /// Provides means to render them as a code block
@@ -212,7 +209,6 @@ impl LiteralSet {
         Err(literal)
     }
 
-
     pub fn literals<'x>(&'x self) -> Vec<&'x TrimmedLiteral> {
         self.literals.iter().by_ref().collect()
     }
@@ -235,9 +231,7 @@ impl LiteralSet {
                 cursor += literal.len();
                 end = cursor;
                 // @todo check if the `Span` conversion here is done correctly
-                source_mapping.insert(Range {
-                    start, end
-                }, Span::from(literal.span()));
+                source_mapping.insert(Range { start, end }, Span::from(literal.span()));
                 content.push_str(literal.as_str());
                 content.push('\n');
                 // the newline is _not_ covered by a span, after all it's inserted by us!
@@ -247,9 +241,7 @@ impl LiteralSet {
                 start = cursor;
                 cursor += literal.len();
                 end = cursor;
-                source_mapping.insert(Range {
-                    start, end
-                }, Span::from(literal.span()));
+                source_mapping.insert(Range { start, end }, Span::from(literal.span()));
                 content.push_str(literal.as_str());
                 // for the last, skip the newline
             }

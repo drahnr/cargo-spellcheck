@@ -14,8 +14,7 @@ use crossterm::{
 };
 
 use std::convert::TryFrom;
-use std::io::{stdin, stdout};
-use std::path::Path;
+use std::io::stdout;
 
 const HELP: &'static str = r##"y - apply this suggestion
 n - do not apply the suggested correction

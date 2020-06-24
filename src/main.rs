@@ -1,8 +1,8 @@
+mod action;
+mod checker;
 mod config;
 mod documentation;
 mod span;
-mod action;
-mod checker;
 mod suggestion;
 mod traverse;
 

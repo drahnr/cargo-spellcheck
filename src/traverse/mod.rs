@@ -343,11 +343,12 @@ pub(crate) fn extract(
                 match item {
                     CheckEntity::Source(path) => {
                         if recurse {
-                            let mut iter = traverse(path.as_path())?;
+                            let iter = traverse(path.as_path())?;
                             docs.extend(iter);
                         } else {
                             let content: String = fs::read_to_string(&path)?;
-                            let stream = syn::parse_str::<proc_macro2::TokenStream>(content.as_str())?;
+                            let stream =
+                                syn::parse_str::<proc_macro2::TokenStream>(content.as_str())?;
                             let cluster = Clusters::from(stream);
                             let chunks = Vec::<CheckableChunk>::from(cluster);
                             docs.add(ContentOrigin::RustSourceFile(path.to_owned()), chunks);
@@ -356,7 +357,10 @@ pub(crate) fn extract(
                     CheckEntity::Markdown(path) => {
                         let content = std::fs::read_to_string(&path).unwrap(); // @todo error handling
                         let source_mapping = IndexMap::new(); // @todo source map should be trivial, start to end
-                        docs.add(ContentOrigin::CommonMarkFile(path.to_owned()), vec![CheckableChunk::from_string(content, source_mapping)]);
+                        docs.add(
+                            ContentOrigin::CommonMarkFile(path.to_owned()),
+                            vec![CheckableChunk::from_string(content, source_mapping)],
+                        );
                     }
                     other => {
                         warn!("Did not impl handling of {:?} type files", other);

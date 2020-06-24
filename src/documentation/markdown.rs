@@ -5,12 +5,12 @@
 use super::*;
 
 use core::cmp::min;
+use indexmap::IndexMap;
 use log::trace;
 use pulldown_cmark::{Event, Options, Parser, Tag};
-use indexmap::IndexMap;
 
-use crate::Span;
 use crate::documentation::{CheckableChunk, Range};
+use crate::Span;
 
 /// A plain representation of markdown riddled set of trimmed literals.
 #[derive(Clone)]
@@ -143,7 +143,6 @@ impl<'a> PlainOverlay<'a> {
     // @todo consider returning a Vec<PlainOverlay<'a>> to account for list items
     // or other non-linear information which might not pass a grammar check as a whole
     pub fn erase_markdown(chunk: &'a CheckableChunk) -> Self {
-
         let (plain, mapping) = Self::extract_plain_with_mapping(chunk.as_str());
         Self {
             raw: chunk,
@@ -155,7 +154,7 @@ impl<'a> PlainOverlay<'a> {
     /// Since most checkers will operate on the plain data, an indirection to map cmark reduced / plain
     /// back to raw ranges, which are then mapped back to `Span`s.
     /// The returned key `Ranges` are in the plain domain.
-    pub fn find_spans(&self, plain_range: Range) -> IndexMap<Range,Span> {
+    pub fn find_spans(&self, plain_range: Range) -> IndexMap<Range, Span> {
         self.mapping
             .iter()
             .filter(|(plain, _raw)| {
