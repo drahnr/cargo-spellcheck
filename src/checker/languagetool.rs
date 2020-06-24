@@ -1,6 +1,6 @@
 use super::*;
 
-use crate::literalset::Range;
+use crate::Range;
 use languagetool_rs::{LanguageTool, Request};
 pub struct LanguageToolChecker;
 
@@ -35,7 +35,7 @@ impl Checker for LanguageToolChecker {
                             log::trace!("item.message: {:?}", item.message);
                             log::trace!("item.short_message: {:?}", item.short_message);
                             // TODO convert response to offsets and errors with the matching literal
-                            for span in plain.linear_range_to_spans(Range {
+                            for (_range, span) in plain.find_spans(Range {
                                 start: item.offset as usize,
                                 end: (item.offset + item.length) as usize,
                             }) {
