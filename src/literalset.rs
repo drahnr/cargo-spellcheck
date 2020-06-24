@@ -40,6 +40,13 @@ impl<'l> TrimmedLiteralRef<'l> {
     pub fn as_ref(&self) -> &TrimmedLiteral {
         self.reference
     }
+    pub fn truncate(&self, max_chars: usize) -> &str {
+        let mut s = &self.reference.as_str();
+        match s.char_indices().nth(max_chars) {
+            None => &s,
+            Some((idx, _)) => &s[..idx],
+        }
+    }
 
     #[allow(unused)]
     pub(crate) fn display(&self, highlight: Range) -> TrimmedLiteralDisplay {
