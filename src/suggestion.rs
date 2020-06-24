@@ -12,11 +12,13 @@
 //! ```
 
 use crate::documentation::{CheckableChunk, ContentOrigin};
-use crate::{Range, Span};
 
 use std::convert::TryFrom;
 
 use enumflags2::BitFlags;
+
+use crate::{LineColumn, Range, Span};
+use std::path::{Path, PathBuf};
 
 /// Bitflag of available checkers by compilation / configuration.
 #[derive(Debug, Clone, Copy, BitFlags, Eq, PartialEq, Hash)]
@@ -28,6 +30,20 @@ pub enum Detector {
     Dummy = 0b1000,
 }
 
+pub fn get_terminal_size() -> usize {
+    use super::*;
+    const DEFAULT_TERMINAL_SIZE: usize = 80;
+    match crossterm::terminal::size() {
+        Ok((terminal_size, _)) => terminal_size as usize,
+        Err(_) => {
+            warn!(
+                "Unable to get terminal size. Use default: {}",
+                DEFAULT_TERMINAL_SIZE
+            );
+            DEFAULT_TERMINAL_SIZE
+        }
+    }
+}
 // impl
 // // TODO use this to display included compiled backends
 // fn list_available() {
@@ -38,7 +54,16 @@ pub enum Detector {
 // }
 
 use std::fmt;
-
+// @TODO: This needs to be removed this. This is just an example to show all cases that I came up.
+/// Speaking of food, what's up with pie? There's strawberry pie, apple, pumpkin and so many others, but there is no grape pie! I know. I'm just as upset about this unfortunate lack of development in the pie division. Think about it. Grapes are used to make jelly, jam, juice and raisins. What makes them undesirable for pie? Would they dry into raisins? Couldn't you just stick some jelly in a piecrust and bake it? It just doesn't make any sense. Another thing that bothers me is organ grinders. You know, the foreign guys with the bellhop hats and the little music thingy and the cute little monkey with the bellhop hat who collects the money? Okay. They're basically begging on the street. How did they ever afford an organ-thingy? Wouldn't it make more sense to get a kazoo, if you're broke? And if they're so poor, what possessed them to buuuuuuuuuuuuuyyyyyyyyyyyyyyyyyyyyy a monkey?
+/// Speaking of food, what's up with pie? There's strawberry pie, apple, pumpkin and so many others, but there is no grape pie! I know. I'm just as upset about this unfortunate lack of development in the pie division. Think about it. Grapes are used to make jelly, jam, juice and raisins. What makes them undesirable for pie? Would they dry into raisins? Couldn't you just stick some jelly in a piecrust and bake it? It just doesn't make any sense. Another thing that bothers me is organ grinders. You know, the foreign guys with the bellhop hats and the little music thingy and the cute little monkey with the bellhop hat who collects the money? Okay. They're basically begging on the street. How did they ever afford an organ-thingy? Wouldn't it make more sense to get a kazoo, if you're broke? And if they're so poor, what possessed them to buyi a monkey?
+/// Speakiiiiiinnnnnnnnnnnnnnngggggggg of food, what's up with pie? There's strawberry pie, apple, pumpkin and so many others, but there is no grape pie! I know. I'm just as upset about this unfortunate lack of development in the pie division. Think about it. Grapes are used to make jelly, jam, juice and raisins. What makes them undesirable for pie? Would they dry into raisins? Couldn't you just stick some jelly in a piecrust and bake it? It just doesn't make any sense. Another thing that bothers me is organ grinders. You know, the foreign guys with the bellhop hats and the little music thingy and the cute little monkey with the bellhop hat who collects the money? Okay. They're basically begging on the street. How did they ever afford an organ-thingy? Wouldn't it make more sense to get a kazoo, if you're broke? And if they're so poor, what possessed them to buy a monkey?
+/// Speakingi of food, what's up with pie? There's strawberry pie, apple, pumpkin and so many others, but there is no grape pie! I know. I'm just as upset about this unfortunate lack of development in the pie division. Think about it. Grapes are used to make jelly, jam, juice and raisins. What makes them undesirable for pie? Would they dry into raisins? Couldn't you just stick some jelly in a piecrust and bake it? It just doesn't make any sense. Another thing that bothers me is organ grinders. You know, the foreign guys with the bellhop hats and the little music thingy and the cute little monkey with the bellhop hat who collects the money? Okay. They're basically begging on the street. How did they ever afford an organ-thingy? Wouldn't it make more sense to get a kazoo, if you're broke? And if they're so poor, what possessed them to buy a monkey?
+/// pneumonoultramicroscopicsilicovolcanoconiose of food, what's up with pie? There's strawberry pie, apple, pumpkin and so many others, but there is no grape pie! I know. I'm just as upset about this unfortunate lack of development in the pie division. Think about it. Grapes are used to make jelly, jam, juice and raisins. What makes them undesirable for pie? Would they dry into raisins? Couldn't you just stick some jelly in a piecrust and bake it? It just doesn't make any sense. Another thing that bothers me is organ grinders. You know, the foreign guys with the bellhop hats and the little music thingy and the cute little monkey with the bellhop hat who collects the money? Okay. They're basically begging on the street. How did they ever afford an organ-thingy? Wouldn't it make more sense to get a kazoo, if you're broke? And if they're so poor, what possessed them to buy a monkey?
+/// Reasn of food, what's up with pie? There's strawberry pie, apple, pumpkin and so many others, but there is no grape pie! I know. I'm just as upset about this unfortunate lack of development in the pie division. Think about it. Grapes are used to make jelly, jam, juice and raisins. What makes them undesirable for pie? Would they dry into raisins? Couldn't you just stick some jelly in a piecrust and bake it? It just doesn't make any sense. Another thing that bothers me is organ grinders. You know, the foreign guys with the bellhop hats and the little music thingy and the cute little monkey with the bellhop hat who collects the money? Okay. They're basically begging on the street. How did they ever afford an organ-thingy? Wouldn't it make more sense to get a kazoo, if you're broke? And if they're so poor, what possessed them to buy a monkey?
+/// Speaking of food, what's up with pie? There's strawberry pie, apple, pumpkin and so many others, but therie is no grape pie! I know. I'm just as upset about this unfortunate lack of development in the pie division.
+/// Speaking of food, what's up with pie? There's strawberry pie, apple, pumpkin and so many others, but therieeeeeeeeeeeeeeee is no grape pie! I know. I'm just as upset about this unfortunate lack of development in the pie division.
+/// Speaking of food, what's up with pie? There's strawberry pie, apple, pumpkin and so many otherrrrrrrrrrrrrs, but therieeeeeeeeeeeeeeee is no gruuuuuuuuuuuuuuuuuuuuuuuape pie! I know. I'm just as upset about this unfortunate lack of development in the pie division.
 impl fmt::Display for Detector {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
@@ -48,6 +73,176 @@ impl fmt::Display for Detector {
             Self::Dummy => "Dummy",
         })
     }
+}
+
+// For long lines, literal will be trimmed to display in one terminal line
+// Misspelled words that are too long shall also be ellipsized
+pub fn convert_long_statements_to_short(
+    terminal_size: usize,
+    marker_range_relative: Range,
+    marker_size: &mut usize,
+    chunk: &CheckableChunk,
+    offset: &mut usize,
+    indent: usize,
+    padding_till_literal_start: usize,
+) -> String {
+    //
+    // The paddings give some space for the ` {} ...` and extra indentation and formatting:
+    //
+    //|---------------------------------------------------------------------------------------| terminal_size
+    //|-------| padding_till_literal_start = indent (3+line_number_digit_count) + 2 white spaces = 7usize, for this case.
+    //     |------| offset = PADDING_OFFSET; 3 chars for `...` and 2 white spaces more added in the formatting.
+    //
+    //   --> /home/tmhdev/Documents/cargo-spellcheck/src/suggestion.rs:62
+    //    |
+    // 62 |  ... Reasn of food, what's up with pie? There's strawberry pie, apple, pumpkin ...
+    //    |      ^^^^^^
+    //    | - there, Cherie, thither, or tither
+    //    |
+    //    |   Possible spelling mistake found.
+    //
+    const PADDING_OFFSET: usize = 5;
+    const TOO_LONG_WORD: usize = 20;
+    const DISPLAYED_LONG_WORD: usize = 4;
+    const PADDING_AROUND_LONG_LINES: usize = 10;
+
+    // We will be using ranges to help doing the fitting:
+    //
+    // |----------------------------------literal_word----------------------------------|
+    // |----------------------|---------misspelled_word---------|-----------------------|
+    // |-----left_context-----|---start_word----|----end_word---|-----right_context-----|
+    //
+    // Obs: paddings are not being considered in the illustration, but info is above.
+    let mut range_left_context = Range {
+        start: 0usize,
+        end: marker_range_relative.start,
+    };
+    let mut range_right_context = Range {
+        start: marker_range_relative.end,
+        end: chunk.as_str().chars().count(),
+    };
+    let mut range_start_word = Range {
+        start: marker_range_relative.start,
+        end: marker_range_relative.start,
+    };
+    let mut range_end_word = Range {
+        start: marker_range_relative.end,
+        end: marker_range_relative.end,
+    };
+    // the line being analysed can affect how the indentation is done
+    // this values is dynamically calculated according to the line number
+    let mut misspelled_word = format!(
+        "{}",
+        // Exactly range to use sub() and have access to the misspelled word
+        // without extra spaces or punctuation around
+        chunk.char_sub_window(Range {
+            start: (marker_range_relative.start).saturating_sub(1),
+            end: (marker_range_relative.end).saturating_sub(1)
+        })
+    );
+    // Check words that are considered too long; Word will be formatted for fitting
+    if *marker_size > TOO_LONG_WORD {
+        range_start_word = Range {
+            start: marker_range_relative.start - 1,
+            end: range_start_word.start + DISPLAYED_LONG_WORD,
+        };
+        range_end_word = Range {
+            start: marker_range_relative
+                .end //non inclusive
+                .saturating_sub(DISPLAYED_LONG_WORD),
+            end: marker_range_relative.end - 1,
+        };
+
+        //  too long word will be shorter as it follows:
+        //    4 chars |----|  ... |---| 3 chars
+        //                ther...eee, for therieeeeeeeeeeeeeeee
+        //
+        misspelled_word = format!(
+            "{}...{}",
+            chunk.char_sub_window(range_start_word),
+            chunk.char_sub_window(range_end_word)
+        );
+        *marker_size = misspelled_word.chars().count();
+    }
+    // right context has enough info to fill the terminal
+    // |-----misspelled_word-----|--------right_context---------|
+    //
+    // Attempt to fit the misspelled word in the beginning followed by info.
+    if range_right_context.len() >= terminal_size {
+        range_right_context = Range {
+            start: marker_range_relative.end - 1, //char right after the end of the word and it shall be included, white space.
+            end: marker_range_relative.end
+                + (terminal_size.saturating_sub(
+                    misspelled_word.chars().count()
+                        + PADDING_AROUND_LONG_LINES
+                        + padding_till_literal_start
+                        + 1,
+                )),
+        };
+        // Left range will not be used in this case
+        range_left_context = Range {
+            start: 0usize,
+            end: 0usize,
+        };
+        *offset = PADDING_OFFSET;
+    }
+    // left context has enough info to fill the terminal
+    // |---------left_context---------|-----misspelled_word-----|
+    //
+    // Attempt to fit the misspelled word with left context info
+    else if range_left_context.len() > terminal_size {
+        range_left_context = Range {
+            start: marker_range_relative
+                .start
+                .saturating_sub(terminal_size.saturating_sub(
+                    misspelled_word.chars().count()
+                        + PADDING_AROUND_LONG_LINES
+                        + padding_till_literal_start,
+                )),
+            end: marker_range_relative.start - 1,
+        };
+        // Right range will not be used
+        range_right_context = Range {
+            start: 0usize,
+            end: 0usize,
+        };
+        *offset = range_left_context.len() + PADDING_OFFSET;
+    }
+    // information will be shown in both sides of the `misspelled_word`
+    // |--left_context--|----misspelled_word---|--right_context--|
+    //
+    // Attempt to fit the misspelled word in the middle with info in th left and right of it
+    else {
+        let context = (terminal_size.saturating_sub(
+            misspelled_word.chars().count()
+                + padding_till_literal_start
+                + PADDING_AROUND_LONG_LINES,
+        )) / 2;
+        range_left_context = Range {
+            start: range_left_context.end.saturating_sub(context),
+            end: marker_range_relative.start - 1, //before the word starts
+        };
+        range_right_context = Range {
+            start: marker_range_relative.end - 1,
+            end: range_right_context.start + context,
+        };
+        *offset = range_left_context.len() + PADDING_OFFSET;
+    }
+    // Formatting itself added white spaces and punctuation to do the fitting to be considered:
+    //
+    //     |------ info ----| => PADDING_AROUND_LONG_LINES = 10 usize
+    // format!(
+    //     "  ... {}{}{} ...",
+    //     self.chunk.char_sub_window(range_left_context),
+    //     misspelled_word,
+    //     self.chunk.char_sub_window(range_right_context)
+    // )
+    format!(
+        "  ... {}{}{} ...",
+        chunk.char_sub_window(range_left_context),
+        misspelled_word,
+        chunk.char_sub_window(range_right_context)
+    )
 }
 
 /// A suggestion for certain offending span.
@@ -113,23 +308,58 @@ impl<'s> fmt::Display for Suggestion<'s> {
             ))
             .fmt(formatter)?;
 
-        writeln!(formatter, " {}", self.chunk.as_str())?;
-
         // underline the relevant part with ^^^^^
-        let marker_size = if self.span.end.line == self.span.start.line {
+
+        // @todo this needs some more thought once multiline comments pop up
+        let mut marker_size = if self.span.end.line == self.span.start.line {
             // column bounds are inclusive, so for a correct length we need to add + 1
             self.span.end.column.saturating_sub(self.span.start.column) + 1
         } else {
             self.chunk
-                .as_str()
-                .chars()
-                .count()
+                .len_in_chars()
                 .saturating_sub(self.span.start.column)
         };
 
+        let literal_span: Span = self.span.clone();
+        let marker_range_relative: Range = self.range.clone();
+
         // if the offset starts from 0, we still want to continue if the length
         // of the marker is at least length 1
-        let offset = self.range.start;
+
+        let mut offset = marker_range_relative.start;
+        let chunk_str = self.chunk.as_str();
+        let n = self.chunk.len_in_chars();
+
+        let terminal_size: usize = get_terminal_size();
+        // the line being analysed can affect how the indentation is done
+        // this values is dynamically calculated for each line where the documentation
+        let padding_till_literal_start = indent + 2; // 2 extra spaces are considered for starting the literal already
+
+        // Check whether the statement is too long for the remaining space left of the terminal size
+        // and if it is, we shall do the fitting
+        if n + padding_till_literal_start > terminal_size {
+            let mut misspelled_word = format!(
+                "{}",
+                self.chunk.char_sub_window(Range {
+                    start: marker_range_relative.start - 1,
+                    end: marker_range_relative.end
+                })
+            );
+            let formatted_literal: String = convert_long_statements_to_short(
+                terminal_size,
+                marker_range_relative,
+                &mut marker_size,
+                self.chunk,
+                &mut offset,
+                indent,
+                padding_till_literal_start,
+            );
+            writeln!(formatter, "{}", &formatted_literal)?;
+
+        // literal is smaller than terminal size and it can be fully displayed
+        } else {
+            writeln!(formatter, " {}", chunk_str)?;
+        }
 
         if marker_size > 0 {
             context_marker
@@ -140,6 +370,29 @@ impl<'s> fmt::Display for Suggestion<'s> {
             help.apply_to(format!("{:^>size$}", "", size = marker_size))
                 .fmt(formatter)?;
             formatter.write_str("\n")?;
+        // @todo
+        // log::trace!(
+        //     "marker_size={} [{}|{}|{}] literal {{ {:?} .. {:?} }} >> {:?} <<",
+        //     marker_size,
+        //     self.chunk.pre(),
+        //     self.chunk.len(),
+        //     self.chunk.post(),
+        //     self.span.start,
+        //     self.span.end,
+        //     self,
+        // );
+        } else {
+            // @todo
+            // log::warn!(
+            //     "marker_size={} [{}|{}|{}] literal {{ {:?} .. {:?} }} >> {:?} <<",
+            //     marker_size,
+            //     self.chunk.pre(),
+            //     self.chunk.len(),
+            //     self.chunk.post(),
+            //     self.span.start,
+            //     self.span.end,
+            //     self,
+            // );
         }
 
         context_marker

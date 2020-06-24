@@ -82,11 +82,6 @@ impl CheckableChunk {
         }
     }
 
-    /// Obtain an accessor object containing mapping and string repr, removing the markdown anotations.
-    pub fn erase_markdown(&self) -> PlainOverlay {
-        PlainOverlay::erase_markdown(self)
-    }
-
     /// Find which part of the range maps to which span.
     /// Note that Range can very well be split into multiple fragments
     /// where each of them can be mapped to a potentially non-continuous
@@ -195,6 +190,31 @@ impl CheckableChunk {
 
     pub fn iter(&self) -> indexmap::map::Iter<Range, Span> {
         self.source_mapping.iter()
+    }
+
+    /// Obtain an accessor object containing mapping and string repr, removing the markdown anotations.
+    pub fn erase_markdown(&self) -> PlainOverlay {
+        PlainOverlay::erase_markdown(self)
+    }
+
+    /// Obtain the length in characters
+    pub fn len_in_chars(&self) -> usize {
+        self.as_str().char_indices().count()
+    }
+
+    /// Obtain a view to a sub character range
+    pub fn char_sub_window(&self, range: Range) -> &str {
+        let s = self.as_str();
+        // @todo can be done in a single iterator, use `fold()`
+        let start = match s.char_indices().nth(range.start) {
+            None => 0,
+            Some((start, _)) => start,
+        };
+        let end = match s.char_indices().nth(range.end) {
+            None => self.len_in_chars(),
+            Some((end, _)) => end,
+        };
+        &s[start..end]
     }
 }
 
