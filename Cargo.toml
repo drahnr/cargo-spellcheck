@@ -34,6 +34,7 @@ crossterm = "0.17"
 regex = "1"
 signal-hook = "0.1"
 
+
 # config parsing, must be independent of features
 iso_country = { version = "0.1" }
 isolang = { version = "1", features = ["serde_serialize"] }
