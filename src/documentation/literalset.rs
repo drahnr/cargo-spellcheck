@@ -3,6 +3,7 @@ use crate::{LineColumn, Span};
 use log::trace;
 
 use super::Range;
+use crate::documentation::CheckableChunk;
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
 /// A ref to a trimmed literal.
@@ -169,89 +170,6 @@ impl fmt::Debug for TrimmedLiteral {
     }
 }
 
-/// Find the trimmed literal which is covered by the range for `to_string`/`fmt::Display` created str.
-///
-/// returns a tuple of a literal and Span that is covered by the range
-/// but also the `LineColumn` in the proc_macro2 context.
-/// @todo should not work on `TrimmedLiteral` but on `CheckableChunk`s
-fn find_coverage<'a>(
-    literals: &'a [TrimmedLiteral],
-    range: &Range,
-) -> Option<(Vec<&'a TrimmedLiteral>, LineColumn, LineColumn)> {
-    let Range { start, end } = range;
-    let mut offset = *start;
-    let length = end - start;
-    assert!(length > 0);
-
-    #[derive(Copy, Clone, Debug)]
-    enum LookingFor {
-        Start,
-        End { start: LineColumn },
-    }
-
-    let mut acc = Vec::with_capacity(8);
-    let mut state = LookingFor::Start;
-    let mut it = literals.iter();
-    let mut opt = it.next();
-    loop {
-        opt = if let Some(literal) = opt {
-            // work on the string version length
-            // such that we have the paddings removed
-            // since this is what is sent to the checker
-
-            // the string repr is a concatentation of all trimmed strings
-            // so we have to account for that with the line length
-            let len = literal.as_str().len() + 1; // account for the introduced newline
-
-            assert_eq!(literal.span().start().line, literal.span().end().line);
-            state = match state {
-                LookingFor::Start => {
-                    if offset >= len {
-                        offset -= len;
-                        // offset += 1; // additional \n introduced when combining literals
-                        LookingFor::Start
-                    } else {
-                        state = LookingFor::End {
-                            start: LineColumn {
-                                line: literal.span().start().line,
-                                // add the padding again, to make for a sane global span
-                                column: literal.span().start().column + offset + literal.pre,
-                            },
-                        };
-                        // the new offset we are looking for
-                        offset += length;
-                        // do not advance the iterator, we need to check the same line for the end too!
-                        continue;
-                    }
-                }
-
-                LookingFor::End { start } => {
-                    acc.push(literal);
-                    if offset >= len {
-                        offset -= len;
-                        // offset += 1; // additional \n introduced when combining literals
-                        state
-                    } else {
-                        let end = LineColumn {
-                            // @todo assumes start and end are on the same line for the literal
-                            line: literal.span().start().line,
-                            // add the padding again, to make for a sane global span
-                            // substract -1 since line column are inclusive and offset += length yields exclusive
-                            column: literal.span().start().column + offset + literal.pre - 1,
-                        };
-                        assert_eq!(start.line, end.line);
-                        // if start and end column are equiv, this is a one character match
-                        return Some((acc, start, end));
-                    }
-                }
-            };
-            it.next()
-        } else {
-            break;
-        };
-    }
-    None
-}
 
 /// A set of consecutive literals.
 ///
@@ -303,9 +221,41 @@ impl LiteralSet {
         self.literals.len()
     }
 
-    // pub fn path(&self) -> Option<PathBuf> {
-    //     self.literals.iter().next().map(|x| x.span().source_file().path())
-    // }
+    pub fn into_chunk(self) -> crate::documentation::CheckableChunk {
+        let n = self.len();
+        let mut source_mapping = indexmap::IndexMap::with_capacity(n);
+        let mut content = String::with_capacity(n * 120);
+        if n > 0 {
+            let mut cursor = 0usize;
+            // for use with `Range`
+            let mut start = 0usize; // inclusive
+            let mut end = 0usize; // exclusive
+            for literal in self.literals.iter().take(n - 1) {
+                start = cursor;
+                cursor += literal.len();
+                end = cursor;
+                // @todo check if the `Span` conversion here is done correctly
+                source_mapping.insert(Range {
+                    start, end
+                }, Span::from(literal.span()));
+                content.push_str(literal.as_str());
+                content.push('\n');
+                // the newline is _not_ covered by a span, after all it's inserted by us!
+                cursor += 1;
+            }
+            if let Some(literal) = self.literals.last() {
+                start = cursor;
+                cursor += literal.len();
+                end = cursor;
+                source_mapping.insert(Range {
+                    start, end
+                }, Span::from(literal.span()));
+                content.push_str(literal.as_str());
+                // for the last, skip the newline
+            }
+        }
+        CheckableChunk::from_string(content, source_mapping)
+    }
 }
 
 use std::fmt;
