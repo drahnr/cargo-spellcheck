@@ -3,16 +3,26 @@
 use super::*;
 
 use indexmap::IndexMap;
+use std::path::Path;
 
 use crate::documentation::PlainOverlay;
 use crate::{Range, Span};
-
 /// Definition of the source of a checkable chunk
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub enum ContentOrigin {
     CommonMarkFile(PathBuf),
     RustDocTest(PathBuf, Span), // span is just there to disambiguiate
     RustSourceFile(PathBuf),
+}
+
+impl ContentOrigin {
+    pub fn as_path(&self) -> &Path {
+        match self {
+            Self::CommonMarkFile(path) => { path.as_path() },
+            Self::RustDocTest(path, _) => { path.as_path() },
+            Self::RustSourceFile(path) => { path.as_path() },
+        }
+    }
 }
 
 /// A chunk of documentation that is supposed to be checked
