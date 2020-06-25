@@ -471,11 +471,9 @@ mod tests {
                 into_hashset(
                     docs.into_iter()
                         .map(|x| {
-                            if let ContentOrigin::RustSourceFile(path) = x.0 {
-                                 path.strip_prefix(demo_dir()).expect("Must have common prefix").to_owned()
-                            } else {
-                                unreachable!("Must only contain .rs files for now")
-                            }
+                            let path = x.0.as_path();
+                            trace!("prefix: {}  --- item: {}", demo_dir().display(), path.display());
+                            path.strip_prefix(demo_dir()).expect("Must have common prefix").to_owned()
                         })
                     ),
                 pathset![
@@ -491,7 +489,7 @@ mod tests {
     #[test]
     fn traverse_manifest_1() {
         extract_test!(["Cargo.toml"] + false => [
-            //"README.md",
+            "README.md",
             "src/main.rs",
             "src/lib.rs"
         ]);
@@ -514,7 +512,7 @@ mod tests {
     ]);
 
     extract_test!(traverse_manifest_dir_rec, ["."] + true => [
-        //"README.md",
+        "README.md",
         "src/lib.rs",
         "src/main.rs",
         "src/nested/again/mod.rs",
@@ -527,33 +525,7 @@ mod tests {
     ]);
 
     extract_test!(traverse_manifest_rec, ["Cargo.toml"] + true => [
-        //"README.md",
-        "src/lib.rs",
-        "src/main.rs",
-        "src/nested/again/mod.rs",
-        "src/nested/fragments/enumerate.rs",
-        "src/nested/fragments/simple.rs",
-        "src/nested/fragments.rs",
-        "src/nested/justone.rs",
-        "src/nested/justtwo.rs",
-        "src/nested/mod.rs",
-    ]);
-
-    extract_test!(traverse_no_args_1, [] + false => [
-        //"README.md",
-        "src/lib.rs",
-        "src/main.rs",
-        "src/nested/again/mod.rs",
-        "src/nested/fragments/enumerate.rs",
-        "src/nested/fragments/simple.rs",
-        "src/nested/fragments.rs",
-        "src/nested/justone.rs",
-        "src/nested/justtwo.rs",
-        "src/nested/mod.rs",
-    ]);
-
-    extract_test!(traverse_no_args_rec, [] + true => [
-        //"README.md",
+        "README.md",
         "src/lib.rs",
         "src/main.rs",
         "src/nested/again/mod.rs",
