@@ -468,9 +468,16 @@ mod tests {
             )
             .expect("Must be able to extract demo dir");
             assert_eq!(
-                into_hashset(docs.into_iter().map(|x| {
-                    x.0.strip_prefix(demo_dir()).expect("Must have common prefix").to_owned() }
-                )),
+                into_hashset(
+                    docs.into_iter()
+                        .map(|x| {
+                            if let ContentOrigin::RustSourceFile(path) = x.0 {
+                                 path.strip_prefix(demo_dir()).expect("Must have common prefix").to_owned()
+                            } else {
+                                unreachable!("Must only contain .rs files for now")
+                            }
+                        })
+                    ),
                 pathset![
                     $(
                         ($file).to_owned(),
@@ -520,6 +527,32 @@ mod tests {
     ]);
 
     extract_test!(traverse_manifest_rec, ["Cargo.toml"] + true => [
+        //"README.md",
+        "src/lib.rs",
+        "src/main.rs",
+        "src/nested/again/mod.rs",
+        "src/nested/fragments/enumerate.rs",
+        "src/nested/fragments/simple.rs",
+        "src/nested/fragments.rs",
+        "src/nested/justone.rs",
+        "src/nested/justtwo.rs",
+        "src/nested/mod.rs",
+    ]);
+
+    extract_test!(traverse_no_args_1, [] + false => [
+        //"README.md",
+        "src/lib.rs",
+        "src/main.rs",
+        "src/nested/again/mod.rs",
+        "src/nested/fragments/enumerate.rs",
+        "src/nested/fragments/simple.rs",
+        "src/nested/fragments.rs",
+        "src/nested/justone.rs",
+        "src/nested/justtwo.rs",
+        "src/nested/mod.rs",
+    ]);
+
+    extract_test!(traverse_no_args_rec, [] + true => [
         //"README.md",
         "src/lib.rs",
         "src/main.rs",
