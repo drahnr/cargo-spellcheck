@@ -80,7 +80,7 @@ mod tests {
     use proc_macro2::{LineColumn, Literal};
     use std::path::PathBuf;
 
-    fn try_from_test_body(content: &'static str, expected_spans: &[Span]) {
+    fn try_from_test_body(content: Literal, expected_spans: &[Span]) {
         let _ = env_logger::builder()
             .filter(None, log::LevelFilter::Trace)
             .is_test(true)
@@ -88,7 +88,7 @@ mod tests {
 
         let mut d = Documentation::new();
         let dummy_path = PathBuf::from("dummy/dummy.rs");
-        d.append_literal(&dummy_path, Literal::string(content));
+        d.append_literal(&dummy_path,content);
         let suggestion_set = DummyChecker::check(&d, &()).expect("DummyChecker must not fail");
 
         // one file
@@ -118,20 +118,32 @@ mod tests {
 
     #[test]
     fn try_from_string_works() {
-        const CONTENT: &'static str = "This has four literals";
+        const TEST: &str = include_str!("../../demo/src/main.rs");
+        let stream =
+            syn::parse_str::<proc_macro2::TokenStream>(TEST).expect("Must parse just fine");
+        let path = std::path::PathBuf::from("/tmp/virtual");
+        let docs = crate::documentation::Documentation::from((&path, stream));
+        let (path2, literal_set) = docs.iter().next().expect("Must contain exactly one");
+        assert_eq!(&path, path2);
+
+        let raw = literal_set.first().expect("Contains a bunch");
+        let lit = raw.literals().first().expect("Contains at least one literal").literal.clone();
+
+        dbg!(&lit.span().start(), &lit.span().end());
+
         const EXPECTED: &[Span] = &[
             Span {
-                start: LineColumn { line: 1, column: 1 },
-                end: LineColumn { line: 1, column: 4 },
+                start: LineColumn { line: 1, column: 4 },
+                end: LineColumn { line: 1, column: 7 },
             },
             Span {
-                start: LineColumn { line: 1, column: 6 },
-                end: LineColumn { line: 1, column: 8 },
+                start: LineColumn { line: 1, column: 9 },
+                end: LineColumn { line: 1, column: 9 },
             },
             Span {
                 start: LineColumn {
                     line: 1,
-                    column: 10,
+                    column: 11,
                 },
                 end: LineColumn {
                     line: 1,
@@ -148,28 +160,113 @@ mod tests {
                     column: 22,
                 },
             },
-        ];
-
-        try_from_test_body(CONTENT, EXPECTED);
-    }
-
-    #[test]
-    fn try_from_raw_string_works() {
-        const CONTENT: &'static str = r#"raw string"#;
-        const EXPECTED: &[Span] = &[
             Span {
-                start: LineColumn { line: 1, column: 1 },
-                end: LineColumn { line: 1, column: 3 },
-            },
-            Span {
-                start: LineColumn { line: 1, column: 5 },
+                start: LineColumn {
+                    line: 1,
+                    column: 24,
+                },
                 end: LineColumn {
                     line: 1,
-                    column: 10,
+                    column: 31,
                 },
             },
         ];
 
-        try_from_test_body(CONTENT, EXPECTED);
+        try_from_test_body(lit, EXPECTED);
+    }
+
+    #[test]
+    fn try_from_raw_string_works() {
+        const TEST: &str = include_str!("../../demo/src/lib.rs");
+        let stream =
+            syn::parse_str::<proc_macro2::TokenStream>(TEST).expect("Must parse just fine");
+        let path = std::path::PathBuf::from("/tmp/virtual");
+        let docs = crate::documentation::Documentation::from((&path, stream));
+        let (path2, literal_set) = docs.iter().next().expect("Must contain exactly one");
+        assert_eq!(&path, path2);
+
+        let raw = literal_set.last().expect("Contains a bunch");
+        let lit = raw.literals().first().expect("Contains at least one literal").literal.clone();
+
+        dbg!(&lit.span().start(), &lit.span().end());
+
+        const EXPECTED: &[Span] = &[
+            Span {
+                start: LineColumn { line: 19, column: 11 },
+                end: LineColumn { line: 19, column: 14 },
+            },
+            Span {
+                start: LineColumn { line: 19, column: 16 },
+                end: LineColumn {
+                    line: 19,
+                    column: 17,
+                },
+            },
+            Span {
+                start: LineColumn { line: 19, column: 19 },
+                end: LineColumn {
+                    line: 19,
+                    column: 21,
+                },
+            },
+            Span {
+                start: LineColumn { line: 19, column: 23 },
+                end: LineColumn {
+                    line: 19,
+                    column: 26,
+                },
+            },
+            Span {
+                start: LineColumn { line: 19, column: 28 },
+                end: LineColumn {
+                    line: 19,
+                    column: 32,
+                },
+            },
+            Span {
+                start: LineColumn { line: 19, column: 35 },
+                end: LineColumn {
+                    line: 19,
+                    column: 38,
+                },
+            },
+            Span {
+                start: LineColumn { line: 19, column: 40 },
+                end: LineColumn {
+                    line: 19,
+                    column: 43,
+                },
+            },
+            Span {
+                start: LineColumn { line: 19, column: 45 },
+                end: LineColumn {
+                    line: 19,
+                    column: 47,
+                },
+            },
+            Span {
+                start: LineColumn { line: 19, column: 49 },
+                end: LineColumn {
+                    line: 19,
+                    column: 53,
+                },
+            },
+            Span {
+                start: LineColumn { line: 19, column: 55 },
+                end: LineColumn {
+                    line: 19,
+                    column: 57,
+                },
+            },
+            Span {
+                start: LineColumn { line: 19, column: 59 },
+                end: LineColumn {
+                    line: 19,
+                    column: 61,
+                },
+            },
+        ];
+
+        try_from_test_body(lit, EXPECTED);
     }
 }
