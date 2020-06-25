@@ -368,8 +368,6 @@ struct Vikings;
 
  Boats float, don't they?"#;
 
-
-
     pub(crate) fn annotated_literals(source: &str) -> Vec<TrimmedLiteral> {
         let stream =
             syn::parse_str::<proc_macro2::TokenStream>(source).expect("Must be valid rust");
@@ -404,6 +402,122 @@ struct Vikings;
         cls
     }
 
+    use crate::documentation::LineColumn;
+
+    #[test]
+    fn raw_variants_inspection() {
+        struct Triplet {
+            /// source content
+            source: &'static str,
+            /// expected doc comment content
+            extracted: &'static str,
+            /// expected span of extracted to span
+            span: Span,
+        }
+
+        const PREFIX_RAW_LEN: usize = 3;
+        const SUFFIX_RAW_LEN: usize = 2;
+        const GAENSEFUESSCHEN: usize = 1;
+
+        let tests = vec![
+            Triplet {
+                source: r#"
+/// One Doc
+struct One;
+"#,
+
+                extracted: r#"" One Doc""#,
+
+                span: Span {
+                    start: LineColumn {
+                        line: 2usize,
+                        column: 0, // @todo why????
+                    },
+                    end: LineColumn {
+                        line: 2usize,
+                        column: 11usize, // @todo why???
+                    },
+                }
+            },
+
+
+        Triplet {
+            source: r#"
+#[doc = "Two Doc"]
+struct Two;
+"#,
+            extracted: r#""Two Doc""#,
+            span: Span {
+                start: LineColumn {
+                    line: 2usize,
+                    column: 0usize + 9 - GAENSEFUESSCHEN,
+                },
+                end: LineColumn {
+                    line: 2usize,
+                    column: 7usize + 9 + GAENSEFUESSCHEN,
+                },
+            }
+        },
+
+        Triplet {
+            source: r##"
+#[doc = r#"Three Doc"#]
+struct Three;
+"##,
+            extracted: r###"r#"Three Doc"#"###,
+            span: Span {
+                start: LineColumn {
+                    line: 2usize,
+                    column: 0usize + 11 - PREFIX_RAW_LEN,
+                },
+                end: LineColumn {
+                    line: 2usize,
+                    column: 9usize + 11 + SUFFIX_RAW_LEN,
+                },
+            }
+        },
+
+        Triplet {
+            source: r###"
+#[doc = r##"Four
+has
+multiple
+lines
+"##]
+struct Four;
+"###,
+            extracted: r###"r##"Four
+has
+multiple
+lines
+"##"###,
+            span: Span {
+                    start: LineColumn {
+                        line: 2usize,
+                        column: 12usize - PREFIX_RAW_LEN - 1,
+                    },
+                    end: LineColumn {
+                        line: 6usize,
+                        column: 0usize + SUFFIX_RAW_LEN + 1,
+                    },
+                }
+            }
+
+        ];
+
+
+        for triplet in tests {
+            let literals = annotated_literals(triplet.source);
+            assert_eq!(literals.len(), 1);
+            let literal = literals.first().expect("Must contain exactly one literal");
+            // use the raw `proc_macro2::Literal`
+            let literal = &literal.literal;
+
+            assert_eq!(Span::from(dbg!(literal).span()), triplet.span);
+            assert_eq!(literal.to_string(), triplet.extracted.to_string());
+        }
+    }
+
     #[test]
     fn combine_literals() {
         let _ = env_logger::builder().is_test(true).try_init();
@@ -421,7 +535,10 @@ struct Vikings;
         let literal_set = gen_literal_set(TEST);
         let chunk: CheckableChunk = literal_set.into_chunk();
         let map_range_to_span = chunk.find_spans(EXMALIBU_RANGE);
-        let (range, span) = map_range_to_span.iter().next().expect("Must be at least one literal");
+        let (range, span) = map_range_to_span
+            .iter()
+            .next()
+            .expect("Must be at least one literal");
 
         let range_for_raw_str = Range {
             start: EXMALIBU_RANGE_START - SKIP,
@@ -429,10 +546,7 @@ struct Vikings;
         };
 
         // check test integrity
-        assert_eq!(
-            "exmalibu",
-            &TEST[EXMALIBU_RANGE],
-        );
+        assert_eq!("exmalibu", &TEST[EXMALIBU_RANGE]);
 
         // check actual result
         assert_eq!(
