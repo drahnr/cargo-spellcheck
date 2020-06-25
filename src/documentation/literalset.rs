@@ -423,7 +423,7 @@ struct Vikings;
         let map_range_to_span = chunk.find_spans(EXMALIBU_RANGE);
         let (range, span) = map_range_to_span.iter().next().expect("Must be at least one literal");
 
-        let range_for_raw_test_str = Range {
+        let range_for_raw_str = Range {
             start: EXMALIBU_RANGE_START - SKIP,
             end: EXMALIBU_RANGE_END - SKIP,
         };
@@ -437,7 +437,7 @@ struct Vikings;
         // check actual result
         assert_eq!(
             &TEST[EXMALIBU_RANGE],
-            &chunk.as_str()[range.clone()]
+            &chunk.as_str()[range_for_raw_str.clone()]
         );
     }
 
@@ -465,19 +465,21 @@ struct Vikings;
 
             let chunk: CheckableChunk = literal_set.into_chunk();
             let map_range_to_span = chunk.find_spans(range.clone());
-            let (range, span) = map_range_to_span.iter().next().expect("Must be at least one literal");
+            let mut iter = dbg!(map_range_to_span).into_iter();
+            let (range, span) = iter.next().expect("Must be at least one literal");
             let range_for_raw_str = Range {
                 start: range.start + START,
                 end: range.end + START,
             };
 
             // @todo check test data integrity here
-            assert_eq!(&TEST[range_for_raw_str.clone()], &chunk.as_str()[range.clone()]);
+            assert_eq!(&TEST[range_for_raw_str.clone()], &chunk.as_str()[range_for_raw_str.clone()]);
             assert_eq!(&TEST[range_for_raw_str], $expected);
 
         };
     }
 
+    // @todo tests used to be good, so the `find_spans` implementation must still be flawed :)
     test_raw!(raw_extract_0, [" livelyness", " yyy"] ; 2..6, "ivel");
     test_raw!(raw_extract_1, [" + 12 + x0"] ; 9..10, "0");
 }
