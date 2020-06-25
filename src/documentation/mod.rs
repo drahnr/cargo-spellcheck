@@ -16,11 +16,13 @@ pub type Range = core::ops::Range<usize>;
 
 mod chunk;
 mod cluster;
+mod literal;
 mod literalset;
 mod markdown;
 
 pub use chunk::*;
 pub use cluster::*;
+pub use literal::*;
 pub use literalset::*;
 pub use markdown::*;
 /// Collection of all the documentation entries across the project
