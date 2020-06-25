@@ -368,6 +368,8 @@ struct Vikings;
 
  Boats float, don't they?"#;
 
+
+
     pub(crate) fn annotated_literals(source: &str) -> Vec<TrimmedLiteral> {
         let stream =
             syn::parse_str::<proc_macro2::TokenStream>(source).expect("Must be valid rust");
@@ -416,52 +418,66 @@ struct Vikings;
     fn coverage() {
         let _ = env_logger::builder().is_test(true).try_init();
 
-        let trimmed_literals = annotated_literals(TEST);
-        let (literals, _start, _end) =
-            dbg!(find_coverage(trimmed_literals.as_slice(), &EXMALIBU_RANGE)).unwrap();
-        let literal = literals.first().expect("Must be at least one literal");
+        let literal_set = gen_literal_set(TEST);
+        let chunk: CheckableChunk = literal_set.into_chunk();
+        let map_range_to_span = chunk.find_spans(EXMALIBU_RANGE);
+        let (range, span) = map_range_to_span.iter().next().expect("Must be at least one literal");
 
         let range_for_raw_test_str = Range {
             start: EXMALIBU_RANGE_START - SKIP,
             end: EXMALIBU_RANGE_END - SKIP,
         };
+
+        // check test integrity
         assert_eq!(
             "exmalibu",
-            &literal.as_str()[range_for_raw_test_str.clone()]
+            &TEST[EXMALIBU_RANGE],
         );
+
+        // check actual result
         assert_eq!(
             &TEST[EXMALIBU_RANGE],
-            &literal.as_str()[range_for_raw_test_str]
+            &chunk.as_str()[range.clone()]
         );
     }
 
     macro_rules! test_raw {
-        ($test: ident $(, $literal: literal)+ ; $range: expr, $expected: literal) => {
+        ($test: ident, [ $($txt: literal),+ $(,)? ]; $range: expr, $expected: literal) => {
             #[test]
             fn $test() {
-                let _ = env_logger::builder().filter(None, log::LevelFilter::Trace).is_test(true).try_init();
-
-                const TEST: &str = concat!("" $(, "///", $literal, "\n")+ , "struct X;");
-                const START: usize = 3;
-                let _end: usize = START + vec![$($literal.len()),* ].into_iter().sum::<usize>();
-                let literals = annotated_literals(TEST);
-
-                let range: Range = $range;
-
-                let (literals, _start, _end) =
-                find_coverage(literals.as_slice(), &range).expect("Must find coverage");
-                let literal = literals.first().expect("Must be at least one literal");
-                let range_for_raw_str = Range {
-                    start: range.start + START,
-                    end: range.end + START,
-                };
-
-                assert_eq!(&TEST[range_for_raw_str.clone()], &literal.as_str()[$range]);
-                assert_eq!(&TEST[range_for_raw_str], $expected);
+                test_raw!([$($txt),+] ; $range, $expected);
             }
+        };
+
+        ([$($txt:literal),+ $(,)?]; $range: expr, $expected: literal) => {
+            let _ = env_logger::builder()
+                .filter(None, log::LevelFilter::Trace)
+                .is_test(true)
+                .try_init();
+
+            let range: Range = $range;
+
+            const TEST: &str = concat!("" $(, "///", $txt, "\n")+ , "struct X;");
+            const START: usize = 3;
+            let _end: usize = START + vec![$($txt.len()),* ].into_iter().sum::<usize>();
+            let literal_set = gen_literal_set(TEST);
+
+
+            let chunk: CheckableChunk = literal_set.into_chunk();
+            let map_range_to_span = chunk.find_spans(range.clone());
+            let (range, span) = map_range_to_span.iter().next().expect("Must be at least one literal");
+            let range_for_raw_str = Range {
+                start: range.start + START,
+                end: range.end + START,
+            };
+
+            // @todo check test data integrity here
+            assert_eq!(&TEST[range_for_raw_str.clone()], &chunk.as_str()[range.clone()]);
+            assert_eq!(&TEST[range_for_raw_str], $expected);
+
         };
     }
 
-    test_raw!(raw_extract_0, " livelyness", " yyy" ; 2..6, "ivel");
-    test_raw!(raw_extract_1, " + 12 + x0" ; 9..10, "0");
+    test_raw!(raw_extract_0, [" livelyness", " yyy"] ; 2..6, "ivel");
+    test_raw!(raw_extract_1, [" + 12 + x0"] ; 9..10, "0");
 }
