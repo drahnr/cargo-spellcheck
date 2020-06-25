@@ -109,11 +109,17 @@ impl std::hash::Hash for TrimmedLiteral {
 impl From<proc_macro2::Literal> for TrimmedLiteral {
     fn from(literal: proc_macro2::Literal) -> Self {
         let rendered = literal.to_string();
-        let raw_start = if rendered.starts_with("r#\"") { 2 } else { 0 };
-        let raw_end = if rendered.ends_with("\"#") { 1 } else { 0 };
+        let (pre_raw, post_raw) = if rendered.starts_with("r#\"") && rendered.ends_with("\"#") {
+            (2, 1)
+        } else if rendered.starts_with("r\"") && rendered.ends_with("\"") {
+            (1, 0)
+        } else {
+            (0, 0)
+        };
+
         let scrap = |c: &'_ char| -> bool { c.is_whitespace() };
-        let pre = rendered.chars().take_while(scrap).count() + 1 + raw_start;
-        let post = rendered.chars().rev().take_while(scrap).count() + 1 + raw_end;
+        let pre = rendered.chars().take_while(scrap).count() + 1 + pre_raw;
+        let post = rendered.chars().rev().take_while(scrap).count() + 1 + post_raw;
 
         let (len, pre, post) = match rendered.len() {
             len if len >= pre + post => (len - pre - post, pre, post),
@@ -607,4 +613,33 @@ struct Vikings;
 
     test_raw!(raw_extract_0, " livelyness", " yyy" ; 2..6, "ivel");
     test_raw!(raw_extract_1, " + 12 + x0" ; 9..10, "0");
+
+    #[test]
+    fn from_procmacro2_literal() {
+        let _ = env_logger::builder().filter(None, log::LevelFilter::Trace).is_test(true).try_init();
+
+        const TEST: &str = include_str!("../demo/src/lib.rs");
+        let stream =
+            syn::parse_str::<proc_macro2::TokenStream>(TEST).expect("Must parse just fine");
+        let path = std::path::PathBuf::from("/tmp/virtual");
+        let docs = crate::documentation::Documentation::from((&path, stream));
+        let (path2, literal_set) = docs.iter().next().expect("Must contain exactly one");
+        assert_eq!(&path, path2);
+
+        let raw = literal_set.iter().nth(literal_set.len() - 3).expect("Contains a bunch");
+        assert_eq!(raw.literals.first().unwrap().pre, 1);
+        assert_eq!(raw.literals.first().unwrap().post, 1);
+        assert_eq!(raw.literals.first().unwrap().rendered, "\"Pick option b also known as door #2.\"");
+
+        let raw = literal_set.iter().nth(literal_set.len() - 2).expect("Contains a bunch");
+        dbg!(&raw);
+        assert_eq!(raw.literals.first().unwrap().pre, 2);
+        assert_eq!(raw.literals.first().unwrap().post, 1);
+        assert_eq!(raw.literals.first().unwrap().rendered, "r\"Pick option c also known as door #3.\"");
+
+        let raw = literal_set.last().expect("Contains at least one");
+        assert_eq!(raw.literals.first().unwrap().pre, 3);
+        assert_eq!(raw.literals.first().unwrap().post, 2);
+        assert_eq!(raw.literals.first().unwrap().rendered, "r#\"Risk is not your thing, just tkae the money and run.\"#");
+    }
 }
