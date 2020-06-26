@@ -98,6 +98,9 @@ mod tests {
     /// Helpful to validate bandaids against what's actually in the string
     // @todo does not handle cross line spans @todo yet
     fn load_span_from(mut source: impl BufRead, span: Span) -> Result<String> {
+        if span.start.line < 1 {
+            bail!("Lines are 1-indexed, can't be less than 1")
+        }
         if span.end.line < span.start.line {
             bail!("Line range would be negative, bail")
         }
@@ -107,13 +110,12 @@ mod tests {
         let line = (&mut source)
             .lines()
             .skip(span.start.line - 1)
-            // .take(span.end.line - span.start.line + 1)
             .filter_map(|line| line.ok())
             .next()
             .ok_or_else(||anyhow!("Line not in buffer or invalid"))?;
 
         let range = span.start.column..(span.end.column+1);
-        dbg!(line).get(range).ok_or_else(|| anyhow!("Columns not in line")).map(|s| s.to_owned())
+        dbg!(line).get(range).ok_or_else(|| anyhow!("Columns not in line")).map(|s| dbg!(s.to_owned()))
     }
 
     #[test]
