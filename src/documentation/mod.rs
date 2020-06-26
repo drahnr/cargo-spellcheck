@@ -117,13 +117,12 @@ mod tests {
             syn::parse_str::<proc_macro2::TokenStream>(TEST_SOURCE).expect("Must be valid rust");
         let docs = Documentation::from((origin.clone(), stream));
         assert_eq!(docs.index.len(), 1);
-        let v = docs.index.get(&origin).expect("Must contain dummy path");
-        assert_eq!(dbg!(v).len(), 1);
+        let chunks = docs.index.get(&origin).expect("Must contain dummy path");
+        assert_eq!(dbg!(chunks).len(), 1);
 
         // @todo
-        // assert_eq!(v[0].to_string(), TEST_RAW.to_owned());
-        let plain = v[0].erase_markdown();
-
+        assert_eq!(chunks[0].as_str(), TEST_RAW.to_owned());
+        let plain = chunks[0].erase_markdown();
         println!("{:?}", &plain);
 
         assert_eq!(TEST_PLAIN, plain.as_str());
@@ -137,7 +136,6 @@ mod tests {
         //>A very good test.
         let expected_plain_range = 2..6;
 
-        // @todo the range here is correct
         assert_eq!("very", &dbg!(plain.as_str())[expected_plain_range.clone()]);
 
         let z: IndexMap<Range, Span> = plain.find_spans(expected_plain_range);
@@ -151,7 +149,7 @@ mod tests {
         // );
         assert_eq!(
             dbg!(&z),
-            dbg!(&v[0].find_spans(expected_raw_range))
+            dbg!(&chunks[0].find_spans(expected_raw_range))
         );
     }
 
