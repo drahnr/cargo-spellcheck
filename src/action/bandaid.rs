@@ -72,7 +72,113 @@ mod tests {
     use log::debug;
     use proc_macro2::{LineColumn, Literal};
     use std::path::PathBuf;
+    use std::path::Path;
+    use std::io::BufRead;
+    use anyhow::bail;
 
+    /// Extract span from file as String
+    /// Helpful to validate bandaids against what's actually in the file
+    fn load_span_from_file(path: impl AsRef<Path>, span: Span) -> Result<String> {
+        let path = path.as_ref();
+        let path = path
+            .canonicalize()
+            .map_err(|e| anyhow!("Failed to canonicalize {}", path.display()).context(e))?;
+
+        let ro = std::fs::OpenOptions::new()
+            .read(true)
+            .open(&path)
+            .map_err(|e| anyhow!("Failed to open {}", path.display()).context(e))?;
+
+        let mut reader = std::io::BufReader::new(ro);
+
+        load_span_from(reader, span)
+    }
+
+    /// Extract span from String as String
+    /// Helpful to validate bandaids against what's actually in the string
+    // @todo does not handle cross line spans @todo yet
+    fn load_span_from(mut source: impl BufRead, span: Span) -> Result<String> {
+        if span.end.line < span.start.line {
+            bail!("Line range would be negative, bail")
+        }
+        if span.end.column < span.start.column {
+            bail!("Column range would be negative, bail")
+        }
+        let line = (&mut source)
+            .lines()
+            .skip(span.start.line - 1)
+            // .take(span.end.line - span.start.line + 1)
+            .filter_map(|line| line.ok())
+            .next()
+            .ok_or_else(||anyhow!("Line not in buffer or invalid"))?;
+
+        let range = span.start.column..(span.end.column+1);
+        dbg!(line).get(range).ok_or_else(|| anyhow!("Columns not in line")).map(|s| s.to_owned())
+    }
+
+    #[test]
+    fn helper_integrity() {
+        const SOURCE: &'static str = r#"0
+abcde
+f
+g
+hijk
+l
+"#;
+
+        struct TestSet {
+            span: Span,
+            expected: &'static str,
+        }
+
+        const SETS: &[TestSet] = &[
+            TestSet {
+                span: Span {
+                    start: LineColumn {
+                        line: 1usize,
+                        column: 0,
+                    },
+                    end: LineColumn {
+                        line: 1usize,
+                        column: 0,
+                    },
+                },
+                expected: "0",
+            },
+            TestSet {
+                span: Span {
+                    start: LineColumn {
+                        line: 2usize,
+                        column: 2,
+                    },
+                    end: LineColumn {
+                        line: 2usize,
+                        column: 4,
+                    },
+                },
+                expected: "cde",
+            },
+            TestSet {
+                span: Span {
+                    start: LineColumn {
+                        line: 5usize,
+                        column: 0,
+                    },
+                    end: LineColumn {
+                        line: 5usize,
+                        column: 1,
+                    },
+                },
+                expected: "hi",
+            },
+        ];
+
+        for item in SETS {
+            assert_eq!(load_span_from(SOURCE.as_bytes(), item.span).unwrap(), item.expected.to_string());
+        }
+    }
+
+    // @todo condense and unify with other functions doing the same
     fn try_from_test_body(stream: proc_macro2::TokenStream, expected_spans: &[Span]) {
         let _ = env_logger::builder()
             .filter(None, log::LevelFilter::Trace)
@@ -167,74 +273,110 @@ mod tests {
 
         const EXPECTED: &[Span] = &[
             Span {
-                start: LineColumn { line: 19, column: 11 },
-                end: LineColumn { line: 19, column: 14 },
+                start: LineColumn {
+                    line: 19,
+                    column: 11,
+                },
+                end: LineColumn {
+                    line: 19,
+                    column: 14,
+                },
             },
             Span {
-                start: LineColumn { line: 19, column: 16 },
+                start: LineColumn {
+                    line: 19,
+                    column: 16,
+                },
                 end: LineColumn {
                     line: 19,
                     column: 17,
                 },
             },
             Span {
-                start: LineColumn { line: 19, column: 19 },
+                start: LineColumn {
+                    line: 19,
+                    column: 19,
+                },
                 end: LineColumn {
                     line: 19,
                     column: 21,
                 },
             },
             Span {
-                start: LineColumn { line: 19, column: 23 },
+                start: LineColumn {
+                    line: 19,
+                    column: 23,
+                },
                 end: LineColumn {
                     line: 19,
                     column: 26,
                 },
             },
             Span {
-                start: LineColumn { line: 19, column: 28 },
+                start: LineColumn {
+                    line: 19,
+                    column: 28,
+                },
                 end: LineColumn {
                     line: 19,
                     column: 32,
                 },
             },
             Span {
-                start: LineColumn { line: 19, column: 35 },
+                start: LineColumn {
+                    line: 19,
+                    column: 35,
+                },
                 end: LineColumn {
                     line: 19,
                     column: 38,
                 },
             },
             Span {
-                start: LineColumn { line: 19, column: 40 },
+                start: LineColumn {
+                    line: 19,
+                    column: 40,
+                },
                 end: LineColumn {
                     line: 19,
                     column: 43,
                 },
             },
             Span {
-                start: LineColumn { line: 19, column: 45 },
+                start: LineColumn {
+                    line: 19,
+                    column: 45,
+                },
                 end: LineColumn {
                     line: 19,
                     column: 47,
                 },
             },
             Span {
-                start: LineColumn { line: 19, column: 49 },
+                start: LineColumn {
+                    line: 19,
+                    column: 49,
+                },
                 end: LineColumn {
                     line: 19,
                     column: 53,
                 },
             },
             Span {
-                start: LineColumn { line: 19, column: 55 },
+                start: LineColumn {
+                    line: 19,
+                    column: 55,
+                },
                 end: LineColumn {
                     line: 19,
                     column: 57,
                 },
             },
             Span {
-                start: LineColumn { line: 19, column: 59 },
+                start: LineColumn {
+                    line: 19,
+                    column: 59,
+                },
                 end: LineColumn {
                     line: 19,
                     column: 61,
