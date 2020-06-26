@@ -351,11 +351,11 @@ struct One;
             trimmed_span: Span {
                 start: LineColumn {
                     line: 2usize,
-                    column: 3usize, // @todo verify, this is where we want to modify the file
+                    column: 3usize, // the expected start of our data
                 },
                 end: LineColumn {
                     line: 2usize,
-                    column: 11usize, // @todo why???
+                    column: 11usize,
                 },
             },
         },
