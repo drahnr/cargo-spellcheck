@@ -22,6 +22,8 @@ use enumflags2::BitFlags;
 pub enum Detector {
     Hunspell = 0b0001,
     LanguageTool = 0b0010,
+    #[cfg(test)]
+    Dummy = 0b1000,
 }
 
 // impl
@@ -40,6 +42,8 @@ impl fmt::Display for Detector {
         formatter.write_str(match self {
             Self::LanguageTool => "LanguageTool",
             Self::Hunspell => "Hunspell",
+            #[cfg(test)]
+            Self::Dummy => "Dummy",
         })
     }
 }
@@ -337,8 +341,8 @@ impl<'s> SuggestionSet<'s> {
         self.per_file.len()
     }
 
-    /// Count the number of suggestions accress file in total
-    pub fn count(&self) -> usize {
+    /// Count the number of suggestions accross all files in total
+    pub fn total_count(&self) -> usize {
         self.per_file.iter().map(|(_origin, vec)| vec.len()).sum()
     }
 }

@@ -180,7 +180,7 @@ impl Action {
 
     // consume self, doing the same thing again would cause garbage file content.
     pub fn write_changes_to_disk(&self, userpicked: UserPicked, _config: &Config) -> Result<()> {
-        if userpicked.count() > 0 {
+        if userpicked.total_count() > 0 {
             debug!("Writing changes back to disk");
             for (path, bandaids) in userpicked.bandaids.into_iter() {
                 self.correction(path, bandaids.into_iter())?;
