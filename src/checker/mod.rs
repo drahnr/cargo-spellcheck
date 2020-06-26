@@ -55,7 +55,7 @@ fn tokenize(s: &str) -> Vec<Range> {
     // @todo for hypenation, check if line ends with a dash
     if started {
         if let Some((idx, _)) = s.char_indices().next_back() {
-            // increase by one, since the range's end goes one beyond
+            // increase by one, since the range's end goes one beyond, end bounds is _exclusive_ for ranges
             let linear_end = idx + 1;
             bananasplit.push(linear_start..linear_end)
         } else {
@@ -106,8 +106,14 @@ where
 }
 
 #[cfg(test)]
-mod tests {
+pub mod dummy;
+
+#[cfg(test)]
+pub mod tests {
     use super::*;
+    use crate::span::Span;
+    use proc_macro2::{LineColumn, Literal};
+    use std::path::PathBuf;
 
     const TEXT: &'static str = "With markdown removed, for sure.";
     lazy_static::lazy_static! {
@@ -126,5 +132,100 @@ mod tests {
         for (range, expect) in ranges.into_iter().zip(TOKENS.iter()) {
             assert_eq!(&&TEXT[range], expect);
         }
+    }
+
+    fn extraction_test_body(content: &'static str, expected_spans: &[Span]) {
+        let _ = env_logger::builder()
+            .filter(None, log::LevelFilter::Trace)
+            .is_test(true)
+            .try_init();
+
+        let mut d = Documentation::new();
+        let dummy_path = PathBuf::from("dummy/dummy.rs");
+        d.append_literal(&dummy_path, Literal::string(content));
+        let suggestion_set =
+            dummy::DummyChecker::check(&d, &()).expect("Dummy extraction must never fail");
+
+        // one file
+        assert_eq!(suggestion_set.len(), 1);
+        // with two suggestions
+        assert_eq!(suggestion_set.total_count(), expected_spans.len());
+        let (_, suggestions) = suggestion_set
+            .iter()
+            .next()
+            .expect("Must have valid 1st suggestion");
+
+        for (index, (suggestion, expected_span)) in
+            suggestions.iter().zip(expected_spans.iter()).enumerate()
+        {
+            assert_eq!(
+                suggestion.replacements,
+                vec![format!("replacement_{}", index)]
+            );
+            assert_eq!(suggestion.span, *expected_span);
+        }
+    }
+
+    #[test]
+    fn extract_suggestions_simple() {
+        const SIMPLE: &'static str = "two literals";
+
+        /// keep in mind, `Span` bounds are inclusive, unlike Ranges, where range.end is _exclusive_
+        const EXPECTED_SPANS: &[Span] = &[
+            Span {
+                start: LineColumn { line: 1, column: 1 },
+                end: LineColumn { line: 1, column: 3 },
+            },
+            Span {
+                start: LineColumn { line: 1, column: 5 },
+                end: LineColumn {
+                    line: 1,
+                    column: 12,
+                },
+            },
+        ];
+        extraction_test_body(SIMPLE, EXPECTED_SPANS);
+    }
+
+    #[test]
+    fn extract_suggestions_left_aligned() {
+        const SIMPLE: &'static str = "two  literals ";
+
+        /// keep in mind, `Span` bounds are inclusive, unlike Ranges, where range.end is _exclusive_
+        const EXPECTED_SPANS: &[Span] = &[
+            Span {
+                start: LineColumn { line: 1, column: 1 },
+                end: LineColumn { line: 1, column: 3 },
+            },
+            Span {
+                start: LineColumn { line: 1, column: 6 },
+                end: LineColumn {
+                    line: 1,
+                    column: 13,
+                },
+            },
+        ];
+        extraction_test_body(SIMPLE, EXPECTED_SPANS);
+    }
+
+    #[test]
+    fn extract_suggestions_3spaces() {
+        const SIMPLE: &'static str = "   3rd  testcase ";
+
+        /// keep in mind, `Span` bounds are inclusive, unlike Ranges, where range.end is _exclusive_
+        const EXPECTED_SPANS: &[Span] = &[
+            Span {
+                start: LineColumn { line: 1, column: 4 },
+                end: LineColumn { line: 1, column: 6 },
+            },
+            Span {
+                start: LineColumn { line: 1, column: 9 },
+                end: LineColumn {
+                    line: 1,
+                    column: 16,
+                },
+            },
+        ];
+        extraction_test_body(SIMPLE, EXPECTED_SPANS);
     }
 }
