@@ -228,25 +228,4 @@ pub mod tests {
         ];
         extraction_test_body(SIMPLE, EXPECTED_SPANS);
     }
-
-    #[test]
-    fn extract_suggestions_raw() {
-        const RAW: &'static str = r#" Raw string "#;
-
-        /// keep in mind, `Span` bounds are inclusive, unlike Ranges, where range.end is _exclusive_
-        const EXPECTED_SPANS: &[Span] = &[
-            Span {
-                start: LineColumn { line: 1, column: 2 },
-                end: LineColumn { line: 1, column: 4 },
-            },
-            Span {
-                start: LineColumn { line: 1, column: 6 },
-                end: LineColumn {
-                    line: 1,
-                    column: 11,
-                },
-            },
-        ];
-        extraction_test_body(RAW, EXPECTED_SPANS);
-    }
 }

@@ -211,12 +211,6 @@ fn find_coverage<'a>(
                         // offset += 1; // additional \n introduced when combining literals
                         LookingFor::Start
                     } else {
-                        trace!(
-                            "Start = {} + {} + {}",
-                            literal.span().start().column,
-                            offset,
-                            literal.pre
-                        );
                         state = LookingFor::End {
                             start: LineColumn {
                                 line: literal.span().start().line,
@@ -238,12 +232,6 @@ fn find_coverage<'a>(
                         // offset += 1; // additional \n introduced when combining literals
                         state
                     } else {
-                        trace!(
-                            "End = {} + {} + {} - 1",
-                            literal.span().start().column,
-                            offset,
-                            literal.pre
-                        );
                         let end = LineColumn {
                             // @todo assumes start and end are on the same line for the literal
                             line: literal.span().start().line,
