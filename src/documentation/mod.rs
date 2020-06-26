@@ -6,9 +6,8 @@ use super::*;
 
 use indexmap::IndexMap;
 use log::trace;
-use std::convert::TryInto;
+use std::convert::{TryInto, TryFrom};
 use std::path::PathBuf;
-
 pub use proc_macro2::LineColumn;
 use proc_macro2::{Spacing, TokenTree};
 
@@ -84,7 +83,7 @@ impl Documentation {
 /// only a shortcut to avoid duplicate code
 impl From<(ContentOrigin, proc_macro2::TokenStream)> for Documentation {
     fn from((source, stream): (ContentOrigin, proc_macro2::TokenStream)) -> Self {
-        let cluster = Clusters::from(stream);
+        let cluster = Clusters::try_from(stream).expect("Must succeed to create cluster from stream");
         let chunks = Vec::<CheckableChunk>::from(cluster);
         let mut docs = Documentation::new();
         docs.add(source, chunks);

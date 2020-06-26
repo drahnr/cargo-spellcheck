@@ -31,6 +31,7 @@ lazy_static = "1"
 pulldown-cmark = "0.7"
 itertools = "0.9"
 crossterm = "0.17"
+regex = "1"
 
 # config parsing, must be independent of features
 iso_country = { version = "0.1" }
