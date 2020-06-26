@@ -73,15 +73,15 @@ mod tests {
     use proc_macro2::{LineColumn, Literal};
     use std::path::PathBuf;
 
-    fn try_from_test_body(content: Literal, expected_spans: &[Span]) {
+    fn try_from_test_body(stream: proc_macro2::TokenStream, expected_spans: &[Span]) {
         let _ = env_logger::builder()
             .filter(None, log::LevelFilter::Trace)
             .is_test(true)
             .try_init();
 
-        let mut d = Documentation::new();
-        let dummy_path = PathBuf::from("dummy/dummy.rs");
-        d.append_literal(&dummy_path,content);
+        let origin = ContentOrigin::RustSourceFile(PathBuf::from("dummy/dummy.rs"));
+        let d = Documentation::from((origin, stream));
+
         let suggestion_set = DummyChecker::check(&d, &()).expect("DummyChecker must not fail");
 
         // one file
@@ -114,15 +114,6 @@ mod tests {
         const TEST: &str = include_str!("../../demo/src/main.rs");
         let stream =
             syn::parse_str::<proc_macro2::TokenStream>(TEST).expect("Must parse just fine");
-        let path = std::path::PathBuf::from("/tmp/virtual");
-        let docs = crate::documentation::Documentation::from((&path, stream));
-        let (path2, literal_set) = docs.iter().next().expect("Must contain exactly one");
-        assert_eq!(&path, path2);
-
-        let raw = literal_set.first().expect("Contains a bunch");
-        let lit = raw.literals().first().expect("Contains at least one literal").literal.clone();
-
-        dbg!(&lit.span().start(), &lit.span().end());
 
         const EXPECTED: &[Span] = &[
             Span {
@@ -165,7 +156,7 @@ mod tests {
             },
         ];
 
-        try_from_test_body(lit, EXPECTED);
+        try_from_test_body(stream, EXPECTED);
     }
 
     #[test]
@@ -173,15 +164,6 @@ mod tests {
         const TEST: &str = include_str!("../../demo/src/lib.rs");
         let stream =
             syn::parse_str::<proc_macro2::TokenStream>(TEST).expect("Must parse just fine");
-        let path = std::path::PathBuf::from("/tmp/virtual");
-        let docs = crate::documentation::Documentation::from((&path, stream));
-        let (path2, literal_set) = docs.iter().next().expect("Must contain exactly one");
-        assert_eq!(&path, path2);
-
-        let raw = literal_set.last().expect("Contains a bunch");
-        let lit = raw.literals().first().expect("Contains at least one literal").literal.clone();
-
-        dbg!(&lit.span().start(), &lit.span().end());
 
         const EXPECTED: &[Span] = &[
             Span {
@@ -260,6 +242,6 @@ mod tests {
             },
         ];
 
-        try_from_test_body(lit, EXPECTED);
+        try_from_test_body(stream, EXPECTED);
     }
 }

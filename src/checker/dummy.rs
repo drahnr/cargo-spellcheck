@@ -18,29 +18,23 @@ impl Checker for DummyChecker {
     {
         let suggestions = docu.iter().try_fold::<SuggestionSet, _, Result<_>>(
             SuggestionSet::new(),
-            |mut acc, (path, literal_sets)| {
-                let plain = literal_sets.iter().next().unwrap().erase_markdown();
+            |mut acc, (origin, chunks)| {
+                let chunk = chunks.iter().next().unwrap();
+                let plain = chunk.erase_markdown();
                 for (index, range) in tokenize(plain.as_str()).into_iter().enumerate() {
                     let detector = Detector::Dummy;
                     trace!("Range = {:?}", &range);
-                    for (literal, span) in plain.linear_range_to_spans(range.clone()) {
-                        trace!(
-                            "literal pre {}, post {}, len {}",
-                            literal.pre,
-                            literal.post,
-                            literal.len
-                        );
-                        trace!("index {}", index);
+                    for (_range, span) in plain.find_spans(range.clone()) {
                         let replacements = vec![format!("replacement_{}", index)];
                         let suggestion = Suggestion {
                             detector,
                             span,
-                            path: PathBuf::from(path),
+                            origin: origin.clone(),
                             replacements,
-                            literal: literal.into(),
+                            chunk,
                             description: None,
                         };
-                        acc.add(PathBuf::from(path), suggestion);
+                        acc.add(origin.clone(), suggestion);
                     }
                 }
                 Ok(acc)
