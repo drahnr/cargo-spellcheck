@@ -23,15 +23,8 @@ impl BandAid {
             span.end.column
         );
 
-        let mut span = span.clone();
-        // @todo this is a hack and should be documented better
-        // @todo not sure why the offset of two is necessary
-        // @todo but it works consistently
-        let doc_comment_to_file_offset = 0;
-        span.start.column += doc_comment_to_file_offset;
-        span.end.column += doc_comment_to_file_offset;
         Self {
-            span,
+            span: *span,
             replacement: replacement.to_owned(),
         }
     }
