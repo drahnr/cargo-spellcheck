@@ -1,6 +1,11 @@
 use crate::documentation::CheckableChunk;
 use crate::{Range, Span, LineColumn};
 use std::fmt;
+use std::convert::TryFrom;
+use anyhow::{Error,Result,anyhow};
+use lazy_static::lazy_static;
+use regex::Regex;
+
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
 /// A ref to a trimmed literal.
@@ -103,25 +108,50 @@ impl std::hash::Hash for TrimmedLiteral {
     }
 }
 
-impl From<proc_macro2::Literal> for TrimmedLiteral {
-    fn from(literal: proc_macro2::Literal) -> Self {
-        let rendered = literal.to_string();
+
+impl TryFrom<proc_macro2::Literal> for TrimmedLiteral {
+    type Error = anyhow::Error;
+    fn try_from(literal: proc_macro2::Literal) -> Result<Self> {
+        let rendered = dbg!(literal.to_string());
+
+        lazy_static::lazy_static!{
+            static ref PREFIX_ERASER: Regex = Regex::new(r##"^((?:r#+)?")"##).unwrap();
+            static ref SUFFIX_ERASER: Regex = Regex::new(r##"("#*)$"##).unwrap();
+        };
+
+        let pre = if let Some(captures) = PREFIX_ERASER.captures(rendered.as_str()) {
+            if  let Some(prefix) = captures.get(1) {
+                prefix.as_str().len()
+            } else {
+                return Err(anyhow!("Unknown prefix of literal"))
+            }
+        } else {
+            return Err(anyhow!("Missing prefix of literal"))
+        };
+        let post = if let Some(captures) = SUFFIX_ERASER.captures(rendered.as_str()) {
+            // capture indices are 1 based, 0 is the full string
+            if let  Some(suffix) = captures.get(captures.len() - 1) {
+                suffix.as_str().len()
+            } else {
+                return Err(anyhow!("Unknown prefix of literal"))
+            }
+        } else {
+            return Err(anyhow!("Missing prefix of literal"))
+        };
         let scrap = |c: &'_ char| -> bool { c.is_whitespace() };
-        let pre = rendered.chars().take_while(scrap).count() + 1;
-        let post = rendered.chars().rev().take_while(scrap).count() + 1;
 
         let (len, pre, post) = match rendered.len() {
             len if len >= pre + post => (len - pre - post, pre, post),
-            len => (len, 0, 0),
+            len => return Err(anyhow!("Prefix and suffix overlap, which is impossible")),
         };
 
-        Self {
+        Ok(Self {
             len,
             literal,
             rendered,
             pre,
             post,
-        }
+        })
     }
 }
 
@@ -278,7 +308,7 @@ pub(crate) mod tests {
                     None
                 }
             })
-            .map(|literal| TrimmedLiteral::from(literal))
+            .map(|literal| TrimmedLiteral::try_from(literal).expect("Literals must be convertable to trimmed literals"))
             .collect()
 	}
 
@@ -407,11 +437,11 @@ lines
             extracted_span: Span {
                 start: LineColumn {
                     line: 2usize,
-                    column: 12usize,
+                    column: 12usize - 4,
                 },
                 end: LineColumn {
                     line: 6usize,
-                    column: 0usize,
+                    column: 0usize + 3,
                 },
             },
             trimmed_span: Span {

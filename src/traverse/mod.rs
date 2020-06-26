@@ -6,11 +6,9 @@ use super::*;
 use crate::Documentation;
 
 use std::fs;
-
-use log::{trace, warn};
-
 use std::path::{Path, PathBuf};
-
+use std::convert::TryFrom;
+use log::{trace, warn};
 use anyhow::{anyhow, Error, Result};
 use indexmap::IndexMap;
 
@@ -349,7 +347,7 @@ pub(crate) fn extract(
                             let content: String = fs::read_to_string(&path)?;
                             let stream =
                                 syn::parse_str::<proc_macro2::TokenStream>(content.as_str())?;
-                            let cluster = Clusters::from(stream);
+                            let cluster = Clusters::try_from(stream)?;
                             let chunks = Vec::<CheckableChunk>::from(cluster);
                             docs.add(ContentOrigin::RustSourceFile(path.to_owned()), chunks);
                         }
