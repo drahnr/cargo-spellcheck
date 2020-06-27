@@ -1,6 +1,5 @@
-use crate::{Range, Span, CheckableChunk};
+use crate::{Range, LineColumn, Span, CheckableChunk};
 pub use super::{TrimmedLiteral,TrimmedLiteralRef, TrimmedLiteralDisplay};
-
 /// A set of consecutive literals.
 ///
 /// Provides means to render them as a code block
@@ -8,7 +7,7 @@ pub use super::{TrimmedLiteral,TrimmedLiteralRef, TrimmedLiteralDisplay};
 pub struct LiteralSet {
     /// consecutive set of literals mapped by line number
     literals: Vec<TrimmedLiteral>,
-    /// lines spanned (start, end)
+    /// lines spanned (start, end) inclusive
     pub coverage: (usize, usize),
 }
 
@@ -57,8 +56,8 @@ impl LiteralSet {
         if n > 0 {
             let mut cursor = 0usize;
             // for use with `Range`
-            let mut start = 0usize; // inclusive
-            let mut end = 0usize; // exclusive
+            let mut start; // inclusive
+            let mut end ; // exclusive
             for literal in self.literals.iter().take(n - 1) {
                 start = cursor;
                 cursor += literal.len();
@@ -134,8 +133,6 @@ struct Vikings;
 
 
 
-    use crate::documentation::LineColumn;
-
 
     #[test]
     fn combine_literals() {
@@ -191,7 +188,7 @@ struct Vikings;
             let range: Range = $range;
 
             const TEST: &str = concat!("" $(, "///", $txt, "\n")+ , "struct X;");
-            const START: usize = 3;
+            const START: usize = 3; // skip `///` which the span we get from the literal
             let _end: usize = START + vec![$($txt.len()),* ].into_iter().sum::<usize>();
             let literal_set = gen_literal_set(TEST);
 
@@ -199,7 +196,7 @@ struct Vikings;
             let chunk: CheckableChunk = literal_set.into_chunk();
             let map_range_to_span = chunk.find_spans(range.clone());
             let mut iter = dbg!(map_range_to_span).into_iter();
-            let (range, span) = iter.next().expect("Must be at least one literal");
+            let (range, _span) = iter.next().expect("Must be at least one literal");
             let range_for_raw_str = Range {
                 start: range.start + START,
                 end: range.end + START,
