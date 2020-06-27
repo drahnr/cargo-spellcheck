@@ -7,7 +7,7 @@ use std::convert::TryFrom;
 #[doc = r#"A choosen sugestion for a certain span"#]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BandAid {
-    /// a span, where the first line has index 1, columns are base 1 too
+    /// a span, where the first line has index 1, columns are base 0
     pub span: Span,
     /// replacement text for the given span
     pub replacement: String,
@@ -64,7 +64,7 @@ impl From<(String, Span)> for BandAid {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::checker::{dummy::DummyChecker, Checker};
     use crate::documentation::*;
@@ -78,7 +78,8 @@ mod tests {
 
     /// Extract span from file as String
     /// Helpful to validate bandaids against what's actually in the file
-    fn load_span_from_file(path: impl AsRef<Path>, span: Span) -> Result<String> {
+    #[allow(unused)]
+    pub(crate) fn load_span_from_file(path: impl AsRef<Path>, span: Span) -> Result<String> {
         let path = path.as_ref();
         let path = path
             .canonicalize()
@@ -97,7 +98,8 @@ mod tests {
     /// Extract span from String as String
     /// Helpful to validate bandaids against what's actually in the string
     // @todo does not handle cross line spans @todo yet
-    fn load_span_from(mut source: impl BufRead, span: Span) -> Result<String> {
+    #[allow(unused)]
+    pub(crate) fn load_span_from(mut source: impl BufRead, span: Span) -> Result<String> {
         if span.start.line < 1 {
             bail!("Lines are 1-indexed, can't be less than 1")
         }
@@ -119,7 +121,7 @@ mod tests {
     }
 
     #[test]
-    fn helper_integrity() {
+    fn span_helper_integrity() {
         const SOURCE: &'static str = r#"0
 abcde
 f
@@ -218,6 +220,7 @@ l
     }
 
     #[test]
+    #[ignore]
     fn try_from_string_works() {
         const TEST: &str = include_str!("../../demo/src/main.rs");
         let stream =
@@ -268,6 +271,7 @@ l
     }
 
     #[test]
+    #[ignore]
     fn try_from_raw_string_works() {
         const TEST: &str = include_str!("../../demo/src/lib.rs");
         let stream =
