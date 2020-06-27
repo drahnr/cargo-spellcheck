@@ -222,3 +222,55 @@ impl<'a> fmt::Display for ChunkDisplay<'a> {
         write!(formatter, "{}{}{}", ctx1, highlight, ctx2)
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn find_spans_simple() {
+        let span = Span {
+            start: LineColumn { line: 1, column: 6 },
+            end: LineColumn {
+                line: 1,
+                column: 12,
+            },
+        };
+        let mut idx_map: IndexMap<Range, Span> = IndexMap::new();
+        idx_map.insert(6..13, span);
+        let chunk = CheckableChunk::from_string("/// A literal".to_string(), idx_map);
+        let res = chunk.find_spans(6..13);
+        assert_eq!(res.get(&(6..13)).unwrap(), &span);
+        assert_eq!(&chunk.content[6..13], "literal");
+    }
+
+    #[test]
+    fn find_spans_smaller() {
+        let span = Span {
+            start: LineColumn { line: 2, column: 4 },
+            end: LineColumn {
+                line: 2,
+                column: 15,
+            },
+        };
+        let range = 18..30;
+        let mut idx_map: IndexMap<Range, Span> = IndexMap::new();
+        idx_map.insert(range.clone(), span);
+        let chunk =
+            CheckableChunk::from_string("/// A literal\n/// in two lines".to_string(), idx_map);
+        let res = chunk.find_spans(&range.start + 2..&range.end - 2);
+        assert_eq!(&chunk.content[range.clone()], "in two lines");
+
+        let smaller = Span {
+            start: LineColumn {
+                line: span.start.line,
+                column: span.start.column + 2,
+            },
+            end: LineColumn {
+                line: span.end.line,
+                column: span.end.column - 2,
+            },
+        };
+        assert_eq!(res.get(&(range.start + 2..range.end - 2)).unwrap(), &smaller);
+    }
+}
