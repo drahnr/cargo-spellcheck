@@ -225,52 +225,39 @@ impl<'a> fmt::Display for ChunkDisplay<'a> {
 
 #[cfg(test)]
 mod test {
+    use super::literalset::tests::gen_literal_set;
     use super::*;
 
     #[test]
     fn find_spans_simple() {
+        let set = gen_literal_set("str");
+        let chunk = dbg!(CheckableChunk::from_literalset(set));
+        let range = 4..12;
         let span = Span {
-            start: LineColumn { line: 1, column: 6 },
-            end: LineColumn {
-                line: 1,
-                column: 12,
-            },
+            start: LineColumn { line: 1, column: 1 },
+            end: LineColumn { line: 1, column: 7 },
         };
-        let mut idx_map: IndexMap<Range, Span> = IndexMap::new();
-        idx_map.insert(6..13, span);
-        let chunk = CheckableChunk::from_string("/// A literal".to_string(), idx_map);
-        let res = chunk.find_spans(6..13);
-        assert_eq!(res.get(&(6..13)).unwrap(), &span);
-        assert_eq!(&chunk.content[6..13], "literal");
+        let res = chunk.find_spans(range.clone());
+        assert_eq!(res.get(&range).unwrap(), &span);
     }
 
     #[test]
     fn find_spans_smaller() {
+        let set = gen_literal_set("str");
+        let chunk = dbg!(CheckableChunk::from_literalset(set));
+        let range = 14..35;
         let span = Span {
-            start: LineColumn { line: 2, column: 4 },
-            end: LineColumn {
-                line: 2,
-                column: 15,
-            },
-        };
-        let range = 18..30;
-        let mut idx_map: IndexMap<Range, Span> = IndexMap::new();
-        idx_map.insert(range.clone(), span);
-        let chunk =
-            CheckableChunk::from_string("/// A literal\n/// in two lines".to_string(), idx_map);
-        let res = chunk.find_spans(&range.start + 2..&range.end - 2);
-        assert_eq!(&chunk.content[range.clone()], "in two lines");
-
-        let smaller = Span {
             start: LineColumn {
-                line: span.start.line,
-                column: span.start.column + 2,
+                line: 1,
+                column: range.start,
             },
             end: LineColumn {
-                line: span.end.line,
-                column: span.end.column - 2,
+                line: 1,
+                column: 36,
             },
         };
-        assert_eq!(res.get(&(range.start + 2..range.end - 2)).unwrap(), &smaller);
+
+        let res = chunk.find_spans(range.clone());
+        assert_eq!(res.get(&range).unwrap(), &span);
     }
 }
