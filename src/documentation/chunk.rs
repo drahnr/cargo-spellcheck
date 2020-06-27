@@ -110,6 +110,10 @@ impl CheckableChunk {
     pub fn as_str(&self) -> &str {
         self.content.as_str()
     }
+
+    pub fn display(&self, range: Range) -> ChunkDisplay {
+        ChunkDisplay::from((self, range))
+    }
 }
 
 /// Convert the clusters of one file into a source description as well
@@ -121,5 +125,100 @@ impl From<Clusters> for Vec<CheckableChunk> {
             .into_iter()
             .map(|literal_set| CheckableChunk::from_literalset(literal_set))
             .collect::<Vec<_>>()
+    }
+}
+
+
+
+use std::fmt;
+
+/// A display style wrapper for a trimmed literal.
+///
+/// Allows better display of coverage results without code duplication.
+///
+/// Consists of literal reference and a relative range to the start of the literal.
+#[derive(Debug, Clone)]
+pub struct ChunkDisplay<'a>(pub &'a CheckableChunk, pub Range);
+
+impl<'a, R> From<(R, Range)> for ChunkDisplay<'a>
+where
+    R: Into<&'a CheckableChunk>,
+{
+    fn from(tuple: (R, Range)) -> Self {
+        let tuple0 = tuple.0.into();
+        Self(tuple0, tuple.1)
+    }
+}
+
+use anyhow::{Result,anyhow,Error};
+use std::convert::TryFrom;
+
+impl<'a, R> TryFrom<(R, Span)> for ChunkDisplay<'a>
+where
+    R: Into<&'a CheckableChunk>,
+{
+    type Error = Error;
+    fn try_from(tuple: (R, Span)) -> Result<Self> {
+        let chunk = tuple.0.into();
+        let first = chunk.source_mapping.iter().next().unwrap().1; // @todo
+        let last = chunk.source_mapping.iter().rev().next().unwrap().1; // @todo
+        let range = tuple.1.relative_to(Span {
+            start: first.start,
+            end: last.end,
+        })?;
+        Ok(Self(chunk, range))
+    }
+}
+
+impl<'a> Into<(&'a CheckableChunk, Range)> for ChunkDisplay<'a> {
+    fn into(self) -> (&'a CheckableChunk, Range) {
+        (self.0, self.1)
+    }
+}
+
+impl<'a> fmt::Display for ChunkDisplay<'a> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use console::Style;
+
+        // the contextual characters not covered by range `self.1`
+        let context = Style::new().on_black().bold().cyan();
+        // highlight the mistake
+        let highlight = Style::new().on_black().bold().underlined().red().italic();
+        // a special style for any errors, to visualize out of bounds access
+        let oob = Style::new().blink().bold().on_yellow().red();
+
+        // simplify
+        let literal = self.0;
+        let start = self.1.start;
+        let end = self.1.end;
+
+        assert!(start <= end);
+
+        // content without quote characters
+        let data = self.0.as_str();
+
+        // colour the preceding quote character
+        // and the context preceding the highlight
+        let ctx1 = if start < data.len() {
+            context.apply_to(&data[..start])
+        } else {
+            oob.apply_to("!!!")
+        };
+
+        // highlight the given range
+        let highlight = if end >= data.len() {
+            oob.apply_to(&data[start..])
+        } else {
+            highlight.apply_to(&data[start..end])
+        };
+
+        // color trailing context if any as well as the closing quote character
+        let ctx2 = if end < data.len() {
+            context.apply_to(&data[end..])
+        } else {
+            oob.apply_to("!!!")
+        };
+
+        write!(formatter, "{}{}{}", ctx1, highlight, ctx2)
     }
 }

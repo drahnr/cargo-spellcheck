@@ -14,6 +14,7 @@
 use crate::documentation::{CheckableChunk, ContentOrigin};
 use crate::Span;
 
+use std::convert::TryFrom;
 use enumflags2::BitFlags;
 
 /// Bitflag of available checkers by compilation / configuration.
@@ -226,16 +227,12 @@ impl<'s> fmt::Display for Suggestion<'s> {
 }
 
 impl<'s> fmt::Debug for Suggestion<'s> {
-    fn fmt(&self, _formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        unimplemented!("Suggestion display is lacking")
-        // @todo rename `TrimmedLiteralDisplay` to `ChunkHighlighDisplay`
-        // let printable = TrimmedLiteralDisplay::from((
-        //     self.chunk,
-        //     self.span
-        //         .relative_to(self.literal.as_ref().literal.span())
-        //         .expect("Must be on the same line"),
-        // ));
-        // write!(formatter, "({}, {:?})", &printable, printable.1)
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let printable = crate::documentation::ChunkDisplay::try_from((
+            self.chunk,
+            self.span
+        )).expect("Must be able to use span for suggestion display");
+        write!(formatter, "({}, {:?})", &printable, printable.1)
     }
 }
 

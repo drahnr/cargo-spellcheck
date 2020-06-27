@@ -223,7 +223,7 @@ Erronbeous bold uetchkp"#;
         let origin = ContentOrigin::RustSourceFile(PathBuf::from("/tmp/virtual"));
         let docs = crate::documentation::Documentation::from((origin.clone(), stream));
 
-        let suggestion_set = dbg!(crate::checker::check(&docs, &config)).expect("Must not error");
+        let suggestion_set = crate::checker::check(&docs, &config).expect("Must not error");
         let (origin2, chunks) = docs.iter().next().expect("Must contain exactly one");
         assert_eq!(&origin, origin2);
 
@@ -233,22 +233,21 @@ Erronbeous bold uetchkp"#;
             .expect("Must cotain at least one literalset");
         // @todo
         // assert_eq!(chunk.len(), 1);
-        // assert_eq!(RAW, chunk.to_string().as_str());
+        assert_eq!(RAW, chunk.as_str());
         assert_eq!(PLAIN, chunk.erase_markdown().as_str());
 
         let mut it = suggestion_set.iter();
-        let (_, suggestions) = dbg!(it.next()).expect("Must contain at least one file entry");
+        let (_, suggestions) = it.next().expect("Must contain at least one file entry");
 
         let mut it = suggestions.into_iter();
         let mut expected = |word: &'static str| {
             let suggestion = it.next().expect("Must contain one mis-spelled word");
             let range: Range = suggestion.span.try_into().expect("Must be a single line");
             let s = dbg!(suggestion.chunk.as_str());
-            // @todo
-            // println!(
-            //     "Foxxy funkster: {:?}",
-            //     suggestion.chunk.display(range.clone())
-            // );
+            println!(
+                "Foxxy funkster: {:?}",
+                suggestion.chunk.display(range.clone())
+            );
             assert_eq!(word, &s[range]);
             println!("Found word >> {} <<", word);
         };
