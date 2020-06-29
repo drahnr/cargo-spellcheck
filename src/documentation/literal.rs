@@ -62,9 +62,9 @@ pub struct TrimmedLiteral {
     pub literal: proc_macro2::Literal,
     /// the complete rendered string including post and pre.
     pub rendered: String,
-    /// Whitespace prefix len + 1
+    /// Literal prefx
     pub pre: usize,
-    /// Whitespace postfix len + 1
+    /// Literal postfix
     pub post: usize,
     /// Length of rendered **minus** `pre` and `post`.
     /// If the literal is all empty, `pre` and `post` become `0`, and `len` covers the full length of `rendered`.
@@ -119,7 +119,7 @@ impl TryFrom<proc_macro2::Literal> for TrimmedLiteral {
             static ref SUFFIX_ERASER: Regex = Regex::new(r##"("#*)$"##).unwrap();
         };
 
-        let pre = if let Some(captures) = PREFIX_ERASER.captures(rendered.as_str()) {
+        let mut pre = if let Some(captures) = PREFIX_ERASER.captures(rendered.as_str()) {
             if  let Some(prefix) = captures.get(1) {
                 prefix.as_str().len()
             } else {

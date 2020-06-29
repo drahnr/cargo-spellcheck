@@ -75,7 +75,8 @@ impl CheckableChunk {
     /// span.
     ///
     /// Example:
-    /// ```text
+    ///
+    /// ```text,ignore
     /// 0..40 -> [
     ///           (0,10) => (1,0)->(3,5),
     ///           (10,12) => (3,6)->(3,7),
@@ -236,18 +237,19 @@ impl<'a> fmt::Display for ChunkDisplay<'a> {
 
 #[cfg(test)]
 mod test {
-    use super::literalset::tests::gen_literal_set_with_fluff;
+    use super::literalset::tests::gen_literal_set;
     use super::action::bandaid::tests::load_span_from;
     use super::*;
 
     #[test]
     fn find_spans_simple() {
-        let set = gen_literal_set_with_fluff("xyz");
+        const CONTENT: &'static str = fluff_up!(["xyz"]);
+        let set = gen_literal_set(CONTENT);
         let chunk = dbg!(CheckableChunk::from_literalset(set));
-        const INPUT_RANGE: Range = 4..12;
+        const INPUT_RANGE: Range = 1..4;
         const EXPECTED_SPAN: Span = Span {
             start: LineColumn { line: 1, column: 4 },
-            end: LineColumn { line: 1, column: 7 },
+            end: LineColumn { line: 1, column: 6 },
         };
 
         let res = chunk.find_spans(INPUT_RANGE.clone());
@@ -257,23 +259,24 @@ mod test {
         assert!(INPUT_RANGE.contains(&(range.start)));
         assert!(INPUT_RANGE.contains(&(range.end-1)));
         assert_eq!(span, &EXPECTED_SPAN);
-        let mut rdr = chunk.as_str().as_bytes();
+        let mut rdr = CONTENT.as_bytes();
         assert_eq!(load_span_from(&mut rdr, *span).expect("Span extraction must work"), "xyz".to_owned());
     }
 
     #[test]
     fn find_spans_smaller() {
-        let set = gen_literal_set_with_fluff("xyz");
+        const CONTENT: &'static str = fluff_up!(["xyz"]);
+        let set = gen_literal_set(CONTENT);
         let chunk = dbg!(CheckableChunk::from_literalset(set));
-        const INPUT_RANGE: Range = 14..35;
+        const INPUT_RANGE: Range = 0..4;
         const EXPECTED_SPAN: Span = Span {
             start: LineColumn {
                 line: 1,
-                column: 14,
+                column: 4,
             },
             end: LineColumn {
                 line: 1,
-                column: 36,
+                column: 6,
             },
         };
 
@@ -284,7 +287,7 @@ mod test {
         assert!(INPUT_RANGE.contains(&(range.start)));
         assert!(INPUT_RANGE.contains(&(range.end-1)));
         assert_eq!(span, &EXPECTED_SPAN);
-        let mut rdr = chunk.as_str().as_bytes();
+        let mut rdr = CONTENT.as_bytes();
         assert_eq!(load_span_from(&mut rdr, *span).expect("Span extraction must work"), "xyz".to_owned());
     }
 }
