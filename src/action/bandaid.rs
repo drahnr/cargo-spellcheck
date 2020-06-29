@@ -117,7 +117,10 @@ pub(crate) mod tests {
             .ok_or_else(||anyhow!("Line not in buffer or invalid"))?;
 
         let range = span.start.column..(span.end.column+1);
-        dbg!(line).get(range).ok_or_else(|| anyhow!("Columns not in line")).map(|s| dbg!(s.to_owned()))
+        dbg!(line)
+            .get(range)
+            .map(|s| dbg!(s.to_owned()))
+            .ok_or_else(|| anyhow!("Columns not in line"))
     }
 
     #[test]
