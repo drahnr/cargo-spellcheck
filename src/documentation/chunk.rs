@@ -28,9 +28,11 @@ impl ContentOrigin {
 /// A chunk of documentation that is supposed to be checked
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct CheckableChunk {
-    /// Rendered contents
+    /// Rendered contents of a literal set or just content of a markdown file
     content: String,
-    /// Mapping from range within `content` and `Span` referencing the location within the file
+    /// Mapping from range within `content` and
+    /// `Span` referencing the location within the source file.
+    /// For a markdown file i.e. this would become a single entry spanning from start to end.
     source_mapping: IndexMap<Range, Span>,
 }
 
@@ -70,7 +72,16 @@ impl CheckableChunk {
     /// Find which part of the range maps to which span.
     /// Note that Range can very well be split into multiple fragments
     /// where each of them can be mapped to a potentially non-continuous
-    /// span
+    /// span.
+    ///
+    /// Example:
+    /// ```text
+    /// 0..40 -> [
+    ///           (0,10) => (1,0)->(3,5),
+    ///           (10,12) => (3,6)->(3,7),
+    ///           (13,17) => (4,0)->(4,3),
+    /// ]
+    /// ```
     pub(super) fn find_spans(&self, range: Range) -> IndexMap<Range, Span> {
         let Range { start, end } = range;
         let mut active = false;
