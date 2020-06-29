@@ -40,12 +40,17 @@ impl<'l> TrimmedLiteralRef<'l> {
     pub fn as_ref(&self) -> &TrimmedLiteral {
         self.reference
     }
-    pub fn truncate(&self, max_chars: usize) -> &str {
+    pub fn truncate(&self, min_chars: usize, max_chars: usize) -> &str {
         let mut s = &self.reference.as_str();
-        match s.char_indices().nth(max_chars) {
-            None => &s,
-            Some((idx, _)) => &s[..idx],
-        }
+        let idy = match s.char_indices().nth(min_chars) {
+            None => 0,
+            Some((idy, _)) => idy,
+        };
+        let idx = match s.char_indices().nth(max_chars) {
+            None => s.char_indices().count() - 1,
+            Some((idx, _)) => idx,
+        };
+        return &s[idy..idx];
     }
 
     #[allow(unused)]
