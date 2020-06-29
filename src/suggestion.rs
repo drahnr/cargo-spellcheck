@@ -18,6 +18,8 @@ use enumflags2::BitFlags;
 
 use std::convert::TryFrom;
 
+use terminal_size::{terminal_size, Height, Width};
+
 /// Bitflag of available checkers by compilation / configuration.
 #[derive(Debug, Clone, Copy, BitFlags, Eq, PartialEq, Hash)]
 #[repr(u8)]
@@ -28,6 +30,15 @@ pub enum Detector {
     Dummy = 0b1000,
 }
 
+pub fn get_terminal_size() -> usize {
+    // terminal size
+    let size = terminal_size();
+    if let Some((Width(cols), Height(_))) = size {
+        cols as usize
+    } else {
+        140 as usize //set default terminal size if no?
+    }
+}
 // impl
 // // TODO use this to display included compiled backends
 // fn list_available() {
