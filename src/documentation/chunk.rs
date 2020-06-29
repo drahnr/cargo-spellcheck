@@ -18,9 +18,9 @@ pub enum ContentOrigin {
 impl ContentOrigin {
     pub fn as_path(&self) -> &Path {
         match self {
-            Self::CommonMarkFile(path) => { path.as_path() },
-            Self::RustDocTest(path, _) => { path.as_path() },
-            Self::RustSourceFile(path) => { path.as_path() },
+            Self::CommonMarkFile(path) => path.as_path(),
+            Self::RustDocTest(path, _) => path.as_path(),
+            Self::RustSourceFile(path) => path.as_path(),
         }
     }
 }
