@@ -16,6 +16,7 @@ use crate::Span;
 
 use std::convert::TryFrom;
 use enumflags2::BitFlags;
+use log::warn;
 
 /// Bitflag of available checkers by compilation / configuration.
 #[derive(Debug, Clone, Copy, BitFlags, Eq, PartialEq, Hash)]
@@ -228,11 +229,14 @@ impl<'s> fmt::Display for Suggestion<'s> {
 
 impl<'s> fmt::Debug for Suggestion<'s> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let printable = crate::documentation::ChunkDisplay::try_from((
+        match crate::documentation::ChunkDisplay::try_from((
             self.chunk,
             self.span
-        )).expect("Must be able to use span for suggestion display");
-        write!(formatter, "({}, {:?})", &printable, printable.1)
+        ))
+        {
+            Ok(printable) => write!(formatter, "({}, {:?})", &printable, printable.1),
+            Err(e) => write!(formatter, "Failed to create chunk display from chunk={:?}, span={:?} with {}", self.chunk, self.span, e),
+        }
     }
 }
 
