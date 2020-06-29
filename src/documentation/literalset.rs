@@ -105,14 +105,26 @@ pub(crate) mod tests {
     use super::*;
     pub(crate) use super::super::literal::tests::annotated_literals;
 
-    pub(crate) fn gen_literal_set(_source: &str) -> LiteralSet {
-        let literals = dbg!(annotated_literals(TEST));
+    pub(crate) fn gen_literal_set_with_fluff(source: &str) -> LiteralSet {
+        let mut fluffed = String::with_capacity(source.len() + 32);
+        for line in source.lines() {
+            fluffed.push_str("/// ");
+            fluffed.push_str(line);
+            fluffed.push('\n');
+        }
+        fluffed.push_str("struct X{}");
+        gen_literal_set(fluffed.as_str())
+    }
+
+
+    pub(crate) fn gen_literal_set(source: &str) -> LiteralSet {
+        let literals = dbg!(annotated_literals(source));
 
         let mut cls = LiteralSet::default();
         for literal in literals {
-            assert!(dbg!(&mut cls).add_adjacent(literal).is_ok());
+            assert!(cls.add_adjacent(literal).is_ok());
         }
-        cls
+        dbg!(cls)
     }
 
 
