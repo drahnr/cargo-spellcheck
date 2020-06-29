@@ -63,7 +63,10 @@ impl LiteralSet {
                 cursor += literal.len();
                 end = cursor;
                 // @todo check if the `Span` conversion here is done correctly
-                source_mapping.insert(Range { start, end }, Span::from(literal.span()));
+                let mut span = Span::from(literal);
+                source_mapping.insert(Range { start, end },
+                    span
+                );
                 content.push_str(literal.as_str());
                 content.push('\n');
                 // the newline is _not_ covered by a span, after all it's inserted by us!
@@ -73,7 +76,8 @@ impl LiteralSet {
                 start = cursor;
                 cursor += literal.len();
                 end = cursor;
-                source_mapping.insert(Range { start, end }, Span::from(literal.span()));
+                let span = Span::from(literal);
+                source_mapping.insert(Range { start, end }, span);
                 content.push_str(literal.as_str());
                 // for the last, skip the newline
             }
@@ -105,6 +109,21 @@ pub(crate) mod tests {
     use super::*;
     pub(crate) use super::super::literal::tests::annotated_literals;
 
+    #[macro_export]
+    macro_rules! fluff_up {
+        ([ $( $line:literal ),+ $(,)?]) => {
+            concat!(fluff_up!( $( $line ),+ ), "struct Fluff;");
+        };
+        ($acc:literal, $( $line:literal ),+ $(,)?) => {
+            concat!($acc, "/// ", fluff_up!( $( $line ),+ ), "\n")
+        };
+        ($leaf:literal) => {
+            concat!("/// ", $leaf, "\n")
+        };
+    }
+
+    /// prefer `fluff_up!` over this
+    #[allow(unused)]
     pub(crate) fn gen_literal_set_with_fluff(source: &str) -> LiteralSet {
         let mut fluffed = String::with_capacity(source.len() + 32);
         for line in source.lines() {
@@ -118,7 +137,7 @@ pub(crate) mod tests {
 
 
     pub(crate) fn gen_literal_set(source: &str) -> LiteralSet {
-        let literals = dbg!(annotated_literals(source));
+        let literals = dbg!(annotated_literals(dbg!(source)));
 
         let mut cls = LiteralSet::default();
         for literal in literals {

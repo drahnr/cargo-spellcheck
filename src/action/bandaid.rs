@@ -100,7 +100,7 @@ pub(crate) mod tests {
     // @todo does not handle cross line spans @todo yet
     #[allow(unused)]
     pub(crate) fn load_span_from(mut source: impl BufRead, span: Span) -> Result<String> {
-        if span.start.line < 1 {
+        if dbg!(&span).start.line < 1 {
             bail!("Lines are 1-indexed, can't be less than 1")
         }
         if span.end.line < span.start.line {
@@ -116,7 +116,7 @@ pub(crate) mod tests {
             .next()
             .ok_or_else(||anyhow!("Line not in buffer or invalid"))?;
 
-        let range = span.start.column..(span.end.column+1);
+        let range = dbg!(span.start.column..(span.end.column+1));
         dbg!(line)
             .get(range)
             .map(|s| dbg!(s.to_owned()))

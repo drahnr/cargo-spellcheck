@@ -3,6 +3,8 @@
 use crate::Range;
 
 pub use proc_macro2::LineColumn;
+use proc_macro2::Literal;
+use super::TrimmedLiteral;
 
 use std::hash::{Hash, Hasher};
 
@@ -117,6 +119,25 @@ impl TryFrom<(usize, Range)> for Span {
                 original.1.end
             ))
         }
+    }
+}
+
+impl From<&TrimmedLiteral> for Span {
+    fn from(literal: &TrimmedLiteral) -> Self {
+        // we know that pre and post are guaranteed to be in one line
+        // so we can just modify the columns without side effects
+        let mut span = Self::from(literal.span());
+        span.start.column += literal.pre;
+        span.end.column -= literal.post;
+        // check if it is a `///` comment, for which the literal
+        // span needs to be adjusted, since it would include the `///`
+        // @todo find a better way, potentially doing this when
+        // creating a `TrimmedLiteral` and storing this on construction
+        if literal.pre == 1 && literal.span().start().column == 0 {
+            span.start.column += 2;
+        }
+
+        span
     }
 }
 
