@@ -145,6 +145,67 @@ impl<'s> fmt::Display for Suggestion<'s> {
             0
         };
 
+        // We will trim the literal if does not fit in the terminal size
+        // The misspelled word shall always be shown and we aim to show as much
+        // info as possible to the user easily locate the word
+        let terminal_size: usize = get_terminal_size();
+        let mut max_chars: usize = terminal_size;
+        let mut min_chars = 0usize;
+        // The paddings give some space for the ` {} ...` and extra indentation and formatting:
+        // ```
+        // 65 |  ...  here, on the second most pointless site ever! Well, wander ont  ...
+        //    |                                                                  ^^^
+        //    |                                                                                                                                                                                                ^^^
+        //    | - not, Ont, int, on, onto, cont, font, or one of 9 others
+        //    |
+        //    |   Possible spelling mistake found.
+        //    |
+        // ```
+        let padding_offset = 5;
+        let padding_end = 15usize;
+
+        let range_start_text = Range {
+            start: 0usize,
+            end: marker_range_relative.start,
+        };
+        let range_end_text = Range {
+            start: marker_range_relative.end,
+            end: self.literal.as_str().chars().count(),
+        };
+        if self.literal.as_str().chars().count() > terminal_size {
+            // Attempt to fit the misspelled word in the beginning followed by info.
+            if range_end_text.len() >= terminal_size {
+                min_chars = marker_range_relative.start - 1;
+                max_chars = (min_chars + terminal_size).saturating_sub(padding_end);
+            }
+            // Attempt to fit the misspelled word in the end after the info.
+            else if range_start_text.len() > terminal_size {
+                min_chars = (marker_range_relative.end)
+                    .saturating_sub(terminal_size)
+                    .saturating_add(padding_end);
+                max_chars = marker_range_relative.end;
+            }
+            // Attempt to fit the misspelled word in the middle with info in th left and right of it
+            else {
+                let context = (terminal_size.saturating_sub(marker_size)) / 2;
+                min_chars = marker_range_relative.start.saturating_sub(context);
+                max_chars = marker_range_relative
+                    .end
+                    .saturating_add(context)
+                    .saturating_sub(padding_end);
+            }
+            // with the successful attempt, truncate the literal for displaying
+            writeln!(
+                formatter,
+                "  ... {} ...",
+                self.literal.truncate(min_chars, max_chars)
+            )?;
+            offset = offset.saturating_sub(min_chars) + padding_offset;
+        // literal is smaller than terminal size and can be fully displayed
+        } else {
+            writeln!(formatter, " {}", self.literal.as_str())?;
+        }
+
         if marker_size > 0 {
             context_marker
                 .apply_to(format!("{:>width$}", "|", width = indent))
