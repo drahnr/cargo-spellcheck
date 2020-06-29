@@ -89,6 +89,18 @@ impl CheckableChunk {
         self.source_mapping
             .iter()
             .filter_map(|(range, span)| {
+                if range.start >= range.end
+                    || (span.start.line == span.end.line && span.start.column > span.end.column)
+                {
+                    // could possibly happen on empty documentation lines with `///`
+                    trace!(
+                        "Zero length fraction length found, skipping: {:?} -> {:?}",
+                        range, span
+                    );
+                    return None;
+                // } else {
+                //     trace!("Range {:?} -> Span {:?}", range, span);
+                }
                 if range.contains(&start) {
                     active = true;
                     if end > 0 && range.contains(&(end - 1)) {
@@ -98,7 +110,7 @@ impl CheckableChunk {
                     }
                 } else if active {
                     Some(range.clone())
-                } else if range.contains(&end) {
+                } else if range.contains(&(end - 1)) {
                     active = false;
                     Some(range.start..end)
                 } else {
@@ -109,7 +121,8 @@ impl CheckableChunk {
                     // @todo requires knowledge of how many items are remaining in the line
                     // @todo which needs to be extracted from
                     assert_eq!(span.start.line, span.end.line);
-                    let mut span = span.clone();
+                    let mut span = dbg!(span.clone());
+                    let fract_range = dbg!(fract_range);
                     span.start.column += fract_range.start - range.start;
                     span.end.column -= range.end - fract_range.end;
                     assert!(span.start.column <= span.end.column);
@@ -140,8 +153,6 @@ impl From<Clusters> for Vec<CheckableChunk> {
     }
 }
 
-
-
 use std::fmt;
 
 /// A display style wrapper for a trimmed literal.
@@ -162,7 +173,7 @@ where
     }
 }
 
-use anyhow::{Result,anyhow,Error};
+use anyhow::{anyhow, Error, Result};
 use std::convert::TryFrom;
 
 impl<'a, R> TryFrom<(R, Span)> for ChunkDisplay<'a>
@@ -237,8 +248,8 @@ impl<'a> fmt::Display for ChunkDisplay<'a> {
 
 #[cfg(test)]
 mod test {
-    use super::literalset::tests::gen_literal_set;
     use super::action::bandaid::tests::load_span_from;
+    use super::literalset::tests::gen_literal_set;
     use super::*;
 
     #[test]
@@ -257,10 +268,13 @@ mod test {
         assert_eq!(res.len(), 1);
         let (range, span) = dbg!(res.iter().next().unwrap());
         assert!(INPUT_RANGE.contains(&(range.start)));
-        assert!(INPUT_RANGE.contains(&(range.end-1)));
+        assert!(INPUT_RANGE.contains(&(range.end - 1)));
         assert_eq!(span, &EXPECTED_SPAN);
         let mut rdr = CONTENT.as_bytes();
-        assert_eq!(load_span_from(&mut rdr, *span).expect("Span extraction must work"), "xyz".to_owned());
+        assert_eq!(
+            load_span_from(&mut rdr, *span).expect("Span extraction must work"),
+            "xyz".to_owned()
+        );
     }
 
     #[test]
@@ -270,14 +284,8 @@ mod test {
         let chunk = dbg!(CheckableChunk::from_literalset(set));
         const INPUT_RANGE: Range = 0..4;
         const EXPECTED_SPAN: Span = Span {
-            start: LineColumn {
-                line: 1,
-                column: 4,
-            },
-            end: LineColumn {
-                line: 1,
-                column: 6,
-            },
+            start: LineColumn { line: 1, column: 4 },
+            end: LineColumn { line: 1, column: 6 },
         };
 
         let res = chunk.find_spans(INPUT_RANGE.clone());
@@ -285,9 +293,12 @@ mod test {
         assert_eq!(res.len(), 1);
         let (range, span) = dbg!(res.iter().next().unwrap());
         assert!(INPUT_RANGE.contains(&(range.start)));
-        assert!(INPUT_RANGE.contains(&(range.end-1)));
+        assert!(INPUT_RANGE.contains(&(range.end - 1)));
         assert_eq!(span, &EXPECTED_SPAN);
         let mut rdr = CONTENT.as_bytes();
-        assert_eq!(load_span_from(&mut rdr, *span).expect("Span extraction must work"), "xyz".to_owned());
+        assert_eq!(
+            load_span_from(&mut rdr, *span).expect("Span extraction must work"),
+            "xyz".to_owned()
+        );
     }
 }
