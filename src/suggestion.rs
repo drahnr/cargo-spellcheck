@@ -134,7 +134,8 @@ impl<'s> fmt::Display for Suggestion<'s> {
 
         // if the offset starts from 0, we still want to continue if the length
         // of the marker is at least length 1
-        let offset = if self.literal.pre() <= marker_range_relative.start {
+
+        let mut offset = if self.literal.pre() <= marker_range_relative.start {
             marker_range_relative.start - self.literal.pre()
         } else {
             error!("Reducing marker length! Please report a BUG!");
