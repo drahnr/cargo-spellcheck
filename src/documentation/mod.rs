@@ -95,6 +95,7 @@ impl From<(ContentOrigin, proc_macro2::TokenStream)> for Documentation {
 mod tests {
     use super::*;
     use std::convert::From;
+    use crate::checker::Checker;
 
     #[test]
     fn parse_and_construct() {
@@ -217,22 +218,22 @@ struct X"#;
 
 Erronbeous bold uetchkp"#;
 
-        let config = crate::config::Config::default();
         let stream =
             syn::parse_str::<proc_macro2::TokenStream>(SOURCE).expect("Must parse just fine");
         let origin = ContentOrigin::RustSourceFile(PathBuf::from("/tmp/virtual"));
         let docs = crate::documentation::Documentation::from((origin.clone(), stream));
 
-        let suggestion_set = crate::checker::check(&docs, &config).expect("Must not error");
-        let (origin2, chunks) = docs.iter().next().expect("Must contain exactly one");
+        let suggestion_set = crate::checker::dummy::DummyChecker::check(&docs, &()).expect("Must not error");
+        let (origin2, chunks) = docs.iter().next().expect("Must contain exactly one origin");
         assert_eq!(&origin, origin2);
 
+
         let chunk = chunks
-            .iter()
+        .iter()
             .next()
-            .expect("Must cotain at least one literalset");
-        // @todo
-        // assert_eq!(chunk.len(), 1);
+            .expect("Must contain exactly one chunk");
+
+        assert_eq!(chunks.len(), 1);
         assert_eq!(RAW, chunk.as_str());
         assert_eq!(PLAIN, chunk.erase_markdown().as_str());
 
@@ -248,7 +249,7 @@ Erronbeous bold uetchkp"#;
                 "Foxxy funkster: {:?}",
                 suggestion.chunk.display(range.clone())
             );
-            assert_eq!(word, &s[range]);
+            assert_eq!(word, &SOURCE[range]);
             println!("Found word >> {} <<", word);
         };
 
