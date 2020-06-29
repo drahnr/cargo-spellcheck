@@ -123,14 +123,6 @@ impl<'s> fmt::Display for Suggestion<'s> {
             ))
             .fmt(formatter)?;
 
-        let max_chars = 120usize; //@TODO: find compatible to size of terminal.
-        if self.literal.len() > max_chars {
-            writeln!(formatter, " {} ...", self.literal.truncate(max_chars))?;
-        }
-        else {
-            writeln!(formatter, " {}", self.literal.as_str())?;
-        }
-
         // underline the relevant part with ^^^^^
 
         // @todo this needs some more thought once multiline comments pop up
