@@ -278,8 +278,8 @@ mod test {
     }
 
     #[test]
-    fn find_spans_smaller() {
-        const CONTENT: &'static str = fluff_up!(["xyz"]);
+    fn find_spans_long() {
+        const CONTENT: &'static str = fluff_up!(["xyz", "second", "third", "fourth"]);
         let set = gen_literal_set(CONTENT);
         let chunk = dbg!(CheckableChunk::from_literalset(set));
         const INPUT_RANGE: Range = 0..4;

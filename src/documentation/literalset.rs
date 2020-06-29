@@ -112,13 +112,13 @@ pub(crate) mod tests {
     #[macro_export]
     macro_rules! fluff_up {
         ([ $( $line:literal ),+ $(,)?]) => {
-            concat!(fluff_up!( $( $line ),+ ), "struct Fluff;");
+            concat!("/// ", fluff_up!( $( $line ),+ ), "\nstruct Fluff;");
         };
         ($acc:literal, $( $line:literal ),+ $(,)?) => {
-            concat!($acc, "/// ", fluff_up!( $( $line ),+ ), "\n")
+            concat!($acc, "\n/// ", fluff_up!( $( $line ),+ ))
         };
         ($leaf:literal) => {
-            concat!("/// ", $leaf, "\n")
+            concat!($leaf)
         };
     }
 
