@@ -95,7 +95,7 @@ impl TryFrom<proc_macro2::TokenStream> for Clusters {
         let mut chunk = Self {
             set: Vec::with_capacity(64),
         };
-        chunk.parse_token_tree(stream);
+        chunk.parse_token_tree(stream)?;
         Ok(chunk)
     }
 }
