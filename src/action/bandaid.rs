@@ -69,12 +69,12 @@ pub(crate) mod tests {
     use crate::checker::{dummy::DummyChecker, Checker};
     use crate::documentation::*;
     use crate::span::Span;
+    use anyhow::bail;
     use log::debug;
     use proc_macro2::{LineColumn, Literal};
-    use std::path::PathBuf;
-    use std::path::Path;
     use std::io::BufRead;
-    use anyhow::bail;
+    use std::path::Path;
+    use std::path::PathBuf;
 
     /// Extract span from file as String
     /// Helpful to validate bandaids against what's actually in the file
@@ -114,9 +114,9 @@ pub(crate) mod tests {
             .skip(span.start.line - 1)
             .filter_map(|line| line.ok())
             .next()
-            .ok_or_else(||anyhow!("Line not in buffer or invalid"))?;
+            .ok_or_else(|| anyhow!("Line not in buffer or invalid"))?;
 
-        let range = dbg!(span.start.column..(span.end.column+1));
+        let range = dbg!(span.start.column..(span.end.column + 1));
         dbg!(line)
             .get(range)
             .map(|s| dbg!(s.to_owned()))
@@ -181,7 +181,10 @@ l
         ];
 
         for item in SETS {
-            assert_eq!(load_span_from(SOURCE.as_bytes(), item.span).unwrap(), item.expected.to_string());
+            assert_eq!(
+                load_span_from(SOURCE.as_bytes(), item.span).unwrap(),
+                item.expected.to_string()
+            );
         }
     }
 

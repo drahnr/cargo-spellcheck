@@ -6,10 +6,10 @@ use super::*;
 
 use indexmap::IndexMap;
 use log::trace;
-use std::convert::{TryInto, TryFrom};
-use std::path::PathBuf;
 pub use proc_macro2::LineColumn;
 use proc_macro2::{Spacing, TokenTree};
+use std::convert::{TryFrom, TryInto};
+use std::path::PathBuf;
 
 pub type Range = core::ops::Range<usize>;
 
@@ -83,7 +83,8 @@ impl Documentation {
 /// only a shortcut to avoid duplicate code
 impl From<(ContentOrigin, proc_macro2::TokenStream)> for Documentation {
     fn from((source, stream): (ContentOrigin, proc_macro2::TokenStream)) -> Self {
-        let cluster = Clusters::try_from(stream).expect("Must succeed to create cluster from stream");
+        let cluster =
+            Clusters::try_from(stream).expect("Must succeed to create cluster from stream");
         let chunks = Vec::<CheckableChunk>::from(cluster);
         let mut docs = Documentation::new();
         docs.add(source, chunks);
@@ -94,9 +95,9 @@ impl From<(ContentOrigin, proc_macro2::TokenStream)> for Documentation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::convert::From;
     use crate::checker::Checker;
     use crate::fluff_up;
+    use std::convert::From;
 
     #[test]
     fn parse_and_construct() {
@@ -149,15 +150,16 @@ mod tests {
         //     "full: {}",
         //     TrimmedLiteralDisplay::from((literal, expected_raw_range.clone()))
         // );
-        assert_eq!(
-            dbg!(&z),
-            dbg!(&chunks[0].find_spans(expected_raw_range))
-        );
+        assert_eq!(dbg!(&z), dbg!(&chunks[0].find_spans(expected_raw_range)));
     }
 
     macro_rules! end2end {
         ($test:expr, $n:expr) => {
-            end2end!($test, $n, ContentOrigin::RustSourceFile(PathBuf::from("/tmp/dummy")))
+            end2end!(
+                $test,
+                $n,
+                ContentOrigin::RustSourceFile(PathBuf::from("/tmp/dummy"))
+            )
         };
 
         ($test:expr, $n:expr, $origin:expr) => {
@@ -195,7 +197,11 @@ mod tests {
         ($path: literal, $n: expr) => {
             let path2 = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/", $path));
             let origin = ContentOrigin::RustSourceFile(path2);
-            end2end!(include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/", $path)), $n, origin);
+            end2end!(
+                include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/", $path)),
+                $n,
+                origin
+            );
         };
     }
 
@@ -203,7 +209,6 @@ mod tests {
     fn two_lines() {
         end2end!(fluff_up!(["Alphy", "Beto"]), 2);
     }
-
 
     #[test]
     fn one() {
@@ -244,10 +249,10 @@ Erronbeous bold uetchkp"#;
         let origin = ContentOrigin::RustSourceFile(PathBuf::from("/tmp/virtual"));
         let docs = crate::documentation::Documentation::from((origin.clone(), stream));
 
-        let suggestion_set = crate::checker::dummy::DummyChecker::check(&docs, &()).expect("Must not error");
+        let suggestion_set =
+            crate::checker::dummy::DummyChecker::check(&docs, &()).expect("Must not error");
         let (origin2, chunks) = docs.iter().next().expect("Must contain exactly one origin");
         assert_eq!(&origin, origin2);
-
 
         let chunk = chunks
             .iter()

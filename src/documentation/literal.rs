@@ -1,11 +1,9 @@
-use crate::documentation::CheckableChunk;
-use crate::{Range, Span, LineColumn};
-use std::fmt;
-use std::convert::TryFrom;
-use anyhow::{Error,Result,anyhow};
-use lazy_static::lazy_static;
-use regex::Regex;
+use crate::{Range, Span};
+use anyhow::{anyhow, Result};
 
+use regex::Regex;
+use std::convert::TryFrom;
+use std::fmt;
 
 /// A literal with meta info where the first and list whitespace may be found.
 #[derive(Clone)]
@@ -57,41 +55,40 @@ impl std::hash::Hash for TrimmedLiteral {
     }
 }
 
-
 impl TryFrom<proc_macro2::Literal> for TrimmedLiteral {
     type Error = anyhow::Error;
     fn try_from(literal: proc_macro2::Literal) -> Result<Self> {
         let rendered = dbg!(literal.to_string());
 
-        lazy_static::lazy_static!{
+        lazy_static::lazy_static! {
             static ref PREFIX_ERASER: Regex = Regex::new(r##"^((?:r#+)?")"##).unwrap();
             static ref SUFFIX_ERASER: Regex = Regex::new(r##"("#*)$"##).unwrap();
         };
 
-        let mut pre = if let Some(captures) = PREFIX_ERASER.captures(rendered.as_str()) {
-            if  let Some(prefix) = captures.get(1) {
+        let pre = if let Some(captures) = PREFIX_ERASER.captures(rendered.as_str()) {
+            if let Some(prefix) = captures.get(1) {
                 prefix.as_str().len()
             } else {
-                return Err(anyhow!("Unknown prefix of literal"))
+                return Err(anyhow!("Unknown prefix of literal"));
             }
         } else {
-            return Err(anyhow!("Missing prefix of literal"))
+            return Err(anyhow!("Missing prefix of literal"));
         };
         let post = if let Some(captures) = SUFFIX_ERASER.captures(rendered.as_str()) {
             // capture indices are 1 based, 0 is the full string
-            if let  Some(suffix) = captures.get(captures.len() - 1) {
+            if let Some(suffix) = captures.get(captures.len() - 1) {
                 suffix.as_str().len()
             } else {
-                return Err(anyhow!("Unknown prefix of literal"))
+                return Err(anyhow!("Unknown prefix of literal"));
             }
         } else {
-            return Err(anyhow!("Missing prefix of literal"))
+            return Err(anyhow!("Missing prefix of literal"));
         };
-        let scrap = |c: &'_ char| -> bool { c.is_whitespace() };
+        let _scrap = |c: &'_ char| -> bool { c.is_whitespace() };
 
         let (len, pre, post) = match rendered.len() {
             len if len >= pre + post => (len - pre - post, pre, post),
-            len => return Err(anyhow!("Prefix and suffix overlap, which is impossible")),
+            _len => return Err(anyhow!("Prefix and suffix overlap, which is impossible")),
         };
 
         let mut span = Span::from(literal.span());
@@ -168,11 +165,6 @@ impl fmt::Debug for TrimmedLiteral {
         )
     }
 }
-
-
-
-
-
 
 /// A display style wrapper for a trimmed literal.
 ///
@@ -259,6 +251,7 @@ impl<'a> fmt::Display for TrimmedLiteralDisplay<'a> {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+	use crate::LineColumn;
 
     pub(crate) fn annotated_literals(source: &str) -> Vec<TrimmedLiteral> {
         let stream =
@@ -280,14 +273,16 @@ pub(crate) mod tests {
                     None
                 }
             })
-            .map(|literal| TrimmedLiteral::try_from(literal).expect("Literals must be convertable to trimmed literals"))
+            .map(|literal| {
+                TrimmedLiteral::try_from(literal)
+                    .expect("Literals must be convertable to trimmed literals")
+            })
             .collect()
-	}
+    }
 
-
-	const PREFIX_RAW_LEN: usize = 3;
-	const SUFFIX_RAW_LEN: usize = 2;
-	const GAENSEFUESSCHEN: usize = 1;
+    const PREFIX_RAW_LEN: usize = 3;
+    const SUFFIX_RAW_LEN: usize = 2;
+    const GAENSEFUESSCHEN: usize = 1;
 
     struct Triplet {
         /// source content
@@ -431,7 +426,6 @@ lines
 
     #[test]
     fn raw_variants_inspection() {
-
         for triplet in TEST_DATA {
             let literals = annotated_literals(triplet.source);
 

@@ -95,11 +95,12 @@ impl CheckableChunk {
                     // could possibly happen on empty documentation lines with `///`
                     trace!(
                         "Zero length fraction length found, skipping: {:?} -> {:?}",
-                        range, span
+                        range,
+                        span
                     );
                     return None;
-                // } else {
-                //     trace!("Range {:?} -> Span {:?}", range, span);
+                    // } else {
+                    //     trace!("Range {:?} -> Span {:?}", range, span);
                 }
                 if range.contains(&start) {
                     active = true;
@@ -178,7 +179,7 @@ where
     }
 }
 
-use anyhow::{anyhow, Error, Result};
+use anyhow::{Error, Result};
 use std::convert::TryFrom;
 
 impl<'a, R> TryFrom<(R, Span)> for ChunkDisplay<'a>
@@ -216,7 +217,7 @@ impl<'a> fmt::Display for ChunkDisplay<'a> {
         let oob = Style::new().blink().bold().on_yellow().red();
 
         // simplify
-        let literal = self.0;
+        let _literal = self.0;
         let start = self.1.start;
         let end = self.1.end;
 
