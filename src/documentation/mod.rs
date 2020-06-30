@@ -96,6 +96,7 @@ mod tests {
     use super::*;
     use std::convert::From;
     use crate::checker::Checker;
+    use crate::fluff_up;
 
     #[test]
     fn parse_and_construct() {
