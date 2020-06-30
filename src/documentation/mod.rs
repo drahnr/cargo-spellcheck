@@ -250,7 +250,7 @@ Erronbeous bold uetchkp"#;
 
 
         let chunk = chunks
-        .iter()
+            .iter()
             .next()
             .expect("Must contain exactly one chunk");
 
@@ -267,14 +267,15 @@ Erronbeous bold uetchkp"#;
             let range: Range = suggestion.span.try_into().expect("Must be a single line");
             let s = dbg!(suggestion.chunk.as_str());
             println!(
-                "Foxxy funkster: {:?}",
+                "Foxxy funkster: {}",
                 suggestion.chunk.display(range.clone())
             );
             assert_eq!(word, &SOURCE[range]);
             println!("Found word >> {} <<", word);
         };
 
-        expected("Erronbeous");
-        expected("uetchkp");
+        expected("A");
+        // expected(" A headline.\n///\n/// Erronbeous ");
+        expected("headline");
     }
 }
