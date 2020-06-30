@@ -3,7 +3,7 @@
 use super::*;
 use crate::documentation::Range;
 use crate::Span;
-use anyhow::{Result,Error,anyhow};
+use anyhow::{Error, Result};
 use std::convert::TryFrom;
 
 /// Cluster literals for one file

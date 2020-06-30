@@ -1,5 +1,5 @@
-use crate::{Range, LineColumn, Span, CheckableChunk};
 pub use super::{TrimmedLiteral, TrimmedLiteralDisplay};
+use crate::{CheckableChunk, Range, Span};
 /// A set of consecutive literals.
 ///
 /// Provides means to render them as a code block
@@ -57,16 +57,14 @@ impl LiteralSet {
             let mut cursor = 0usize;
             // for use with `Range`
             let mut start; // inclusive
-            let mut end ; // exclusive
+            let mut end; // exclusive
             for literal in self.literals.iter().take(n - 1) {
                 start = cursor;
                 cursor += literal.len();
                 end = cursor;
                 // @todo check if the `Span` conversion here is done correctly
-                let mut span = Span::from(literal);
-                source_mapping.insert(Range { start, end },
-                    span
-                );
+                let span = Span::from(literal);
+                source_mapping.insert(Range { start, end }, span);
                 content.push_str(literal.as_str());
                 content.push('\n');
                 // the newline is _not_ covered by a span, after all it's inserted by us!
@@ -103,11 +101,10 @@ impl<'s> fmt::Display for LiteralSet {
     }
 }
 
-
 #[cfg(test)]
 pub(crate) mod tests {
-    use super::*;
     pub(crate) use super::super::literal::tests::annotated_literals;
+    use super::*;
 
     #[macro_export]
     macro_rules! fluff_up {
@@ -129,7 +126,7 @@ struct Fluff;"#;
 
     #[test]
     fn fluff_multi() {
-        const TEST: &'static str = fluff_up!(["a","b","c"]);
+        const TEST: &'static str = fluff_up!(["a", "b", "c"]);
         const EXPECT: &'static str = r#"/// a
 /// b
 /// c
@@ -150,7 +147,6 @@ struct Fluff;"#;
         gen_literal_set(fluffed.as_str())
     }
 
-
     pub(crate) fn gen_literal_set(source: &str) -> LiteralSet {
         let literals = dbg!(annotated_literals(dbg!(source)));
 
@@ -160,7 +156,6 @@ struct Fluff;"#;
         }
         dbg!(cls)
     }
-
 
     const SKIP: usize = 3;
 
@@ -176,9 +171,6 @@ struct Vikings;
     const TEST_LITERALS_COMBINED: &str = r#" Another exmalibu verification pass.
 
  Boats float, don't they?"#;
-
-
-
 
     #[test]
     fn combine_literals() {
@@ -256,7 +248,6 @@ struct Vikings;
         };
     }
 
-
     #[test]
     fn first_line_extract_0() {
         test_raw!(["livelyness", "yyy"] ; 2..6, "ivel");
@@ -271,9 +262,9 @@ struct Vikings;
     fn set_into_chunk() {
         use std::convert::TryInto;
         let _ = env_logger::builder()
-                .filter(None, log::LevelFilter::Trace)
-                .is_test(true)
-                .try_init();
+            .filter(None, log::LevelFilter::Trace)
+            .is_test(true)
+            .try_init();
 
         let literal_set = dbg!(gen_literal_set(TEST));
 

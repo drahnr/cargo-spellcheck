@@ -14,9 +14,9 @@
 use crate::documentation::{CheckableChunk, ContentOrigin};
 use crate::Span;
 
-use std::convert::TryFrom;
 use enumflags2::BitFlags;
-use log::warn;
+
+use std::convert::TryFrom;
 
 /// Bitflag of available checkers by compilation / configuration.
 #[derive(Debug, Clone, Copy, BitFlags, Eq, PartialEq, Hash)]
@@ -229,13 +229,13 @@ impl<'s> fmt::Display for Suggestion<'s> {
 
 impl<'s> fmt::Debug for Suggestion<'s> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match crate::documentation::ChunkDisplay::try_from((
-            self.chunk,
-            self.span
-        ))
-        {
+        match crate::documentation::ChunkDisplay::try_from((self.chunk, self.span)) {
             Ok(printable) => write!(formatter, "({}, {:?})", &printable, printable.1),
-            Err(e) => write!(formatter, "Failed to create chunk display from chunk={:?}, span={:?} with {}", self.chunk, self.span, e),
+            Err(e) => write!(
+                formatter,
+                "Failed to create chunk display from chunk={:?}, span={:?} with {}",
+                self.chunk, self.span, e
+            ),
         }
     }
 }

@@ -1,4 +1,4 @@
-use crate::{Config, Detector, Documentation, Suggestion, SuggestionSet, ContentOrigin};
+use crate::{Config, Detector, Documentation, Suggestion, SuggestionSet};
 
 use anyhow::Result;
 
@@ -112,7 +112,9 @@ pub mod dummy;
 pub mod tests {
     use super::*;
     use crate::span::Span;
-    use proc_macro2::{LineColumn, Literal};
+    use crate::ContentOrigin;
+    use crate::LineColumn;
+    use proc_macro2::Literal;
     use std::path::PathBuf;
 
     const TEXT: &'static str = "With markdown removed, for sure.";
@@ -144,8 +146,10 @@ pub mod tests {
         let stream =
             syn::parse_str::<proc_macro2::TokenStream>(content).expect("Must parse just fine");
 
-        let d = Documentation::from((ContentOrigin::RustSourceFile
-            (PathBuf::from("dummy/dummy.rs")), stream));
+        let d = Documentation::from((
+            ContentOrigin::RustSourceFile(PathBuf::from("dummy/dummy.rs")),
+            stream,
+        ));
         let suggestion_set =
             dummy::DummyChecker::check(&d, &()).expect("Dummy extraction must never fail");
 

@@ -2,9 +2,8 @@
 
 use crate::Range;
 
-pub use proc_macro2::LineColumn;
-use proc_macro2::Literal;
 use super::TrimmedLiteral;
+pub use proc_macro2::LineColumn;
 
 use std::hash::{Hash, Hasher};
 
@@ -137,7 +136,6 @@ impl From<&TrimmedLiteral> for Span {
 #[cfg(test)]
 mod tests {
     use super::*;
-
 
     #[test]
     fn back() {
