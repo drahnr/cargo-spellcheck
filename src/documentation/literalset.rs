@@ -112,13 +112,10 @@ pub(crate) mod tests {
     #[macro_export]
     macro_rules! fluff_up {
         ([ $( $line:literal ),+ $(,)?]) => {
-            concat!("/// ", fluff_up!( $( $line ),+ ), "\nstruct Fluff;");
+            concat!("" $(, "/// ", $line, "\n")+ , "struct Fluff;")
         };
-        ($acc:literal, $( $line:literal ),+ $(,)?) => {
-            concat!($acc, "\n/// ", fluff_up!( $( $line ),+ ))
-        };
-        ($leaf:literal) => {
-            concat!($leaf)
+        ($( $line:literal ),+ $(,)?) => {
+            fluff_up!([$( $line ),+])
         };
     }
 
@@ -236,14 +233,15 @@ struct Vikings;
 
             let range: Range = $range;
 
-            const TEST: &str = concat!("" $(, "///", $txt, "\n")+ , "struct X;");
-            const START: usize = 3; // skip `///` which the span we get from the literal
-            let _end: usize = START + vec![$($txt.len()),* ].into_iter().sum::<usize>();
-            let literal_set = gen_literal_set(TEST);
+            const TEST: &str = fluff_up!($( $txt),+);
+            const START: usize = 3; // skip `///` which is the span we get from the literal
+            let _end: usize = START $( + $txt.len())+;
+            let literal_set = gen_literal_set(dbg!(TEST));
 
 
-            let chunk: CheckableChunk = literal_set.into_chunk();
+            let chunk: CheckableChunk = dbg!(literal_set.into_chunk());
             let map_range_to_span = chunk.find_spans(range.clone());
+
             let mut iter = dbg!(map_range_to_span).into_iter();
             let (range, _span) = iter.next().expect("Must be at least one literal");
             let range_for_raw_str = Range {
@@ -252,13 +250,19 @@ struct Vikings;
             };
 
             // @todo check test data integrity here
-            assert_eq!(&TEST[range_for_raw_str.clone()], &chunk.as_str()[range_for_raw_str.clone()]);
+            assert_eq!(&TEST[range_for_raw_str.clone()], &chunk.as_str()[range.clone()]);
             assert_eq!(&TEST[range_for_raw_str], $expected);
-
         };
     }
 
     // @todo tests used to be good, so the `find_spans` implementation must still be flawed :)
-    test_raw!(raw_extract_0, [" livelyness", " yyy"] ; 2..6, "ivel");
-    test_raw!(raw_extract_1, [" + 12 + x0"] ; 9..10, "0");
+    #[test]
+    fn raw_extract_0() {
+        test_raw!(["livelyness", "yyy"] ; 2..6, "ivel");
+    }
+
+    #[test]
+    fn raw_extract_1() {
+        test_raw!(["+ 12 + x0"] ; 9..10, "0");
+    }
 }
