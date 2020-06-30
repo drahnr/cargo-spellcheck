@@ -244,25 +244,25 @@ struct Vikings;
 
             let mut iter = dbg!(map_range_to_span).into_iter();
             let (range, _span) = iter.next().expect("Must be at least one literal");
+
+            /// the range for raw str contains an offset of 3 when used with `///`
             let range_for_raw_str = Range {
                 start: range.start + START,
                 end: range.end + START,
             };
 
-            // @todo check test data integrity here
-            assert_eq!(&TEST[range_for_raw_str.clone()], &chunk.as_str()[range.clone()]);
+            assert_eq!(&TEST[range_for_raw_str.clone()], &chunk.as_str()[range]);
             assert_eq!(&TEST[range_for_raw_str], $expected);
         };
     }
 
-    // @todo tests used to be good, so the `find_spans` implementation must still be flawed :)
     #[test]
-    fn raw_extract_0() {
+    fn first_line_extract_0() {
         test_raw!(["livelyness", "yyy"] ; 2..6, "ivel");
     }
 
     #[test]
-    fn raw_extract_1() {
+    fn first_line_extract_1() {
         test_raw!(["+ 12 + x0"] ; 9..10, "0");
     }
 }
