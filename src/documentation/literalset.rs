@@ -284,10 +284,11 @@ struct Vikings;
 
         const THREE_SLASHES: usize = 3usize;
         for ((range, span), s) in chunk.iter().zip(it) {
+            // @todo try_into() only works on one-line spans/ranges
             let r: Range = span.try_into().expect("Should work");
-            assert_eq!(&r, range);
-            /// the range for raw str contains an offset of 3 when used with `///`
-            assert_eq!(&content[(range.start + THREE_SLASHES)..(range.end + THREE_SLASHES)], s.as_str());
+            // the range for raw str contains an offset of 3 when used with `///`
+            assert_eq!(&(r.start - THREE_SLASHES..r.end - THREE_SLASHES), range);
+            assert_eq!(&content[range.start..range.end], s.as_str());
         }
     }
 }
