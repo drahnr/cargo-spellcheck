@@ -161,8 +161,8 @@ impl<'s> fmt::Display for Suggestion<'s> {
         //    |   Possible spelling mistake found.
         //    |
         // ```
-        let padding_offset = 5;
-        let padding_end = 15usize;
+        const PADDING_OFFSET : usize = 5;
+        const PADDING_END : usize = 15;
 
         let range_start_text = Range {
             start: 0usize,
@@ -176,13 +176,13 @@ impl<'s> fmt::Display for Suggestion<'s> {
             // Attempt to fit the misspelled word in the beginning followed by info.
             if range_end_text.len() >= terminal_size {
                 min_chars = marker_range_relative.start - 1;
-                max_chars = (min_chars + terminal_size).saturating_sub(padding_end);
+                max_chars = (min_chars + terminal_size).saturating_sub(PADDING_END);
             }
             // Attempt to fit the misspelled word in the end after the info.
             else if range_start_text.len() > terminal_size {
                 min_chars = (marker_range_relative.end)
                     .saturating_sub(terminal_size)
-                    .saturating_add(padding_end);
+                    .saturating_add(PADDING_END);
                 max_chars = marker_range_relative.end;
             }
             // Attempt to fit the misspelled word in the middle with info in th left and right of it
@@ -192,7 +192,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
                 max_chars = marker_range_relative
                     .end
                     .saturating_add(context)
-                    .saturating_sub(padding_end);
+                    .saturating_sub(PADDING_END);
             }
             // with the successful attempt, truncate the literal for displaying
             writeln!(
@@ -200,7 +200,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
                 "  ... {} ...",
                 self.literal.truncate(min_chars, max_chars)
             )?;
-            offset = offset.saturating_sub(min_chars) + padding_offset;
+            offset = offset.saturating_sub(min_chars) + PADDING_OFFSET;
         // literal is smaller than terminal size and can be fully displayed
         } else {
             writeln!(formatter, " {}", self.literal.as_str())?;
