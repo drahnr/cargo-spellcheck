@@ -11,6 +11,7 @@
 //!     |     - you can add it to your personal dictionary to prevent future alerts.
 //! ```
 
+use crossterm::terminal::size;
 use std::path::{Path, PathBuf};
 
 use crate::Span;
@@ -18,8 +19,6 @@ use crate::TrimmedLiteralRef;
 
 use enumflags2::BitFlags;
 use log::error;
-
-use terminal_size::{terminal_size, Height, Width};
 
 /// Bitflag of available checkers by compilation / configuration.
 #[derive(Debug, Clone, Copy, BitFlags, Eq, PartialEq, Hash)]
@@ -30,12 +29,17 @@ pub enum Detector {
 }
 
 pub fn get_terminal_size() -> usize {
-    // terminal size
-    let size = terminal_size();
-    if let Some((Width(cols), Height(_))) = size {
-        cols as usize
-    } else {
-        140 as usize //set default terminal size if no?
+    use super::*;
+    const DEFAULT_TERMINAL_SIZE: usize = 80;
+    match size() {
+        Ok((terminal_size, _)) => terminal_size as usize,
+        Err(_) => {
+            warn!(
+                "Unable to get terminal size. Use default: {}",
+                DEFAULT_TERMINAL_SIZE
+            );
+            DEFAULT_TERMINAL_SIZE
+        }
     }
 }
 // impl
@@ -161,8 +165,8 @@ impl<'s> fmt::Display for Suggestion<'s> {
         //    |   Possible spelling mistake found.
         //    |
         // ```
-        const PADDING_OFFSET : usize = 5;
-        const PADDING_END : usize = 15;
+        const PADDING_OFFSET: usize = 5;
+        const PADDING_END: usize = 15;
 
         let range_start_text = Range {
             start: 0usize,
