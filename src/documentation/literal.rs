@@ -251,7 +251,7 @@ impl<'a> fmt::Display for TrimmedLiteralDisplay<'a> {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-	use crate::LineColumn;
+    use crate::LineColumn;
 
     pub(crate) fn annotated_literals(source: &str) -> Vec<TrimmedLiteral> {
         let stream =

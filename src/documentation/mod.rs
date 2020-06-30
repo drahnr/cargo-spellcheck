@@ -174,16 +174,15 @@ mod tests {
                 syn::parse_str::<proc_macro2::TokenStream>($test).expect("Must be valid rust");
             let docs = Documentation::from((origin.clone(), stream));
             assert_eq!(docs.index.len(), 1);
-            let v = docs.index.get(&origin).expect("Must contain dummy path");
-            assert_eq!(dbg!(v).len(), 1);
-            let plain = v[0].erase_markdown();
-            log::info!("{:?}", &plain);
+            let chunks = docs.index.get(&origin).expect("Must contain dummy path");
+            assert_eq!(dbg!(chunks).len(), 1);
+            let chunk = &chunks[0];
+            log::warn!("Chunk::find_spans: {:?}", chunk.find_spans(2..6));
+            let plain = chunk.erase_markdown();
+            log::info!("Plain: {:?}", &plain);
+            log::warn!("Plain::find_spans: {:?}", plain.find_spans(2..6));
 
-            let config = crate::config::Config::load().unwrap_or_else(|_e| {
-                warn!("Using default configuration!");
-                Config::default()
-            });
-            let suggestion_set = crate::checker::check(&docs, &config)
+            let suggestion_set = crate::checker::dummy::DummyChecker::check(&docs, &())
                 .expect("Must not fail to extract suggestions");
             let (_, suggestions) = suggestion_set
                 .into_iter()
