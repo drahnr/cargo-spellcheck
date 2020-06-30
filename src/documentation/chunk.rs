@@ -139,6 +139,11 @@ impl CheckableChunk {
     pub fn display(&self, range: Range) -> ChunkDisplay {
         ChunkDisplay::from((self, range))
     }
+
+    #[allow(unused)]
+    pub fn iter(&self) -> indexmap::map::Iter<Range, Span> {
+        self.source_mapping.iter()
+    }
 }
 
 /// Convert the clusters of one file into a source description as well

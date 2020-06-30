@@ -256,6 +256,7 @@ struct Vikings;
         };
     }
 
+
     #[test]
     fn first_line_extract_0() {
         test_raw!(["livelyness", "yyy"] ; 2..6, "ivel");
@@ -264,5 +265,28 @@ struct Vikings;
     #[test]
     fn first_line_extract_1() {
         test_raw!(["+ 12 + x0"] ; 9..10, "0");
+    }
+
+    #[test]
+    fn set_into_chunk() {
+        use std::convert::TryInto;
+        let _ = env_logger::builder()
+                .filter(None, log::LevelFilter::Trace)
+                .is_test(true)
+                .try_init();
+
+        let literal_set = dbg!(gen_literal_set(TEST));
+
+        let chunk = dbg!(literal_set.clone().into_chunk());
+        let chunk2 = chunk.clone();
+        let content = chunk2.as_str();
+        let mut it = literal_set.literals().into_iter();
+
+        for (k, v) in chunk.iter() {
+            let r: Range = v.try_into().expect("Should work");
+            assert_eq!(&r, k);
+            // @todo check spans
+            assert_eq!(&content[k.start..k.end], it.next().unwrap().as_str());
+        }
     }
 }
