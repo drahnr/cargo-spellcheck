@@ -103,6 +103,8 @@ impl TryFrom<proc_macro2::Literal> for TrimmedLiteral {
         if pre == 1 && span.start.column == 0 {
             span.start.column += 2;
         }
+        span.start.column += pre;
+        span.end.column -= post;
 
         Ok(Self {
             len,
@@ -315,7 +317,7 @@ struct One;
                 },
                 end: LineColumn {
                     line: 2usize,
-                    column: 11usize, // @todo why???
+                    column: 10usize, // @todo why???
                 },
             },
             trimmed_span: Span {
@@ -325,7 +327,7 @@ struct One;
                 },
                 end: LineColumn {
                     line: 2usize,
-                    column: 11usize,
+                    column: 10usize,
                 },
             },
         },
@@ -432,11 +434,16 @@ lines
 
         for triplet in TEST_DATA {
             let literals = annotated_literals(triplet.source);
+
             assert_eq!(literals.len(), 1);
+
             let literal = literals.first().expect("Must contain exactly one literal");
-            assert_eq!(literal.span(), triplet.trimmed_span);
+
             assert_eq!(literal.as_untrimmed_str(), triplet.extracted);
-			assert_eq!(literal.as_str(), triplet.trimmed);
+
+            assert_eq!(literal.as_str(), triplet.trimmed);
+
+            assert_eq!(literal.span(), triplet.trimmed_span);
         }
     }
 }
