@@ -122,6 +122,24 @@ pub(crate) mod tests {
         };
     }
 
+    #[test]
+    fn fluff_one() {
+        const TEST: &'static str = fluff_up!(["a"]);
+        const EXPECT: &'static str = r#"/// a
+struct Fluff;"#;
+        assert_eq!(TEST, EXPECT);
+    }
+
+    #[test]
+    fn fluff_multi() {
+        const TEST: &'static str = fluff_up!(["a","b","c"]);
+        const EXPECT: &'static str = r#"/// a
+/// b
+/// c
+struct Fluff;"#;
+        assert_eq!(TEST, EXPECT);
+    }
+
     /// prefer `fluff_up!` over this
     #[allow(unused)]
     pub(crate) fn gen_literal_set_with_fluff(source: &str) -> LiteralSet {
