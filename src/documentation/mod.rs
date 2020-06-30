@@ -155,45 +155,65 @@ mod tests {
         );
     }
 
-    macro_rules! end2end_file {
-        ($name: ident, $path: literal, $n: expr) => {
-            #[test]
-            fn $name() {
-                let _ = env_logger::from_env(
-                    env_logger::Env::new().filter_or("CARGO_SPELLCHECK", "cargo_spellcheck=trace"),
-                )
-                .is_test(true)
-                .try_init();
+    macro_rules! end2end {
+        ($test:expr, $n:expr) => {
+            end2end!($test, $n, ContentOrigin::RustSourceFile(PathBuf::from("/tmp/dummy")))
+        };
 
-                const TEST: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/", $path));
-                let test_path = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/", $path));
-                let origin = ContentOrigin::RustSourceFile(test_path.clone());
-                let stream =
-                    syn::parse_str::<proc_macro2::TokenStream>(TEST).expect("Must be valid rust");
-                let docs = Documentation::from((origin.clone(), stream));
-                assert_eq!(docs.index.len(), 1);
-                let v = docs.index.get(&origin).expect("Must contain dummy path");
-                assert_eq!(dbg!(v).len(), 1);
-                let plain = v[0].erase_markdown();
-                log::info!("{:?}", &plain);
+        ($test:expr, $n:expr, $origin:expr) => {
+            let _ = env_logger::from_env(
+                env_logger::Env::new().filter_or("CARGO_SPELLCHECK", "cargo_spellcheck=trace"),
+            )
+            .is_test(true)
+            .try_init();
 
-                let config = crate::config::Config::load().unwrap_or_else(|_e| {
-                    warn!("Using default configuration!");
-                    Config::default()
-                });
-                let suggestion_set = crate::checker::check(&docs, &config)
-                    .expect("Must not fail to extract suggestions");
-                let (_, suggestions) = suggestion_set
-                    .into_iter()
-                    .next()
-                    .expect("Must contain exactly one item");
-                assert_eq!(dbg!(&suggestions).len(), $n);
-            }
+            let origin = $origin;
+            let stream =
+                syn::parse_str::<proc_macro2::TokenStream>($test).expect("Must be valid rust");
+            let docs = Documentation::from((origin.clone(), stream));
+            assert_eq!(docs.index.len(), 1);
+            let v = docs.index.get(&origin).expect("Must contain dummy path");
+            assert_eq!(dbg!(v).len(), 1);
+            let plain = v[0].erase_markdown();
+            log::info!("{:?}", &plain);
+
+            let config = crate::config::Config::load().unwrap_or_else(|_e| {
+                warn!("Using default configuration!");
+                Config::default()
+            });
+            let suggestion_set = crate::checker::check(&docs, &config)
+                .expect("Must not fail to extract suggestions");
+            let (_, suggestions) = suggestion_set
+                .into_iter()
+                .next()
+                .expect("Must contain exactly one item");
+            assert_eq!(dbg!(&suggestions).len(), $n);
         };
     }
 
-    end2end_file!(one, "demo/src/nested/justone.rs", 1);
-    end2end_file!(two, "demo/src/nested/justtwo.rs", 2);
+    macro_rules! end2end_file {
+        ($path: literal, $n: expr) => {
+            let path2 = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/", $path));
+            let origin = ContentOrigin::RustSourceFile(path2);
+            end2end!(include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/", $path)), $n, origin);
+        };
+    }
+
+    #[test]
+    fn two_lines() {
+        end2end!(fluff_up!(["Alphy", "Beto"]), 2);
+    }
+
+
+    #[test]
+    fn one() {
+        end2end_file!("demo/src/nested/justone.rs", 1);
+    }
+
+    #[test]
+    fn two() {
+        end2end_file!("demo/src/nested/justtwo.rs", 2);
+    }
 
     // use crate::literalset::tests::{annotated_literals,gen_literal_set};
 
