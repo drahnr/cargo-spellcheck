@@ -61,7 +61,7 @@ impl TryFrom<proc_macro2::Literal> for TrimmedLiteral {
         let rendered = dbg!(literal.to_string());
 
         lazy_static::lazy_static! {
-            static ref PREFIX_ERASER: Regex = Regex::new(r##"^((?:r#+)?")"##).unwrap();
+            static ref PREFIX_ERASER: Regex = Regex::new(r##"^((?:r#*)?")"##).unwrap();
             static ref SUFFIX_ERASER: Regex = Regex::new(r##"("#*)$"##).unwrap();
         };
 
@@ -72,17 +72,17 @@ impl TryFrom<proc_macro2::Literal> for TrimmedLiteral {
                 return Err(anyhow!("Unknown prefix of literal"));
             }
         } else {
-            return Err(anyhow!("Missing prefix of literal"));
+            return Err(anyhow!("Missing prefix of literal: {}", rendered.as_str()));
         };
         let post = if let Some(captures) = SUFFIX_ERASER.captures(rendered.as_str()) {
             // capture indices are 1 based, 0 is the full string
             if let Some(suffix) = captures.get(captures.len() - 1) {
                 suffix.as_str().len()
             } else {
-                return Err(anyhow!("Unknown prefix of literal"));
+                return Err(anyhow!("Unknown suffix of literal"));
             }
         } else {
-            return Err(anyhow!("Missing prefix of literal"));
+            return Err(anyhow!("Missing suffix of literal: {}", rendered.as_str()));
         };
         let _scrap = |c: &'_ char| -> bool { c.is_whitespace() };
 
