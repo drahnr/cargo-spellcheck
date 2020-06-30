@@ -1,5 +1,5 @@
 use crate::{Range, LineColumn, Span, CheckableChunk};
-pub use super::{TrimmedLiteral,TrimmedLiteralRef, TrimmedLiteralDisplay};
+pub use super::{TrimmedLiteral, TrimmedLiteralDisplay};
 /// A set of consecutive literals.
 ///
 /// Provides means to render them as a code block
@@ -15,7 +15,7 @@ impl LiteralSet {
     /// Initiate a new set based on the first literal
     pub fn from(literal: TrimmedLiteral) -> Self {
         Self {
-            coverage: (literal.span().start().line, literal.span().end().line),
+            coverage: (literal.span().start.line, literal.span().end.line),
             literals: vec![literal],
         }
     }
@@ -24,14 +24,14 @@ impl LiteralSet {
     ///
     /// Returns literl within the Err variant if not adjacent
     pub fn add_adjacent(&mut self, literal: TrimmedLiteral) -> Result<(), TrimmedLiteral> {
-        let previous_line = literal.span().end().line;
+        let previous_line = literal.span().end.line;
         if previous_line == self.coverage.1 + 1 {
             self.coverage.1 += 1;
             let _ = self.literals.push(literal);
             return Ok(());
         }
 
-        let next_line = literal.span().start().line;
+        let next_line = literal.span().start.line;
         if next_line + 1 == self.coverage.0 {
             let _ = self.literals.push(literal);
             self.coverage.1 -= 1;

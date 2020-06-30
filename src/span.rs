@@ -124,20 +124,7 @@ impl TryFrom<(usize, Range)> for Span {
 
 impl From<&TrimmedLiteral> for Span {
     fn from(literal: &TrimmedLiteral) -> Self {
-        // we know that pre and post are guaranteed to be in one line
-        // so we can just modify the columns without side effects
-        let mut span = Self::from(literal.span());
-        span.start.column += literal.pre;
-        span.end.column -= literal.post;
-        // check if it is a `///` comment, for which the literal
-        // span needs to be adjusted, since it would include the `///`
-        // @todo find a better way, potentially doing this when
-        // creating a `TrimmedLiteral` and storing this on construction
-        if literal.pre == 1 && literal.span().start().column == 0 {
-            span.start.column += 2;
-        }
-
-        span
+        literal.span()
     }
 }
 
@@ -151,8 +138,9 @@ impl From<&TrimmedLiteral> for Span {
 mod tests {
     use super::*;
 
+
     #[test]
-    fn back_and_forth() {
+    fn back() {
         const TEXT: &'static str = "Ey you!! Yes.., you there!";
         let span = Span {
             start: LineColumn {
@@ -170,4 +158,16 @@ mod tests {
         assert_eq!(&TEXT[range], "you!!");
         assert_eq!(span, (0usize, 3..8).try_into().unwrap());
     }
+
+    // use crate::fluff_up;
+
+    // #[test]
+    // fn forth() {
+
+    //     const CONTENT: &'static str = fluff_up!(["Omega"]);
+    //     let range = ((&span).try_into() as Result<Range>).unwrap();
+    //     assert_eq!(range, 3..8);
+    //     assert_eq!(&TEXT[range], "you!!");
+    //     assert_eq!(span, (0usize, 3..8).try_into().unwrap());
+    // }
 }
