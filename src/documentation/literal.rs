@@ -7,68 +7,20 @@ use lazy_static::lazy_static;
 use regex::Regex;
 
 
-#[derive(Clone, Copy, Hash, PartialEq, Eq)]
-/// A ref to a trimmed literal.
-pub struct TrimmedLiteralRef<'l> {
-    reference: &'l TrimmedLiteral,
-}
-
-impl<'l> std::ops::Deref for TrimmedLiteralRef<'l> {
-    type Target = proc_macro2::Literal;
-    fn deref(&self) -> &Self::Target {
-        &self.reference.literal
-    }
-}
-
-impl<'l> From<&'l TrimmedLiteral> for TrimmedLiteralRef<'l> {
-    fn from(anno: &'l TrimmedLiteral) -> Self {
-        Self { reference: anno }
-    }
-}
-
-impl<'l> TrimmedLiteralRef<'l> {
-    pub fn pre(&self) -> usize {
-        self.reference.pre
-    }
-    pub fn post(&self) -> usize {
-        self.reference.pre
-    }
-    pub fn as_str(&self) -> &str {
-        self.reference.as_str()
-    }
-    pub fn len(&self) -> usize {
-        self.reference.len
-    }
-    pub fn as_ref(&self) -> &TrimmedLiteral {
-        self.reference
-    }
-
-    #[allow(unused)]
-    pub(crate) fn display(&self, highlight: Range) -> TrimmedLiteralDisplay {
-        self.reference.display(highlight)
-    }
-}
-
-impl<'l> fmt::Debug for TrimmedLiteralRef<'l> {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.reference.fmt(formatter)
-    }
-}
-
 /// A literal with meta info where the first and list whitespace may be found.
 #[derive(Clone)]
 pub struct TrimmedLiteral {
-    /// The literal which this annotates to.
-    pub literal: proc_macro2::Literal,
+    /// The span of rendered content, minus pre and post already applied.
+    span: Span,
     /// the complete rendered string including post and pre.
-    pub rendered: String,
+    rendered: String,
     /// Literal prefx
     pub pre: usize,
     /// Literal postfix
     pub post: usize,
     /// Length of rendered **minus** `pre` and `post`.
     /// If the literal is all empty, `pre` and `post` become `0`, and `len` covers the full length of `rendered`.
-    pub len: usize,
+    len: usize,
 }
 
 impl std::cmp::PartialEq for TrimmedLiteral {
@@ -85,10 +37,7 @@ impl std::cmp::PartialEq for TrimmedLiteral {
         if self.len() != other.len() {
             return false;
         }
-        if self.literal.span().start() != other.literal.span().start() {
-            return false;
-        }
-        if self.literal.span().end() != other.literal.span().end() {
+        if self.span != other.span {
             return false;
         }
 
@@ -101,10 +50,10 @@ impl std::cmp::Eq for TrimmedLiteral {}
 impl std::hash::Hash for TrimmedLiteral {
     fn hash<H: std::hash::Hasher>(&self, hasher: &mut H) {
         self.rendered.hash(hasher);
+        self.span.hash(hasher);
         self.pre.hash(hasher);
         self.post.hash(hasher);
         self.len.hash(hasher);
-        Span::from(self.literal.span()).hash(hasher);
     }
 }
 
@@ -145,26 +94,35 @@ impl TryFrom<proc_macro2::Literal> for TrimmedLiteral {
             len => return Err(anyhow!("Prefix and suffix overlap, which is impossible")),
         };
 
+        let mut span = Span::from(literal.span());
+
+        // check if it is a `///` comment, for which the literal
+        // span needs to be adjusted, since it would include the `///`
+        // @todo find a better way, potentially doing this when
+        // creating a `TrimmedLiteral` and storing this on construction
+        if pre == 1 && span.start.column == 0 {
+            span.start.column += 2;
+        }
+
         Ok(Self {
             len,
-            literal,
             rendered,
+            span,
             pre,
             post,
         })
     }
 }
 
-impl std::ops::Deref for TrimmedLiteral {
-    type Target = proc_macro2::Literal;
-    fn deref(&self) -> &Self::Target {
-        &self.literal
-    }
-}
-
 impl TrimmedLiteral {
     pub fn as_str(&self) -> &str {
         &self.rendered.as_str()[self.pre..(self.pre + self.len)]
+    }
+    pub fn prefix(&self) -> &str {
+        &self.rendered.as_str()[..self.pre]
+    }
+    pub fn suffix(&self) -> &str {
+        &self.rendered.as_str()[(self.pre + self.len)..]
     }
 
     pub fn as_untrimmed_str(&self) -> &str {
@@ -173,6 +131,18 @@ impl TrimmedLiteral {
 
     pub fn len(&self) -> usize {
         self.len
+    }
+
+    pub fn pre(&self) -> usize {
+        self.pre
+    }
+
+    pub fn post(&self) -> usize {
+        self.post
+    }
+
+    pub fn span(&self) -> Span {
+        self.span.clone()
     }
 
     pub(crate) fn display(&self, highlight: Range) -> TrimmedLiteralDisplay {
@@ -208,11 +178,11 @@ impl fmt::Debug for TrimmedLiteral {
 ///
 /// Consists of literal reference and a relative range to the start of the literal.
 #[derive(Debug, Clone)]
-pub struct TrimmedLiteralDisplay<'a>(pub TrimmedLiteralRef<'a>, pub Range);
+pub struct TrimmedLiteralDisplay<'a>(pub &'a TrimmedLiteral, pub Range);
 
 impl<'a, R> From<(R, Range)> for TrimmedLiteralDisplay<'a>
 where
-    R: Into<TrimmedLiteralRef<'a>>,
+    R: Into<&'a TrimmedLiteral>,
 {
     fn from(tuple: (R, Range)) -> Self {
         let tuple0 = tuple.0.into();
@@ -220,8 +190,8 @@ where
     }
 }
 
-impl<'a> Into<(TrimmedLiteralRef<'a>, Range)> for TrimmedLiteralDisplay<'a> {
-    fn into(self) -> (TrimmedLiteralRef<'a>, Range) {
+impl<'a> Into<(&'a TrimmedLiteral, Range)> for TrimmedLiteralDisplay<'a> {
+    fn into(self) -> (&'a TrimmedLiteral, Range) {
         (self.0, self.1)
     }
 }
@@ -247,7 +217,7 @@ impl<'a> fmt::Display for TrimmedLiteralDisplay<'a> {
         assert!(start <= end);
 
         // content without quote characters
-        let data = literal.as_ref().rendered.as_str();
+        let data = literal.as_str();
 
         // colour the preceding quote character
         // and the context preceding the highlight
@@ -463,14 +433,10 @@ lines
         for triplet in TEST_DATA {
             let literals = annotated_literals(triplet.source);
             assert_eq!(literals.len(), 1);
-            let trimmed_literal = literals.first().expect("Must contain exactly one literal");
-            // use the raw `proc_macro2::Literal`
-            let literal = &trimmed_literal.literal;
-
-            assert_eq!(Span::from(dbg!(literal).span()), triplet.extracted_span);
-            assert_eq!(literal.to_string(), triplet.extracted.to_string());
-			assert_eq!(trimmed_literal.as_str(), triplet.trimmed);
-			// @todo trimmed_span must be asserted too
+            let literal = literals.first().expect("Must contain exactly one literal");
+            assert_eq!(literal.span(), triplet.trimmed_span);
+            assert_eq!(literal.as_untrimmed_str(), triplet.extracted);
+			assert_eq!(literal.as_str(), triplet.trimmed);
         }
     }
 }
