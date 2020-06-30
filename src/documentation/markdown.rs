@@ -147,7 +147,7 @@ impl<'a> PlainOverlay<'a> {
         Self {
             raw: chunk,
             plain,
-            mapping,
+            mapping: dbg!(mapping),
         }
     }
 
@@ -158,7 +158,7 @@ impl<'a> PlainOverlay<'a> {
         self.mapping
             .iter()
             .filter(|(plain, _raw)| {
-                plain.start <= plain_range.start && plain_range.end <= plain.end
+                dbg!(dbg!(plain).start <= dbg!(&plain_range).start && plain_range.end <= plain.end)
             })
             .fold(IndexMap::with_capacity(64), |mut acc, (plain, raw)| {
                 let offset = raw.start - plain.start;

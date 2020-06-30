@@ -7,7 +7,7 @@ pub use proc_macro2::LineColumn;
 
 use std::hash::{Hash, Hasher};
 
-use anyhow::{anyhow, Error, Result};
+use anyhow::{anyhow, bail, Error, Result};
 
 use std::convert::TryFrom;
 
@@ -58,6 +58,53 @@ impl Span {
     /// Check if `self` span covers provided `line` number, which is 1-indexed.
     pub fn covers_line(&self, line: usize) -> bool {
         self.end.line <= line && line >= self.start.line
+    }
+
+    /// Convert a given span with the associated extraction string based on literals with trimming
+    // @todo needs tests
+    fn try_into_content_range<S: AsRef<str>>(source: (&Span, S)) -> Result<Range> {
+        let (span, s) = source;
+        let s = s.as_ref();
+        let mut start = 0usize;
+        let state = LineColumn {
+            line: 1usize,
+            column: 0usize,
+        };
+        for (idx, c, line, col) in s.chars().enumerate().scan(state, |state, (idx, c)| {
+            if c == '\n' {
+                state.line += 1;
+                state.column = 0;
+            } else {
+                state.column += 1;
+            }
+            Some((idx, c, state.line, state.column))
+        }) {
+            if line < span.start.line {
+                continue;
+            }
+
+            if line == span.start.line && col == span.start.column {
+                start = idx;
+            }
+
+            if line == span.start.line && col == span.start.column {
+                start = idx;
+            }
+
+            if line == span.end.line && col == span.end.column {
+                let end = idx + 1;
+                return Ok(start..end);
+            }
+
+            if line > span.end.line {
+                break;
+            }
+
+            if line >= span.end.line && col >= span.end.column {
+                break;
+            }
+        }
+        bail!("Missing content in str I guess")
     }
 }
 

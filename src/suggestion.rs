@@ -231,11 +231,14 @@ impl<'s> fmt::Debug for Suggestion<'s> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match crate::documentation::ChunkDisplay::try_from((self.chunk, self.span)) {
             Ok(printable) => write!(formatter, "({}, {:?})", &printable, printable.1),
-            Err(e) => write!(
-                formatter,
-                "Failed to create chunk display from chunk={:?}, span={:?} with {}",
-                self.chunk, self.span, e
-            ),
+            Err(e) => {
+                writeln!(formatter, "> span={:?}", self.span)?;
+                writeln!(
+                    formatter,
+                    "> Failed to create chunk display from chunk={:?} with {}",
+                    self.chunk, e
+                )
+            }
         }
     }
 }
