@@ -279,14 +279,15 @@ struct Vikings;
 
         let chunk = dbg!(literal_set.clone().into_chunk());
         let chunk2 = chunk.clone();
-        let content = chunk2.as_str();
+        let content = dbg!(chunk2.as_str());
         let mut it = literal_set.literals().into_iter();
 
-        for (k, v) in chunk.iter() {
-            let r: Range = v.try_into().expect("Should work");
-            assert_eq!(&r, k);
-            // @todo check spans
-            assert_eq!(&content[k.start..k.end], it.next().unwrap().as_str());
+        const THREE_SLASHES: usize = 3usize;
+        for ((range, span), s) in chunk.iter().zip(it) {
+            let r: Range = span.try_into().expect("Should work");
+            assert_eq!(&r, range);
+            /// the range for raw str contains an offset of 3 when used with `///`
+            assert_eq!(&content[(range.start + THREE_SLASHES)..(range.end + THREE_SLASHES)], s.as_str());
         }
     }
 }
