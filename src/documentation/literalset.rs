@@ -58,26 +58,28 @@ impl LiteralSet {
             // for use with `Range`
             let mut start; // inclusive
             let mut end; // exclusive
-            for literal in self.literals.iter().take(n - 1) {
+            let mut it = self.literals.iter();
+            let mut next = it.next();
+            while let Some(literal) = next {
                 start = cursor;
                 cursor += literal.len();
                 end = cursor;
                 // @todo check if the `Span` conversion here is done correctly
                 let span = Span::from(literal);
-                source_mapping.insert(Range { start, end }, span);
+                let range = Range { start, end };
+                // if range.len() > 0 {
+                    source_mapping.insert(range, span);
+                // } else {
+                    // log::debug!("Skipping literal >{}< of len {} with mapping {:?} -> {:?}", literal.as_str(), literal.as_str().len(), range, span);
+                // }
                 content.push_str(literal.as_str());
-                content.push('\n');
                 // the newline is _not_ covered by a span, after all it's inserted by us!
-                cursor += 1;
-            }
-            if let Some(literal) = self.literals.last() {
-                start = cursor;
-                cursor += literal.len();
-                end = cursor;
-                let span = Span::from(literal);
-                source_mapping.insert(Range { start, end }, span);
-                content.push_str(literal.as_str());
-                // for the last, skip the newline
+                next = it.next();
+                if next.is_some() {
+                    // for the last, skip the newline
+                    content.push('\n');
+                    cursor += 1;
+                }
             }
         }
         CheckableChunk::from_string(content, source_mapping)
@@ -245,8 +247,10 @@ struct Vikings;
         test_raw!(["+ 12 + x0"] ; 9..10, "0");
     }
 
+    use crate::action::bandaid::tests::load_span_from;
+
     #[test]
-    fn set_into_chunk() {
+    fn literal_set_into_chunk() {
         use std::convert::TryInto;
         let _ = env_logger::builder()
             .filter(None, log::LevelFilter::Trace)
@@ -256,17 +260,22 @@ struct Vikings;
         let literal_set = dbg!(gen_literal_set(TEST));
 
         let chunk = dbg!(literal_set.clone().into_chunk());
-        let chunk2 = chunk.clone();
-        let content = dbg!(chunk2.as_str());
-        let mut it = literal_set.literals().into_iter();
+        let content = dbg!(chunk.as_str());
+        let mut it = dbg!(literal_set.literals()).into_iter();
 
         const THREE_SLASHES: usize = 3usize;
-        for ((range, span), s) in chunk.iter().zip(it) {
+        for (range, span, s) in itertools::cons_tuples(chunk.iter().zip(it)) {
+            if range.len() == 0 {
+                continue;
+            }
+            assert_eq!(load_span_from(TEST.as_bytes(), span.clone()).expect("Span extraction must work"), &chunk.as_str()[range.clone()]);
+
             // @todo try_into() only works on one-line spans/ranges
-            let r: Range = span.try_into().expect("Should work");
+            let r: Range = span.to_content_range(&chunk).expect("Should work");
+            // assert_eq!(spa);
             // the range for raw str contains an offset of 3 when used with `///`
-            assert_eq!(&(r.start - THREE_SLASHES..r.end - THREE_SLASHES), range);
-            assert_eq!(&content[range.start..range.end], s.as_str());
+            assert_eq!(&chunk.as_str()[range.clone()], s.as_str());
+            assert_eq!(&r, range);
         }
     }
 }
