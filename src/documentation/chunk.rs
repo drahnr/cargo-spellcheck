@@ -232,14 +232,14 @@ impl<'a> fmt::Display for ChunkDisplay<'a> {
         };
 
         // highlight the given range
-        let highlight = if end >= data.len() {
+        let highlight = if end > data.len() {
             oob.apply_to(&data[start..])
         } else {
             highlight.apply_to(&data[start..end])
         };
 
         // color trailing context if any as well as the closing quote character
-        let ctx2 = if end < data.len() {
+        let ctx2 = if end <= data.len() {
             context.apply_to(&data[end..])
         } else {
             oob.apply_to("!!!")
