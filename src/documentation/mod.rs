@@ -99,6 +99,7 @@ mod tests {
     use crate::fluff_up;
     use std::convert::From;
     use crate::action::bandaid::tests::load_span_from;
+    use crate::ChunkDisplay;
 
     #[test]
     fn parse_and_construct() {
@@ -125,19 +126,25 @@ mod tests {
         assert_eq!(dbg!(chunks).len(), 1);
 
         // @todo
-        assert_eq!(chunks[0].as_str(), TEST_RAW.to_owned());
-        let plain = chunks[0].erase_markdown();
+        let chunk = &chunks[0];
+        assert_eq!(chunk.as_str(), TEST_RAW.to_owned());
+        let plain = chunk.erase_markdown();
         println!("{:?}", &plain);
 
         assert_eq!(TEST_PLAIN, plain.as_str());
 
-        //>0123456789ABCDEF
-        //> **A** _very_ good test.
+        // ```text
+        // " **A** _very_ good test."
+        //  0123456789ABCDEF01234567
+        // ```
         let expected_raw_range = 8..12;
 
         // markdown does not care about leading spaces:
-        //>0123456789
-        //>A very good test.
+        //
+        // ```text
+        // "A very good test."
+        //  0123456789ABCDEF0
+        // ```
         let expected_plain_range = 2..6;
 
         assert_eq!("very", &dbg!(plain.as_str())[expected_plain_range.clone()]);
@@ -146,12 +153,12 @@ mod tests {
         // FIXME the expected result would be
         let (range, span) = z.iter().next().unwrap().clone();
 
-        // @todo must be implemented for `CheckableChunk`
-        // println!(
-        //     "full: {}",
-        //     TrimmedLiteralDisplay::from((literal, expected_raw_range.clone()))
-        // );
-        assert_eq!(dbg!(&z), dbg!(&chunks[0].find_spans(expected_raw_range)));
+        let chunk = &chunks[0];
+        log::trace!(
+            "full: {}",
+            chunk.display(expected_raw_range.clone())
+        );
+        assert_eq!(z, chunk.find_spans(expected_raw_range));
     }
 
     macro_rules! end2end {
