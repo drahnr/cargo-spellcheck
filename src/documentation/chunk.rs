@@ -190,10 +190,8 @@ where
         let chunk = tuple.0.into();
         let first = chunk.source_mapping.iter().next().unwrap().1; // @todo
         let last = chunk.source_mapping.iter().rev().next().unwrap().1; // @todo
-        let range = tuple.1.relative_to(Span {
-            start: first.start,
-            end: last.end,
-        })?;
+        let span = tuple.1;
+        let range = span.to_content_range(chunk)?;
         Ok(Self(chunk, range))
     }
 }
