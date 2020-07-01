@@ -84,26 +84,26 @@ impl CheckableChunk {
     /// ]
     /// ```
     pub(super) fn find_spans(&self, range: Range) -> IndexMap<Range, Span> {
-        let Range { start, end } = range;
+        trace!(
+            "############################################ chunk find_span {:?}",
+            &range
+        );
+
+        let Range { start, end } = range.clone();
         let mut active = false;
         self.source_mapping
             .iter()
+            .skip_while(|(sub, span)| sub.end <= start)
+            .take_while(|(sub, span)| end <= sub.end)
             .inspect(|x| {
-                trace!(">>> item {:?}", x.0);
-            })
-            .skip_while(|(sub, span)| {
-                sub.end <= range.start
-            })
-            .take_while(|(sub, span)| {
-                 range.end <= sub.end
+                trace!(">>> item {:?} ∈ {:?}", &range, x.0);
             })
             .filter(|(sub, _)| {
                 // could possibly happen on empty documentation lines with `///`
                 sub.len() > 0
             })
             .filter_map(|(sub, span)| {
-                if (span.start.line == span.end.line)
-                {
+                if (span.start.line == span.end.line) {
                     assert!(span.start.column <= span.end.column);
                     if span.start.column > span.end.column {
                         return None;
@@ -114,26 +114,27 @@ impl CheckableChunk {
                 assert!(end > 0);
 
                 if sub.contains(&start) {
+                    let offset = start - sub.start;
                     if sub.contains(&(end - 1)) {
                         // complete start to end
                         active = false;
-                        Some(start..end)
+                        Some((start..end, offset))
                     } else {
                         // only start, continue taking until end
                         active = true;
-                        Some(start..sub.end)
+                        Some((start..sub.end, offset))
                     }
                 } else if active {
                     if sub.contains(&(end - 1)) {
                         active = false;
-                        Some(sub.start..end)
+                        Some((sub.start..end, 0usize)) // @todo double check this
                     } else {
-                        Some(sub.clone())
+                        Some((sub.clone(), 0usize))
                     }
                 } else {
                     None
                 }
-                .map(|fragment_range| {
+                .map(|(fragment_range, offset)| {
                     // @todo handle multiline here
                     // @todo requires knowledge of how many items are remaining in the line
                     // @todo which needs to be extracted from chunk
@@ -142,11 +143,24 @@ impl CheckableChunk {
                     // both deltas must be positive
                     // |<--------range----------->|
                     // |<-d1->|<-fragment->|<-d2->|
-                    let d1 = dbg!(fragment_range.start).checked_sub(range.start).expect("d1 must be positive");
-                    let d2 = range.end.checked_sub(fragment_range.end).expect("d2 must be positive");
+                    let d1 = fragment_range
+                        .start
+                        .checked_sub(start)
+                        .expect("d1 must be positive");
+                    let d2 = range
+                        .end
+                        .checked_sub(fragment_range.end)
+                        .expect("d2 must be positive");
+                    trace!(
+                        ">> offset={} fragment={:?} range={:?}",
+                        offset,
+                        &fragment_range,
+                        &range
+                    );
+                    trace!(">>  {:?}", &span);
                     // @todo count line wraps
-                    span.start.column += d1 + 1; // @todo fuck me why again a magic offset!?
-                    span.end.column -= d2;
+                    span.start.column += offset + d1;
+                    span.end.column = span.start.column + fragment_range.len() - 1;
                     assert!(span.start.column <= span.end.column);
 
                     dbg!((fragment_range, span))
@@ -317,29 +331,37 @@ mod test {
         const SOURCE: &'static str = fluff_up!(["xyz", "second", "third", "fourth"]);
         let set = gen_literal_set(SOURCE);
         let chunk = dbg!(CheckableChunk::from_literalset(set));
-        const CHUNK_RANGES: &[Range] = &[0..4, (4+1+1+6+1+1)..(4+1+1+6+1+1+5)];
-        const EXPECTED_SPANS: &[Span] = &[Span {
-            start: LineColumn { line: 1, column: 4 },
-            end: LineColumn { line: 1, column: 6 },
-        },Span {
-            start: LineColumn { line: 3, column: 4 },
-            end: LineColumn { line: 3, column: 8 },
-        },
+        const CHUNK_RANGES: &[Range] =
+            &[1..4, (4 + 1 + 1 + 6 + 1 + 1)..(4 + 1 + 1 + 6 + 1 + 1 + 5)];
+        const EXPECTED_SPANS: &[Span] = &[
+            Span {
+                start: LineColumn { line: 1, column: 4 },
+                end: LineColumn { line: 1, column: 6 },
+            },
+            Span {
+                start: LineColumn { line: 3, column: 4 },
+                end: LineColumn { line: 3, column: 8 },
+            },
         ];
         const EXPECTED_STR: &[&'static str] = &["xyz", "third"];
 
-        for (query_range, expected_span, expected_str) in itertools::cons_tuples(CHUNK_RANGES.iter().zip(EXPECTED_SPANS.iter()).zip(EXPECTED_STR.iter())) {
+        for (query_range, expected_span, expected_str) in itertools::cons_tuples(
+            CHUNK_RANGES
+                .iter()
+                .zip(EXPECTED_SPANS.iter())
+                .zip(EXPECTED_STR.iter()),
+        ) {
             let range2span = chunk.find_spans(query_range.clone());
             // test deals only with a single line, so we know it only is a single entry
             assert_eq!(range2span.len(), 1);
             let (range, span) = dbg!(range2span.iter().next().unwrap());
             assert!(query_range.contains(&(range.start)));
             assert!(query_range.contains(&(range.end - 1)));
-            assert_eq!(span, expected_span);
             assert_eq!(
                 load_span_from(SOURCE.as_bytes(), *span).expect("Span extraction must work"),
                 expected_str.to_owned()
             );
+            assert_eq!(span, expected_span);
         }
     }
 }
