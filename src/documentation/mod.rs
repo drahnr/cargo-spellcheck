@@ -230,15 +230,18 @@ mod tests {
         .is_test(true)
         .try_init();
 
+        // raw source
         const SOURCE: &'static str = r#"/// A headline.
 ///
 /// Erronbeous **bold** __uetchkp__
 struct X"#;
 
+        // extracted content as present as provided by `chunk.as_str()`
         const RAW: &'static str = r#" A headline.
 
  Erronbeous **bold** __uetchkp__"#;
 
+        // markdown erased residue
         const PLAIN: &'static str = r#"A headline.
 
 Erronbeous bold uetchkp"#;
@@ -277,7 +280,7 @@ Erronbeous bold uetchkp"#;
                 "Foxxy funkster: {}",
                 suggestion.chunk.display(range.clone())
             );
-            assert_eq!(word, &SOURCE[range]);
+            assert_eq!(word, &chunk.as_str()[range]);
             println!("Found word >> {} <<", word);
         };
 
