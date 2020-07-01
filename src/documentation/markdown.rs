@@ -158,7 +158,7 @@ impl<'a> PlainOverlay<'a> {
         self.mapping
             .iter()
             .filter(|(plain, _raw)| {
-                dbg!(dbg!(plain).start <= dbg!(&plain_range).start && plain_range.end <= plain.end)
+                plain.start <= plain_range.start && plain_range.end <= plain.end
             })
             .fold(IndexMap::with_capacity(64), |mut acc, (plain, raw)| {
                 let offset = raw.start - plain.start;
@@ -168,14 +168,14 @@ impl<'a> PlainOverlay<'a> {
                     end: min(raw.end, plain_range.end + offset),
                 };
                 trace!(
-                    "convert (offset = {}):  convert reduced={:?} -> raw={:?}",
+                    "convert (offset = {}):  cmark-erased={:?} -> raw={:?}",
                     offset,
                     plain,
                     raw
                 );
                 trace!("highlight:  {:?} -> {:?}", &plain_range, &extracted);
 
-                if extracted.start < extracted.end {
+                if extracted.len() > 0 {
                     let resolved = self.raw.find_spans(extracted.clone());
                     trace!("linear range to spans: {:?} -> {:?}", extracted, resolved);
                     acc.extend(resolved.into_iter());
