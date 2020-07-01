@@ -93,8 +93,8 @@ impl CheckableChunk {
         let mut active = false;
         self.source_mapping
             .iter()
-            .skip_while(|(sub, span)| sub.end <= start)
-            .take_while(|(sub, span)| end <= sub.end)
+            .skip_while(|(sub, _span)| sub.end <= start)
+            .take_while(|(sub, _span)| end <= sub.end)
             .inspect(|x| {
                 trace!(">>> item {:?} ∈ {:?}", &range, x.0);
             })
@@ -103,7 +103,7 @@ impl CheckableChunk {
                 sub.len() > 0
             })
             .filter_map(|(sub, span)| {
-                if (span.start.line == span.end.line) {
+                if span.start.line == span.end.line {
                     assert!(span.start.column <= span.end.column);
                     if span.start.column > span.end.column {
                         return None;
@@ -147,7 +147,7 @@ impl CheckableChunk {
                         .start
                         .checked_sub(start)
                         .expect("d1 must be positive");
-                    let d2 = range
+                    let _d2 = range
                         .end
                         .checked_sub(fragment_range.end)
                         .expect("d2 must be positive");
@@ -224,8 +224,8 @@ where
     type Error = Error;
     fn try_from(tuple: (R, Span)) -> Result<Self> {
         let chunk = tuple.0.into();
-        let first = chunk.source_mapping.iter().next().unwrap().1; // @todo
-        let last = chunk.source_mapping.iter().rev().next().unwrap().1; // @todo
+        let _first = chunk.source_mapping.iter().next().unwrap().1; // @todo
+        let _last = chunk.source_mapping.iter().rev().next().unwrap().1; // @todo
         let span = tuple.1;
         let range = span.to_content_range(chunk)?;
         Ok(Self(chunk, range))

@@ -71,7 +71,7 @@ pub(crate) mod tests {
     use crate::span::Span;
     use anyhow::bail;
     use log::debug;
-    use proc_macro2::{LineColumn, Literal};
+    use proc_macro2::LineColumn;
     use std::io::BufRead;
     use std::path::Path;
     use std::path::PathBuf;
@@ -99,7 +99,10 @@ pub(crate) mod tests {
     /// Helpful to validate bandaids against what's actually in the string
     // @todo does not handle cross line spans @todo yet
     #[allow(unused)]
-    pub(crate) fn load_span_from<S>(mut source: S, span: Span) -> Result<String> where S: BufRead{
+    pub(crate) fn load_span_from<S>(mut source: S, span: Span) -> Result<String>
+    where
+        S: BufRead,
+    {
         log::trace!("Loading {:?} from source", &span);
         if span.start.line < 1 {
             bail!("Lines are 1-indexed, can't be less than 1")

@@ -114,7 +114,7 @@ pub mod tests {
     use crate::span::Span;
     use crate::ContentOrigin;
     use crate::LineColumn;
-    use proc_macro2::Literal;
+
     use std::path::PathBuf;
 
     const TEXT: &'static str = "With markdown removed, for sure.";

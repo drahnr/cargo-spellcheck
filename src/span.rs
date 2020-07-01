@@ -12,7 +12,6 @@ use anyhow::{anyhow, bail, Error, Result};
 use std::convert::TryFrom;
 
 use super::CheckableChunk;
-use log::trace;
 
 /// Relative span in relation
 /// to the beginning of a doc comment.
@@ -72,11 +71,11 @@ impl Span {
         full_content: &str,
     ) -> Result<Range> {
         let s = &full_content[range.clone()];
-        let mut offset = range.start;
+        let offset = range.start;
         // relative to the range given / offset
         let mut start = 0usize;
-        let mut state = span.start;
-        for (idx, c, line, col) in s.chars().enumerate().scan(state, |state, (idx, c)| {
+        let state = span.start;
+        for (idx, _c, line, col) in s.chars().enumerate().scan(state, |state, (idx, c)| {
             let x = (idx, c, state.line, state.column);
             if c == '\n' {
                 state.line += 1;
@@ -114,8 +113,8 @@ impl Span {
     pub fn to_content_range(&self, chunk: &CheckableChunk) -> Result<Range> {
         for (range, span) in chunk
             .iter()
-            .skip_while(|(range, span)| span.start.line < self.start.line)
-            .take_while(|(range, span)| self.end.line >= span.end.line)
+            .skip_while(|(_range, span)| span.start.line < self.start.line)
+            .take_while(|(_range, span)| self.end.line >= span.end.line)
         {
             match self.extract_sub_range_from_span(*span, range.clone(), chunk.as_str()) {
                 Ok(range2) => return Ok(range2),
