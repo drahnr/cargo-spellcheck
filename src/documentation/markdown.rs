@@ -157,8 +157,11 @@ impl<'a> PlainOverlay<'a> {
     pub fn find_spans(&self, plain_range: Range) -> IndexMap<Range, Span> {
         self.mapping
             .iter()
-            .filter(|(plain, _raw)| {
-                plain.start <= plain_range.start && plain_range.end <= plain.end
+            .skip_while(|(plain, _raw)| {
+                plain.end < plain_range.start
+            })
+            .take_while(|(plain, _raw)| {
+                plain.start <= plain_range.end
             })
             .fold(IndexMap::with_capacity(64), |mut acc, (plain, raw)| {
                 let offset = raw.start - plain.start;
@@ -177,12 +180,12 @@ impl<'a> PlainOverlay<'a> {
 
                 if extracted.len() > 0 {
                     let resolved = self.raw.find_spans(extracted.clone());
-                    trace!("linear range to spans: {:?} -> {:?}", extracted, resolved);
+                    trace!("cmark-erased range to spans: {:?} -> {:?}", extracted, resolved);
                     acc.extend(resolved.into_iter());
                 } else {
                     warn!("linear range to spans: {:?} empty!", extracted);
                 }
-                acc
+                dbg!(acc)
             })
     }
 
