@@ -285,8 +285,11 @@ mod test {
         let chunk = dbg!(CheckableChunk::from_literalset(set));
 
         // range in `chunk.as_str()`
+        // " xyz"
         const CHUNK_RANGE: Range = 1..4;
 
+        // "/// xyz"
+        //  0123456
         const EXPECTED_SPAN: Span = Span {
             start: LineColumn { line: 1, column: 4 },
             end: LineColumn { line: 1, column: 6 },
@@ -302,36 +305,41 @@ mod test {
         let (range, span) = dbg!(range2span.iter().next().unwrap());
         assert!(CHUNK_RANGE.contains(&(range.start)));
         assert!(CHUNK_RANGE.contains(&(range.end - 1)));
-        let mut rdr = SOURCE.as_bytes();
         assert_eq!(
-            load_span_from(&mut rdr, dbg!(*span)).expect("Span extraction must work"),
+            load_span_from(SOURCE.as_bytes(), dbg!(*span)).expect("Span extraction must work"),
             "xyz".to_owned()
         );
         assert_eq!(span, &EXPECTED_SPAN);
     }
 
     #[test]
-    fn find_spans_long() {
+    fn find_spans_multiline() {
         const SOURCE: &'static str = fluff_up!(["xyz", "second", "third", "fourth"]);
         let set = gen_literal_set(SOURCE);
         let chunk = dbg!(CheckableChunk::from_literalset(set));
-        const INPUT_RANGE: Range = 0..4;
-        const EXPECTED_SPAN: Span = Span {
+        const CHUNK_RANGES: &[Range] = &[0..4, (4+1+1+6+1+1)..(4+1+1+6+1+1+5)];
+        const EXPECTED_SPANS: &[Span] = &[Span {
             start: LineColumn { line: 1, column: 4 },
             end: LineColumn { line: 1, column: 6 },
-        };
+        },Span {
+            start: LineColumn { line: 3, column: 4 },
+            end: LineColumn { line: 3, column: 8 },
+        },
+        ];
+        const EXPECTED_STR: &[&'static str] = &["xyz", "third"];
 
-        let res = chunk.find_spans(INPUT_RANGE.clone());
-        // test deals only with a single line, so we know it only is a single entry
-        assert_eq!(res.len(), 1);
-        let (range, span) = dbg!(res.iter().next().unwrap());
-        assert!(INPUT_RANGE.contains(&(range.start)));
-        assert!(INPUT_RANGE.contains(&(range.end - 1)));
-        assert_eq!(span, &EXPECTED_SPAN);
-        let mut rdr = SOURCE.as_bytes();
-        assert_eq!(
-            load_span_from(&mut rdr, *span).expect("Span extraction must work"),
-            "xyz".to_owned()
-        );
+        for (query_range, expected_span, expected_str) in itertools::cons_tuples(CHUNK_RANGES.iter().zip(EXPECTED_SPANS.iter()).zip(EXPECTED_STR.iter())) {
+            let range2span = chunk.find_spans(query_range.clone());
+            // test deals only with a single line, so we know it only is a single entry
+            assert_eq!(range2span.len(), 1);
+            let (range, span) = dbg!(range2span.iter().next().unwrap());
+            assert!(query_range.contains(&(range.start)));
+            assert!(query_range.contains(&(range.end - 1)));
+            assert_eq!(span, expected_span);
+            assert_eq!(
+                load_span_from(SOURCE.as_bytes(), *span).expect("Span extraction must work"),
+                expected_str.to_owned()
+            );
+        }
     }
 }
