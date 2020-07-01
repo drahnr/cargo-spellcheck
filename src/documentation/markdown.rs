@@ -4,7 +4,6 @@
 
 use super::*;
 
-use core::cmp::min;
 use indexmap::IndexMap;
 use log::trace;
 use pulldown_cmark::{Event, Options, Parser, Tag};
@@ -155,72 +154,66 @@ impl<'a> PlainOverlay<'a> {
     /// back to raw ranges, which are then mapped back to `Span`s.
     /// The returned key `Ranges` are in the condensed domain.
     pub fn find_spans(&self, condensed_range: Range) -> IndexMap<Range, Span> {
-
         let mut active = false;
-        let Range { start , end } = condensed_range;
-        self
-        .mapping
-        .iter()
-        .skip_while(|(sub, raw)| sub.end <= start)
-        .take_while(|(sub, raw)| end <= sub.end)
-        .inspect(|x| {
-            trace!(">>> item {:?} ∈ {:?}", &condensed_range, x.0);
-        })
-        .filter(|(sub, _)| {
-            // could possibly happen on empty documentation lines with `///`
-            sub.len() > 0
-        }).fold(IndexMap::<_, _>::new(), |mut acc, (sub, raw)| {
-            let recombine = |range : Range, offset: usize, len: usize| -> Range{
-                Range { start: range.start + offset, end: range.start + offset + len}
-            };
-            let _ = if sub.contains(&start) {
-                // calculte the offset between our `condensed_range.start` and the `sub` which is one entry in the mappings
-                let offset = dbg!(start - sub.start);
-                if sub.contains(&(end - 1)) {
-                    // complete start to end
-                    active = false;
-                    let raw = recombine(raw.clone(), offset, end - start);
-                    Some((start..end, raw))
+        let Range { start, end } = condensed_range;
+        self.mapping
+            .iter()
+            .skip_while(|(sub, _raw)| sub.end <= start)
+            .take_while(|(sub, _raw)| end <= sub.end)
+            .inspect(|x| {
+                trace!(">>> item {:?} ∈ {:?}", &condensed_range, x.0);
+            })
+            .filter(|(sub, _)| {
+                // could possibly happen on empty documentation lines with `///`
+                sub.len() > 0
+            })
+            .fold(IndexMap::<_, _>::new(), |mut acc, (sub, raw)| {
+                let recombine = |range: Range, offset: usize, len: usize| -> Range {
+                    Range {
+                        start: range.start + offset,
+                        end: range.start + offset + len,
+                    }
+                };
+                let _ = if sub.contains(&start) {
+                    // calculte the offset between our `condensed_range.start` and the `sub` which is one entry in the mappings
+                    let offset = dbg!(start - sub.start);
+                    if sub.contains(&(end - 1)) {
+                        // complete start to end
+                        active = false;
+                        let raw = recombine(raw.clone(), offset, end - start);
+                        Some((start..end, raw))
+                    } else {
+                        // only start, continue taking until end
+                        active = true;
+                        let raw = recombine(raw.clone(), offset, sub.end - start);
+                        Some((start..sub.end, raw))
+                    }
+                // @todo must be implemented properly
+                // } else if active {
+                //     let offset = sub.end - end;
+                //     if sub.contains(&(end - 1)) {
+                //         active = false;
+                //         Some((sub.start..end, offset))
+                //     } else {
+                //         Some((sub.clone(), offset))
+                //     }
                 } else {
-                    // only start, continue taking until end
-                    active = true;
-                    let raw = recombine(raw.clone(), offset, sub.end - start);
-                    Some((start..sub.end, raw))
+                    None
                 }
-            // @todo must be implemented properly
-            // } else if active {
-            //     let offset = sub.end - end;
-            //     if sub.contains(&(end - 1)) {
-            //         active = false;
-            //         Some((sub.start..end, offset))
-            //     } else {
-            //         Some((sub.clone(), offset))
-            //     }
-            } else {
-                None
-            }.and_then(|(sub, raw)| {
-                trace!(
-                    "convert:  cmark-erased={:?} -> raw={:?}",
-                    sub,
-                    raw
-                );
+                .and_then(|(sub, raw)| {
+                    trace!("convert:  cmark-erased={:?} -> raw={:?}", sub, raw);
 
-                if raw.len() > 0 {
-                    let resolved = self.raw.find_spans(raw.clone());
-                    trace!(
-                        "cmark-erased range to spans: {:?} -> {:?}",
-                        raw,
-                        resolved
-                    );
-                    acc.extend(resolved.into_iter());
-                } else {
-                    warn!("linear range to spans: {:?} empty!", raw);
-                }
-                Some(())
-            });
-            acc
-        })
-
+                    if raw.len() > 0 {
+                        let resolved = self.raw.find_spans(raw.clone());
+                        trace!("cmark-erased range to spans: {:?} -> {:?}", raw, resolved);
+                        acc.extend(resolved.into_iter());
+                    } else {
+                        warn!("linear range to spans: {:?} empty!", raw);
+                    }
+                    Some(())
+                });
+                acc
+            })
     }
 
     pub fn as_str(&self) -> &str {

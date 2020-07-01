@@ -4,7 +4,6 @@ use crate::documentation::Documentation;
 use crate::suggestion::{Detector, Suggestion, SuggestionSet};
 use anyhow::Result;
 use log::trace;
-use std::path::PathBuf;
 
 /// A test checker that tokenizes and marks everything as wrong
 pub struct DummyChecker;
@@ -27,7 +26,11 @@ impl Checker for DummyChecker {
                     let range2span = plain.find_spans(range.clone());
                     assert_eq!(dbg!(&range2span).len(), 1);
                     for (range, span) in range2span {
-                        trace!("Suggestion for {:?} -> {}", range, chunk.display(range.clone()));
+                        trace!(
+                            "Suggestion for {:?} -> {}",
+                            range,
+                            chunk.display(range.clone())
+                        );
                         let replacements = vec![format!("replacement_{}", index)];
                         let suggestion = Suggestion {
                             detector,

@@ -68,9 +68,9 @@ impl LiteralSet {
                 let span = Span::from(literal);
                 let range = Range { start, end };
                 // if range.len() > 0 {
-                    source_mapping.insert(range, span);
+                source_mapping.insert(range, span);
                 // } else {
-                    // log::debug!("Skipping literal >{}< of len {} with mapping {:?} -> {:?}", literal.as_str(), literal.as_str().len(), range, span);
+                // log::debug!("Skipping literal >{}< of len {} with mapping {:?} -> {:?}", literal.as_str(), literal.as_str().len(), range, span);
                 // }
                 content.push_str(literal.as_str());
                 // the newline is _not_ covered by a span, after all it's inserted by us!
@@ -178,7 +178,7 @@ struct Vikings;
         let literal_set = gen_literal_set(TEST);
         let chunk: CheckableChunk = literal_set.into_chunk();
         let map_range_to_span = chunk.find_spans(EXMALIBU_RANGE);
-        let (range, span) = map_range_to_span
+        let (_range, _span) = map_range_to_span
             .iter()
             .next()
             .expect("Must be at least one literal");
@@ -251,7 +251,6 @@ struct Vikings;
 
     #[test]
     fn literal_set_into_chunk() {
-        use std::convert::TryInto;
         let _ = env_logger::builder()
             .filter(None, log::LevelFilter::Trace)
             .is_test(true)
@@ -260,15 +259,18 @@ struct Vikings;
         let literal_set = dbg!(gen_literal_set(TEST));
 
         let chunk = dbg!(literal_set.clone().into_chunk());
-        let content = dbg!(chunk.as_str());
-        let mut it = dbg!(literal_set.literals()).into_iter();
+        let _content = dbg!(chunk.as_str());
+        let it = dbg!(literal_set.literals()).into_iter();
 
         const THREE_SLASHES: usize = 3usize;
         for (range, span, s) in itertools::cons_tuples(chunk.iter().zip(it)) {
             if range.len() == 0 {
                 continue;
             }
-            assert_eq!(load_span_from(TEST.as_bytes(), span.clone()).expect("Span extraction must work"), &chunk.as_str()[range.clone()]);
+            assert_eq!(
+                load_span_from(TEST.as_bytes(), span.clone()).expect("Span extraction must work"),
+                &chunk.as_str()[range.clone()]
+            );
 
             // @todo try_into() only works on one-line spans/ranges
             let r: Range = span.to_content_range(&chunk).expect("Should work");

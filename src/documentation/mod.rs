@@ -95,11 +95,11 @@ impl From<(ContentOrigin, proc_macro2::TokenStream)> for Documentation {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::action::bandaid::tests::load_span_from;
     use crate::checker::Checker;
     use crate::fluff_up;
+
     use std::convert::From;
-    use crate::action::bandaid::tests::load_span_from;
-    use crate::ChunkDisplay;
 
     #[test]
     fn parse_and_construct() {
@@ -151,13 +151,10 @@ mod tests {
 
         let z: IndexMap<Range, Span> = plain.find_spans(expected_plain_range);
         // FIXME the expected result would be
-        let (range, span) = z.iter().next().unwrap().clone();
+        let (_range, _span) = z.iter().next().unwrap().clone();
 
         let chunk = &chunks[0];
-        log::trace!(
-            "full: {}",
-            chunk.display(expected_raw_range.clone())
-        );
+        log::trace!("full: {}", chunk.display(expected_raw_range.clone()));
         assert_eq!(z, chunk.find_spans(expected_raw_range));
     }
 
@@ -185,7 +182,7 @@ mod tests {
             let chunks = docs.index.get(&origin).expect("Must contain dummy path");
             assert_eq!(dbg!(chunks).len(), 1);
             let chunk = &chunks[0];
-            let plain = chunk.erase_markdown();
+            let _plain = chunk.erase_markdown();
 
             let suggestion_set = crate::checker::dummy::DummyChecker::check(&docs, &())
                 .expect("Must not fail to extract suggestions");
@@ -259,8 +256,7 @@ Erronbeous bold uetchkp"#;
         let docs = Documentation::from((origin.clone(), stream));
 
         // @todo contains utter garbage, should be individual tokens, but is multiple literal
-        let suggestion_set =
-            dbg!(DummyChecker::check(&docs, &())).expect("Must not error");
+        let suggestion_set = dbg!(DummyChecker::check(&docs, &())).expect("Must not error");
         let (origin2, chunks) = docs.iter().next().expect("Must contain exactly one origin");
         assert_eq!(&origin, origin2);
 
@@ -281,7 +277,7 @@ Erronbeous bold uetchkp"#;
         let mut it = suggestions.into_iter();
         let mut expected = |word: &'static str| {
             let suggestion = it.next().expect("Must contain another mis-spelled word");
-            let s = dbg!(suggestion.chunk.as_str());
+            let _s = dbg!(suggestion.chunk.as_str());
 
             // range for chunk
             let range: Range = suggestion
@@ -294,7 +290,8 @@ Erronbeous bold uetchkp"#;
                 suggestion.chunk.display(range.clone())
             );
 
-            let alternative = load_span_from(SOURCE.as_bytes(), suggestion.span.clone()).expect("Span loading must succeed");
+            let _alternative = load_span_from(SOURCE.as_bytes(), suggestion.span.clone())
+                .expect("Span loading must succeed");
 
             assert_eq!(word, &chunk.as_str()[range]);
             log::info!("Found word >> {} <<", word);
