@@ -98,6 +98,7 @@ mod tests {
     use crate::checker::Checker;
     use crate::fluff_up;
     use std::convert::From;
+    use crate::action::bandaid::tests::load_span_from;
 
     #[test]
     fn parse_and_construct() {
@@ -217,6 +218,8 @@ mod tests {
     }
 
     // use crate::literalset::tests::{annotated_literals,gen_literal_set};
+    use crate::checker::dummy::DummyChecker;
+    use crate::documentation::Documentation;
 
     #[cfg(feature = "hunspell")]
     #[test]
@@ -246,10 +249,11 @@ Erronbeous bold uetchkp"#;
         let stream =
             syn::parse_str::<proc_macro2::TokenStream>(SOURCE).expect("Must parse just fine");
         let origin = ContentOrigin::RustSourceFile(PathBuf::from("/tmp/virtual"));
-        let docs = crate::documentation::Documentation::from((origin.clone(), stream));
+        let docs = Documentation::from((origin.clone(), stream));
 
+        // @todo contains utter garbage, should be individual tokens, but is multiple literal
         let suggestion_set =
-            crate::checker::dummy::DummyChecker::check(&docs, &()).expect("Must not error");
+            dbg!(DummyChecker::check(&docs, &())).expect("Must not error");
         let (origin2, chunks) = docs.iter().next().expect("Must contain exactly one origin");
         assert_eq!(&origin, origin2);
 
@@ -260,25 +264,33 @@ Erronbeous bold uetchkp"#;
 
         assert_eq!(chunks.len(), 1);
         assert_eq!(RAW, chunk.as_str());
-        assert_eq!(PLAIN, chunk.erase_markdown().as_str());
+
+        let plain = chunk.erase_markdown();
+        assert_eq!(PLAIN, plain.as_str());
 
         let mut it = suggestion_set.iter();
         let (_, suggestions) = it.next().expect("Must contain at least one file entry");
 
         let mut it = suggestions.into_iter();
         let mut expected = |word: &'static str| {
-            let suggestion = it.next().expect("Must contain one mis-spelled word");
+            let suggestion = it.next().expect("Must contain another mis-spelled word");
             let s = dbg!(suggestion.chunk.as_str());
+
+            // range for chunk
             let range: Range = suggestion
                 .span
                 .to_content_range(&suggestion.chunk)
                 .expect("Must be a single line");
-            println!(
+
+            log::info!(
                 "Foxxy funkster: {}",
                 suggestion.chunk.display(range.clone())
             );
+
+            let alternative = load_span_from(SOURCE.as_bytes(), suggestion.span.clone()).expect("Span loading must succeed");
+
             assert_eq!(word, &chunk.as_str()[range]);
-            println!("Found word >> {} <<", word);
+            log::info!("Found word >> {} <<", word);
         };
 
         expected("A");

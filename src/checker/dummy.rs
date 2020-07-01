@@ -24,9 +24,9 @@ impl Checker for DummyChecker {
                 for (index, range) in dbg!(tokenize(plain.as_str())).into_iter().enumerate() {
                     trace!("Token: >{}<", &plain.as_str()[range.clone()]);
                     let detector = Detector::Dummy;
-                    let spans = plain.find_spans(dbg!(range.clone()));
-                    assert_eq!(dbg!(&spans).len(), 1);
-                    for (range, span) in spans {
+                    let range2span = plain.find_spans(range.clone());
+                    assert_eq!(dbg!(&range2span).len(), 1);
+                    for (range, span) in range2span {
                         trace!("Suggestion for {:?} -> {}", range, chunk.display(range.clone()));
                         let replacements = vec![format!("replacement_{}", index)];
                         let suggestion = Suggestion {
@@ -37,7 +37,7 @@ impl Checker for DummyChecker {
                             chunk,
                             description: None,
                         };
-                        acc.add(origin.clone(), suggestion);
+                        acc.add(origin.clone(), dbg!(suggestion));
                     }
                 }
                 Ok(acc)

@@ -99,8 +99,9 @@ pub(crate) mod tests {
     /// Helpful to validate bandaids against what's actually in the string
     // @todo does not handle cross line spans @todo yet
     #[allow(unused)]
-    pub(crate) fn load_span_from(mut source: impl BufRead, span: Span) -> Result<String> {
-        if dbg!(&span).start.line < 1 {
+    pub(crate) fn load_span_from<S>(mut source: S, span: Span) -> Result<String> where S: BufRead{
+        log::trace!("Loading {:?} from source", &span);
+        if span.start.line < 1 {
             bail!("Lines are 1-indexed, can't be less than 1")
         }
         if span.end.line < span.start.line {
@@ -117,10 +118,11 @@ pub(crate) mod tests {
             .ok_or_else(|| anyhow!("Line not in buffer or invalid"))?;
 
         let range = dbg!(span.start.column..(span.end.column + 1));
+        log::trace!("Loading {:?} from line >{}<", &range, &line);
         dbg!(line)
-            .get(range)
+            .get(range.clone())
             .map(|s| dbg!(s.to_owned()))
-            .ok_or_else(|| anyhow!("Columns not in line"))
+            .ok_or_else(|| anyhow!("Columns not in line: {:?}", &range))
     }
 
     #[test]
