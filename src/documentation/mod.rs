@@ -16,7 +16,7 @@ pub type Range = core::ops::Range<usize>;
 mod chunk;
 mod cluster;
 mod literal;
-mod literalset;
+pub(crate) mod literalset;
 mod markdown;
 
 pub use chunk::*;
@@ -268,8 +268,11 @@ Erronbeous bold uetchkp"#;
         let mut it = suggestions.into_iter();
         let mut expected = |word: &'static str| {
             let suggestion = it.next().expect("Must contain one mis-spelled word");
-            let range: Range = suggestion.span.try_into().expect("Must be a single line");
             let s = dbg!(suggestion.chunk.as_str());
+            let range: Range = suggestion
+                .span
+                .to_content_range(&suggestion.chunk)
+                .expect("Must be a single line");
             println!(
                 "Foxxy funkster: {}",
                 suggestion.chunk.display(range.clone())

@@ -134,19 +134,6 @@ struct Fluff;"#;
         assert_eq!(TEST, EXPECT);
     }
 
-    /// prefer `fluff_up!` over this
-    #[allow(unused)]
-    pub(crate) fn gen_literal_set_with_fluff(source: &str) -> LiteralSet {
-        let mut fluffed = String::with_capacity(source.len() + 32);
-        for line in source.lines() {
-            fluffed.push_str("/// ");
-            fluffed.push_str(line);
-            fluffed.push('\n');
-        }
-        fluffed.push_str("struct X{}");
-        gen_literal_set(fluffed.as_str())
-    }
-
     pub(crate) fn gen_literal_set(source: &str) -> LiteralSet {
         let literals = dbg!(annotated_literals(dbg!(source)));
 
