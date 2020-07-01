@@ -40,17 +40,19 @@ impl<'l> TrimmedLiteralRef<'l> {
     pub fn as_ref(&self) -> &TrimmedLiteral {
         self.reference
     }
-    pub fn truncate(&self, min_chars: usize, max_chars: usize) -> &str {
-        let mut s = &self.reference.as_str();
-        let idy = match s.char_indices().nth(min_chars) {
+    pub fn len_in_chars(&self) -> usize {
+        self.reference.as_str().char_indices().count()
+    }
+    pub fn sub(&self, range: Range) -> &str {
+        let start = match self.as_str().char_indices().nth(range.start) {
             None => 0,
-            Some((idy, _)) => idy,
+            Some((start, _)) => start,
         };
-        let idx = match s.char_indices().nth(max_chars) {
-            None => s.char_indices().count() - 1,
-            Some((idx, _)) => idx,
+        let end = match self.as_str().char_indices().nth(range.end) {
+            None => self.len(),
+            Some((end, _)) => end,
         };
-        return &s[idy..idx];
+        &self.reference.as_str()[start..end]
     }
 
     #[allow(unused)]
@@ -551,6 +553,42 @@ struct Vikings;
 
         assert_eq!(cls.len(), 3);
         assert_eq!(cls.to_string(), TEST_LITERALS_COMBINED.to_string());
+    }
+    #[test]
+    fn sub() {
+        const CONTENT: &'static str = "This is a sentence with é язык 😋 ックス some words";
+        let test_word = TrimmedLiteral {
+            literal: proc_macro2::Literal::string(CONTENT),
+            rendered: CONTENT.to_owned(),
+            pre: 0usize,
+            post: 0usize,
+            len: CONTENT.len(),
+        };
+
+        let test_word_ref = TrimmedLiteralRef {
+            reference: &test_word,
+        };
+        assert_eq!(
+            &"This is a sentence with",
+            &test_word_ref.sub(Range {
+                start: 0usize,
+                end: 23usize,
+            })
+        );
+        assert_eq!(
+            &"é язык",
+            &test_word_ref.sub(Range {
+                start: 24usize,
+                end: 30usize,
+            })
+        );
+        assert_eq!(
+            &test_word.as_str(),
+            &test_word_ref.sub(Range {
+                start: 0usize,
+                end: 500usize
+            })
+        );
     }
 
     #[test]
