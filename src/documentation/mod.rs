@@ -177,10 +177,7 @@ mod tests {
             let chunks = docs.index.get(&origin).expect("Must contain dummy path");
             assert_eq!(dbg!(chunks).len(), 1);
             let chunk = &chunks[0];
-            log::warn!("Chunk::find_spans: {:?}", chunk.find_spans(2..6));
             let plain = chunk.erase_markdown();
-            log::info!("Plain: {:?}", &plain);
-            log::warn!("Plain::find_spans: {:?}", plain.find_spans(2..6));
 
             let suggestion_set = crate::checker::dummy::DummyChecker::check(&docs, &())
                 .expect("Must not fail to extract suggestions");
