@@ -11,6 +11,9 @@ use anyhow::{anyhow, bail, Error, Result};
 
 use std::convert::TryFrom;
 
+use super::CheckableChunk;
+use log::trace;
+
 /// Relative span in relation
 /// to the beginning of a doc comment.
 ///
@@ -60,51 +63,66 @@ impl Span {
         self.end.line <= line && line >= self.start.line
     }
 
-    /// Convert a given span with the associated extraction string based on literals with trimming
-    // @todo needs tests
-    fn try_into_content_range<S: AsRef<str>>(source: (&Span, S)) -> Result<Range> {
-        let (span, s) = source;
-        let s = s.as_ref();
+    /// extract a `Range` which maps to `self` as
+    /// `span` maps to `range`, where `range` is relative to `full_content`
+    fn extract_sub_range_from_span(
+        &self,
+        span: Span,
+        range: Range,
+        full_content: &str,
+    ) -> Result<Range> {
+        let s = &full_content[range.clone()];
+        let mut offset = range.start;
+        // relative to the range given / offset
         let mut start = 0usize;
-        let state = LineColumn {
-            line: 1usize,
-            column: 0usize,
-        };
+        let mut state = span.start;
         for (idx, c, line, col) in s.chars().enumerate().scan(state, |state, (idx, c)| {
+            let x = (idx, c, state.line, state.column);
             if c == '\n' {
                 state.line += 1;
                 state.column = 0;
             } else {
                 state.column += 1;
             }
-            Some((idx, c, state.line, state.column))
+            Some(x)
         }) {
-            if line < span.start.line {
+            if line < self.start.line {
                 continue;
             }
-
-            if line == span.start.line && col == span.start.column {
+            if line == self.start.line && col == self.start.column {
                 start = idx;
             }
 
-            if line == span.start.line && col == span.start.column {
-                start = idx;
+            if line == self.end.line && col == self.end.column {
+                let range2 = (offset + start)..(offset + idx + 1);
+                assert!(range2.len() <= range.len());
+                return Ok(range2);
             }
 
-            if line == span.end.line && col == span.end.column {
-                let end = idx + 1;
-                return Ok(start..end);
-            }
-
-            if line > span.end.line {
+            if line > self.end.line {
                 break;
             }
 
-            if line >= span.end.line && col >= span.end.column {
+            if line >= self.end.line && col >= self.end.column {
                 break;
             }
         }
         bail!("Missing content in str I guess")
+    }
+
+    /// Convert a given span with the associated extraction string based on literals with trimming
+    pub fn to_content_range(&self, chunk: &CheckableChunk) -> Result<Range> {
+        for (range, span) in chunk
+            .iter()
+            .skip_while(|(range, span)| span.start.line < self.start.line)
+            .take_while(|(range, span)| self.end.line >= span.end.line)
+        {
+            match self.extract_sub_range_from_span(*span, range.clone(), chunk.as_str()) {
+                Ok(range2) => return Ok(range2),
+                Err(_e) => continue,
+            }
+        }
+        bail!("No candidate matched")
     }
 }
 
@@ -183,36 +201,65 @@ impl From<&TrimmedLiteral> for Span {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::action::bandaid::tests::load_span_from;
+    use crate::documentation::literalset::tests::gen_literal_set;
+    use crate::fluff_up;
 
     #[test]
-    fn back() {
-        const TEXT: &'static str = "Ey you!! Yes.., you there!";
-        let span = Span {
-            start: LineColumn {
-                line: 0usize,
-                column: 3usize,
-            },
-            end: LineColumn {
-                line: 0usize,
-                column: 7usize,
-            },
-        };
+    fn span_to_range_with_content() {
+        const CONTENT: &'static str = fluff_up!("Ey you!! Yes.., you there!", "", "GameChange", "");
+        let set = gen_literal_set(CONTENT);
+        let chunk = dbg!(CheckableChunk::from_literalset(set));
 
-        let range = ((&span).try_into() as Result<Range>).unwrap();
-        assert_eq!(range, 3..8);
-        assert_eq!(&TEXT[range], "you!!");
-        assert_eq!(span, (0usize, 3..8).try_into().unwrap());
+        // assuming a `///<space>` comment
+        const TRIPPLE_SLASH_PLUS_SPACE: usize = 4;
+
+        // within a file
+        const INPUTS: &[Span] = &[
+            Span {
+                start: LineColumn {
+                    line: 1usize,
+                    column: 3usize + TRIPPLE_SLASH_PLUS_SPACE,
+                },
+                end: LineColumn {
+                    line: 1usize,
+                    column: 7usize + TRIPPLE_SLASH_PLUS_SPACE,
+                },
+            },
+            Span {
+                start: LineColumn {
+                    line: 3usize,
+                    column: 0usize + TRIPPLE_SLASH_PLUS_SPACE,
+                },
+                end: LineColumn {
+                    line: 3usize,
+                    column: 9usize + TRIPPLE_SLASH_PLUS_SPACE,
+                },
+            },
+        ];
+
+        // ranges to be used with `chunk.as_str()`
+        // remember that ///<space> counts towards the range!
+        // and that newlines are also one char
+        const EXPECTED: &[Range] = &[4..9, 31..41];
+
+        // note that this may only be single lines, since `///` implies separate literals
+        // and as such multiple spans
+        const FRAGMENT: &[&'static str] = &["you!!", "GameChange"];
+
+        for (input, expected, fract) in
+            itertools::cons_tuples(INPUTS.iter().zip(EXPECTED.iter()).zip(FRAGMENT.iter()))
+        {
+            let range = input
+                .to_content_range(&chunk)
+                .expect("Inputs are sane, conversion must work.");
+            assert_eq!(range, *expected);
+            /// make sure the span covers what we expect it to cover
+            assert_eq!(
+                load_span_from(CONTENT.as_bytes(), input.clone()).unwrap(),
+                fract.to_owned()
+            );
+            assert_eq!(&(&chunk.as_str()[range]), fract);
+        }
     }
-
-    // use crate::fluff_up;
-
-    // #[test]
-    // fn forth() {
-
-    //     const CONTENT: &'static str = fluff_up!(["Omega"]);
-    //     let range = ((&span).try_into() as Result<Range>).unwrap();
-    //     assert_eq!(range, 3..8);
-    //     assert_eq!(&TEXT[range], "you!!");
-    //     assert_eq!(span, (0usize, 3..8).try_into().unwrap());
-    // }
 }

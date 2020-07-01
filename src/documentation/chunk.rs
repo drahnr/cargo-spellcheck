@@ -141,7 +141,6 @@ impl CheckableChunk {
         ChunkDisplay::from((self, range))
     }
 
-    #[allow(unused)]
     pub fn iter(&self) -> indexmap::map::Iter<Range, Span> {
         self.source_mapping.iter()
     }
