@@ -21,10 +21,13 @@ impl Checker for DummyChecker {
             |mut acc, (origin, chunks)| {
                 let chunk = chunks.iter().next().unwrap();
                 let plain = chunk.erase_markdown();
-                for (index, range) in tokenize(plain.as_str()).into_iter().enumerate() {
+                for (index, range) in dbg!(tokenize(plain.as_str())).into_iter().enumerate() {
+                    trace!("Token: >{}<", &plain.as_str()[range.clone()]);
                     let detector = Detector::Dummy;
-                    trace!("Range = {:?}", &range);
-                    for (_range, span) in plain.find_spans(range.clone()) {
+                    let spans = plain.find_spans(dbg!(range.clone()));
+                    assert_eq!(dbg!(&spans).len(), 1);
+                    for (range, span) in spans {
+                        trace!("Suggestion for {:?} -> {}", range, chunk.display(range.clone()));
                         let replacements = vec![format!("replacement_{}", index)];
                         let suggestion = Suggestion {
                             detector,

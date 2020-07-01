@@ -88,44 +88,50 @@ impl CheckableChunk {
         let mut active = false;
         self.source_mapping
             .iter()
-            .filter_map(|(range, span)| {
-                if range.start >= range.end
-                    || (span.start.line == span.end.line && span.start.column > span.end.column)
+            .inspect(|x| {
+                trace!(">>> item {:?}", x.0);
+            })
+            .skip_while(|(sub, span)| {
+                sub.end <= range.start
+            })
+            .take_while(|(sub, span)| {
+                 range.end <= sub.end
+            })
+            .filter(|(sub, _)| {
+                // could possibly happen on empty documentation lines with `///`
+                sub.len() > 0
+            })
+            .filter_map(|(sub, span)| {
+                if (span.start.line == span.end.line && span.start.column > span.end.column)
                 {
-                    // could possibly happen on empty documentation lines with `///`
-                    trace!(
-                        "Zero length fraction length found, skipping: {:?} -> {:?}",
-                        range,
-                        span
-                    );
                     return None;
-                    // } else {
-                    //     trace!("Range {:?} -> Span {:?}", range, span);
                 }
-                if range.contains(&start) {
-                    active = true;
-                    if end > 0 && range.contains(&(end - 1)) {
+                if sub.contains(&start) {
+                    if end > 0 && sub.contains(&(end - 1)) {
+                        active = false;
                         Some(start..end)
                     } else {
-                        Some(start..range.end)
+                        active = true;
+                        Some(start..sub.end)
                     }
                 } else if active {
-                    Some(range.clone())
-                } else if range.contains(&(end - 1)) {
+                    Some(sub.clone())
+                } else if sub.contains(&(end - 1)) {
                     active = false;
-                    Some(range.start..end)
+                    Some(sub.start..end)
                 } else {
                     None
                 }
                 .map(|fract_range| {
                     // @todo handle multiline here
                     // @todo requires knowledge of how many items are remaining in the line
-                    // @todo which needs to be extracted from
+                    // @todo which needs to be extracted from chunk
                     assert_eq!(span.start.line, span.end.line);
-                    let mut span = dbg!(span.clone());
-                    let fract_range = dbg!(fract_range);
-                    span.start.column += fract_range.start - range.start;
-                    span.end.column -= range.end - fract_range.end;
+                    let mut span = span.clone();
+                    span.start.column += fract_range.start;
+                    span.start.column -= range.start;
+                    span.end.column += fract_range.end;
+                    span.end.column -= range.end;
                     assert!(span.start.column <= span.end.column);
                     (fract_range, span)
                 })
