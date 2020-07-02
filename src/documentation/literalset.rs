@@ -259,7 +259,6 @@ struct Vikings;
         let literal_set = dbg!(gen_literal_set(TEST));
 
         let chunk = dbg!(literal_set.clone().into_chunk());
-        let _content = dbg!(chunk.as_str());
         let it = dbg!(literal_set.literals()).into_iter();
 
         const THREE_SLASHES: usize = 3usize;

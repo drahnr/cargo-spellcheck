@@ -139,31 +139,29 @@ impl CheckableChunk {
                     // @todo requires knowledge of how many items are remaining in the line
                     // @todo which needs to be extracted from chunk
                     assert_eq!(span.start.line, span.end.line);
-                    let mut span = span.clone();
-                    // both deltas must be positive
                     // |<--------range----------->|
-                    // |<-d1->|<-fragment->|<-d2->|
+                    // |<-d1->|<-fragment->|<-.+->|
                     let d1 = fragment_range
                         .start
                         .checked_sub(start)
                         .expect("d1 must be positive");
-                    let _d2 = range
-                        .end
-                        .checked_sub(fragment_range.end)
-                        .expect("d2 must be positive");
+
+                    assert!(range.end >= fragment_range.end);
+
                     trace!(
                         ">> offset={} fragment={:?} range={:?}",
                         offset,
                         &fragment_range,
                         &range
                     );
-                    trace!(">>  {:?}", &span);
+                    trace!(">> {:?}", &span);
                     // @todo count line wraps
+                    let mut span = span.clone();
                     span.start.column += offset + d1;
                     span.end.column = span.start.column + fragment_range.len() - 1;
                     assert!(span.start.column <= span.end.column);
 
-                    dbg!((fragment_range, span))
+                    (fragment_range, span)
                 })
             })
             .collect::<IndexMap<_, _>>()

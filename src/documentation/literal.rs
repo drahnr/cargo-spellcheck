@@ -58,7 +58,7 @@ impl std::hash::Hash for TrimmedLiteral {
 impl TryFrom<proc_macro2::Literal> for TrimmedLiteral {
     type Error = anyhow::Error;
     fn try_from(literal: proc_macro2::Literal) -> Result<Self> {
-        let rendered = dbg!(literal.to_string());
+        let rendered = literal.to_string();
 
         lazy_static::lazy_static! {
             static ref PREFIX_ERASER: Regex = Regex::new(r##"^((?:r#*)?")"##).unwrap();
