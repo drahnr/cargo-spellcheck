@@ -143,7 +143,7 @@ pub mod tests {
     }
 
     // @todo looks pretty similiar to the one in bandaid doesn't it?
-    fn extraction_test_body(content: &'static str, expected_spans: &[Span]) {
+    pub fn extraction_test_body(content: &str, expected_spans: &[Span]) {
         let _ = env_logger::builder()
             .filter(None, log::LevelFilter::Trace)
             .is_test(true)
@@ -161,7 +161,7 @@ pub mod tests {
 
         // one file
         assert_eq!(suggestion_set.len(), 1);
-        // with two suggestions
+        // with a known number of suggestions
         assert_eq!(suggestion_set.total_count(), expected_spans.len());
         let (_, suggestions) = suggestion_set
             .iter()
