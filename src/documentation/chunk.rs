@@ -27,6 +27,12 @@ impl ContentOrigin {
     }
 }
 
+impl fmt::Display for ContentOrigin {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{}", self.as_path().display())
+    }
+}
+
 /// A chunk of documentation that is supposed to be checked
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct CheckableChunk {
