@@ -146,7 +146,7 @@ impl<'a> PlainOverlay<'a> {
         Self {
             raw: chunk,
             plain,
-            mapping: dbg!(mapping),
+            mapping,
         }
     }
 
@@ -168,15 +168,16 @@ impl<'a> PlainOverlay<'a> {
                 sub.len() > 0
             })
             .fold(IndexMap::<_, _>::new(), |mut acc, (sub, raw)| {
-                let recombine = |range: Range, offset: usize, len: usize| -> Range {
+                fn recombine(range: Range, offset: usize, len: usize) -> Range {
                     Range {
                         start: range.start + offset,
                         end: range.start + offset + len,
                     }
                 };
                 let _ = if sub.contains(&start) {
-                    // calculte the offset between our `condensed_range.start` and the `sub` which is one entry in the mappings
-                    let offset = dbg!(start - sub.start);
+                    // calculate the offset between our `condensed_range.start` and
+                    // the `sub` which is one entry in the mappings
+                    let offset = start - sub.start;
                     if sub.contains(&(end - 1)) {
                         // complete start to end
                         active = false;

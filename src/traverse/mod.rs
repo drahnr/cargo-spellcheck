@@ -7,7 +7,7 @@ use crate::Documentation;
 
 use anyhow::{anyhow, Error, Result};
 use indexmap::IndexMap;
-use log::{trace, warn};
+use log::{debug, trace, warn};
 use std::convert::TryFrom;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -195,7 +195,6 @@ fn extract_products<P: AsRef<Path>>(manifest_dir: P) -> Result<Vec<CheckEntity>>
         .chain(manifest.lib.into_iter().map(|x| x));
 
     let mut items = iter
-        .inspect(|x| println!("manifest entries {:?}", &x))
         .filter(|product| product.doctest)
         .filter_map(|product| product.path)
         .map(|path_str| CheckEntity::Source(manifest_dir.join(path_str)))
@@ -217,7 +216,8 @@ fn extract_products<P: AsRef<Path>>(manifest_dir: P) -> Result<Vec<CheckEntity>>
             items.push(CheckEntity::ManifestDescription(description.to_owned()))
         }
     }
-    Ok(dbg!(items))
+    trace!("manifest products {:?}", &items);
+    Ok(items)
 }
 
 fn handle_manifest<P: AsRef<Path>>(manifest_dir: P) -> Result<Vec<CheckEntity>> {
@@ -274,7 +274,7 @@ pub(crate) fn extract(
         } else {
             cwd.join(&path_in)
         };
-        info!("Processing {} -> {}", path_in.display(), path.display());
+        debug!("Processing {} -> {}", path_in.display(), path.display());
         path.canonicalize().ok()
     }));
 
@@ -365,7 +365,7 @@ pub(crate) fn extract(
                         // @todo generate Documentation structs from non-file sources
                     }
                 }
-                Ok(dbg!(docs))
+                Ok(docs)
             },
         )?;
 

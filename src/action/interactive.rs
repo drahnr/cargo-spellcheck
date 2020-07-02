@@ -465,7 +465,7 @@ impl UserPicked {
 
         for (origin, suggestions) in suggestions_per_path {
             let count = suggestions.len();
-            println!("Path is {:?} and has {}", &origin, count);
+            trace!("Path is {} and has {}", origin.as_path().display(), count);
 
             // @todo juck, uggly
             let mut suggestions_it = suggestions.clone().into_iter().enumerate();

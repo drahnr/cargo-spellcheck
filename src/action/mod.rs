@@ -136,7 +136,7 @@ impl Action {
             .as_path()
             .canonicalize()
             .map_err(|e| anyhow!("Failed to canonicalize {}", path.display()).context(e))?;
-        let path = dbg!(path.as_path());
+        let path = path.as_path();
         trace!("Attempting to open {} as read", path.display());
         let ro = std::fs::OpenOptions::new()
             .read(true)
