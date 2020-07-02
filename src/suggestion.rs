@@ -156,12 +156,10 @@ impl<'s> fmt::Display for Suggestion<'s> {
             0
         };
 
-        // We will trim the literal if does not fit in the terminal size
-        // The misspelled word shall always be shown and we aim to show as much
-        // info as possible to the user easily locate the word
-        let terminal_size: usize = get_terminal_size();
-        let mut max_chars: usize = terminal_size;
-        let mut min_chars = 0usize;
+        // For long lines, we will trim the literal displayed to fit in the terminal
+        // The misspelled word shall always be shown with as much info as possible
+        // Misspelled words that are too long shall also be ellipsized
+
         // The paddings give some space for the ` {} ...` and extra indentation and formatting:
         // ```
         // 65 |  ...  here, on the second most pointless site ever! Well, wander ont  ...
@@ -172,46 +170,112 @@ impl<'s> fmt::Display for Suggestion<'s> {
         //    |   Possible spelling mistake found.
         //    |
         // ```
-        const PADDING_OFFSET: usize = 5;
+        const PADDING_OFFSET: usize = 6;
+        const PADDING_OFFSET_START: usize = 4;
         const PADDING_END: usize = 15;
+        const TOO_LONG_WORD: usize = 20;
+        const DISPLAYED_LONG_WORD: usize = 4usize;
 
-        let range_start_text = Range {
+        let terminal_size: usize = get_terminal_size();
+        // We will be using ranges to help doing the fitting:
+        //
+        // |----------------------------------literal_word----------------------------------|
+        // |----------------------|---------misspelled_word---------|-----------------------|
+        // |-----left_context-----|---start_word----|----end_word---|-----right_context-----|
+        //
+        let mut range_left_context = Range {
             start: 0usize,
             end: marker_range_relative.start,
         };
-        let range_end_text = Range {
+        let mut range_right_context = Range {
             start: marker_range_relative.end,
             end: self.literal.as_str().chars().count(),
         };
+        let mut range_start_word = Range {
+            start: marker_range_relative.start,
+            end: marker_range_relative.start,
+        };
+        let mut range_end_word = Range {
+            start: marker_range_relative.end,
+            end: marker_range_relative.end,
+        };
         if self.literal.as_str().chars().count() > terminal_size {
+            let mut misspelled_word = format!(
+                "{}",
+                self.literal.sub(Range {
+                    start: marker_range_relative.start - 1,
+                    end: marker_range_relative.end
+                })
+            );
+            if marker_size > TOO_LONG_WORD {
+                range_start_word.start = marker_range_relative.start - 1;
+                range_start_word.end = range_start_word.start + DISPLAYED_LONG_WORD;
+
+                range_end_word.start = marker_range_relative
+                    .end
+                    .saturating_sub(DISPLAYED_LONG_WORD);
+                range_end_word.end = marker_range_relative.end;
+
+                misspelled_word = format!(
+                    "{}...{}",
+                    self.literal.sub(range_start_word),
+                    self.literal.sub(range_end_word)
+                );
+                marker_size = misspelled_word.chars().count();
+            };
+            // right context has enough info to fill the terminal
+            //  |-----misspelled_word-----|--------right_context---------|
+            //
             // Attempt to fit the misspelled word in the beginning followed by info.
-            if range_end_text.len() >= terminal_size {
-                min_chars = marker_range_relative.start - 1;
-                max_chars = (min_chars + terminal_size).saturating_sub(PADDING_END);
+            if range_right_context.len() >= terminal_size {
+                // Left range will not be used in this case
+                range_left_context.start = 0usize;
+                range_left_context.end = 0usize;
+
+                range_right_context.start = marker_range_relative.end;
+                range_right_context.end = marker_range_relative.end
+                    + (terminal_size
+                        .saturating_sub(misspelled_word.chars().count() + PADDING_END + 1));
+                offset = offset.saturating_sub(range_left_context.start) + PADDING_OFFSET_START;
             }
-            // Attempt to fit the misspelled word in the end after the info.
-            else if range_start_text.len() > terminal_size {
-                min_chars = (marker_range_relative.end)
-                    .saturating_sub(terminal_size)
-                    .saturating_add(PADDING_END);
-                max_chars = marker_range_relative.end;
+            // left context has enough info to fill the terminal
+            // |---------left_context---------|-----misspelled_word-----|
+            //
+            // Attempt to fit the misspelled word with left context info
+            else if range_left_context.len() > terminal_size {
+                range_left_context.start = marker_range_relative.start.saturating_sub(
+                    terminal_size.saturating_sub(misspelled_word.chars().count() + PADDING_END),
+                );
+                range_left_context.end = marker_range_relative.start - 1;
+                // Right range will not be used
+                range_right_context.start = 0usize;
+                range_right_context.end = 0usize;
+
+                offset = offset.saturating_sub(range_left_context.start + 1) + PADDING_OFFSET;
             }
+            // information will be shown in both sides of the `misspelled_word`
+            // |--left_context--|----misspelled_word---|--right_context--|
+            //
             // Attempt to fit the misspelled word in the middle with info in th left and right of it
             else {
-                let context = (terminal_size.saturating_sub(marker_size)) / 2;
-                min_chars = marker_range_relative.start.saturating_sub(context);
-                max_chars = marker_range_relative
+                let context = (terminal_size.saturating_sub(misspelled_word.chars().count())) / 2;
+                range_left_context.end = marker_range_relative.start;
+                range_left_context.start = range_left_context.end.saturating_sub(context);
+
+                range_right_context.start = marker_range_relative.end;
+                range_right_context.end = marker_range_relative
                     .end
                     .saturating_add(context)
                     .saturating_sub(PADDING_END);
+                offset = offset.saturating_sub(range_left_context.start + 1) + PADDING_OFFSET;
             }
-            // with the successful attempt, truncate the literal for displaying
             writeln!(
                 formatter,
-                "  ... {} ...",
-                self.literal.truncate(min_chars, max_chars)
+                "  ... {}{}{} ... ",
+                self.literal.sub(range_left_context),
+                misspelled_word,
+                self.literal.sub(range_right_context)
             )?;
-            offset = offset.saturating_sub(min_chars) + PADDING_OFFSET;
         // literal is smaller than terminal size and can be fully displayed
         } else {
             writeln!(formatter, " {}", self.literal.as_str())?;
