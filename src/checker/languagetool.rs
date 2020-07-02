@@ -1,7 +1,15 @@
+//! Check spelling and grammar by utilizing a languagetool server
+//!
+//! Can either be local or hosted.
+//! Note that this does not do any rate limiting and will exhaust the
+//! checks per second very quickly.
+
 use super::*;
 
 use crate::Range;
 use languagetool_rs::{LanguageTool, Request};
+use log::trace;
+
 pub struct LanguageToolChecker;
 
 impl Checker for LanguageToolChecker {
@@ -29,11 +37,11 @@ impl Checker for LanguageToolChecker {
                                     // really annoying and pointless in code related documentation
                                     continue;
                                 }
-                                log::trace!("item.rule: {:?}", rule);
+                                trace!("item.rule: {:?}", rule);
                             }
-                            log::trace!("item.context: {:?}", item.context);
-                            log::trace!("item.message: {:?}", item.message);
-                            log::trace!("item.short_message: {:?}", item.short_message);
+                            trace!("item.context: {:?}", item.context);
+                            trace!("item.message: {:?}", item.message);
+                            trace!("item.short_message: {:?}", item.short_message);
                             // TODO convert response to offsets and errors with the matching literal
                             for (_range, span) in plain.find_spans(Range {
                                 start: item.offset as usize,

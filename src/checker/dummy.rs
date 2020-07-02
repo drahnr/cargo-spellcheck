@@ -1,3 +1,7 @@
+//! Everything is wrong, so wrong, even if it's correct.
+//!
+//! A test checker, only available for unit tests.
+
 use super::tokenize;
 use super::Checker;
 use crate::documentation::Documentation;

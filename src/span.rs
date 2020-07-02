@@ -1,4 +1,7 @@
-//! Span annotation independent compatible with proc_macro2
+//! `Span` annotation, independent yet compatible with `proc_macro2::Span`
+//!
+//! Re-uses `LineColumn`, where `.line` is 1-indexed, and `.column`s are 0-indexed,
+//! `.end` is inclusive.
 
 use crate::Range;
 
