@@ -242,9 +242,10 @@ l
     #[ignore]
     fn try_from_raw_string_works() {
         const TEST: &str = include_str!("../../demo/src/lib.rs");
-        let fn_with_doc  = TEST.lines().skip(18).fold(String::new(), |acc, line| {
-            acc + line
-        });
+        let fn_with_doc = TEST
+            .lines()
+            .skip(18)
+            .fold(String::new(), |acc, line| acc + line);
 
         const EXPECTED: &[Span] = &[
             Span {
