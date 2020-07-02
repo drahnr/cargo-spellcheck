@@ -1,3 +1,9 @@
+//! Checker
+//!
+//! Trait to handle additional trackers.
+//! Contains also helpers to avoid re-implementing generic
+//! algorithms again and again, i.e. tokenization.
+
 use crate::{Config, Detector, Documentation, Suggestion, SuggestionSet};
 
 use anyhow::Result;

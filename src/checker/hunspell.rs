@@ -1,3 +1,10 @@
+//! A dictionary check with affixes, backed by `libhunspell`
+//!
+//! Does not check grammar, but tokenizes the documentation chunk,
+//! and checks the individual tokens against the dictionary using
+//! the defined affixes.
+//! Can handle multiple dictionaries.
+
 use super::{tokenize, Checker, Detector, Documentation, Suggestion, SuggestionSet};
 use std::path::PathBuf;
 

@@ -1,4 +1,6 @@
 //! Chunk definition for what is going to be processed by the checkers
+//!
+//! A chunk consists of multiple consecutive literals joined by newlines.
 
 use super::*;
 

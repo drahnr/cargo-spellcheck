@@ -1,6 +1,6 @@
-//! Executes the actual path traversal and creating a token stream.
+//! Travers paths and or mod declaration paths and manifest entry points.
 //!
-//! Whatever.
+//! Essentially collects all `Chunk`s used for parsing with an associated `Origin`.
 
 use super::*;
 use crate::Documentation;
