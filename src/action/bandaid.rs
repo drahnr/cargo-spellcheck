@@ -66,15 +66,11 @@ impl From<(String, Span)> for BandAid {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use crate::checker::{dummy::DummyChecker, Checker};
-    use crate::documentation::*;
     use crate::span::Span;
     use anyhow::bail;
-    use log::debug;
     use proc_macro2::LineColumn;
     use std::io::BufRead;
     use std::path::Path;
-    use std::path::PathBuf;
 
     /// Extract span from file as String
     /// Helpful to validate bandaids against what's actually in the file
@@ -193,49 +189,10 @@ l
         }
     }
 
-    // @todo condense and unify with other functions doing the same
-    fn try_from_test_body(stream: proc_macro2::TokenStream, expected_spans: &[Span]) {
-        let _ = env_logger::builder()
-            .filter(None, log::LevelFilter::Trace)
-            .is_test(true)
-            .try_init();
-
-        let origin = ContentOrigin::RustSourceFile(PathBuf::from("dummy/dummy.rs"));
-        let d = Documentation::from((origin, stream));
-
-        let suggestion_set = DummyChecker::check(&d, &()).expect("DummyChecker must not fail");
-
-        // one file
-        assert_eq!(suggestion_set.len(), 1);
-        // with two suggestions
-        assert_eq!(suggestion_set.total_count(), expected_spans.len());
-        let (_, suggestions) = suggestion_set
-            .iter()
-            .next()
-            .expect("Must have valid 1st suggestion");
-
-        for (index, (suggestion, expected_span)) in
-            suggestions.iter().zip(expected_spans.iter()).enumerate()
-        {
-            debug!("Suggestion: {:?}, index {}", suggestion.replacements, index);
-            let bandaid = BandAid::try_from((suggestion, 0)).expect("TryFrom suggestion failed");
-            assert_eq!(
-                suggestion.replacements,
-                vec![format!("replacement_{}", index)]
-            );
-            assert_eq!(suggestion.span, *expected_span);
-            assert_eq!(bandaid.replacement, format!("replacement_{}", index));
-            assert_eq!(bandaid.span, *expected_span);
-            trace!("Bandaid {:?}", bandaid.replacement);
-        }
-    }
-
     #[test]
     #[ignore]
     fn try_from_string_works() {
         const TEST: &str = include_str!("../../demo/src/main.rs");
-        let stream =
-            syn::parse_str::<proc_macro2::TokenStream>(TEST).expect("Must parse just fine");
 
         const EXPECTED: &[Span] = &[
             Span {
@@ -278,129 +235,130 @@ l
             },
         ];
 
-        try_from_test_body(stream, EXPECTED);
+        crate::checker::tests::extraction_test_body(TEST, EXPECTED);
     }
 
     #[test]
     #[ignore]
     fn try_from_raw_string_works() {
         const TEST: &str = include_str!("../../demo/src/lib.rs");
-        let stream =
-            syn::parse_str::<proc_macro2::TokenStream>(TEST).expect("Must parse just fine");
+        let fn_with_doc  = TEST.lines().skip(18).fold(String::new(), |acc, line| {
+            acc + line
+        });
 
         const EXPECTED: &[Span] = &[
             Span {
                 start: LineColumn {
-                    line: 19,
+                    line: 1,
                     column: 11,
                 },
                 end: LineColumn {
-                    line: 19,
+                    line: 1,
                     column: 14,
                 },
             },
             Span {
                 start: LineColumn {
-                    line: 19,
+                    line: 1,
                     column: 16,
                 },
                 end: LineColumn {
-                    line: 19,
+                    line: 1,
                     column: 17,
                 },
             },
             Span {
                 start: LineColumn {
-                    line: 19,
+                    line: 1,
                     column: 19,
                 },
                 end: LineColumn {
-                    line: 19,
+                    line: 1,
                     column: 21,
                 },
             },
             Span {
                 start: LineColumn {
-                    line: 19,
+                    line: 1,
                     column: 23,
                 },
                 end: LineColumn {
-                    line: 19,
+                    line: 1,
                     column: 26,
                 },
             },
             Span {
                 start: LineColumn {
-                    line: 19,
+                    line: 1,
                     column: 28,
                 },
                 end: LineColumn {
-                    line: 19,
+                    line: 1,
                     column: 32,
                 },
             },
             Span {
                 start: LineColumn {
-                    line: 19,
+                    line: 1,
                     column: 35,
                 },
                 end: LineColumn {
-                    line: 19,
+                    line: 1,
                     column: 38,
                 },
             },
             Span {
                 start: LineColumn {
-                    line: 19,
+                    line: 1,
                     column: 40,
                 },
                 end: LineColumn {
-                    line: 19,
+                    line: 1,
                     column: 43,
                 },
             },
             Span {
                 start: LineColumn {
-                    line: 19,
+                    line: 1,
                     column: 45,
                 },
                 end: LineColumn {
-                    line: 19,
+                    line: 1,
                     column: 47,
                 },
             },
             Span {
                 start: LineColumn {
-                    line: 19,
+                    line: 1,
                     column: 49,
                 },
                 end: LineColumn {
-                    line: 19,
+                    line: 1,
                     column: 53,
                 },
             },
             Span {
                 start: LineColumn {
-                    line: 19,
+                    line: 1,
                     column: 55,
                 },
                 end: LineColumn {
-                    line: 19,
+                    line: 1,
                     column: 57,
                 },
             },
             Span {
                 start: LineColumn {
-                    line: 19,
+                    line: 1,
                     column: 59,
                 },
                 end: LineColumn {
-                    line: 19,
+                    line: 1,
                     column: 61,
                 },
             },
         ];
 
-        try_from_test_body(stream, EXPECTED);
+        crate::checker::tests::extraction_test_body(fn_with_doc.as_str(), EXPECTED);
     }
 }
