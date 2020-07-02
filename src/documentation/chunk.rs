@@ -113,7 +113,7 @@ impl CheckableChunk {
             })
             .filter_map(|(sub, span)| {
                 if span.start.line == span.end.line {
-                    assert!(span.start.column <= span.end.column);
+                    debug_assert!(span.start.column <= span.end.column);
                     if span.start.column > span.end.column {
                         return None;
                     }
