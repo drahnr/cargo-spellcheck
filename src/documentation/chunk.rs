@@ -28,7 +28,8 @@ impl ContentOrigin {
 /// A chunk of documentation that is supposed to be checked
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct CheckableChunk {
-    /// Rendered contents of a literal set or just content of a markdown file
+    /// Rendered contents of a literal set or just content of a markdown file, e.g. a comment of two lines is
+    /// represented as ' First Line\n second line' in `rendered` where the whitespaces are preserved.
     content: String,
     /// Mapping from range within `content` and
     /// `Span` referencing the location within the source file.

@@ -304,7 +304,7 @@ impl<'s> SuggestionSet<'s> {
         self.per_file.keys()
     }
 
-    /// Iterate over all references given a origin
+    /// Iterate over all references given an origin
     ///
     /// panics if there is no such origin
     pub fn suggestions<'a>(

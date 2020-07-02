@@ -84,7 +84,6 @@ impl TryFrom<proc_macro2::Literal> for TrimmedLiteral {
         } else {
             return Err(anyhow!("Missing suffix of literal: {}", rendered.as_str()));
         };
-        let _scrap = |c: &'_ char| -> bool { c.is_whitespace() };
 
         let (len, pre, post) = match rendered.len() {
             len if len >= pre + post => (len - pre - post, pre, post),
@@ -159,9 +158,9 @@ impl fmt::Debug for TrimmedLiteral {
         write!(
             formatter,
             "{}{}{}",
-            cutoff.apply_to(&self.rendered.as_str()[0..self.pre]),
-            pick.apply_to(&self.rendered.as_str()[self.pre..(self.pre + self.len)]),
-            cutoff.apply_to(&self.rendered.as_str()[(self.pre + self.len)..]),
+            cutoff.apply_to(&self.prefix()),
+            pick.apply_to(&self.as_str()),
+            cutoff.apply_to(&self.suffix()),
         )
     }
 }
@@ -308,7 +307,7 @@ struct One;
             extracted_span: Span {
                 start: LineColumn {
                     line: 2usize,
-                    column: 0, // @todo why????
+                    column: 0, // @todo file a ticket with proc_macro2 to clarify if this is a bug or intended behaviour
                 },
                 end: LineColumn {
                     line: 2usize,
