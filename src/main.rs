@@ -6,6 +6,7 @@ mod span;
 mod suggestion;
 mod traverse;
 mod util;
+mod wrap;
 
 pub use self::action::*;
 pub use self::config::{Config, HunspellConfig, LanguageToolConfig};
