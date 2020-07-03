@@ -140,7 +140,7 @@ fn main() -> anyhow::Result<()> {
 
     let signals = iterator::Signals::new(vec![SIGTERM, SIGINT, SIGQUIT])?;
     std::thread::spawn(move || {
-        const STDIN_FILENO: i32 = 0;
+        let stdin =  std::io::stdin().as_raw_fd(); // unix only
         let mut termios_orig = termios::Termios::from_fd(STDIN_FILENO).unwrap();
         termios::tcgetattr(STDIN_FILENO, &mut termios_orig)
             .expect("Failed to obtain terminal settings");
