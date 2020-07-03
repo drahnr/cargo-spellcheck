@@ -16,6 +16,9 @@ use docopt::Docopt;
 
 use log::{info, trace, warn};
 use serde::Deserialize;
+use signal_hook::{iterator, SIGINT, SIGQUIT, SIGTERM};
+#[cfg(not(target_os = "windows"))]
+use std::os::unix::io::AsRawFd;
 
 use std::path::PathBuf;
 
@@ -67,6 +70,37 @@ struct Args {
     cmd_fix: bool,
     cmd_check: bool,
     cmd_config: bool,
+}
+
+#[cfg(not(target_os = "windows"))]
+fn on_exit(state: termios::Termios, fd: i32) -> Result<(), std::io::Error> {
+    termios::tcsetattr(fd, termios::TCSAFLUSH, &state)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn signal_handler() {
+    let signals =
+        iterator::Signals::new(vec![SIGTERM, SIGINT, SIGQUIT]).expect("Failed to create Signals");
+    let stdin = std::io::stdin().as_raw_fd();
+    let stdout = std::io::stdout().as_raw_fd();
+    let mut termios_stdin = termios::Termios::from_fd(stdin).expect("Failed to get stdin");
+    let mut termios_stdout = termios::Termios::from_fd(stdout).expect("Failed to get stdout");
+    termios::tcgetattr(stdin, &mut termios_stdin).expect("Failed to get stdin mode");
+    termios::tcgetattr(stdout, &mut termios_stdout).expect("Failed to get stdin mode");
+    for s in signals.forever() {
+        match s {
+            SIGTERM | SIGINT | SIGQUIT => {
+                if on_exit(termios_stdin, stdin).is_err()
+                    || on_exit(termios_stdout, stdout).is_err()
+                {
+                    std::process::exit(1);
+                } else {
+                    std::process::exit(130);
+                }
+            }
+            sig => warn!("Received unhandled signal {}, ignoring", sig),
+        }
+    }
 }
 
 fn parse_args(mut argv_iter: impl Iterator<Item = String>) -> Result<Args, docopt::Error> {
@@ -128,6 +162,11 @@ fn main() -> anyhow::Result<()> {
     if args.flag_help {
         println!("{}", USAGE);
         return Ok(());
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        std::thread::spawn(move || signal_handler());
     }
 
     let checkers = |config: &mut Config| {
