@@ -17,6 +17,8 @@ use docopt::Docopt;
 use log::{info, trace, warn};
 use serde::Deserialize;
 use signal_hook::{iterator, SIGINT, SIGQUIT, SIGTERM};
+#[cfg(not(target_os = "windows"))]
+use std::os::unix::io::AsRawFd;
 
 use std::path::PathBuf;
 
@@ -70,16 +72,42 @@ struct Args {
     cmd_config: bool,
 }
 
-#[cfg(not(target_os="linux"))]
-fn on_exit(state: termios::Termios, fd: i32) {
-    match termios::tcsetattr(fd, termios::TCSAFLUSH, &state) {
-        Ok(_) => std::process::exit(130),
-        Err(_) => std::process::exit(1),
-    };
+#[cfg(not(target_os = "windows"))]
+fn on_exit(state: termios::Termios, fd: i32) -> Result<(), std::io::Error> {
+    termios::tcsetattr(fd, termios::TCSAFLUSH, &state)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn signal_handler() {
+    let signals =
+        iterator::Signals::new(vec![SIGTERM, SIGINT, SIGQUIT]).expect("Failed to create Signals");
+    let stdin = std::io::stdin().as_raw_fd();
+    let stdout = std::io::stdout().as_raw_fd();
+    let mut termios_stdin = termios::Termios::from_fd(stdin).expect("Failed to get stdin");
+    let mut termios_stdout = termios::Termios::from_fd(stdout).expect("Failed to get stdout");
+    termios::tcgetattr(stdin, &mut termios_stdin).expect("Failed to get stdin mode");
+    termios::tcgetattr(stdout, &mut termios_stdout).expect("Failed to get stdin mode");
+    for s in signals.forever() {
+        match s {
+            SIGTERM | SIGINT | SIGQUIT => {
+                if on_exit(termios_stdin, stdin).is_err()
+                    || on_exit(termios_stdout, stdout).is_err()
+                {
+                    std::process::exit(1);
+                } else {
+                    std::process::exit(130);
+                }
+            }
+            _ => unreachable!(),
+        }
+    }
 }
 
 #[cfg(target_os = "windows")]
-fn on_exit(state: termios::Termios, fd: i32) {}
+fn on_exit(state: termios::Termios, fd: i32) -> Result<(), std::io::Error> {}
+
+#[cfg(target_os = "windows")]
+fn signal_handler() {}
 
 fn parse_args(mut argv_iter: impl Iterator<Item = String>) -> Result<Args, docopt::Error> {
     Docopt::new(USAGE).and_then(|d| {
@@ -142,19 +170,7 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let signals = iterator::Signals::new(vec![SIGTERM, SIGINT, SIGQUIT])?;
-    std::thread::spawn(move || {
-        let stdin =  std::io::stdin().as_raw_fd(); // unix only
-        let mut termios_orig = termios::Termios::from_fd(STDIN_FILENO).unwrap();
-        termios::tcgetattr(STDIN_FILENO, &mut termios_orig)
-            .expect("Failed to obtain terminal settings");
-        for s in signals.forever() {
-            match s {
-                SIGTERM | SIGINT | SIGQUIT => on_exit(termios_orig, STDIN_FILENO),
-                _ => unreachable!(),
-            }
-        }
-    });
+    std::thread::spawn(move || signal_handler());
 
     let checkers = |config: &mut Config| {
         // overwrite checkers
