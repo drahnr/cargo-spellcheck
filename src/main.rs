@@ -98,7 +98,7 @@ fn signal_handler() {
                     std::process::exit(130);
                 }
             }
-            _ => unreachable!(),
+            sig => warn!("Received unhandled signal {}, ignoring", sig),
         }
     }
 }
