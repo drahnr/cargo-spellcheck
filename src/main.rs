@@ -170,7 +170,10 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    std::thread::spawn(move || signal_handler());
+    #[cfg(not(target_os = "windows"))]
+    {
+        std::thread::spawn(move || signal_handler());
+    }
 
     let checkers = |config: &mut Config| {
         // overwrite checkers
