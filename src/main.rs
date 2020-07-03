@@ -16,7 +16,7 @@ use docopt::Docopt;
 
 use log::{info, trace, warn};
 use serde::Deserialize;
-use signal_hook::{iterator, SIGTERM, SIGINT, SIGQUIT};
+use signal_hook::{iterator, SIGINT, SIGQUIT, SIGTERM};
 
 use std::path::PathBuf;
 
@@ -131,11 +131,9 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let on_exit = || {
-        match crossterm::terminal::disable_raw_mode() {
-            Ok(_) => std::process::exit(0),
-            Err(_) => std::process::exit(1),
-        }
+    let on_exit = || match crossterm::terminal::disable_raw_mode() {
+        Ok(_) => std::process::exit(0),
+        Err(_) => std::process::exit(1),
     };
 
     let signals = iterator::Signals::new(vec![SIGTERM, SIGINT, SIGQUIT])?;
