@@ -9,6 +9,7 @@
 #![allow(missing_docs)]
 
 use crate::suggestion::Detector;
+use crate::wrap::WrapConfig;
 use anyhow::{anyhow, bail, Error, Result};
 use fancy_regex::Regex;
 
@@ -31,6 +32,7 @@ pub struct Config {
     #[serde(alias = "languageTool")]
     #[serde(alias = "Languagetool")]
     pub languagetool: Option<LanguageToolConfig>,
+    wrapper: Option<WrapConfig>,
 }
 
 #[derive(Debug)]
@@ -494,6 +496,7 @@ impl Config {
         match detector {
             Detector::Hunspell => self.hunspell.is_some(),
             Detector::LanguageTool => self.languagetool.is_some(),
+            Detector::Wrapper => self.wrapper.is_some(),
             #[cfg(test)]
             Detector::Dummy => true,
         }
@@ -543,6 +546,7 @@ impl Default for Config {
                 quirks: Some(Quirks::default()),
             }),
             languagetool: None,
+            wrapper: None,
         }
     }
 }

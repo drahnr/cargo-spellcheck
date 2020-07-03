@@ -52,16 +52,19 @@ impl Documentation {
     }
 
     /// Check if the document contains any checkable items.
+    #[inline(always)]
     pub fn is_empty(&self) -> bool {
         self.index.is_empty()
     }
 
     /// Borrowing iterator across content origins and associated sets of chunks.
+    #[inline(always)]
     pub fn iter(&self) -> impl Iterator<Item = (&ContentOrigin, &Vec<CheckableChunk>)> {
         self.index.iter()
     }
 
     /// Consuming iterator across content origins and associated sets of chunks.
+    #[inline(always)]
     pub fn into_iter(self) -> impl Iterator<Item = (ContentOrigin, Vec<CheckableChunk>)> {
         self.index.into_iter()
     }
@@ -132,6 +135,18 @@ impl Documentation {
         );
         Ok(())
     }
+
+    /// get funky
+    #[inline(always)]
+    pub fn get(&self, origin: &ContentOrigin) -> Option<&[CheckableChunk]> {
+        self.index.get(origin).map(AsRef::as_ref)
+    }
+
+    /// get funky
+    #[inline(always)]
+    pub fn entry_count(&self) -> usize {
+        self.index.len()
+    }
 }
 
 /// only a shortcut to avoid duplicate code
@@ -163,7 +178,7 @@ impl From<(ContentOrigin, &str)> for Documentation {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::checker::Checker;
     use crate::util::load_span_from;
@@ -227,16 +242,19 @@ mod tests {
         assert_eq!(z, chunk.find_spans(expected_raw_range));
     }
 
-    macro_rules! end2end {
-        ($test:expr, $n:expr) => {
-            end2end!(
-                $test,
-                $n,
-                ContentOrigin::RustSourceFile(PathBuf::from("/tmp/dummy"))
-            )
-        };
+    // use crate::literalset::tests::{annotated_literals,gen_literal_set};
+    use crate::checker::dummy::DummyChecker;
+    use crate::documentation::Documentation;
 
-        ($test:expr, $n:expr, $origin:expr) => {{
+    /// Declare an end to end test case, ranging from input content
+    /// down to the number expected issues given a checker type.
+    #[macro_export]
+    macro_rules! end2end {
+        ($test:expr, $n:expr) => {{
+            end2end!($test, ContentOrigin::TestEntityRust, $n, DummyChecker);
+        }};
+
+        ($test:expr, $origin:expr, $n:expr, $checker:ty) => {{
             let _ = env_logger::builder()
                 .is_test(true)
                 .filter(None, log::LevelFilter::Trace)
@@ -250,26 +268,42 @@ mod tests {
             let chunk = &chunks[0];
             let _plain = chunk.erase_markdown();
 
-            let suggestion_set = crate::checker::dummy::DummyChecker::check(&docs, &())
+            let cfg = Default::default();
+            let suggestion_set = <$checker>::check(&docs, &cfg)
                 .expect("Must not fail to extract suggestions");
             let (_, suggestions) = suggestion_set
                 .iter()
                 .next()
                 .expect("Must contain exactly one item");
             assert_eq!(suggestions.len(), $n);
-            suggestion_set
         }};
     }
 
-    macro_rules! end2end_rustfile {
+    /// Declare an end to end test case based on an existing rust file.
+    macro_rules! end2end_file_rust {
         ($path: literal, $n: expr) => {{
             let path2 = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/", $path));
             let origin = ContentOrigin::RustSourceFile(path2);
             end2end!(
                 include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/", $path)),
+                origin,
                 $n,
-                origin
-            )
+                DummyChecker
+            );
+        }};
+    }
+
+    /// Declare an end to end test case based on an existing common mark file.
+    macro_rules! end2end_file_cmark {
+        ($path: literal, $n: expr) => {{
+            let path2 = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/", $path));
+            let origin = ContentOrigin::CommonMarkFile(path2);
+            end2end!(
+                include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/", $path)),
+                origin,
+                $n,
+                DummyChecker
+            );
         }};
     }
 
@@ -298,12 +332,12 @@ mod tests {
 
         #[test]
         fn file_justone() {
-            end2end_rustfile!("demo/src/nested/justone.rs", 1);
+            end2end_file_rust!("demo/src/nested/justone.rs", 1);
         }
 
         #[test]
         fn file_justtwo() {
-            end2end_rustfile!("demo/src/nested/justtwo.rs", 2);
+            end2end_file_rust!("demo/src/nested/justtwo.rs", 2);
         }
 
         // use crate::literalset::tests::{annotated_literals,gen_literal_set};
