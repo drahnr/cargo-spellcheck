@@ -70,8 +70,8 @@ struct Args {
     cmd_config: bool,
 }
 
-fn on_exit() {
-    match crossterm::terminal::disable_raw_mode() {
+fn on_exit(state: termios::Termios, fd: i32) {
+    match termios::tcsetattr(fd, termios::TCSAFLUSH, &state) {
         Ok(_) => std::process::exit(130),
         Err(_) => std::process::exit(1),
     };
@@ -138,14 +138,15 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-
     let signals = iterator::Signals::new(vec![SIGTERM, SIGINT, SIGQUIT])?;
     std::thread::spawn(move || {
+        const STDIN_FILENO: i32 = 0;
+        let mut termios_orig = termios::Termios::from_fd(STDIN_FILENO).unwrap();
+        termios::tcgetattr(STDIN_FILENO, &mut termios_orig)
+            .expect("Failed to obtain terminal settings");
         for s in signals.forever() {
             match s {
-                SIGTERM => on_exit(),
-                SIGINT => on_exit(),
-                SIGQUIT => on_exit(),
+                SIGTERM | SIGINT | SIGQUIT => on_exit(termios_orig, STDIN_FILENO),
                 _ => unreachable!(),
             }
         }
