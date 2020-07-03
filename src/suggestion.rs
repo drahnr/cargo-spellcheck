@@ -227,7 +227,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
                 marker_size = misspelled_word.chars().count();
             };
             // right context has enough info to fill the terminal
-            //  |-----misspelled_word-----|--------right_context---------|
+            // |-----misspelled_word-----|--------right_context---------|
             //
             // Attempt to fit the misspelled word in the beginning followed by info.
             if range_right_context.len() >= terminal_size {
