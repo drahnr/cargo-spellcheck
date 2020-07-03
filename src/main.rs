@@ -70,12 +70,16 @@ struct Args {
     cmd_config: bool,
 }
 
+#[cfg(not(target_os="linux"))]
 fn on_exit(state: termios::Termios, fd: i32) {
     match termios::tcsetattr(fd, termios::TCSAFLUSH, &state) {
         Ok(_) => std::process::exit(130),
         Err(_) => std::process::exit(1),
     };
 }
+
+#[cfg(target_os = "windows")]
+fn on_exit(state: termios::Termios, fd: i32) {}
 
 fn parse_args(mut argv_iter: impl Iterator<Item = String>) -> Result<Args, docopt::Error> {
     Docopt::new(USAGE).and_then(|d| {
