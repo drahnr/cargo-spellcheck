@@ -103,12 +103,6 @@ fn signal_handler() {
     }
 }
 
-#[cfg(target_os = "windows")]
-fn on_exit(state: termios::Termios, fd: i32) -> Result<(), std::io::Error> {}
-
-#[cfg(target_os = "windows")]
-fn signal_handler() {}
-
 fn parse_args(mut argv_iter: impl Iterator<Item = String>) -> Result<Args, docopt::Error> {
     Docopt::new(USAGE).and_then(|d| {
         // if ends with file name `cargo-spellcheck`, split
