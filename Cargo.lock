@@ -198,6 +198,7 @@ dependencies = [
  "pulldown-cmark",
  "regex",
  "serde",
+ "signal-hook",
  "syn",
  "toml",
  "url 2.1.1",
