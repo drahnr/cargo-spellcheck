@@ -70,6 +70,13 @@ struct Args {
     cmd_config: bool,
 }
 
+fn on_exit() {
+    match crossterm::terminal::disable_raw_mode() {
+        Ok(_) => std::process::exit(130),
+        Err(_) => std::process::exit(1),
+    };
+}
+
 fn parse_args(mut argv_iter: impl Iterator<Item = String>) -> Result<Args, docopt::Error> {
     Docopt::new(USAGE).and_then(|d| {
         // if ends with file name `cargo-spellcheck`, split
@@ -131,10 +138,6 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let on_exit = || match crossterm::terminal::disable_raw_mode() {
-        Ok(_) => std::process::exit(0),
-        Err(_) => std::process::exit(1),
-    };
 
     let signals = iterator::Signals::new(vec![SIGTERM, SIGINT, SIGQUIT])?;
     std::thread::spawn(move || {
