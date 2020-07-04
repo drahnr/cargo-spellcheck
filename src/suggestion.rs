@@ -225,13 +225,16 @@ impl<'s> fmt::Display for Suggestion<'s> {
             );
             // Check words that are considered too long; Word will be formatted for fitting
             if marker_size > TOO_LONG_WORD {
-                range_start_word.start = marker_range_relative.start - 1;
-                range_start_word.end = range_start_word.start + DISPLAYED_LONG_WORD;
-
-                range_end_word.start = marker_range_relative
-                    .end //non inclusive
-                    .saturating_sub(DISPLAYED_LONG_WORD);
-                range_end_word.end = marker_range_relative.end - 1;
+                range_start_word = Range {
+                    start: marker_range_relative.start - 1,
+                    end: range_start_word.start + DISPLAYED_LONG_WORD,
+                };
+                range_end_word = Range {
+                    start: marker_range_relative
+                        .end //non inclusive
+                        .saturating_sub(DISPLAYED_LONG_WORD),
+                    end: marker_range_relative.end - 1,
+                };
                 //
                 //  word will be composed as it follows:
                 //  |----| (4 chars) ... |---| (3 chars)
@@ -247,13 +250,8 @@ impl<'s> fmt::Display for Suggestion<'s> {
             // right context has enough info to fill the terminal
             // |-----misspelled_word-----|--------right_context---------|
             //
-            // Attempt to fit the misspelled word in the beginning followed by info.
+            // I) Attempt to fit the misspelled word in the beginning followed by info.
             if range_right_context.len() >= terminal_size {
-                // Left range will not be used in this case
-                range_left_context = Range {
-                    start: 0usize,
-                    end: 0usize,
-                };
                 range_right_context = Range {
                     start: marker_range_relative.end - 1, //char right after the end of the word and it shall be included, white space.
                     end: marker_range_relative.end
@@ -264,10 +262,15 @@ impl<'s> fmt::Display for Suggestion<'s> {
                                 + 1,
                         )),
                 };
+                // Left range will not be used in this case
+                range_left_context = Range {
+                    start: 0usize,
+                    end: 0usize,
+                };
                 offset = PADDING_OFFSET;
                 writeln!(
                     formatter,
-                    "  .a. {}{}{} .a.",
+                    "  ... {}{}{} ...",
                     self.literal.sub(range_left_context),
                     misspelled_word,
                     self.literal.sub(range_right_context)
@@ -276,7 +279,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
             // left context has enough info to fill the terminal
             // |---------left_context---------|-----misspelled_word-----|
             //
-            // Attempt to fit the misspelled word with left context info
+            // II) Attempt to fit the misspelled word with left context info
             else if range_left_context.len() > terminal_size {
                 range_left_context = Range {
                     start: marker_range_relative.start.saturating_sub(
@@ -296,7 +299,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
                 offset = range_left_context.len() + PADDING_OFFSET;
                 writeln!(
                     formatter,
-                    "  .b. {}{}{} .b.", //10chars around the context's and word
+                    "  ... {}{}{} ...", //10chars around the context's and word
                     self.literal.sub(range_left_context),
                     misspelled_word,
                     self.literal.sub(range_right_context)
@@ -305,7 +308,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
             // information will be shown in both sides of the `misspelled_word`
             // |--left_context--|----misspelled_word---|--right_context--|
             //
-            // Attempt to fit the misspelled word in the middle with info in th left and right of it
+            // III) Attempt to fit the misspelled word in the middle with info in th left and right of it
             else {
                 let context = (terminal_size.saturating_sub(
                     misspelled_word.chars().count()
@@ -324,7 +327,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
 
                 writeln!(
                     formatter,
-                    "  .c. {}{}{} .c.",
+                    "  ... {}{}{} ...",
                     self.literal.sub(range_left_context),
                     misspelled_word,
                     self.literal.sub(range_right_context)
