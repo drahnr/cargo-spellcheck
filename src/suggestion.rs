@@ -177,7 +177,8 @@ impl<'s> fmt::Display for Suggestion<'s> {
         const PADDING_OFFSET_START: usize = 4;
         const PADDING_END: usize = 15;
         const TOO_LONG_WORD: usize = 20;
-        const DISPLAYED_LONG_WORD: usize = 4usize;
+        const DISPLAYED_LONG_WORD: usize = 4;
+        const PADDING_AROUND_LONG_LINES: usize = 5;
 
         let terminal_size: usize = get_terminal_size();
         // We will be using ranges to help doing the fitting:
@@ -211,14 +212,21 @@ impl<'s> fmt::Display for Suggestion<'s> {
                 })
             );
             if marker_size > TOO_LONG_WORD {
-                range_start_word.start = marker_range_relative.start - 1;
-                range_start_word.end = range_start_word.start + DISPLAYED_LONG_WORD;
-
-                range_end_word.start = marker_range_relative
-                    .end
-                    .saturating_sub(DISPLAYED_LONG_WORD);
-                range_end_word.end = marker_range_relative.end;
-
+                range_start_word = Range {
+                    start: marker_range_relative.start - 1,
+                    end: range_start_word.start + DISPLAYED_LONG_WORD,
+                };
+                range_end_word = Range {
+                    start: marker_range_relative
+                        .end //non inclusive
+                        .saturating_sub(DISPLAYED_LONG_WORD),
+                    end: marker_range_relative.end - 1,
+                };
+                //
+                //  word will be composed as it follows:
+                //  |----| (4 chars) ... |---| (3 chars)
+                //  therieeeeeeeeeeeeeeee -> ther...eee
+                //
                 misspelled_word = format!(
                     "{}...{}",
                     self.chunk.char_sub_window(range_start_word),
@@ -229,48 +237,82 @@ impl<'s> fmt::Display for Suggestion<'s> {
             // right context has enough info to fill the terminal
             // |-----misspelled_word-----|--------right_context---------|
             //
-            // Attempt to fit the misspelled word in the beginning followed by info.
+            // I) Attempt to fit the misspelled word in the beginning followed by info.
             if range_right_context.len() >= terminal_size {
+                range_right_context = Range {
+                    start: marker_range_relative.end - 1, //char right after the end of the word and it shall be included, white space.
+                    end: marker_range_relative.end
+                        + (terminal_size.saturating_sub(
+                            misspelled_word.chars().count()
+                                + PADDING_AROUND_LONG_LINES
+                                + padding_till_literal_start
+                                + 1,
+                        )),
+                };
                 // Left range will not be used in this case
-                range_left_context.start = 0usize;
-                range_left_context.end = 0usize;
-
-                range_right_context.start = marker_range_relative.end;
-                range_right_context.end = marker_range_relative.end
-                    + (terminal_size
-                        .saturating_sub(misspelled_word.chars().count() + PADDING_END + 1));
-                offset = offset.saturating_sub(range_left_context.start) + PADDING_OFFSET_START;
+                range_left_context = Range {
+                    start: 0usize,
+                    end: 0usize,
+                };
+                offset = PADDING_OFFSET;
+                writeln!(
+                    formatter,
+                    "  ... {}{}{} ...",
+                    self.chunk.char_sub_window(range_left_context),
+                    misspelled_word,
+                    self.chunk.char_sub_window(range_right_context)
+                )?;
             }
             // left context has enough info to fill the terminal
             // |---------left_context---------|-----misspelled_word-----|
             //
-            // Attempt to fit the misspelled word with left context info
+            // II) Attempt to fit the misspelled word with left context info
             else if range_left_context.len() > terminal_size {
                 range_left_context.start = marker_range_relative.start.saturating_sub(
                     terminal_size.saturating_sub(misspelled_word.chars().count() + PADDING_END),
                 );
                 range_left_context.end = marker_range_relative.start - 1;
                 // Right range will not be used
-                range_right_context.start = 0usize;
-                range_right_context.end = 0usize;
-
-                offset = offset.saturating_sub(range_left_context.start + 1) + PADDING_OFFSET;
+                range_right_context = Range {
+                    start: 0usize,
+                    end: 0usize,
+                };
+                offset = range_left_context.len() + PADDING_OFFSET;
+                writeln!(
+                    formatter,
+                    "  ... {}{}{} ...", //10chars around the context's and word
+                    self.chunk.char_sub_window(range_left_context),
+                    misspelled_word,
+                    self.chunk.char_sub_window(range_right_context)
+                )?;
             }
             // information will be shown in both sides of the `misspelled_word`
             // |--left_context--|----misspelled_word---|--right_context--|
             //
-            // Attempt to fit the misspelled word in the middle with info in th left and right of it
+            // III) Attempt to fit the misspelled word in the middle with info in th left and right of it
             else {
-                let context = (terminal_size.saturating_sub(misspelled_word.chars().count())) / 2;
-                range_left_context.end = marker_range_relative.start;
-                range_left_context.start = range_left_context.end.saturating_sub(context);
+                let context = (terminal_size.saturating_sub(
+                    misspelled_word.chars().count()
+                        + padding_till_literal_start
+                        + PADDING_AROUND_LONG_LINES,
+                )) / 2;
+                range_left_context = Range {
+                    start: range_left_context.end.saturating_sub(context),
+                    end: marker_range_relative.start - 1, //before the word starts
+                };
+                range_right_context = Range {
+                    start: marker_range_relative.end - 1,
+                    end: range_right_context.start + context,
+                };
+                offset = range_left_context.len() + PADDING_OFFSET;
 
-                range_right_context.start = marker_range_relative.end;
-                range_right_context.end = marker_range_relative
-                    .end
-                    .saturating_add(context)
-                    .saturating_sub(PADDING_END);
-                offset = offset.saturating_sub(range_left_context.start + 1) + PADDING_OFFSET;
+                writeln!(
+                    formatter,
+                    "  ... {}{}{} ...",
+                    self.chunk.char_sub_window(range_left_context),
+                    misspelled_word,
+                    self.chunk.char_sub_window(range_right_context)
+                )?;
             }
             writeln!(
                 formatter,
