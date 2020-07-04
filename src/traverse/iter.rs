@@ -7,7 +7,7 @@ use log::{trace, warn};
 
 use std::path::{Path, PathBuf};
 
-use anyhow::{anyhow, Error, Result};
+use anyhow::Result;
 
 /// An iterator traversing module hierarchies yielding paths
 #[derive(Debug, Clone)]
@@ -123,15 +123,7 @@ impl Iterator for TraverseModulesIter {
 /// traverse path with a depth limit, if the path is a directory all its children will be collected
 /// instead
 pub(crate) fn traverse(path: &Path) -> Result<impl Iterator<Item = Documentation>> {
-    let it = TraverseModulesIter::new(path)?
-        .filter_map(|path: PathBuf| -> Option<Documentation> {
-            fs::read_to_string(&path)
-                .ok()
-                .and_then(|content: String| syn::parse_str(&content).ok())
-                .map(|stream| Documentation::from((path, stream)))
-        })
-        .filter(|documentation| !documentation.is_empty());
-    Ok(it)
+    traverse_with_depth_limit(path, usize::MAX)
 }
 
 /// traverse path with a depth limit, if the path is a directory all its children will be collected
@@ -144,8 +136,10 @@ pub(crate) fn traverse_with_depth_limit(
         .filter_map(|path: PathBuf| -> Option<Documentation> {
             fs::read_to_string(&path)
                 .ok()
-                .and_then(|content: String| syn::parse_str(&content).ok())
-                .map(|stream| Documentation::from((path, stream)))
+                .and_then(|content: String| {
+                    syn::parse_str::<proc_macro2::TokenStream>(&content).ok()
+                })
+                .map(|stream| Documentation::from((ContentOrigin::RustSourceFile(path), stream)))
         })
         .filter(|documentation| !documentation.is_empty());
     Ok(it)

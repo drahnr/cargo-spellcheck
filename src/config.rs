@@ -200,6 +200,8 @@ impl Config {
         match detector {
             Detector::Hunspell => self.hunspell.is_some(),
             Detector::LanguageTool => self.languagetool.is_some(),
+            #[cfg(test)]
+            Detector::Dummy => true,
         }
     }
 

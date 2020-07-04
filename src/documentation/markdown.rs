@@ -3,19 +3,18 @@
 //! Resulting overlay is plain and can be fed into a grammer or spell checker.
 
 use super::*;
-use crate::Span;
 
+use indexmap::IndexMap;
 use log::trace;
 use pulldown_cmark::{Event, Options, Parser, Tag};
 
-use crate::literalset::{LiteralSet, Range};
-
-use indexmap::IndexMap;
+use crate::documentation::{CheckableChunk, Range};
+use crate::Span;
 
 /// A plain representation of markdown riddled set of trimmed literals.
 #[derive(Clone)]
 pub struct PlainOverlay<'a> {
-    raw: &'a LiteralSet,
+    raw: &'a CheckableChunk,
     plain: String,
     // require a sorted map, so we have the chance of binary search
     // key: plain string range
@@ -44,7 +43,7 @@ impl<'a> PlainOverlay<'a> {
         }
     }
 
-    /// ranges are mapped `plain -> raw`
+    /// ranges are mapped `cmakr reduced/plain -> raw`
     fn extract_plain_with_mapping(markdown: &str) -> (String, IndexMap<Range, Range>) {
         let mut plain = String::with_capacity(markdown.len());
         let mut mapping = indexmap::IndexMap::with_capacity(128);
@@ -141,50 +140,79 @@ impl<'a> PlainOverlay<'a> {
     }
 
     // @todo consider returning a Vec<PlainOverlay<'a>> to account for list items
-    // or other chunked information which might not pass a grammar check as a whole
-    pub fn erase_markdown(literal_set: &'a LiteralSet) -> Self {
-        let markdown = literal_set.to_string();
-
-        let (plain, mapping) = Self::extract_plain_with_mapping(markdown.as_str());
+    // or other non-linear information which might not pass a grammar check as a whole
+    pub fn erase_markdown(chunk: &'a CheckableChunk) -> Self {
+        let (plain, mapping) = Self::extract_plain_with_mapping(chunk.as_str());
         Self {
-            raw: literal_set,
+            raw: chunk,
             plain,
             mapping,
         }
     }
 
-    /// Since most checkers will operate on the plain data, an indirection to map plain to markdown
-    /// and back to literals and spans
-    pub fn linear_range_to_spans(&self, plain_range: Range) -> Vec<(&'a TrimmedLiteral, Span)> {
-        use core::cmp::min;
-
+    /// Since most checkers will operate on the plain data, an indirection to map cmark reduced / plain
+    /// back to raw ranges, which are then mapped back to `Span`s.
+    /// The returned key `Ranges` are in the condensed domain.
+    pub fn find_spans(&self, condensed_range: Range) -> IndexMap<Range, Span> {
+        let mut active = false;
+        let Range { start, end } = condensed_range;
         self.mapping
             .iter()
-            .filter(|(plain, _raw)| {
-                plain.start <= plain_range.start && plain_range.end <= plain.end
+            .skip_while(|(sub, _raw)| sub.end <= start)
+            .take_while(|(sub, _raw)| end <= sub.end)
+            .inspect(|x| {
+                trace!(">>> item {:?} ∈ {:?}", &condensed_range, x.0);
             })
-            .fold(Vec::with_capacity(64), |mut acc, (plain, raw)| {
-                let offset = raw.start - plain.start;
-                assert_eq!(raw.end - plain.end, offset);
-                let extracted = Range {
-                    start: plain_range.start + offset,
-                    end: min(raw.end, plain_range.end + offset),
+            .filter(|(sub, _)| {
+                // could possibly happen on empty documentation lines with `///`
+                sub.len() > 0
+            })
+            .fold(IndexMap::<_, _>::new(), |mut acc, (sub, raw)| {
+                fn recombine(range: Range, offset: usize, len: usize) -> Range {
+                    Range {
+                        start: range.start + offset,
+                        end: range.start + offset + len,
+                    }
                 };
-                trace!(
-                    "convert (offset = {}):  convert reduced={:?} -> raw={:?}",
-                    offset,
-                    plain,
-                    raw
-                );
-                trace!("highlight:  {:?} -> {:?}", &plain_range, &extracted);
-
-                if extracted.start < extracted.end {
-                    let resolved = self.raw.linear_range_to_spans(extracted.clone());
-                    trace!("linear range to spans: {:?} -> {:?}", extracted, resolved);
-                    acc.extend(resolved.into_iter());
+                let _ = if sub.contains(&start) {
+                    // calculate the offset between our `condensed_range.start` and
+                    // the `sub` which is one entry in the mappings
+                    let offset = start - sub.start;
+                    if sub.contains(&(end - 1)) {
+                        // complete start to end
+                        active = false;
+                        let raw = recombine(raw.clone(), offset, end - start);
+                        Some((start..end, raw))
+                    } else {
+                        // only start, continue taking until end
+                        active = true;
+                        let raw = recombine(raw.clone(), offset, sub.end - start);
+                        Some((start..sub.end, raw))
+                    }
+                // @todo must be implemented properly
+                // } else if active {
+                //     let offset = sub.end - end;
+                //     if sub.contains(&(end - 1)) {
+                //         active = false;
+                //         Some((sub.start..end, offset))
+                //     } else {
+                //         Some((sub.clone(), offset))
+                //     }
                 } else {
-                    warn!("linear range to spans: {:?} empty!", extracted);
+                    None
                 }
+                .and_then(|(sub, raw)| {
+                    trace!("convert:  cmark-erased={:?} -> raw={:?}", sub, raw);
+
+                    if raw.len() > 0 {
+                        let resolved = self.raw.find_spans(raw.clone());
+                        trace!("cmark-erased range to spans: {:?} -> {:?}", raw, resolved);
+                        acc.extend(resolved.into_iter());
+                    } else {
+                        warn!("linear range to spans: {:?} empty!", raw);
+                    }
+                    Some(())
+                });
                 acc
             })
     }
@@ -218,7 +246,7 @@ impl<'a> fmt::Debug for PlainOverlay<'a> {
 
         let color_cycle = styles.iter().cycle();
 
-        let markdown = self.raw.to_string();
+        let markdown = self.raw.as_str().to_owned();
 
         let mut coloured_plain = String::with_capacity(1024);
         let mut coloured_md = String::with_capacity(1024);

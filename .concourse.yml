@@ -64,11 +64,16 @@ jobs:
       - put: git-pull-request-resource
         params:
           path: git-pull-request-resource
+          context: unit-tests
+          status: pending
+      - put: git-pull-request-resource
+        params:
+          path: git-pull-request-resource
           context: run-check
           status: pending
 
     - in_parallel:
-      - task: validate-glibc
+      - task: compile
         timeout: 15m
         image: env-glibc
         config:
@@ -85,7 +90,7 @@ jobs:
               sudo chown $(whoami): -Rf ${CARGO_HOME} .
               rustc +stable --version --verbose
               cargo +stable b
-              cargo +stable t
+              cargo +stable b --release
             dir: git-pull-request-resource
           caches:
           - path: cargo
@@ -101,6 +106,40 @@ jobs:
           params:
             path: git-pull-request-resource
             context: compile
+            status: failure
+
+      - task: unit-tests
+        timeout: 15m
+        image: env-glibc
+        config:
+          platform: linux
+          inputs:
+          - name: git-pull-request-resource
+          run:
+            # user: root
+            path: sh
+            args:
+            - -exc
+            - |
+              export CARGO_HOME="$(pwd)/../cargo"
+              sudo chown $(whoami): -Rf ${CARGO_HOME} .
+              rustc +stable --version --verbose
+              cargo +stable t
+            dir: git-pull-request-resource
+          caches:
+          - path: cargo
+
+        on_success:
+          put: git-pull-request-resource
+          params:
+            path: git-pull-request-resource
+            context: unit-tests
+            status: success
+        on_failure:
+          put: git-pull-request-resource
+          params:
+            path: git-pull-request-resource
+            context: unit-tests
             status: failure
 
       - task: format-check

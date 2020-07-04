@@ -1,17 +1,16 @@
-//! Executes the actual path traversal and creating a token stream.
+//! Travers paths and or mod declaration paths and manifest entry points.
 //!
-//! Whatever.
+//! Essentially collects all `Chunk`s used for parsing with an associated `Origin`.
 
 use super::*;
 use crate::Documentation;
 
-use std::fs;
-
-use log::{trace, warn};
-
-use std::path::{Path, PathBuf};
-
 use anyhow::{anyhow, Error, Result};
+use indexmap::IndexMap;
+use log::{debug, trace, warn};
+use std::convert::TryFrom;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 fn cwd() -> Result<PathBuf> {
     std::env::current_dir().map_err(|_e| anyhow::anyhow!("Missing cwd!"))
@@ -129,7 +128,7 @@ pub(crate) fn extract_modules_from_file<P: AsRef<Path>>(path: P) -> Result<Vec<P
         let s = std::fs::read_to_string(path_str).map_err(|e| {
             Error::from(e).context(anyhow!("Failed to read file content of {}", path_str))
         })?;
-        let stream = syn::parse_str(s.as_str())
+        let stream = syn::parse_str::<proc_macro2::TokenStream>(s.as_str())
             .map_err(|e| Error::from(e).context(anyhow!("File {} has syntax errors", path_str)))?;
         extract_modules_inner(path.to_owned(), stream)
     } else {
@@ -196,7 +195,6 @@ fn extract_products<P: AsRef<Path>>(manifest_dir: P) -> Result<Vec<CheckEntity>>
         .chain(manifest.lib.into_iter().map(|x| x));
 
     let mut items = iter
-        .inspect(|x| println!("manifest entries {:?}", &x))
         .filter(|product| product.doctest)
         .filter_map(|product| product.path)
         .map(|path_str| CheckEntity::Source(manifest_dir.join(path_str)))
@@ -218,7 +216,8 @@ fn extract_products<P: AsRef<Path>>(manifest_dir: P) -> Result<Vec<CheckEntity>>
             items.push(CheckEntity::ManifestDescription(description.to_owned()))
         }
     }
-    Ok(dbg!(items))
+    trace!("manifest products {:?}", &items);
+    Ok(items)
 }
 
 fn handle_manifest<P: AsRef<Path>>(manifest_dir: P) -> Result<Vec<CheckEntity>> {
@@ -275,7 +274,7 @@ pub(crate) fn extract(
         } else {
             cwd.join(&path_in)
         };
-        info!("Processing {} -> {}", path_in.display(), path.display());
+        debug!("Processing {} -> {}", path_in.display(), path.display());
         path.canonicalize().ok()
     }));
 
@@ -334,31 +333,41 @@ pub(crate) fn extract(
         })?;
 
     // stage 4 - expand from the passed source files, if recursive, recurse down the module train
-    let docs: Vec<Documentation> = files_to_check
-        .iter()
-        .try_fold::<Vec<Documentation>, _, Result<Vec<Documentation>>>(
-            Vec::with_capacity(files_to_check.len()),
-            |mut acc, item| {
+    let combined: Documentation = files_to_check
+        .into_iter()
+        .try_fold::<Documentation, _, Result<Documentation>>(
+            Documentation::new(),
+            |mut docs, item| {
                 match item {
                     CheckEntity::Source(path) => {
                         if recurse {
-                            acc.extend(traverse(path.as_path())?)
+                            let iter = traverse(path.as_path())?;
+                            docs.extend(iter);
                         } else {
-                            let content = fs::read_to_string(&path)?;
-                            let stream = syn::parse_str(&content)?;
-                            acc.push(Documentation::from((dbg!(path), stream)));
+                            let content: String = fs::read_to_string(&path)?;
+                            let stream =
+                                syn::parse_str::<proc_macro2::TokenStream>(content.as_str())?;
+                            let cluster = Clusters::try_from(stream)?;
+                            let chunks = Vec::<CheckableChunk>::from(cluster);
+                            docs.add(ContentOrigin::RustSourceFile(path.to_owned()), chunks);
                         }
+                    }
+                    CheckEntity::Markdown(path) => {
+                        let content = std::fs::read_to_string(&path).unwrap(); // @todo error handling
+                        let source_mapping = IndexMap::new(); // @todo source map should be trivial, start to end
+                        docs.add(
+                            ContentOrigin::CommonMarkFile(path.to_owned()),
+                            vec![CheckableChunk::from_string(content, source_mapping)],
+                        );
                     }
                     other => {
                         warn!("Did not impl handling of {:?} type files", other);
                         // @todo generate Documentation structs from non-file sources
                     }
                 }
-                Ok(dbg!(acc))
+                Ok(docs)
             },
         )?;
-
-    let combined = Documentation::combine(docs);
 
     Ok(combined)
 }
@@ -457,9 +466,14 @@ mod tests {
             )
             .expect("Must be able to extract demo dir");
             assert_eq!(
-                into_hashset(docs.into_iter().map(|x| {
-                    x.0.strip_prefix(demo_dir()).expect("Must have common prefix").to_owned() }
-                )),
+                into_hashset(
+                    docs.into_iter()
+                        .map(|x| {
+                            let path = x.0.as_path();
+                            trace!("prefix: {}  --- item: {}", demo_dir().display(), path.display());
+                            path.strip_prefix(demo_dir()).expect("Must have common prefix").to_owned()
+                        })
+                    ),
                 pathset![
                     $(
                         ($file).to_owned(),
@@ -473,7 +487,7 @@ mod tests {
     #[test]
     fn traverse_manifest_1() {
         extract_test!(["Cargo.toml"] + false => [
-            //"README.md",
+            "README.md",
             "src/main.rs",
             "src/lib.rs"
         ]);
@@ -496,7 +510,7 @@ mod tests {
     ]);
 
     extract_test!(traverse_manifest_dir_rec, ["."] + true => [
-        //"README.md",
+        "README.md",
         "src/lib.rs",
         "src/main.rs",
         "src/nested/again/mod.rs",
@@ -509,7 +523,7 @@ mod tests {
     ]);
 
     extract_test!(traverse_manifest_rec, ["Cargo.toml"] + true => [
-        //"README.md",
+        "README.md",
         "src/lib.rs",
         "src/main.rs",
         "src/nested/again/mod.rs",

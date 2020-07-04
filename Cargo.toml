@@ -1,6 +1,6 @@
 [package]
 name = "cargo-spellcheck"
-version = "0.2.5-alpha.0"
+version = "0.3.0-alpha.1"
 authors = ["Bernhard Schuster <bernhard@ahoi.io>"]
 edition = "2018"
 repository = "https://github.com/drahnr/cargo-spellcheck.git"
@@ -31,6 +31,9 @@ lazy_static = "1"
 pulldown-cmark = "0.7"
 itertools = "0.9"
 crossterm = "0.17"
+regex = "1"
+signal-hook = "0.1"
+termios = "0.3"
 
 # config parsing, must be independent of features
 iso_country = { version = "0.1" }

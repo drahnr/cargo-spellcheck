@@ -3,9 +3,11 @@ use crate::suggestion::Suggestion;
 use anyhow::{anyhow, Error, Result};
 use log::trace;
 use std::convert::TryFrom;
+
+#[doc = r#"A choosen sugestion for a certain span"#]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BandAid {
-    /// a span, where the first line has index 1, columns are base 1 too
+    /// a span, where the first line has index 1, columns are base 0
     pub span: Span,
     /// replacement text for the given span
     pub replacement: String,
@@ -21,15 +23,8 @@ impl BandAid {
             span.end.column
         );
 
-        let mut span = span.clone();
-        // @todo this is a hack and should be documented better
-        // @todo not sure why the offset of two is necessary
-        // @todo but it works consistently
-        let doc_comment_to_file_offset = 2;
-        span.start.column += doc_comment_to_file_offset;
-        span.end.column += doc_comment_to_file_offset;
         Self {
-            span,
+            span: *span,
             replacement: replacement.to_owned(),
         }
     }
@@ -65,5 +60,306 @@ impl<'s> TryFrom<(Suggestion<'s>, usize)> for BandAid {
 impl From<(String, Span)> for BandAid {
     fn from((replacement, span): (String, Span)) -> Self {
         Self { span, replacement }
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use super::*;
+    use crate::span::Span;
+    use anyhow::bail;
+    use proc_macro2::LineColumn;
+    use std::io::BufRead;
+    use std::path::Path;
+
+    /// Extract span from file as String
+    /// Helpful to validate bandaids against what's actually in the file
+    #[allow(unused)]
+    pub(crate) fn load_span_from_file(path: impl AsRef<Path>, span: Span) -> Result<String> {
+        let path = path.as_ref();
+        let path = path
+            .canonicalize()
+            .map_err(|e| anyhow!("Failed to canonicalize {}", path.display()).context(e))?;
+
+        let ro = std::fs::OpenOptions::new()
+            .read(true)
+            .open(&path)
+            .map_err(|e| anyhow!("Failed to open {}", path.display()).context(e))?;
+
+        let mut reader = std::io::BufReader::new(ro);
+
+        load_span_from(reader, span)
+    }
+
+    /// Extract span from String as String
+    /// Helpful to validate bandaids against what's actually in the string
+    // @todo does not handle cross line spans @todo yet
+    #[allow(unused)]
+    pub(crate) fn load_span_from<S>(mut source: S, span: Span) -> Result<String>
+    where
+        S: BufRead,
+    {
+        log::trace!("Loading {:?} from source", &span);
+        if span.start.line < 1 {
+            bail!("Lines are 1-indexed, can't be less than 1")
+        }
+        if span.end.line < span.start.line {
+            bail!("Line range would be negative, bail")
+        }
+        if span.end.column < span.start.column {
+            bail!("Column range would be negative, bail")
+        }
+        let line = (&mut source)
+            .lines()
+            .skip(span.start.line - 1)
+            .filter_map(|line| line.ok())
+            .next()
+            .ok_or_else(|| anyhow!("Line not in buffer or invalid"))?;
+
+        let range = dbg!(span.start.column..(span.end.column + 1));
+        log::trace!("Loading {:?} from line >{}<", &range, &line);
+        dbg!(line)
+            .get(range.clone())
+            .map(|s| dbg!(s.to_owned()))
+            .ok_or_else(|| anyhow!("Columns not in line: {:?}", &range))
+    }
+
+    #[test]
+    fn span_helper_integrity() {
+        const SOURCE: &'static str = r#"0
+abcde
+f
+g
+hijk
+l
+"#;
+
+        struct TestSet {
+            span: Span,
+            expected: &'static str,
+        }
+
+        const SETS: &[TestSet] = &[
+            TestSet {
+                span: Span {
+                    start: LineColumn {
+                        line: 1usize,
+                        column: 0,
+                    },
+                    end: LineColumn {
+                        line: 1usize,
+                        column: 0,
+                    },
+                },
+                expected: "0",
+            },
+            TestSet {
+                span: Span {
+                    start: LineColumn {
+                        line: 2usize,
+                        column: 2,
+                    },
+                    end: LineColumn {
+                        line: 2usize,
+                        column: 4,
+                    },
+                },
+                expected: "cde",
+            },
+            TestSet {
+                span: Span {
+                    start: LineColumn {
+                        line: 5usize,
+                        column: 0,
+                    },
+                    end: LineColumn {
+                        line: 5usize,
+                        column: 1,
+                    },
+                },
+                expected: "hi",
+            },
+        ];
+
+        for item in SETS {
+            assert_eq!(
+                load_span_from(SOURCE.as_bytes(), item.span).unwrap(),
+                item.expected.to_string()
+            );
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn try_from_string_works() {
+        const TEST: &str = include_str!("../../demo/src/main.rs");
+
+        const EXPECTED: &[Span] = &[
+            Span {
+                start: LineColumn { line: 1, column: 4 },
+                end: LineColumn { line: 1, column: 7 },
+            },
+            Span {
+                start: LineColumn { line: 1, column: 9 },
+                end: LineColumn { line: 1, column: 9 },
+            },
+            Span {
+                start: LineColumn {
+                    line: 1,
+                    column: 11,
+                },
+                end: LineColumn {
+                    line: 1,
+                    column: 13,
+                },
+            },
+            Span {
+                start: LineColumn {
+                    line: 1,
+                    column: 15,
+                },
+                end: LineColumn {
+                    line: 1,
+                    column: 22,
+                },
+            },
+            Span {
+                start: LineColumn {
+                    line: 1,
+                    column: 24,
+                },
+                end: LineColumn {
+                    line: 1,
+                    column: 31,
+                },
+            },
+        ];
+
+        crate::checker::tests::extraction_test_body(TEST, EXPECTED);
+    }
+
+    #[test]
+    #[ignore]
+    fn try_from_raw_string_works() {
+        const TEST: &str = include_str!("../../demo/src/lib.rs");
+        let fn_with_doc = TEST
+            .lines()
+            .skip(18)
+            .fold(String::new(), |acc, line| acc + line);
+
+        const EXPECTED: &[Span] = &[
+            Span {
+                start: LineColumn {
+                    line: 1,
+                    column: 11,
+                },
+                end: LineColumn {
+                    line: 1,
+                    column: 14,
+                },
+            },
+            Span {
+                start: LineColumn {
+                    line: 1,
+                    column: 16,
+                },
+                end: LineColumn {
+                    line: 1,
+                    column: 17,
+                },
+            },
+            Span {
+                start: LineColumn {
+                    line: 1,
+                    column: 19,
+                },
+                end: LineColumn {
+                    line: 1,
+                    column: 21,
+                },
+            },
+            Span {
+                start: LineColumn {
+                    line: 1,
+                    column: 23,
+                },
+                end: LineColumn {
+                    line: 1,
+                    column: 26,
+                },
+            },
+            Span {
+                start: LineColumn {
+                    line: 1,
+                    column: 28,
+                },
+                end: LineColumn {
+                    line: 1,
+                    column: 32,
+                },
+            },
+            Span {
+                start: LineColumn {
+                    line: 1,
+                    column: 35,
+                },
+                end: LineColumn {
+                    line: 1,
+                    column: 38,
+                },
+            },
+            Span {
+                start: LineColumn {
+                    line: 1,
+                    column: 40,
+                },
+                end: LineColumn {
+                    line: 1,
+                    column: 43,
+                },
+            },
+            Span {
+                start: LineColumn {
+                    line: 1,
+                    column: 45,
+                },
+                end: LineColumn {
+                    line: 1,
+                    column: 47,
+                },
+            },
+            Span {
+                start: LineColumn {
+                    line: 1,
+                    column: 49,
+                },
+                end: LineColumn {
+                    line: 1,
+                    column: 53,
+                },
+            },
+            Span {
+                start: LineColumn {
+                    line: 1,
+                    column: 55,
+                },
+                end: LineColumn {
+                    line: 1,
+                    column: 57,
+                },
+            },
+            Span {
+                start: LineColumn {
+                    line: 1,
+                    column: 59,
+                },
+                end: LineColumn {
+                    line: 1,
+                    column: 61,
+                },
+            },
+        ];
+
+        crate::checker::tests::extraction_test_body(fn_with_doc.as_str(), EXPECTED);
     }
 }

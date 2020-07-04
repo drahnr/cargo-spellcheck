@@ -1,7 +1,15 @@
+//! Check spelling and grammar by utilizing a languagetool server
+//!
+//! Can either be local or hosted.
+//! Note that this does not do any rate limiting and will exhaust the
+//! checks per second very quickly.
+
 use super::*;
 
-use crate::literalset::Range;
+use crate::Range;
 use languagetool_rs::{LanguageTool, Request};
+use log::trace;
+
 pub struct LanguageToolChecker;
 
 impl Checker for LanguageToolChecker {
@@ -13,9 +21,9 @@ impl Checker for LanguageToolChecker {
         let lt = LanguageTool::new(config.url.as_str())?;
         let suggestions = docu.iter().try_fold::<SuggestionSet, _, Result<_>>(
             SuggestionSet::new(),
-            |mut acc, (path, literal_sets)| {
-                for cls in literal_sets {
-                    let plain = cls.erase_markdown();
+            |mut acc, (origin, chunks)| {
+                for chunk in chunks {
+                    let plain = chunk.erase_markdown();
                     log::trace!("markdown erasure: {:?}", &plain);
                     let req = Request::new(plain.to_string(), "en-US".to_owned());
                     let resp = lt.check(req)?;
@@ -29,28 +37,28 @@ impl Checker for LanguageToolChecker {
                                     // really annoying and pointless in code related documentation
                                     continue;
                                 }
-                                log::trace!("item.rule: {:?}", rule);
+                                trace!("item.rule: {:?}", rule);
                             }
-                            log::trace!("item.context: {:?}", item.context);
-                            log::trace!("item.message: {:?}", item.message);
-                            log::trace!("item.short_message: {:?}", item.short_message);
+                            trace!("item.context: {:?}", item.context);
+                            trace!("item.message: {:?}", item.message);
+                            trace!("item.short_message: {:?}", item.short_message);
                             // TODO convert response to offsets and errors with the matching literal
-                            for (literal, span) in plain.linear_range_to_spans(Range {
+                            for (_range, span) in plain.find_spans(Range {
                                 start: item.offset as usize,
                                 end: (item.offset + item.length) as usize,
                             }) {
                                 acc.add(
-                                    path.to_owned(),
+                                    origin.clone(),
                                     Suggestion {
                                         detector: Detector::LanguageTool,
-                                        span: span,
-                                        path: PathBuf::from(path),
+                                        span,
+                                        origin: origin.clone(),
                                         replacements: item
                                             .replacements
                                             .iter()
                                             .filter_map(|x| x.value.clone())
                                             .collect(),
-                                        literal: literal.into(),
+                                        chunk: chunk,
                                         description: Some(item.message.clone()),
                                     },
                                 );
