@@ -14,11 +14,10 @@ pub use self::suggestion::*;
 
 use docopt::Docopt;
 
+use crossterm::QueueableCommand;
 use log::{info, trace, warn};
 use serde::Deserialize;
 use signal_hook::{iterator, SIGINT, SIGQUIT, SIGTERM};
-#[cfg(not(target_os = "windows"))]
-use std::os::unix::io::AsRawFd;
 
 use std::path::PathBuf;
 
@@ -73,25 +72,14 @@ struct Args {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn on_exit(state: termios::Termios, fd: i32) -> Result<(), std::io::Error> {
-    termios::tcsetattr(fd, termios::TCSAFLUSH, &state)
-}
-
-#[cfg(not(target_os = "windows"))]
 fn signal_handler() {
     let signals =
         iterator::Signals::new(vec![SIGTERM, SIGINT, SIGQUIT]).expect("Failed to create Signals");
-    let stdin = std::io::stdin().as_raw_fd();
-    let stdout = std::io::stdout().as_raw_fd();
-    let mut termios_stdin = termios::Termios::from_fd(stdin).expect("Failed to get stdin");
-    let mut termios_stdout = termios::Termios::from_fd(stdout).expect("Failed to get stdout");
-    termios::tcgetattr(stdin, &mut termios_stdin).expect("Failed to get stdin mode");
-    termios::tcgetattr(stdout, &mut termios_stdout).expect("Failed to get stdin mode");
     for s in signals.forever() {
         match s {
             SIGTERM | SIGINT | SIGQUIT => {
-                if on_exit(termios_stdin, stdin).is_err()
-                    || on_exit(termios_stdout, stdout).is_err()
+                if std::io::stdout().queue(crossterm::cursor::Show).is_err()
+                    || crossterm::terminal::disable_raw_mode().is_err()
                 {
                     std::process::exit(1);
                 } else {
@@ -261,7 +249,14 @@ fn main() -> anyhow::Result<()> {
 
     let suggestion_set = checker::check(&combined, &config)?;
 
-    action.run(suggestion_set, &config)
+    match action.run(suggestion_set, &config) {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            crossterm::terminal::disable_raw_mode()?;
+            std::io::stdout().queue(crossterm::cursor::Show)?;
+            Err(e)
+        }
+    }
 }
 
 #[cfg(test)]

@@ -200,7 +200,6 @@ dependencies = [
  "serde",
  "signal-hook",
  "syn",
- "termios",
  "toml",
  "url 2.1.1",
  "walkdir",

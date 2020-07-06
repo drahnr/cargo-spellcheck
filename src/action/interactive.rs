@@ -196,7 +196,9 @@ impl UserPicked {
                 return Ok(Pick::Replacement(bandaid));
             }
             KeyCode::Esc => return Ok(Pick::Quit),
-            KeyCode::Char('c') if modifiers == KeyModifiers::CONTROL => return Ok(Pick::Quit),
+            KeyCode::Char('c') if modifiers == KeyModifiers::CONTROL => {
+                return Err(anyhow!("Received SIGINT"))
+            }
             KeyCode::Char(c) => {
                 state
                     .custom_replacement
@@ -439,7 +441,9 @@ impl UserPicked {
                 }
                 KeyCode::Char('n') => return Ok(Pick::Skip),
                 KeyCode::Char('j') => return Ok(Pick::Previous),
-                KeyCode::Char('c') if modifiers == KeyModifiers::CONTROL => return Ok(Pick::Quit),
+                KeyCode::Char('c') if modifiers == KeyModifiers::CONTROL => {
+                    return Err(anyhow!("Received SIGINT"))
+                }
                 KeyCode::Char('q') | KeyCode::Esc => return Ok(Pick::Quit),
                 KeyCode::Char('d') => return Ok(Pick::SkipFile),
                 KeyCode::Char('e') => {
