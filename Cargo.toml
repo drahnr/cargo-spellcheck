@@ -33,7 +33,6 @@ itertools = "0.9"
 crossterm = "0.17"
 regex = "1"
 signal-hook = "0.1"
-termios = "0.3"
 
 # config parsing, must be independent of features
 iso_country = { version = "0.1" }
