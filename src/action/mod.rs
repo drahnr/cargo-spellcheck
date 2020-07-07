@@ -197,7 +197,7 @@ impl Action {
         for (_path, suggestions) in suggestions_per_path {
             count += suggestions.len();
             for suggestion in suggestions {
-                eprintln!("{}", suggestion);
+                println!("{}", suggestion);
             }
         }
         if count > 0 {
