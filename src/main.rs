@@ -14,12 +14,10 @@ pub use self::suggestion::*;
 
 use docopt::Docopt;
 
-use crossterm::QueueableCommand;
 use log::{info, trace, warn};
 use serde::Deserialize;
 use signal_hook::{iterator, SIGINT, SIGQUIT, SIGTERM};
 
-use std::io::{stdout, Write};
 use std::path::PathBuf;
 
 const USAGE: &str = r#"
@@ -72,11 +70,6 @@ struct Args {
     cmd_config: bool,
 }
 
-fn exit() -> Result<(), anyhow::Error> {
-    stdout().queue(crossterm::cursor::Show)?;
-    crossterm::terminal::disable_raw_mode()?;
-    stdout().flush().map_err(|e| anyhow::anyhow!(e))
-}
 
 fn signal_handler() {
     let signals =
@@ -84,7 +77,7 @@ fn signal_handler() {
     for s in signals.forever() {
         match s {
             SIGTERM | SIGINT | SIGQUIT => {
-                if exit().is_err() {
+                if action::interactive::ScopedRaw::restore_terminal().is_err() {
                     std::process::exit(1);
                 } else {
                     std::process::exit(130);
