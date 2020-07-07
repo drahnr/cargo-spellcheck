@@ -70,18 +70,16 @@ struct Args {
     cmd_config: bool,
 }
 
-
 fn signal_handler() {
     let signals =
         iterator::Signals::new(vec![SIGTERM, SIGINT, SIGQUIT]).expect("Failed to create Signals");
     for s in signals.forever() {
         match s {
             SIGTERM | SIGINT | SIGQUIT => {
-                if action::interactive::ScopedRaw::restore_terminal().is_err() {
-                    std::process::exit(1);
-                } else {
-                    std::process::exit(130);
+                if let Err(e) = action::interactive::ScopedRaw::restore_terminal() {
+                    warn!("Failed to restore terminal: {}", e);
                 }
+                std::process::exit(130);
             }
             sig => warn!("Received unhandled signal {}, ignoring", sig),
         }
