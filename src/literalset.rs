@@ -8,7 +8,7 @@ pub type Range = core::ops::Range<usize>;
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
 /// A ref to a trimmed literal.
 pub struct TrimmedLiteralRef<'l> {
-    reference: &'l TrimmedLiteral,
+    pub reference: &'l TrimmedLiteral,
 }
 
 impl<'l> std::ops::Deref for TrimmedLiteralRef<'l> {

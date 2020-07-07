@@ -625,8 +625,8 @@ them to buy a monkey?
             "  ... Speak...ggg of food, what's up with pie? There's strawberry pie ..."
         );
         assert_eq!(
-            res.chars().count(),
-            terminal_size.saturating_sub(padding_till_literal_start)
+            res.chars().count() + padding_till_literal_start,
+            terminal_size
         );
         assert_eq!(offset, 5usize);
 
@@ -638,18 +638,6 @@ them to buy a monkey?
      music thingy and the cute little monkey with the bellhop hat who collects the money? Okay. They're basically begging\
       on the street. How did they ever afford an organ-thingy? Wouldn't it make more sense to get a kazoo, if you're broke?\
        And if they're so poor, what possessed them to buy a monkey?");
-        let res: String = convert_long_statements_to_short(
-            terminal_size,
-            marker_range_relative,
-            &mut marker_size,
-            test_word_ref,
-            &mut offset,
-            indent,
-            padding_till_literal_start,
-        );
-        assert_eq!(
-            res,
-            "  ... Speak...ggg of food, what's up with pie? There's strawberry pie ..."
-        );
+
     }
 }
