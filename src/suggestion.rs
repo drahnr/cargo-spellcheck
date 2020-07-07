@@ -11,14 +11,13 @@
 //!     |     - you can add it to your personal dictionary to prevent future alerts.
 //! ```
 
-use crate::{Range,Span};
 use crate::documentation::{CheckableChunk, ContentOrigin};
-use std::path::{Path, PathBuf};
+use crate::{Range, Span, LineColumn};
 use std::convert::TryFrom;
+use std::path::{Path, PathBuf};
 
 use crossterm::terminal::size;
 use enumflags2::BitFlags;
-
 
 /// Bitflag of available checkers by compilation / configuration.
 #[derive(Debug, Clone, Copy, BitFlags, Eq, PartialEq, Hash)]
@@ -316,7 +315,9 @@ impl<'s> fmt::Display for Suggestion<'s> {
             // column bounds are inclusive, so for a correct length we need to add + 1
             self.span.end.column.saturating_sub(self.span.start.column) + 1
         } else {
-            self.chunk.len_in_chars().saturating_sub(self.span.start.column)
+            self.chunk
+                .len_in_chars()
+                .saturating_sub(self.span.start.column)
         };
 
         let literal_span: Span = self.span.clone();
@@ -369,17 +370,17 @@ impl<'s> fmt::Display for Suggestion<'s> {
             help.apply_to(format!("{:^>size$}", "", size = marker_size))
                 .fmt(formatter)?;
             formatter.write_str("\n")?;
-            // @todo
-            // log::trace!(
-            //     "marker_size={} [{}|{}|{}] literal {{ {:?} .. {:?} }} >> {:?} <<",
-            //     marker_size,
-            //     self.chunk.pre(),
-            //     self.chunk.len(),
-            //     self.chunk.post(),
-            //     self.span.start,
-            //     self.span.end,
-            //     self,
-            // );
+        // @todo
+        // log::trace!(
+        //     "marker_size={} [{}|{}|{}] literal {{ {:?} .. {:?} }} >> {:?} <<",
+        //     marker_size,
+        //     self.chunk.pre(),
+        //     self.chunk.len(),
+        //     self.chunk.post(),
+        //     self.span.start,
+        //     self.span.end,
+        //     self,
+        // );
         } else {
             // @todo
             // log::warn!(
@@ -607,17 +608,22 @@ bellhop hat who collects the money? Okay. They're basically begging on the stree
 organ-thingy? Wouldn't it make more sense to get a kazoo, if you're broke? And if they're so poor, what possessed \
 them to buy a monkey?
 ";
-        let test_word = TrimmedLiteral {
-            literal: proc_macro2::Literal::string(CONTENT_LONG_LITERAL_LONG_WORD),
-            rendered: CONTENT_LONG_LITERAL_LONG_WORD.to_owned(),
-            pre: 0usize,
-            post: 0usize,
-            len: CONTENT_LONG_LITERAL_LONG_WORD.len(),
-        };
+        let chunk = CheckableChunk::from_str(
+            CONTENT_LONG_LITERAL_LONG_WORD,
+            indexmap::indexmap![
+                Range {start: 0, end: 895} =>
+                Span {
+                    start: LineColumn {
+                        line: 0usize,
+                        column: 4usize,
+                    },
+                    end: LineColumn {
+                        line: 0usize,
+                        column: 4usize,
+                    }
+                }
+            ]);
 
-        let test_word_ref = TrimmedLiteralRef {
-            reference: &test_word,
-        };
         let terminal_size = 80;
         let marker_range_relative = Range {
             start: 1usize,
@@ -631,7 +637,7 @@ them to buy a monkey?
             terminal_size,
             marker_range_relative,
             &mut marker_size,
-            test_word_ref,
+            &chunk,
             &mut offset,
             indent,
             padding_till_literal_start,
@@ -654,6 +660,5 @@ them to buy a monkey?
      music thingy and the cute little monkey with the bellhop hat who collects the money? Okay. They're basically begging\
       on the street. How did they ever afford an organ-thingy? Wouldn't it make more sense to get a kazoo, if you're broke?\
        And if they're so poor, what possessed them to buy a monkey?");
-
     }
 }
