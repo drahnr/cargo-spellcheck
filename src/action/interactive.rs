@@ -32,12 +32,18 @@ e - manually edit the current hunk
 "##;
 
 /// Helper strict to assure we leave the terminals raw mode
-struct ScopedRaw;
+pub struct ScopedRaw;
 
 impl ScopedRaw {
     fn new() -> Result<Self> {
         crossterm::terminal::enable_raw_mode()?;
         Ok(Self)
+    }
+
+    pub fn restore_terminal() -> Result<()> {
+        stdout().queue(crossterm::cursor::Show)?;
+        crossterm::terminal::disable_raw_mode()?;
+        stdout().flush().map_err(|e| anyhow::anyhow!(e))
     }
 }
 
@@ -197,9 +203,7 @@ impl UserPicked {
             }
             KeyCode::Esc => return Ok(Pick::Quit),
             KeyCode::Char('c') if modifiers == KeyModifiers::CONTROL => {
-                crossterm::terminal::disable_raw_mode()?;
-                std::io::stdout().queue(crossterm::cursor::Show)?;
-                std::io::stdout().flush()?;
+                ScopedRaw::restore_terminal()?;
                 std::process::exit(130);
             }
             KeyCode::Char(c) => {
@@ -445,9 +449,7 @@ impl UserPicked {
                 KeyCode::Char('n') => return Ok(Pick::Skip),
                 KeyCode::Char('j') => return Ok(Pick::Previous),
                 KeyCode::Char('c') if modifiers == KeyModifiers::CONTROL => {
-                    crossterm::terminal::disable_raw_mode()?;
-                    std::io::stdout().queue(crossterm::cursor::Show)?;
-                    std::io::stdout().flush()?;
+                    ScopedRaw::restore_terminal()?;
                     std::process::exit(130);
                 }
                 KeyCode::Char('q') | KeyCode::Esc => return Ok(Pick::Quit),
