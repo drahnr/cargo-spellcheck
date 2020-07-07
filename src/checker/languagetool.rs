@@ -43,7 +43,7 @@ impl Checker for LanguageToolChecker {
                             trace!("item.message: {:?}", item.message);
                             trace!("item.short_message: {:?}", item.short_message);
                             // TODO convert response to offsets and errors with the matching literal
-                            for (_range, span) in plain.find_spans(Range {
+                            for (range, span) in plain.find_spans(Range {
                                 start: item.offset as usize,
                                 end: (item.offset + item.length) as usize,
                             }) {
@@ -51,6 +51,7 @@ impl Checker for LanguageToolChecker {
                                     origin.clone(),
                                     Suggestion {
                                         detector: Detector::LanguageTool,
+                                        range,
                                         span,
                                         origin: origin.clone(),
                                         replacements: item
