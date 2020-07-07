@@ -75,6 +75,176 @@ impl fmt::Display for Detector {
     }
 }
 
+// For long lines, literal will be trimmed to display in one terminal line
+// Misspelled words that are too long shall also be ellipsized
+pub fn convert_long_statements_to_short(
+    terminal_size: usize,
+    marker_range_relative: Range,
+    marker_size: &mut usize,
+    chunk: &CheckableChunk,
+    offset: &mut usize,
+    indent: usize,
+    padding_till_literal_start: usize,
+) -> String {
+    //
+    // The paddings give some space for the ` {} ...` and extra indentation and formatting:
+    //
+    //|---------------------------------------------------------------------------------------| terminal_size
+    //|-------| padding_till_literal_start = indent (3+line_number_digit_count) + 2 white spaces = 7usize, for this case.
+    //     |------| offset = PADDING_OFFSET; 3 chars for `...` and 2 white spaces more added in the formatting.
+    //
+    //   --> /home/tmhdev/Documents/cargo-spellcheck/src/suggestion.rs:62
+    //    |
+    // 62 |  ... Reasn of food, what's up with pie? There's strawberry pie, apple, pumpkin ...
+    //    |      ^^^^^^
+    //    | - there, Cherie, thither, or tither
+    //    |
+    //    |   Possible spelling mistake found.
+    //
+    const PADDING_OFFSET: usize = 5;
+    const TOO_LONG_WORD: usize = 20;
+    const DISPLAYED_LONG_WORD: usize = 4;
+    const PADDING_AROUND_LONG_LINES: usize = 10;
+
+    // We will be using ranges to help doing the fitting:
+    //
+    // |----------------------------------literal_word----------------------------------|
+    // |----------------------|---------misspelled_word---------|-----------------------|
+    // |-----left_context-----|---start_word----|----end_word---|-----right_context-----|
+    //
+    // Obs: paddings are not being considered in the illustration, but info is above.
+    let mut range_left_context = Range {
+        start: 0usize,
+        end: marker_range_relative.start,
+    };
+    let mut range_right_context = Range {
+        start: marker_range_relative.end,
+        end: chunk.as_str().chars().count(),
+    };
+    let mut range_start_word = Range {
+        start: marker_range_relative.start,
+        end: marker_range_relative.start,
+    };
+    let mut range_end_word = Range {
+        start: marker_range_relative.end,
+        end: marker_range_relative.end,
+    };
+    // the line being analysed can affect how the indentation is done
+    // this values is dynamically calculated according to the line number
+    let mut misspelled_word = format!(
+        "{}",
+        // Exactly range to use sub() and have access to the misspelled word
+        // without extra spaces or punctuation around
+        chunk.char_sub_window(Range {
+            start: (marker_range_relative.start).saturating_sub(1),
+            end: (marker_range_relative.end).saturating_sub(1)
+        })
+    );
+    // Check words that are considered too long; Word will be formatted for fitting
+    if *marker_size > TOO_LONG_WORD {
+        range_start_word = Range {
+            start: marker_range_relative.start - 1,
+            end: range_start_word.start + DISPLAYED_LONG_WORD,
+        };
+        range_end_word = Range {
+            start: marker_range_relative
+                .end //non inclusive
+                .saturating_sub(DISPLAYED_LONG_WORD),
+            end: marker_range_relative.end - 1,
+        };
+
+        //  too long word will be shorter as it follows:
+        //    4 chars |----|  ... |---| 3 chars
+        //                ther...eee, for therieeeeeeeeeeeeeeee
+        //
+        misspelled_word = format!(
+            "{}...{}",
+            chunk.char_sub_window(range_start_word),
+            chunk.char_sub_window(range_end_word)
+        );
+        *marker_size = misspelled_word.chars().count();
+    }
+    // right context has enough info to fill the terminal
+    // |-----misspelled_word-----|--------right_context---------|
+    //
+    // Attempt to fit the misspelled word in the beginning followed by info.
+    if range_right_context.len() >= terminal_size {
+        range_right_context = Range {
+            start: marker_range_relative.end - 1, //char right after the end of the word and it shall be included, white space.
+            end: marker_range_relative.end
+                + (terminal_size.saturating_sub(
+                    misspelled_word.chars().count()
+                        + PADDING_AROUND_LONG_LINES
+                        + padding_till_literal_start
+                        + 1,
+                )),
+        };
+        // Left range will not be used in this case
+        range_left_context = Range {
+            start: 0usize,
+            end: 0usize,
+        };
+        *offset = PADDING_OFFSET;
+    }
+    // left context has enough info to fill the terminal
+    // |---------left_context---------|-----misspelled_word-----|
+    //
+    // Attempt to fit the misspelled word with left context info
+    else if range_left_context.len() > terminal_size {
+        range_left_context = Range {
+            start: marker_range_relative
+                .start
+                .saturating_sub(terminal_size.saturating_sub(
+                    misspelled_word.chars().count()
+                        + PADDING_AROUND_LONG_LINES
+                        + padding_till_literal_start,
+                )),
+            end: marker_range_relative.start - 1,
+        };
+        // Right range will not be used
+        range_right_context = Range {
+            start: 0usize,
+            end: 0usize,
+        };
+        *offset = range_left_context.len() + PADDING_OFFSET;
+    }
+    // information will be shown in both sides of the `misspelled_word`
+    // |--left_context--|----misspelled_word---|--right_context--|
+    //
+    // Attempt to fit the misspelled word in the middle with info in th left and right of it
+    else {
+        let context = (terminal_size.saturating_sub(
+            misspelled_word.chars().count()
+                + padding_till_literal_start
+                + PADDING_AROUND_LONG_LINES,
+        )) / 2;
+        range_left_context = Range {
+            start: range_left_context.end.saturating_sub(context),
+            end: marker_range_relative.start - 1, //before the word starts
+        };
+        range_right_context = Range {
+            start: marker_range_relative.end - 1,
+            end: range_right_context.start + context,
+        };
+        *offset = range_left_context.len() + PADDING_OFFSET;
+    }
+    // Formatting itself added white spaces and punctuation to do the fitting to be considered:
+    //
+    //     |------ info ----| => PADDING_AROUND_LONG_LINES = 10 usize
+    // format!(
+    //     "  ... {}{}{} ...",
+    //     self.chunk.char_sub_window(range_left_context),
+    //     misspelled_word,
+    //     self.chunk.char_sub_window(range_right_context)
+    // )
+    format!(
+        "  ... {}{}{} ...",
+        chunk.char_sub_window(range_left_context),
+        misspelled_word,
+        chunk.char_sub_window(range_right_context)
+    )
+}
+
 /// A suggestion for certain offending span.
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub struct Suggestion<'s> {
@@ -159,51 +329,14 @@ impl<'s> fmt::Display for Suggestion<'s> {
         let chunk_str = self.chunk.as_str();
         let n = self.chunk.len_in_chars();
 
-        // For long lines, we will trim the literal displayed to fit in the terminal
-        // The misspelled word shall always be shown with as much info as possible
-        // Misspelled words that are too long shall also be ellipsized
-
-        // The paddings give some space for the ` {} ...` and extra indentation and formatting:
-        // ```
-        // 65 |  ...  here, on the second most pointless site ever! Well, wander ont  ...
-        //    |                                                                  ^^^
-        //    |                                                                                                                                                                                                ^^^
-        //    | - not, Ont, int, on, onto, cont, font, or one of 9 others
-        //    |
-        //    |   Possible spelling mistake found.
-        //    |
-        // ```
-        const PADDING_OFFSET: usize = 6;
-        const PADDING_OFFSET_START: usize = 4;
-        const PADDING_END: usize = 15;
-        const TOO_LONG_WORD: usize = 20;
-        const DISPLAYED_LONG_WORD: usize = 4;
-        const PADDING_AROUND_LONG_LINES: usize = 5;
-
         let terminal_size: usize = get_terminal_size();
-        // We will be using ranges to help doing the fitting:
-        //
-        // |----------------------------------literal_word----------------------------------|
-        // |----------------------|---------misspelled_word---------|-----------------------|
-        // |-----left_context-----|---start_word----|----end_word---|-----right_context-----|
-        //
-        let mut range_left_context = Range {
-            start: 0usize,
-            end: marker_range_relative.start,
-        };
-        let mut range_right_context = Range {
-            start: marker_range_relative.end,
-            end: chunk_str.chars().count(),
-        };
-        let mut range_start_word = Range {
-            start: marker_range_relative.start,
-            end: marker_range_relative.start,
-        };
-        let mut range_end_word = Range {
-            start: marker_range_relative.end,
-            end: marker_range_relative.end,
-        };
-        if n > terminal_size {
+        // the line being analysed can affect how the indentation is done
+        // this values is dynamically calculated for each line where the documentation
+        let padding_till_literal_start = indent + 2; // 2 extra spaces are considered for starting the literal already
+
+        // Check whether the statement is too long for the remaining space left of the terminal size
+        // and if it is, we shall do the fitting
+        if n + padding_till_literal_start > terminal_size {
             let mut misspelled_word = format!(
                 "{}",
                 self.chunk.char_sub_window(Range {
@@ -211,117 +344,18 @@ impl<'s> fmt::Display for Suggestion<'s> {
                     end: marker_range_relative.end
                 })
             );
-            if marker_size > TOO_LONG_WORD {
-                range_start_word = Range {
-                    start: marker_range_relative.start - 1,
-                    end: range_start_word.start + DISPLAYED_LONG_WORD,
-                };
-                range_end_word = Range {
-                    start: marker_range_relative
-                        .end //non inclusive
-                        .saturating_sub(DISPLAYED_LONG_WORD),
-                    end: marker_range_relative.end - 1,
-                };
-                //
-                //  word will be composed as it follows:
-                //  |----| (4 chars) ... |---| (3 chars)
-                //  therieeeeeeeeeeeeeeee -> ther...eee
-                //
-                misspelled_word = format!(
-                    "{}...{}",
-                    self.chunk.char_sub_window(range_start_word),
-                    self.chunk.char_sub_window(range_end_word)
-                );
-                marker_size = misspelled_word.chars().count();
-            };
-            // right context has enough info to fill the terminal
-            // |-----misspelled_word-----|--------right_context---------|
-            //
-            // I) Attempt to fit the misspelled word in the beginning followed by info.
-            if range_right_context.len() >= terminal_size {
-                range_right_context = Range {
-                    start: marker_range_relative.end - 1, //char right after the end of the word and it shall be included, white space.
-                    end: marker_range_relative.end
-                        + (terminal_size.saturating_sub(
-                            misspelled_word.chars().count()
-                                + PADDING_AROUND_LONG_LINES
-                                + padding_till_literal_start
-                                + 1,
-                        )),
-                };
-                // Left range will not be used in this case
-                range_left_context = Range {
-                    start: 0usize,
-                    end: 0usize,
-                };
-                offset = PADDING_OFFSET;
-                writeln!(
-                    formatter,
-                    "  ... {}{}{} ...",
-                    self.chunk.char_sub_window(range_left_context),
-                    misspelled_word,
-                    self.chunk.char_sub_window(range_right_context)
-                )?;
-            }
-            // left context has enough info to fill the terminal
-            // |---------left_context---------|-----misspelled_word-----|
-            //
-            // II) Attempt to fit the misspelled word with left context info
-            else if range_left_context.len() > terminal_size {
-                range_left_context.start = marker_range_relative.start.saturating_sub(
-                    terminal_size.saturating_sub(misspelled_word.chars().count() + PADDING_END),
-                );
-                range_left_context.end = marker_range_relative.start - 1;
-                // Right range will not be used
-                range_right_context = Range {
-                    start: 0usize,
-                    end: 0usize,
-                };
-                offset = range_left_context.len() + PADDING_OFFSET;
-                writeln!(
-                    formatter,
-                    "  ... {}{}{} ...", //10chars around the context's and word
-                    self.chunk.char_sub_window(range_left_context),
-                    misspelled_word,
-                    self.chunk.char_sub_window(range_right_context)
-                )?;
-            }
-            // information will be shown in both sides of the `misspelled_word`
-            // |--left_context--|----misspelled_word---|--right_context--|
-            //
-            // III) Attempt to fit the misspelled word in the middle with info in th left and right of it
-            else {
-                let context = (terminal_size.saturating_sub(
-                    misspelled_word.chars().count()
-                        + padding_till_literal_start
-                        + PADDING_AROUND_LONG_LINES,
-                )) / 2;
-                range_left_context = Range {
-                    start: range_left_context.end.saturating_sub(context),
-                    end: marker_range_relative.start - 1, //before the word starts
-                };
-                range_right_context = Range {
-                    start: marker_range_relative.end - 1,
-                    end: range_right_context.start + context,
-                };
-                offset = range_left_context.len() + PADDING_OFFSET;
+            let formatted_literal: String = convert_long_statements_to_short(
+                terminal_size,
+                marker_range_relative,
+                &mut marker_size,
+                self.chunk,
+                &mut offset,
+                indent,
+                padding_till_literal_start,
+            );
+            writeln!(formatter, "{}", &formatted_literal)?;
 
-                writeln!(
-                    formatter,
-                    "  ... {}{}{} ...",
-                    self.chunk.char_sub_window(range_left_context),
-                    misspelled_word,
-                    self.chunk.char_sub_window(range_right_context)
-                )?;
-            }
-            writeln!(
-                formatter,
-                "  ... {}{}{} ... ",
-                self.chunk.char_sub_window(range_left_context),
-                misspelled_word,
-                self.chunk.char_sub_window(range_right_context)
-            )?;
-        // literal is smaller than terminal size and can be fully displayed
+        // literal is smaller than terminal size and it can be fully displayed
         } else {
             writeln!(formatter, " {}", chunk_str)?;
         }
@@ -553,5 +587,85 @@ impl<'s> IntoIterator for &'s SuggestionSet<'s> {
     type IntoIter = indexmap::map::Iter<'s, ContentOrigin, Vec<Suggestion<'s>>>;
     fn into_iter(self) -> Self::IntoIter {
         self.per_file.iter()
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use super::*;
+    use crate::TrimmedLiteral;
+
+    #[test]
+    fn convert_long_statements_to_short_test() {
+        const CONTENT_LONG_LITERAL_LONG_WORD: &'static str = "Speakiiiiiinnnnnnnnnnnnnnngggggggg of food, what's up with pie? There's strawberry pie, apple, \
+pumpkin and so many others, but there is no grape pie! I know. I'm just as upset about this unfortunate \
+lack of development in the pie division. Think about it. Grapes are used to make jelly, jam, juice and raisins. \
+What makes them undesirable for pie? Would they dry into raisins? Couldn't you just stick some jelly in a \
+piecrust and bake it? It just doesn't make any sense. Another thing that bothers me is organ grinders. \
+You know, the foreign guys with the bellhop hats and the little music thingy and the cute little monkey with the \
+bellhop hat who collects the money? Okay. They're basically begging on the street. How did they ever afford an \
+organ-thingy? Wouldn't it make more sense to get a kazoo, if you're broke? And if they're so poor, what possessed \
+them to buy a monkey?
+";
+        let test_word = TrimmedLiteral {
+            literal: proc_macro2::Literal::string(CONTENT_LONG_LITERAL_LONG_WORD),
+            rendered: CONTENT_LONG_LITERAL_LONG_WORD.to_owned(),
+            pre: 0usize,
+            post: 0usize,
+            len: CONTENT_LONG_LITERAL_LONG_WORD.len(),
+        };
+
+        let test_word_ref = TrimmedLiteralRef {
+            reference: &test_word,
+        };
+        let terminal_size = 80;
+        let marker_range_relative = Range {
+            start: 1usize,
+            end: 35usize,
+        };
+        let mut marker_size = 34;
+        let mut offset: usize = 0;
+        let indent: usize = 5;
+        let padding_till_literal_start = 7;
+        let res: String = convert_long_statements_to_short(
+            terminal_size,
+            marker_range_relative,
+            &mut marker_size,
+            test_word_ref,
+            &mut offset,
+            indent,
+            padding_till_literal_start,
+        );
+        assert_eq!(
+            res,
+            "  ... Speak...ggg of food, what's up with pie? There's strawberry pie ..."
+        );
+        assert_eq!(
+            res.chars().count(),
+            terminal_size.saturating_sub(padding_till_literal_start)
+        );
+        assert_eq!(offset, 5usize);
+
+        let res: String = String::from("Speakingi of food, what's up with pie? There's strawberry pie, apple, pumpkin and so many others,\
+ but there is no grape pie! I know. I'm just as upset about this unfortunate lack of development in the pie division.\
+  Think about it. Grapes are used to make jelly, jam, juice and raisins. What makes them undesirable for pie? Would\
+   they dry into raisins? Couldn't you just stick some jelly in a piecrust and bake it? It just doesn't make any sense.\
+    Another thing that bothers me is organ grinders. You know, the foreign guys with the bellhop hats and the little\
+     music thingy and the cute little monkey with the bellhop hat who collects the money? Okay. They're basically begging\
+      on the street. How did they ever afford an organ-thingy? Wouldn't it make more sense to get a kazoo, if you're broke?\
+       And if they're so poor, what possessed them to buy a monkey?");
+        let res: String = convert_long_statements_to_short(
+            terminal_size,
+            marker_range_relative,
+            &mut marker_size,
+            test_word_ref,
+            &mut offset,
+            indent,
+            padding_till_literal_start,
+        );
+        assert_eq!(
+            res,
+            "  ... Speak...ggg of food, what's up with pie? There's strawberry pie ..."
+        );
     }
 }
