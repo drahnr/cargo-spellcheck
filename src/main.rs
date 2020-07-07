@@ -19,8 +19,8 @@ use log::{info, trace, warn};
 use serde::Deserialize;
 use signal_hook::{iterator, SIGINT, SIGQUIT, SIGTERM};
 
-use std::path::PathBuf;
 use std::io::{stdout, Write};
+use std::path::PathBuf;
 
 const USAGE: &str = r#"
 Spellcheck all your doc comments
