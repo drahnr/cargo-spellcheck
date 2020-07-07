@@ -72,14 +72,12 @@ struct Args {
     cmd_config: bool,
 }
 
-#[cfg(not(target_os = "windows"))]
 fn exit() -> Result<(), anyhow::Error> {
     stdout().queue(crossterm::cursor::Show)?;
     crossterm::terminal::disable_raw_mode()?;
     stdout().flush().map_err(|e| anyhow::anyhow!(e))
 }
 
-#[cfg(not(target_os = "windows"))]
 fn signal_handler() {
     let signals =
         iterator::Signals::new(vec![SIGTERM, SIGINT, SIGQUIT]).expect("Failed to create Signals");
@@ -158,10 +156,7 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    #[cfg(not(target_os = "windows"))]
-    {
-        std::thread::spawn(move || signal_handler());
-    }
+    std::thread::spawn(move || signal_handler());
 
     let checkers = |config: &mut Config| {
         // overwrite checkers
