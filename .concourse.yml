@@ -198,8 +198,8 @@ jobs:
               cargo +stable run -- spellcheck demo/src/main.rs || echo "$? - Found some errors"
               cargo +stable run -- spellcheck demo/ || echo "$? - Found some errors"
               # assure pipes work
-              ./target/release/cargo-spellcheck | grep -C 10 "F"
-              ./target/release/cargo-spellcheck > dump
+              cargo +stable run -- spellcheck | grep -C 10 "F"
+              cargo +stable run -- spellcheck > dump
             dir: git-pull-request-resource
           caches:
           - path: cargo
