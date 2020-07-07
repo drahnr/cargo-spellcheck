@@ -11,7 +11,7 @@
 //!     |     - you can add it to your personal dictionary to prevent future alerts.
 //! ```
 
-use crate::Span;
+use crate::{Range,Span};
 use crate::documentation::{CheckableChunk, ContentOrigin};
 use std::path::{Path, PathBuf};
 use std::convert::TryFrom;
@@ -103,7 +103,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
         let arrow_marker = Style::new().blue();
         let context_marker = Style::new().bold().blue();
         let fix = Style::new().green();
-        let _help = Style::new().yellow().bold();
+        let help = Style::new().yellow().bold();
 
         let line_number_digit_count = self.span.start.line.to_string().len();
         let indent = 3 + line_number_digit_count;
@@ -146,26 +146,18 @@ impl<'s> fmt::Display for Suggestion<'s> {
             // column bounds are inclusive, so for a correct length we need to add + 1
             self.span.end.column.saturating_sub(self.span.start.column) + 1
         } else {
-            self.literal.len().saturating_sub(self.span.start.column)
+            self.chunk.len_in_chars().saturating_sub(self.span.start.column)
         };
 
-        use crate::literalset::Range;
-
-        let literal_span: Span = Span::from(self.literal.as_ref().literal.span());
-        let marker_range_relative: Range = self.span.relative_to(literal_span).expect("Must be ok");
+        let literal_span: Span = self.span.clone();
+        let marker_range_relative: Range = self.range.clone();
 
         // if the offset starts from 0, we still want to continue if the length
         // of the marker is at least length 1
 
-        let mut offset = if self.literal.pre() <= marker_range_relative.start {
-            marker_range_relative.start - self.literal.pre()
-        } else {
-            error!("Reducing marker length! Please report a BUG!");
-            // reduce the marker size
-            marker_size -= marker_range_relative.start;
-            marker_size -= self.literal.pre();
-            0
-        };
+        let mut offset = marker_range_relative.start;
+        let chunk_str = self.chunk.as_str();
+        let n = self.chunk.len_in_chars();
 
         // For long lines, we will trim the literal displayed to fit in the terminal
         // The misspelled word shall always be shown with as much info as possible
@@ -200,7 +192,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
         };
         let mut range_right_context = Range {
             start: marker_range_relative.end,
-            end: self.literal.as_str().chars().count(),
+            end: chunk_str.chars().count(),
         };
         let mut range_start_word = Range {
             start: marker_range_relative.start,
@@ -210,10 +202,10 @@ impl<'s> fmt::Display for Suggestion<'s> {
             start: marker_range_relative.end,
             end: marker_range_relative.end,
         };
-        if self.literal.as_str().chars().count() > terminal_size {
+        if n > terminal_size {
             let mut misspelled_word = format!(
                 "{}",
-                self.literal.sub(Range {
+                self.chunk.char_sub_window(Range {
                     start: marker_range_relative.start - 1,
                     end: marker_range_relative.end
                 })
@@ -229,8 +221,8 @@ impl<'s> fmt::Display for Suggestion<'s> {
 
                 misspelled_word = format!(
                     "{}...{}",
-                    self.literal.sub(range_start_word),
-                    self.literal.sub(range_end_word)
+                    self.chunk.char_sub_window(range_start_word),
+                    self.chunk.char_sub_window(range_end_word)
                 );
                 marker_size = misspelled_word.chars().count();
             };
@@ -283,13 +275,13 @@ impl<'s> fmt::Display for Suggestion<'s> {
             writeln!(
                 formatter,
                 "  ... {}{}{} ... ",
-                self.literal.sub(range_left_context),
+                self.chunk.char_sub_window(range_left_context),
                 misspelled_word,
-                self.literal.sub(range_right_context)
+                self.chunk.char_sub_window(range_right_context)
             )?;
         // literal is smaller than terminal size and can be fully displayed
         } else {
-            writeln!(formatter, " {}", self.literal.as_str())?;
+            writeln!(formatter, " {}", chunk_str)?;
         }
 
         if marker_size > 0 {
@@ -301,27 +293,29 @@ impl<'s> fmt::Display for Suggestion<'s> {
             help.apply_to(format!("{:^>size$}", "", size = marker_size))
                 .fmt(formatter)?;
             formatter.write_str("\n")?;
-            log::trace!(
-                "marker_size={} [{}|{}|{}] literal {{ {:?} .. {:?} }} >> {:?} <<",
-                marker_size,
-                self.literal.pre(),
-                self.literal.len(),
-                self.literal.post(),
-                self.span.start,
-                self.span.end,
-                self,
-            );
+            // @todo
+            // log::trace!(
+            //     "marker_size={} [{}|{}|{}] literal {{ {:?} .. {:?} }} >> {:?} <<",
+            //     marker_size,
+            //     self.chunk.pre(),
+            //     self.chunk.len(),
+            //     self.chunk.post(),
+            //     self.span.start,
+            //     self.span.end,
+            //     self,
+            // );
         } else {
-            log::warn!(
-                "marker_size={} [{}|{}|{}] literal {{ {:?} .. {:?} }} >> {:?} <<",
-                marker_size,
-                self.literal.pre(),
-                self.literal.len(),
-                self.literal.post(),
-                self.span.start,
-                self.span.end,
-                self,
-            );
+            // @todo
+            // log::warn!(
+            //     "marker_size={} [{}|{}|{}] literal {{ {:?} .. {:?} }} >> {:?} <<",
+            //     marker_size,
+            //     self.chunk.pre(),
+            //     self.chunk.len(),
+            //     self.chunk.post(),
+            //     self.span.start,
+            //     self.span.end,
+            //     self,
+            // );
         }
 
         context_marker
