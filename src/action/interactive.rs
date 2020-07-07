@@ -197,7 +197,10 @@ impl UserPicked {
             }
             KeyCode::Esc => return Ok(Pick::Quit),
             KeyCode::Char('c') if modifiers == KeyModifiers::CONTROL => {
-                return Err(anyhow!("Received SIGINT"))
+                crossterm::terminal::disable_raw_mode()?;
+                std::io::stdout().queue(crossterm::cursor::Show)?;
+                std::io::stdout().flush()?;
+                std::process::exit(130);
             }
             KeyCode::Char(c) => {
                 state
@@ -442,7 +445,10 @@ impl UserPicked {
                 KeyCode::Char('n') => return Ok(Pick::Skip),
                 KeyCode::Char('j') => return Ok(Pick::Previous),
                 KeyCode::Char('c') if modifiers == KeyModifiers::CONTROL => {
-                    return Err(anyhow!("Received SIGINT"))
+                    crossterm::terminal::disable_raw_mode()?;
+                    std::io::stdout().queue(crossterm::cursor::Show)?;
+                    std::io::stdout().flush()?;
+                    std::process::exit(130);
                 }
                 KeyCode::Char('q') | KeyCode::Esc => return Ok(Pick::Quit),
                 KeyCode::Char('d') => return Ok(Pick::SkipFile),

@@ -20,6 +20,7 @@ use serde::Deserialize;
 use signal_hook::{iterator, SIGINT, SIGQUIT, SIGTERM};
 
 use std::path::PathBuf;
+use std::io::{stdout, Write};
 
 const USAGE: &str = r#"
 Spellcheck all your doc comments
@@ -72,15 +73,20 @@ struct Args {
 }
 
 #[cfg(not(target_os = "windows"))]
+fn exit() -> Result<(), anyhow::Error> {
+    stdout().queue(crossterm::cursor::Show)?;
+    crossterm::terminal::disable_raw_mode()?;
+    stdout().flush().map_err(|e| anyhow::anyhow!(e))
+}
+
+#[cfg(not(target_os = "windows"))]
 fn signal_handler() {
     let signals =
         iterator::Signals::new(vec![SIGTERM, SIGINT, SIGQUIT]).expect("Failed to create Signals");
     for s in signals.forever() {
         match s {
             SIGTERM | SIGINT | SIGQUIT => {
-                if std::io::stdout().queue(crossterm::cursor::Show).is_err()
-                    || crossterm::terminal::disable_raw_mode().is_err()
-                {
+                if exit().is_err() {
                     std::process::exit(1);
                 } else {
                     std::process::exit(130);
@@ -249,14 +255,7 @@ fn main() -> anyhow::Result<()> {
 
     let suggestion_set = checker::check(&combined, &config)?;
 
-    match action.run(suggestion_set, &config) {
-        Ok(_) => Ok(()),
-        Err(e) => {
-            crossterm::terminal::disable_raw_mode()?;
-            std::io::stdout().queue(crossterm::cursor::Show)?;
-            Err(e)
-        }
-    }
+    action.run(suggestion_set, &config)
 }
 
 #[cfg(test)]
