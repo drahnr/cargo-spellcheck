@@ -84,8 +84,10 @@ pub struct Suggestion<'s> {
     pub origin: ContentOrigin,
     /// @todo must become a `CheckableChunk` and properly integrated
     pub chunk: &'s CheckableChunk,
-    /// The span (absolute!) of where it is supposed to be used.
+    /// The span (absolute!) within the file or chunk (depens on `origin`).
     pub span: Span,
+    /// Range relative to the chunk the current suggestion is located.
+    pub range: Range,
     /// Fix suggestions, might be words or the full sentence.
     pub replacements: Vec<String>,
     /// Descriptive reason for the suggestion.
