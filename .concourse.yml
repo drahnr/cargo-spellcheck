@@ -193,10 +193,14 @@ jobs:
             - |
               export CARGO_HOME="$(pwd)/../cargo"
               sudo chown $(whoami): -Rf ${CARGO_HOME} .
+              which rg
               cargo +stable run -- --version
               cargo +stable run -- spellcheck demo/Cargo.toml || echo "$? - Found some errors"
               cargo +stable run -- spellcheck demo/src/main.rs || echo "$? - Found some errors"
               cargo +stable run -- spellcheck demo/ || echo "$? - Found some errors"
+              # assure pipes work
+              ./target/release/cargo-spellcheck | rg -C 10 "F"
+              ./target/release/cargo-spellcheck > dump
             dir: git-pull-request-resource
           caches:
           - path: cargo
