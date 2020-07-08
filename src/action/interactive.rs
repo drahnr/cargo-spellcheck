@@ -49,7 +49,7 @@ impl ScopedRaw {
 
 impl Drop for ScopedRaw {
     fn drop(&mut self) {
-        let _ = crossterm::terminal::disable_raw_mode();
+        let _ = Self::restore_terminal();
     }
 }
 
@@ -62,7 +62,7 @@ enum Direction {
 
 /// The user picked something. This is the pick representation.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) enum Pick {
+pub(super) enum UserSelection {
     Replacement(BandAid),
     /// Skip this suggestion and move on to the next suggestion.
     Skip,
@@ -73,7 +73,7 @@ pub(super) enum Pick {
     /// Skip the remaining fixes for the current file.
     SkipFile,
     /// Stop execution.
-    Quit,
+    Abort,
     /// continue as if whatever returned this was never called.
     Nop,
 }
@@ -174,7 +174,7 @@ impl UserPicked {
     }
 
     /// Provide a replacement that was not provided by the backend
-    fn custom_replacement(&self, state: &mut State, event: KeyEvent) -> Result<Pick> {
+    fn enter_custom_replacement(&self, state: &mut State, event: KeyEvent) -> Result<UserSelection> {
         let KeyEvent { code, modifiers } = event;
 
         let length = state.custom_replacement.len() as u16;
@@ -199,12 +199,11 @@ impl UserPicked {
             }
             KeyCode::Enter => {
                 let bandaid = BandAid::new(&state.custom_replacement, &state.suggestion.span);
-                return Ok(Pick::Replacement(bandaid));
+                return Ok(UserSelection::Replacement(bandaid));
             }
-            KeyCode::Esc => return Ok(Pick::Quit),
+            KeyCode::Esc => return Ok(UserSelection::Abort),
             KeyCode::Char('c') if modifiers == KeyModifiers::CONTROL => {
-                ScopedRaw::restore_terminal()?;
-                std::process::exit(130);
+                return Ok(UserSelection::Abort);
             }
             KeyCode::Char(c) => {
                 state
@@ -215,7 +214,7 @@ impl UserPicked {
             _ => {}
         }
 
-        Ok(Pick::Nop)
+        Ok(UserSelection::Nop)
     }
 
     /// only print the list of replacements to the user
@@ -338,7 +337,7 @@ impl UserPicked {
     }
 
     /// Wait for user input and process it into a `Pick` enum
-    fn user_input(&self, state: &mut State, running_idx: (usize, usize)) -> Result<Pick> {
+    fn user_input(&self, state: &mut State, running_idx: (usize, usize)) -> Result<UserSelection> {
         {
             let _guard = ScopedRaw::new();
 
@@ -418,7 +417,7 @@ impl UserPicked {
                 info!("Custom entry mode");
                 guard = ScopedRaw::new();
 
-                let pick = self.custom_replacement(state, event)?;
+                let pick = self.enter_custom_replacement(state, event)?;
 
                 stdout()
                     .queue(cursor::Hide)
@@ -427,7 +426,7 @@ impl UserPicked {
                     .unwrap();
 
                 match pick {
-                    Pick::Nop => continue,
+                    UserSelection::Nop => continue,
                     other => return Ok(other),
                 }
             }
@@ -444,21 +443,20 @@ impl UserPicked {
                 KeyCode::Enter | KeyCode::Char('y') => {
                     let bandaid: BandAid = state.to_bandaid();
                     // @todo handle interactive intput for those where there are no suggestions
-                    return Ok(Pick::Replacement(bandaid));
+                    return Ok(UserSelection::Replacement(bandaid));
                 }
-                KeyCode::Char('n') => return Ok(Pick::Skip),
-                KeyCode::Char('j') => return Ok(Pick::Previous),
+                KeyCode::Char('n') => return Ok(UserSelection::Skip),
+                KeyCode::Char('j') => return Ok(UserSelection::Previous),
+                KeyCode::Char('q') | KeyCode::Esc => return Ok(UserSelection::Abort),
                 KeyCode::Char('c') if modifiers == KeyModifiers::CONTROL => {
-                    ScopedRaw::restore_terminal()?;
-                    std::process::exit(130);
+                    return Ok(UserSelection::Abort)
                 }
-                KeyCode::Char('q') | KeyCode::Esc => return Ok(Pick::Quit),
-                KeyCode::Char('d') => return Ok(Pick::SkipFile),
+                KeyCode::Char('d') => return Ok(UserSelection::SkipFile),
                 KeyCode::Char('e') => {
                     // jump to the user input entry
                     state.select_custom();
                 }
-                KeyCode::Char('?') => return Ok(Pick::Help),
+                KeyCode::Char('?') => return Ok(UserSelection::Help),
                 x => {
                     trace!("Unexpected input {:?}", x);
                 }
@@ -470,7 +468,7 @@ impl UserPicked {
     pub(super) fn select_interactive<'s>(
         suggestions_per_path: SuggestionSet<'s>,
         _config: &Config,
-    ) -> Result<Self> {
+    ) -> Result<(Self, UserSelection)> {
         let mut picked = UserPicked::default();
 
         trace!("Select the ones to actully use");
@@ -514,20 +512,20 @@ impl UserPicked {
                 let mut state = State::from(&suggestion);
 
                 let mut pick = picked.user_input(&mut state, (idx, count))?;
-                while pick == Pick::Help {
+                while pick == UserSelection::Help {
                     println!("{}", HELP);
                     pick = picked.user_input(&mut state, (idx, count))?;
                 }
                 match pick {
-                    Pick::Quit => return Ok(picked),
-                    Pick::SkipFile => break, // break the inner loop
-                    Pick::Previous => {
+                    UserSelection::Abort => return Ok((picked, UserSelection::Abort)),
+                    UserSelection::SkipFile => break, // break the inner loop
+                    UserSelection::Previous => {
                         unimplemented!("Requires a iterator which works bidrectionally")
                     }
-                    Pick::Help => {
+                    UserSelection::Help => {
                         unreachable!("Help must not be reachable here, it is handled before")
                     }
-                    Pick::Replacement(bandaid) => {
+                    UserSelection::Replacement(bandaid) => {
                         picked.add_bandaid(&origin, bandaid);
                     }
                     _ => continue,
@@ -536,6 +534,6 @@ impl UserPicked {
                 direction = Direction::Forward;
             }
         }
-        Ok(picked)
+        Ok((picked, UserSelection::Nop))
     }
 }
