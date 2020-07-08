@@ -50,7 +50,7 @@ Options:
   -m --code=<code>          Overwrite the exit value for a successful run with content mistakes found. [default=0]
 "#;
 
-#[derive(Debug,Clone,Copy,Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum ExitCode {
     Success,
     Signal,
@@ -264,7 +264,7 @@ fn run() -> anyhow::Result<ExitCode> {
 
     match finish {
         Finish::MistakeCount(0) => Ok(ExitCode::Success),
-        Finish::MistakeCount(n) => Ok(ExitCode::Custom(args.flag_code)),
+        Finish::MistakeCount(_n) => Ok(ExitCode::Custom(args.flag_code)),
         Finish::Abort => Ok(ExitCode::Signal),
     }
 }
