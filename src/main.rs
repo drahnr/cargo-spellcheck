@@ -24,31 +24,49 @@ const USAGE: &str = r#"
 Spellcheck all your doc comments
 
 Usage:
-    cargo-spellcheck [(-v...|-q)] check [--cfg=<cfg>] [--checkers=<checkers>] [[--recursive] <paths>... ]
-    cargo-spellcheck [(-v...|-q)] fix [--cfg=<cfg>] [--interactive] [--checkers=<checkers>] [[--recursive] <paths>... ]
+    cargo-spellcheck [(-v...|-q)] check [--cfg=<cfg>] [--code=<code>] [--checkers=<checkers>] [[--recursive] <paths>... ]
+    cargo-spellcheck [(-v...|-q)] fix [--cfg=<cfg>] [--interactive] [--code=<code>] [--checkers=<checkers>] [[--recursive] <paths>... ]
     cargo-spellcheck [(-v...|-q)] config (--user|--stdout|--cfg=<cfg>) [--force]
-    cargo-spellcheck [(-v...|-q)] [--cfg=<cfg>] [--fix [--interactive]] [--checkers=<checkers>] [[--recursive] <paths>... ]
+    cargo-spellcheck [(-v...|-q)] [--cfg=<cfg>] [--fix [--interactive]] [--code=<code>] [--checkers=<checkers>] [[--recursive] <paths>... ]
     cargo-spellcheck --help
     cargo-spellcheck --version
 
 Options:
-  -h --help               Show this screen.
-  --version               Print the version and exit.
+  -h --help                 Show this screen.
+  --version                 Print the version and exit.
 
-  --fix                   Synonym to running the `fix` subcommand.
-  -i --interactive        Interactively apply spelling and grammer fixes.
-  -r --recursive          If a path is provided, if recursion into subdirectories is desired.
-  --checkers=<checkers>   Calculate the intersection between
-                          configured by config file and the ones provided on commandline.
-  -f --force              Overwrite any existing configuration file. [default=false]
-  -c --cfg=<cfg>          Use a non default configuration file.
-                          Passing a directory will attempt to open `cargo_spellcheck.toml` in that directory.
-  --user                  Write the configuration file to the default user configuration directory.
-  --stdout                Print the configuration file to stdout and exit.
-  -v --verbose            Verbosity level.
-  -q --quiet              Silences all printed messages. Overrules `-v`.
-
+  --fix                     Synonym to running the `fix` subcommand.
+  -i --interactive          Interactively apply spelling and grammer fixes.
+  -r --recursive            If a path is provided, if recursion into subdirectories is desired.
+  --checkers=<checkers>     Calculate the intersection between
+                            configured by config file and the ones provided on commandline.
+  -f --force                Overwrite any existing configuration file. [default=false]
+  -c --cfg=<cfg>            Use a non default configuration file.
+                            Passing a directory will attempt to open `cargo_spellcheck.toml` in that directory.
+  --user                    Write the configuration file to the default user configuration directory.
+  --stdout                  Print the configuration file to stdout and exit.
+  -v --verbose              Verbosity level.
+  -q --quiet                Silences all printed messages. Overrules `-v`.
+  -m --code=<code>          Overwrite the exit value for a successful run with content mistakes found. [default=0]
 "#;
+
+#[derive(Debug,Clone,Copy,Eq, PartialEq)]
+pub enum ExitCode {
+    Success,
+    Signal,
+    Custom(u8),
+    // Failure is already default for `Err(anyhow::Error)`
+}
+
+impl ExitCode {
+    fn as_u8(&self) -> u8 {
+        match *self {
+            Self::Success => 0u8,
+            Self::Signal => 130u8,
+            Self::Custom(code) => code,
+        }
+    }
+}
 
 #[derive(Debug, Deserialize, Default)]
 struct Args {
@@ -65,6 +83,7 @@ struct Args {
     flag_force: bool,
     flag_user: bool,
     flag_stdout: bool,
+    flag_code: u8,
     cmd_fix: bool,
     cmd_check: bool,
     cmd_config: bool,
@@ -121,7 +140,7 @@ fn parse_args(mut argv_iter: impl Iterator<Item = String>) -> Result<Args, docop
     })
 }
 
-fn main() -> anyhow::Result<()> {
+fn run() -> anyhow::Result<ExitCode> {
     let args = parse_args(std::env::args()).unwrap_or_else(|e| e.exit());
 
     let verbosity = match args.flag_verbose {
@@ -139,12 +158,12 @@ fn main() -> anyhow::Result<()> {
 
     if args.flag_version {
         println!("cargo-spellcheck {}", env!("CARGO_PKG_VERSION"));
-        return Ok(());
+        return Ok(ExitCode::Success);
     }
 
     if args.flag_help {
         println!("{}", USAGE);
-        return Ok(());
+        return Ok(ExitCode::Success);
     }
 
     std::thread::spawn(move || signal_handler());
@@ -183,7 +202,7 @@ fn main() -> anyhow::Result<()> {
 
         if args.flag_stdout {
             println!("{}", config.to_toml()?);
-            return Ok(());
+            return Ok(ExitCode::Success);
         }
 
         if let Some(path) = config_path {
@@ -196,7 +215,7 @@ fn main() -> anyhow::Result<()> {
             info!("Writing configuration file to {}", path.display());
             config.write_values_to_path(path)?;
         }
-        return Ok(());
+        return Ok(ExitCode::Success);
     } else {
         trace!("Not configuration sub command");
     }
@@ -241,7 +260,17 @@ fn main() -> anyhow::Result<()> {
 
     let suggestion_set = checker::check(&combined, &config)?;
 
-    action.run(suggestion_set, &config)
+    let finish = action.run(suggestion_set, &config)?;
+
+    match finish {
+        Finish::MistakeCount(0) => Ok(ExitCode::Success),
+        Finish::MistakeCount(n) => Ok(ExitCode::Custom(args.flag_code)),
+        Finish::Abort => Ok(ExitCode::Signal),
+    }
+}
+
+fn main() -> anyhow::Result<()> {
+    std::process::exit(run()?.as_u8() as i32)
 }
 
 #[cfg(test)]
@@ -273,6 +302,7 @@ mod tests {
             "cargo-spellcheck fix --interactive -r file.rs",
             "cargo-spellcheck -q fix --interactive Cargo.toml",
             "cargo spellcheck -v fix --interactive Cargo.toml",
+            "cargo spellcheck -m 11 check",
         ];
         for command in commands {
             assert!(parse_args(commandline_to_iter(command)).is_ok());
