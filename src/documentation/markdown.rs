@@ -255,7 +255,8 @@ impl<'a> fmt::Debug for PlainOverlay<'a> {
         for (_plain_range, md_range, style) in
             itertools::cons_tuples(itertools::zip(self.mapping.iter(), color_cycle))
         {
-            let delta = md_range.start - previous_md_end;
+            // @todo do this properly, `saturating sub` just prevents crashing
+            let delta = md_range.start.saturating_sub(previous_md_end);
             // take care of the markers and things that are not rendered
             if delta > 0 {
                 coloured_md.push_str(
