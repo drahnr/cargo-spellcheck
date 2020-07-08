@@ -174,7 +174,11 @@ impl UserPicked {
     }
 
     /// Provide a replacement that was not provided by the backend
-    fn enter_custom_replacement(&self, state: &mut State, event: KeyEvent) -> Result<UserSelection> {
+    fn enter_custom_replacement(
+        &self,
+        state: &mut State,
+        event: KeyEvent,
+    ) -> Result<UserSelection> {
         let KeyEvent { code, modifiers } = event;
 
         let length = state.custom_replacement.len() as u16;

@@ -13,8 +13,7 @@ pub mod interactive;
 pub(crate) use bandaid::*;
 use interactive::*;
 
-
-#[derive(Debug,Clone,Copy)]
+#[derive(Debug, Clone, Copy)]
 pub enum Finish {
     Abort,
     MistakeCount(usize),
@@ -28,7 +27,6 @@ impl Finish {
         }
     }
 }
-
 
 /// correct all lines
 /// `bandaids` are the fixes to be applied to the lines
@@ -224,11 +222,10 @@ impl Action {
     pub fn run(self, suggestions: SuggestionSet, config: &Config) -> Result<Finish> {
         match self {
             Self::Fix => unimplemented!("Unsupervised fixing is not implemented just yet"),
-            Self::Check => {
-                self.check(suggestions, config)
-            }
+            Self::Check => self.check(suggestions, config),
             Self::Interactive => {
-                let (picked, user_sel) = interactive::UserPicked::select_interactive(suggestions, config)?;
+                let (picked, user_sel) =
+                    interactive::UserPicked::select_interactive(suggestions, config)?;
                 if user_sel == UserSelection::Abort {
                     Ok(Finish::Abort)
                 } else {
