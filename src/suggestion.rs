@@ -11,13 +11,12 @@
 //!     |     - you can add it to your personal dictionary to prevent future alerts.
 //! ```
 
-use crate::{Span, Range};
 use crate::documentation::{CheckableChunk, ContentOrigin};
+use crate::{Range, Span};
 
 use std::convert::TryFrom;
 
 use enumflags2::BitFlags;
-
 
 /// Bitflag of available checkers by compilation / configuration.
 #[derive(Debug, Clone, Copy, BitFlags, Eq, PartialEq, Hash)]
@@ -117,11 +116,15 @@ impl<'s> fmt::Display for Suggestion<'s> {
         writeln!(formatter, " {}", self.chunk.as_str())?;
 
         // underline the relevant part with ^^^^^
-        let mut marker_size = if self.span.end.line == self.span.start.line {
+        let marker_size = if self.span.end.line == self.span.start.line {
             // column bounds are inclusive, so for a correct length we need to add + 1
             self.span.end.column.saturating_sub(self.span.start.column) + 1
         } else {
-            self.chunk.as_str().chars().count().saturating_sub(self.span.start.column)
+            self.chunk
+                .as_str()
+                .chars()
+                .count()
+                .saturating_sub(self.span.start.column)
         };
 
         // if the offset starts from 0, we still want to continue if the length
