@@ -168,42 +168,53 @@ mod tests {
         };
 
         ($test:expr, $n:expr, $origin:expr) => {
-            let _ = env_logger::from_env(
-                env_logger::Env::new().filter_or("CARGO_SPELLCHECK", "cargo_spellcheck=trace"),
-            )
-            .is_test(true)
-            .try_init();
+            {
+                let _ = env_logger::from_env(
+                    env_logger::Env::new().filter_or("CARGO_SPELLCHECK", "cargo_spellcheck=trace"),
+                )
+                .is_test(true)
+                .try_init();
 
-            let origin = $origin;
-            let stream =
-                syn::parse_str::<proc_macro2::TokenStream>($test).expect("Must be valid rust");
-            let docs = Documentation::from((origin.clone(), stream));
-            assert_eq!(docs.index.len(), 1);
-            let chunks = docs.index.get(&origin).expect("Must contain dummy path");
-            assert_eq!(dbg!(chunks).len(), 1);
-            let chunk = &chunks[0];
-            let _plain = chunk.erase_markdown();
+                let origin = $origin;
+                let stream =
+                    syn::parse_str::<proc_macro2::TokenStream>($test).expect("Must be valid rust");
+                let docs = Documentation::from((origin.clone(), stream));
+                assert_eq!(docs.index.len(), 1);
+                let chunks = docs.index.get(&origin).expect("Must contain dummy path");
+                assert_eq!(dbg!(chunks).len(), 1);
+                let chunk = &chunks[0];
+                let _plain = chunk.erase_markdown();
 
-            let suggestion_set = crate::checker::dummy::DummyChecker::check(&docs, &())
-                .expect("Must not fail to extract suggestions");
-            let (_, suggestions) = suggestion_set
-                .into_iter()
-                .next()
-                .expect("Must contain exactly one item");
-            assert_eq!(dbg!(&suggestions).len(), $n);
+                let suggestion_set = crate::checker::dummy::DummyChecker::check(&docs, &())
+                    .expect("Must not fail to extract suggestions");
+                let (_, suggestions) = suggestion_set
+                    .iter()
+                    .next()
+                    .expect("Must contain exactly one item");
+                assert_eq!(dbg!(suggestions).len(), $n);
+                suggestion_set
+            }
         };
     }
 
     macro_rules! end2end_file {
         ($path: literal, $n: expr) => {
-            let path2 = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/", $path));
-            let origin = ContentOrigin::RustSourceFile(path2);
-            end2end!(
-                include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/", $path)),
-                $n,
-                origin
-            );
+            {
+                let path2 = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/", $path));
+                let origin = ContentOrigin::RustSourceFile(path2);
+                end2end!(
+                    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/", $path)),
+                    $n,
+                    origin
+                )
+            }
         };
+    }
+
+
+    #[test]
+    fn one_line() {
+        end2end!(fluff_up!(["Uni"]), 1);
     }
 
     #[test]
