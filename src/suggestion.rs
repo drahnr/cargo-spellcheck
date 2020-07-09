@@ -93,11 +93,9 @@ impl<'s> fmt::Display for Suggestion<'s> {
 
         let x = self.span.start.line;
         let (path, line) = match self.origin {
-            ContentOrigin::RustSourceFile(ref path) => (path.display().to_string(), x),
-            ContentOrigin::RustDocTest(ref path, ref span) => {
-                (path.display().to_string(), x + span.start.line)
-            }
-            ContentOrigin::CommonMarkFile(ref path) => (path.display().to_string(), x),
+            ContentOrigin::RustDocTest(ref path, ref span) =>
+                (path.display().to_string(), x + span.start.line),
+            ref origin => (origin.as_path().display().to_string(), x),
         };
         writeln!(formatter, " {path}:{line}", path = path, line = line)?;
         context_marker
@@ -364,5 +362,80 @@ impl<'s> IntoIterator for &'s SuggestionSet<'s> {
     type IntoIter = indexmap::map::Iter<'s, ContentOrigin, Vec<Suggestion<'s>>>;
     fn into_iter(self) -> Self::IntoIter {
         self.per_file.iter()
+    }
+}
+
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::LineColumn;
+    use std::fmt;
+    use console;
+    fn assert_display_eq<D: fmt::Display, S: AsRef<str>>(display: D, s: S) {
+        let expected = s.as_ref();
+        let expected = console::strip_ansi_codes(expected);
+
+        // uses the display impl
+        let reality = display.to_string();
+        let reality = console::strip_ansi_codes(reality.as_str());
+        assert_eq!(reality, expected);
+    }
+
+
+    #[test]
+    fn fmt() {
+
+        const CONTENT: &'static str = "Is it dyrck again?";
+        let chunk = CheckableChunk::from_str(
+            CONTENT,
+            indexmap::indexmap! { 0..18 => Span {
+                    start: LineColumn {
+                        line: 1,
+                        column: 0,
+                    },
+                    end: LineColumn {
+                        line: 1,
+                        column: 17,
+                    }
+                }
+            }
+        );
+
+        let suggestion= Suggestion {
+            detector: Detector::Dummy,
+            origin: ContentOrigin::TestEntity,
+            chunk: &chunk,
+            span: Span {
+                start: LineColumn {
+                    line: 1,
+                    column: 6,
+                },
+                end: LineColumn {
+                    line: 1,
+                    column: 10,
+                }
+            },
+            replacements: vec!["replacement_0", "replacement_1", "replacement_2"]
+                .into_iter().map(std::borrow::ToOwned::to_owned).collect(),
+            description: Some("Possible spelling mistake found.".to_owned()),
+        };
+
+
+        const EXPECTED: &'static str =
+r#"
+error: spellcheck(Dummy)
+  --> /tmp/test/entity:1
+   |
+1  |
+   |                                                   ^^^^
+   | - replacement_0, replacement_1 or replacement_2
+   |
+   |   Possible spelling mistake found.
+   |
+"#;
+
+        assert_display_eq(suggestion, EXPECTED);
     }
 }

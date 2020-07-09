@@ -45,6 +45,11 @@ hunspell-rs = { version = "0.1", optional = true }
 # full grammar check
 languagetool-rs = { version = "0.1", package = "languagetool", optional = true }
 
+
+[dev-dependencies]
+# for stripping ansi color codes
+console = "0.11"
+
 [features]
 default = ["hunspell"]
 
