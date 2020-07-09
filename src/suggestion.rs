@@ -11,12 +11,13 @@
 //!     |     - you can add it to your personal dictionary to prevent future alerts.
 //! ```
 
+use crate::{Span, Range};
 use crate::documentation::{CheckableChunk, ContentOrigin};
-use crate::Span;
+
+use std::convert::TryFrom;
 
 use enumflags2::BitFlags;
 
-use std::convert::TryFrom;
 
 /// Bitflag of available checkers by compilation / configuration.
 #[derive(Debug, Clone, Copy, BitFlags, Eq, PartialEq, Hash)]
@@ -78,7 +79,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
         let arrow_marker = Style::new().blue();
         let context_marker = Style::new().bold().blue();
         let fix = Style::new().green();
-        let _help = Style::new().yellow().bold();
+        let help = Style::new().yellow().bold();
 
         let line_number_digit_count = self.span.start.line.to_string().len();
         let indent = 3 + line_number_digit_count;
@@ -113,64 +114,30 @@ impl<'s> fmt::Display for Suggestion<'s> {
             ))
             .fmt(formatter)?;
 
-        // @todo must be implemented based on chunks
-        //
-        // writeln!(formatter, " {}", self.literal.as_str())?;
-        //
-        // // underline the relevant part with ^^^^^
-        // let mut marker_size = if self.span.end.line == self.span.start.line {
-        //     // column bounds are inclusive, so for a correct length we need to add + 1
-        //     self.span.end.column.saturating_sub(self.span.start.column) + 1
-        // } else {
-        //     self.literal.len().saturating_sub(self.span.start.column)
-        // };
+        writeln!(formatter, " {}", self.chunk.as_str())?;
 
-        // let literal_span: Span = Span::from(self.literal.as_ref().literal.span());
-        // let marker_range_relative: Range = self.span.relative_to(literal_span).expect("Must be ok");
+        // underline the relevant part with ^^^^^
+        let mut marker_size = if self.span.end.line == self.span.start.line {
+            // column bounds are inclusive, so for a correct length we need to add + 1
+            self.span.end.column.saturating_sub(self.span.start.column) + 1
+        } else {
+            self.chunk.as_str().chars().count().saturating_sub(self.span.start.column)
+        };
 
-        // // if the offset starts from 0, we still want to continue if the length
-        // // of the marker is at least length 1
-        // let offset = if self.literal.pre() <= marker_range_relative.start {
-        //     marker_range_relative.start - self.literal.pre()
-        // } else {
-        //     error!("Reducing marker length! Please report a BUG!");
-        //     // reduce the marker size
-        //     marker_size -= marker_range_relative.start;
-        //     marker_size -= self.literal.pre();
-        //     0
-        // };
+        // if the offset starts from 0, we still want to continue if the length
+        // of the marker is at least length 1
+        let offset = self.range.start;
 
-        // if marker_size > 0 {
-        //     context_marker
-        //         .apply_to(format!("{:>width$}", "|", width = indent))
-        //         .fmt(formatter)?;
-        //     help.apply_to(format!(" {:>offset$}", "", offset = offset))
-        //         .fmt(formatter)?;
-        //     help.apply_to(format!("{:^>size$}", "", size = marker_size))
-        //         .fmt(formatter)?;
-        //     formatter.write_str("\n")?;
-        //     log::trace!(
-        //         "marker_size={} [{}|{}|{}] literal {{ {:?} .. {:?} }} >> {:?} <<",
-        //         marker_size,
-        //         self.literal.pre(),
-        //         self.literal.len(),
-        //         self.literal.post(),
-        //         self.span.start,
-        //         self.span.end,
-        //         self,
-        //     );
-        // } else {
-        //     log::warn!(
-        //         "marker_size={} [{}|{}|{}] literal {{ {:?} .. {:?} }} >> {:?} <<",
-        //         marker_size,
-        //         self.literal.pre(),
-        //         self.literal.len(),
-        //         self.literal.post(),
-        //         self.span.start,
-        //         self.span.end,
-        //         self,
-        //     );
-        // }
+        if marker_size > 0 {
+            context_marker
+                .apply_to(format!("{:>width$}", "|", width = indent))
+                .fmt(formatter)?;
+            help.apply_to(format!(" {:>offset$}", "", offset = offset))
+                .fmt(formatter)?;
+            help.apply_to(format!("{:^>size$}", "", size = marker_size))
+                .fmt(formatter)?;
+            formatter.write_str("\n")?;
+        }
 
         context_marker
             .apply_to(format!("{:>width$}", "|", width = indent))
@@ -406,6 +373,7 @@ mod tests {
             detector: Detector::Dummy,
             origin: ContentOrigin::TestEntity,
             chunk: &chunk,
+            range: 6..11,
             span: Span {
                 start: LineColumn { line: 1, column: 6 },
                 end: LineColumn {
@@ -425,7 +393,7 @@ mod tests {
    |
  1 | Is it dyrck again?
    |       ^^^^^
-   | - replacement_0, replacement_1 or replacement_2
+   | - replacement_0, replacement_1, or replacement_2
    |
    |   Possible spelling mistake found.
    |
