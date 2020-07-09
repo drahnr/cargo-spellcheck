@@ -424,12 +424,11 @@ mod tests {
 
 
         const EXPECTED: &'static str =
-r#"
-error: spellcheck(Dummy)
+r#"error: spellcheck(Dummy)
   --> /tmp/test/entity:1
    |
-1  |
-   |                                                   ^^^^
+ 1 | Is it dyrck again?
+   |       ^^^^^
    | - replacement_0, replacement_1 or replacement_2
    |
    |   Possible spelling mistake found.
