@@ -93,8 +93,9 @@ impl<'s> fmt::Display for Suggestion<'s> {
 
         let x = self.span.start.line;
         let (path, line) = match self.origin {
-            ContentOrigin::RustDocTest(ref path, ref span) =>
-                (path.display().to_string(), x + span.start.line),
+            ContentOrigin::RustDocTest(ref path, ref span) => {
+                (path.display().to_string(), x + span.start.line)
+            }
             ref origin => (origin.as_path().display().to_string(), x),
         };
         writeln!(formatter, " {path}:{line}", path = path, line = line)?;
@@ -365,14 +366,12 @@ impl<'s> IntoIterator for &'s SuggestionSet<'s> {
     }
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::LineColumn;
-    use std::fmt;
     use console;
+    use std::fmt;
     fn assert_display_eq<D: fmt::Display, S: AsRef<str>>(display: D, s: S) {
         let expected = s.as_ref();
         let expected = console::strip_ansi_codes(expected);
@@ -383,10 +382,8 @@ mod tests {
         assert_eq!(reality, expected);
     }
 
-
     #[test]
     fn fmt() {
-
         const CONTENT: &'static str = "Is it dyrck again?";
         let chunk = CheckableChunk::from_str(
             CONTENT,
@@ -400,31 +397,28 @@ mod tests {
                         column: 17,
                     }
                 }
-            }
+            },
         );
 
-        let suggestion= Suggestion {
+        let suggestion = Suggestion {
             detector: Detector::Dummy,
             origin: ContentOrigin::TestEntity,
             chunk: &chunk,
             span: Span {
-                start: LineColumn {
-                    line: 1,
-                    column: 6,
-                },
+                start: LineColumn { line: 1, column: 6 },
                 end: LineColumn {
                     line: 1,
                     column: 10,
-                }
+                },
             },
             replacements: vec!["replacement_0", "replacement_1", "replacement_2"]
-                .into_iter().map(std::borrow::ToOwned::to_owned).collect(),
+                .into_iter()
+                .map(std::borrow::ToOwned::to_owned)
+                .collect(),
             description: Some("Possible spelling mistake found.".to_owned()),
         };
 
-
-        const EXPECTED: &'static str =
-r#"error: spellcheck(Dummy)
+        const EXPECTED: &'static str = r#"error: spellcheck(Dummy)
   --> /tmp/test/entity:1
    |
  1 | Is it dyrck again?
