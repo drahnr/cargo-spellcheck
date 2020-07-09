@@ -27,7 +27,7 @@ impl ContentOrigin {
             Self::RustSourceFile(path) => path.as_path(),
             #[cfg(test)]
             Self::TestEntity => {
-                lazy_static::lazy_static!{
+                lazy_static::lazy_static! {
                     static ref TEST_ENTITY: PathBuf = PathBuf::from("/tmp/test/entity");
                 };
                 TEST_ENTITY.as_path()
