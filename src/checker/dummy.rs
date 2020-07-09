@@ -38,6 +38,7 @@ impl Checker for DummyChecker {
                         let suggestion = Suggestion {
                             detector,
                             span,
+                            range,
                             origin: origin.clone(),
                             replacements,
                             chunk,
