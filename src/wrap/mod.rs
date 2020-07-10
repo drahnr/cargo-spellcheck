@@ -3,10 +3,6 @@
 //! Re-wrap doc comments for prettier styling in code
 
 use anyhow::Result;
-use log::info;
-use indexmap::IndexMap;
-use std::ops::Range;
-use crate::Span;
 
 use crate::Documentation;
 
@@ -24,31 +20,20 @@ impl Default for WrapConfig {
 }
 
 #[derive(Debug)]
-pub struct Wrap {
-    doc: Documentation,
-    config: WrapConfig,
-}
+pub struct Wrap {}
 
 impl Wrap {
-    pub fn new(doc: Documentation, config: Option<WrapConfig>) -> Self {
-        Wrap { doc, config: config.unwrap_or_default() }
-    }
-
-    pub fn rewrap(self) -> Result<()> {
+    pub fn rewrap(doc: Documentation, config: Option<WrapConfig>) -> Result<()> {
+        let config = config.unwrap_or_default();
         // loop through files
-        for (origin, chunks) in self.doc.iter() {
+        for (origin, chunks) in doc.iter() {
+            // loop through chunks a.k.a one conn
             for chunk in chunks {
-                // check length
-                let oob = chunk.iter().filter(|(r, s)| {
-                    s.end.column > self.config.max_line_length
-                }).map(|(r, s)| {
-                    for range in crate::checker::tokenize(chunk.as_str()) {
-                        // get all words with span > max_line_length
-                    }
-
-                });
-
-                log::warn!("oob {:?}", oob);
+                let new_chunks: Vec<String> = chunk.as_str().split("\n\n").collect::<Vec<&str>>().iter().map(|s| {
+                    let comment = s.replace("\n", "");
+                    textwrap::fill(&comment, config.max_line_length)
+                }).collect();
+                println!("{:?}", new_chunks.first());
             }
         }
         Ok(())
@@ -68,7 +53,7 @@ mod tests {
             .is_test(true)
             .try_init();
 
-        const TEST: &str = include_str!("../../demo/src/lib.rs");
+        const TEST: &str = include_str!("../../demo/src/nested/just_very_long.rs");
 
         let stream =
             syn::parse_str::<proc_macro2::TokenStream>(TEST).expect("Must parse just fine");
@@ -78,8 +63,7 @@ mod tests {
             stream,
         ));
 
-        let wrapper = Wrap::new(d, None);
-        wrapper.rewrap().expect("failed");
+        Wrap::rewrap(d, None).expect("failed");
 
         assert!(false);
     }

@@ -33,6 +33,7 @@ itertools = "0.9"
 crossterm = "0.17"
 fancy-regex = "0.3"
 signal-hook = "0.1"
+textwrap = "0.12"
 
 
 # config parsing, must be independent of features
