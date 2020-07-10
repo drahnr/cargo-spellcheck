@@ -6,18 +6,15 @@
 
 Check your spelling with `hunspell` and/or `languagetool`.
 
-## Usecase
+## Use Cases
 
 Run `cargo spellcheck --fix` or `cargo spellcheck fix` to fix all your documentation comments
 in order to avoid narsty types all over the place.
 
 Meant as a helper simplifying review as well as possibly improving CI
 after a learning phase for custom/topic specifc lingo.
-`cargo spellcheck` has a return code `1` if any unknown words are found, and `0` on success.
 
-## Use Cases
-
-### Check
+### Check For Spelling and/or Grammar Mistakes
 
 ```zsh
 cargo spellcheck check
@@ -32,7 +29,7 @@ cargo spellcheck check
 <font color="#3465A4"><b>    |</b></font>
 </pre>
 
-### Interactive fixing
+### Apply Suggestions Interactively
 
 ```zsh
 cargo spellcheck fix --interactive
@@ -56,6 +53,11 @@ cargo spellcheck fix --interactive
  <font color="#8AE234"><b>»</b></font> <span style="background-color:#2E3436"><font color="#FCE94F">a custom replacement literal</font></span>
 </pre>
 
+### Continuous Integration / CI
+
+`cargo spellcheck` can be configured with `-m <code>` to return a non-zero return code if
+mistakes are found instead of `0`.
+
 ## Implemented Features + Roadmap
 
 * [x] Parse doc comments from arbitrary files
@@ -63,13 +65,14 @@ cargo spellcheck fix --interactive
 * [x] `cargo-spellcheck check`
 * [x] Spell checking using `hunspell`
 * [x] Merge multiline doc comments
+* [ ] Handle multiline and fragmented mistakes (i.e. for grammar) [#25](https://github.com/drahnr/cargo-spellcheck/issues/25)
 * [x] Grammar check using `languagetool` http API
-* [x] False positive reduction
 * [x] Follow module declarations rather than blindly recurse
 * [x] Be `markdown` aware
   * [ ] Handle doctests with ` ```rust` as virtual files [#43](https://github.com/drahnr/cargo-spellcheck/issues/43)
   * [ ] Verify all types of links [#44](https://github.com/drahnr/cargo-spellcheck/issues/44)
 * [ ] Check `README.md` files [#37](https://github.com/drahnr/cargo-spellcheck/issues/37)
+* [ ] Check mdbook `book.toml` file trees [#62](https://github.com/drahnr/cargo-spellcheck/issues/62)
 * [x] `cargo-spellcheck fix --interactive`
 * [x] Improve interactive user interface with `crossterm`
 * [ ] Ellipsize overly long statements with `...` [#42](https://github.com/drahnr/cargo-spellcheck/issues/42)
@@ -101,30 +104,42 @@ search_dirs = []
 extra_dictonaries = []
 ```
 
+To increase verbosity use `CARGO_SPELLCHECK=cargo_spellcheck=trace` to see internal details or
+add `-v` (multiple) to increase verbosity.
+
 ## Installation
 
 `cargo install cargo-spellcheck`
 
-To increase verbosity use `CARGO_SPELLCHECK=cargo_spellcheck=trace` to see internal details or
-add `-v` (multiple) to increase verbosity.
+### Checkers
 
-### Hunspell
+Available checker support
 
-Requires the native library
+#### Hunspell
 
+Requires a C++ compiler to compile the hunspell CXX source files which are part of `hunspell-sys`
+
+##### Fedora 30+
 ```sh
-# Fedora 30+
-dnf install -y hunspell-devel
-
-# Ubuntu 19.10+
-apt install -y libhunspell-dev
-
-# Mac OS X
-brew install hunspell
+dnf install -y clang
 ```
 
-and building should succeed just fine.
+##### Ubuntu 19.10+
+```sh
+apt install -y clang
+```
 
-### LanguageTool
+##### Mac OS X
+```
+brew install llvm
+```
 
-Run a instance of the [LanguageTool server i.e. as container](https://hub.docker.com/r/erikvl87/languagetool) .
+The environment variable `LLVM_CONFIG_PATH` needs to point to `llvm-config`, to do so:
+
+```sh
+export LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config
+```
+
+#### LanguageTool
+
+Run a instance of the [LanguageTool server i.e. as container](https://hub.docker.com/r/erikvl87/languagetool).

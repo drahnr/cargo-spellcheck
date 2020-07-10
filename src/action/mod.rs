@@ -13,6 +13,21 @@ pub mod interactive;
 pub(crate) use bandaid::*;
 use interactive::*;
 
+#[derive(Debug, Clone, Copy)]
+pub enum Finish {
+    Abort,
+    MistakeCount(usize),
+}
+
+impl Finish {
+    pub fn found_any(&self) -> bool {
+        match *self {
+            Self::MistakeCount(n) if n > 0 => true,
+            _ => false,
+        }
+    }
+}
+
 /// correct all lines
 /// `bandaids` are the fixes to be applied to the lines
 ///
@@ -123,6 +138,8 @@ impl Action {
             ContentOrigin::RustSourceFile(path) => self.correct_file(path, bandaids),
             //@todo bandaids are relative to the doc-test, so fix the span with the one provided
             ContentOrigin::RustDocTest(path, _span) => self.correct_file(path, bandaids),
+            #[cfg(test)]
+            ContentOrigin::TestEntity => unreachable!("Use a proper file"),
         }
     }
 
@@ -192,35 +209,34 @@ impl Action {
     }
 
     /// Purpose was to check, check complete, so print the results.
-    fn check(&self, suggestions_per_path: SuggestionSet, _config: &Config) -> Result<()> {
+    fn check(&self, suggestions_per_path: SuggestionSet, _config: &Config) -> Result<Finish> {
         let mut count = 0usize;
         for (_path, suggestions) in suggestions_per_path {
             count += suggestions.len();
             for suggestion in suggestions {
-                eprintln!("{}", suggestion);
+                println!("{}", suggestion);
             }
         }
-        if count > 0 {
-            Err(anyhow::anyhow!(
-                "Found {} potential spelling mistakes",
-                count
-            ))
-        } else {
-            Ok(())
-        }
+        Ok(Finish::MistakeCount(count))
     }
 
     /// Run the requested action.
-    pub fn run(self, suggestions: SuggestionSet, config: &Config) -> Result<()> {
+    pub fn run(self, suggestions: SuggestionSet, config: &Config) -> Result<Finish> {
         match self {
             Self::Fix => unimplemented!("Unsupervised fixing is not implemented just yet"),
-            Self::Check => self.check(suggestions, config)?,
+            Self::Check => self.check(suggestions, config),
             Self::Interactive => {
-                let picked = interactive::UserPicked::select_interactive(suggestions, config)?;
-                self.write_changes_to_disk(picked, config)?;
+                let (picked, user_sel) =
+                    interactive::UserPicked::select_interactive(suggestions, config)?;
+                if user_sel == UserSelection::Abort {
+                    Ok(Finish::Abort)
+                } else {
+                    let n = picked.total_count();
+                    self.write_changes_to_disk(picked, config)?;
+                    Ok(Finish::MistakeCount(n))
+                }
             }
         }
-        Ok(())
     }
 }
 

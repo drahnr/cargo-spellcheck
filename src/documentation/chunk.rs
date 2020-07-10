@@ -15,6 +15,8 @@ pub enum ContentOrigin {
     CommonMarkFile(PathBuf),
     RustDocTest(PathBuf, Span), // span is just there to disambiguiate
     RustSourceFile(PathBuf),
+    #[cfg(test)]
+    TestEntity,
 }
 
 impl ContentOrigin {
@@ -23,6 +25,13 @@ impl ContentOrigin {
             Self::CommonMarkFile(path) => path.as_path(),
             Self::RustDocTest(path, _) => path.as_path(),
             Self::RustSourceFile(path) => path.as_path(),
+            #[cfg(test)]
+            Self::TestEntity => {
+                lazy_static::lazy_static! {
+                    static ref TEST_ENTITY: PathBuf = PathBuf::from("/tmp/test/entity");
+                };
+                TEST_ENTITY.as_path()
+            }
         }
     }
 }

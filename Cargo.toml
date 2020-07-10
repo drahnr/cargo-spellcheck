@@ -1,6 +1,6 @@
 [package]
 name = "cargo-spellcheck"
-version = "0.3.0-alpha.1"
+version = "0.3.0-alpha.5"
 authors = ["Bernhard Schuster <bernhard@ahoi.io>"]
 edition = "2018"
 repository = "https://github.com/drahnr/cargo-spellcheck.git"
@@ -33,7 +33,6 @@ itertools = "0.9"
 crossterm = "0.17"
 regex = "1"
 signal-hook = "0.1"
-termios = "0.3"
 
 # config parsing, must be independent of features
 iso_country = { version = "0.1" }
@@ -41,15 +40,20 @@ isolang = { version = "1", features = ["serde_serialize"] }
 url = { version = "2", features = ["serde"] }
 
 # dictionary
-hunspell-rs = { version = "0.1", optional = true }
+hunspell-rs = { version = "0.3", default-features=false, optional = true }
 
 # full grammar check
 languagetool-rs = { version = "0.1", package = "languagetool", optional = true }
+
+
+[dev-dependencies]
+# for stripping ansi color codes
+console = "0.11"
 
 [features]
 default = ["hunspell"]
 
 languagetool = ["languagetool-rs"]
-hunspell = ["hunspell-rs"]
+hunspell = ["hunspell-rs/bundled"]
 
 all = ["hunspell", "languagetool"]

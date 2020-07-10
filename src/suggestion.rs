@@ -12,11 +12,11 @@
 //! ```
 
 use crate::documentation::{CheckableChunk, ContentOrigin};
-use crate::Span;
-
-use enumflags2::BitFlags;
+use crate::{Range, Span};
 
 use std::convert::TryFrom;
+
+use enumflags2::BitFlags;
 
 /// Bitflag of available checkers by compilation / configuration.
 #[derive(Debug, Clone, Copy, BitFlags, Eq, PartialEq, Hash)]
@@ -59,8 +59,10 @@ pub struct Suggestion<'s> {
     pub origin: ContentOrigin,
     /// @todo must become a `CheckableChunk` and properly integrated
     pub chunk: &'s CheckableChunk,
-    /// The span (absolute!) of where it is supposed to be used.
+    /// The span (absolute!) within the file or chunk (depens on `origin`).
     pub span: Span,
+    /// Range relative to the chunk the current suggestion is located.
+    pub range: Range,
     /// Fix suggestions, might be words or the full sentence.
     pub replacements: Vec<String>,
     /// Descriptive reason for the suggestion.
@@ -76,7 +78,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
         let arrow_marker = Style::new().blue();
         let context_marker = Style::new().bold().blue();
         let fix = Style::new().green();
-        let _help = Style::new().yellow().bold();
+        let help = Style::new().yellow().bold();
 
         let line_number_digit_count = self.span.start.line.to_string().len();
         let indent = 3 + line_number_digit_count;
@@ -93,11 +95,10 @@ impl<'s> fmt::Display for Suggestion<'s> {
 
         let x = self.span.start.line;
         let (path, line) = match self.origin {
-            ContentOrigin::RustSourceFile(ref path) => (path.display().to_string(), x),
             ContentOrigin::RustDocTest(ref path, ref span) => {
                 (path.display().to_string(), x + span.start.line)
             }
-            ContentOrigin::CommonMarkFile(ref path) => (path.display().to_string(), x),
+            ref origin => (origin.as_path().display().to_string(), x),
         };
         writeln!(formatter, " {path}:{line}", path = path, line = line)?;
         context_marker
@@ -112,64 +113,34 @@ impl<'s> fmt::Display for Suggestion<'s> {
             ))
             .fmt(formatter)?;
 
-        // @todo must be implemented based on chunks
-        //
-        // writeln!(formatter, " {}", self.literal.as_str())?;
-        //
-        // // underline the relevant part with ^^^^^
-        // let mut marker_size = if self.span.end.line == self.span.start.line {
-        //     // column bounds are inclusive, so for a correct length we need to add + 1
-        //     self.span.end.column.saturating_sub(self.span.start.column) + 1
-        // } else {
-        //     self.literal.len().saturating_sub(self.span.start.column)
-        // };
+        writeln!(formatter, " {}", self.chunk.as_str())?;
 
-        // let literal_span: Span = Span::from(self.literal.as_ref().literal.span());
-        // let marker_range_relative: Range = self.span.relative_to(literal_span).expect("Must be ok");
+        // underline the relevant part with ^^^^^
+        let marker_size = if self.span.end.line == self.span.start.line {
+            // column bounds are inclusive, so for a correct length we need to add + 1
+            self.span.end.column.saturating_sub(self.span.start.column) + 1
+        } else {
+            self.chunk
+                .as_str()
+                .chars()
+                .count()
+                .saturating_sub(self.span.start.column)
+        };
 
-        // // if the offset starts from 0, we still want to continue if the length
-        // // of the marker is at least length 1
-        // let offset = if self.literal.pre() <= marker_range_relative.start {
-        //     marker_range_relative.start - self.literal.pre()
-        // } else {
-        //     error!("Reducing marker length! Please report a BUG!");
-        //     // reduce the marker size
-        //     marker_size -= marker_range_relative.start;
-        //     marker_size -= self.literal.pre();
-        //     0
-        // };
+        // if the offset starts from 0, we still want to continue if the length
+        // of the marker is at least length 1
+        let offset = self.range.start;
 
-        // if marker_size > 0 {
-        //     context_marker
-        //         .apply_to(format!("{:>width$}", "|", width = indent))
-        //         .fmt(formatter)?;
-        //     help.apply_to(format!(" {:>offset$}", "", offset = offset))
-        //         .fmt(formatter)?;
-        //     help.apply_to(format!("{:^>size$}", "", size = marker_size))
-        //         .fmt(formatter)?;
-        //     formatter.write_str("\n")?;
-        //     log::trace!(
-        //         "marker_size={} [{}|{}|{}] literal {{ {:?} .. {:?} }} >> {:?} <<",
-        //         marker_size,
-        //         self.literal.pre(),
-        //         self.literal.len(),
-        //         self.literal.post(),
-        //         self.span.start,
-        //         self.span.end,
-        //         self,
-        //     );
-        // } else {
-        //     log::warn!(
-        //         "marker_size={} [{}|{}|{}] literal {{ {:?} .. {:?} }} >> {:?} <<",
-        //         marker_size,
-        //         self.literal.pre(),
-        //         self.literal.len(),
-        //         self.literal.post(),
-        //         self.span.start,
-        //         self.span.end,
-        //         self,
-        //     );
-        // }
+        if marker_size > 0 {
+            context_marker
+                .apply_to(format!("{:>width$}", "|", width = indent))
+                .fmt(formatter)?;
+            help.apply_to(format!(" {:>offset$}", "", offset = offset))
+                .fmt(formatter)?;
+            help.apply_to(format!("{:^>size$}", "", size = marker_size))
+                .fmt(formatter)?;
+            formatter.write_str("\n")?;
+        }
 
         context_marker
             .apply_to(format!("{:>width$}", "|", width = indent))
@@ -364,5 +335,73 @@ impl<'s> IntoIterator for &'s SuggestionSet<'s> {
     type IntoIter = indexmap::map::Iter<'s, ContentOrigin, Vec<Suggestion<'s>>>;
     fn into_iter(self) -> Self::IntoIter {
         self.per_file.iter()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::LineColumn;
+    use console;
+    use std::fmt;
+    fn assert_display_eq<D: fmt::Display, S: AsRef<str>>(display: D, s: S) {
+        let expected = s.as_ref();
+        let expected = console::strip_ansi_codes(expected);
+
+        // uses the display impl
+        let reality = display.to_string();
+        let reality = console::strip_ansi_codes(reality.as_str());
+        assert_eq!(reality, expected);
+    }
+
+    #[test]
+    fn fmt() {
+        const CONTENT: &'static str = "Is it dyrck again?";
+        let chunk = CheckableChunk::from_str(
+            CONTENT,
+            indexmap::indexmap! { 0..18 => Span {
+                    start: LineColumn {
+                        line: 1,
+                        column: 0,
+                    },
+                    end: LineColumn {
+                        line: 1,
+                        column: 17,
+                    }
+                }
+            },
+        );
+
+        let suggestion = Suggestion {
+            detector: Detector::Dummy,
+            origin: ContentOrigin::TestEntity,
+            chunk: &chunk,
+            range: 6..11,
+            span: Span {
+                start: LineColumn { line: 1, column: 6 },
+                end: LineColumn {
+                    line: 1,
+                    column: 10,
+                },
+            },
+            replacements: vec!["replacement_0", "replacement_1", "replacement_2"]
+                .into_iter()
+                .map(std::borrow::ToOwned::to_owned)
+                .collect(),
+            description: Some("Possible spelling mistake found.".to_owned()),
+        };
+
+        const EXPECTED: &'static str = r#"error: spellcheck(Dummy)
+  --> /tmp/test/entity:1
+   |
+ 1 | Is it dyrck again?
+   |       ^^^^^
+   | - replacement_0, replacement_1, or replacement_2
+   |
+   |   Possible spelling mistake found.
+   |
+"#;
+
+        assert_display_eq(suggestion, EXPECTED);
     }
 }

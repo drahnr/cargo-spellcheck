@@ -167,7 +167,7 @@ mod tests {
             )
         };
 
-        ($test:expr, $n:expr, $origin:expr) => {
+        ($test:expr, $n:expr, $origin:expr) => {{
             let _ = env_logger::from_env(
                 env_logger::Env::new().filter_or("CARGO_SPELLCHECK", "cargo_spellcheck=trace"),
             )
@@ -187,23 +187,29 @@ mod tests {
             let suggestion_set = crate::checker::dummy::DummyChecker::check(&docs, &())
                 .expect("Must not fail to extract suggestions");
             let (_, suggestions) = suggestion_set
-                .into_iter()
+                .iter()
                 .next()
                 .expect("Must contain exactly one item");
-            assert_eq!(dbg!(&suggestions).len(), $n);
-        };
+            assert_eq!(dbg!(suggestions).len(), $n);
+            suggestion_set
+        }};
     }
 
     macro_rules! end2end_file {
-        ($path: literal, $n: expr) => {
+        ($path: literal, $n: expr) => {{
             let path2 = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/", $path));
             let origin = ContentOrigin::RustSourceFile(path2);
             end2end!(
                 include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/", $path)),
                 $n,
                 origin
-            );
-        };
+            )
+        }};
+    }
+
+    #[test]
+    fn one_line() {
+        end2end!(fluff_up!(["Uni"]), 1);
     }
 
     #[test]
