@@ -26,6 +26,7 @@ use crate::{Range, Span};
 pub enum Detector {
     Hunspell = 0b0001,
     LanguageTool = 0b0010,
+    Wrapper = 0b0100,
     #[cfg(test)]
     Dummy = 0b1000,
 }
@@ -63,6 +64,7 @@ impl fmt::Display for Detector {
         formatter.write_str(match self {
             Self::LanguageTool => "LanguageTool",
             Self::Hunspell => "Hunspell",
+            Self::Wrapper => "Wrapper",
             #[cfg(test)]
             Self::Dummy => "Dummy",
         })
