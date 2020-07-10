@@ -104,36 +104,42 @@ search_dirs = []
 extra_dictonaries = []
 ```
 
+To increase verbosity use `CARGO_SPELLCHECK=cargo_spellcheck=trace` to see internal details or
+add `-v` (multiple) to increase verbosity.
+
 ## Installation
 
 `cargo install cargo-spellcheck`
 
-To increase verbosity use `CARGO_SPELLCHECK=cargo_spellcheck=trace` to see internal details or
-add `-v` (multiple) to increase verbosity.
+### Checkers
 
-### Hunspell
+Available checker support
 
-Requires the native library
+#### Hunspell
+
+Requires a C++ compiler to compile the hunspell CXX source files which are part of `hunspell-sys`
+
+##### Fedora 30+
+```sh
+dnf install -y clang
+```
+
+##### Ubuntu 19.10+
+```sh
+apt install -y clang
+```
+
+##### Mac OS X
+```
+brew install llvm
+```
+
+The environment variable `LLVM_CONFIG_PATH` needs to point to `llvm-config`, to do so:
 
 ```sh
-# Fedora 30+
-dnf install -y hunspell-devel clang
-
-# Ubuntu 19.10+
-apt install -y libhunspell-dev clang
-
-# Mac OS X
-brew install hunspell llvm
+export LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config
 ```
 
-and building should succeed just fine.
-
-On macOS, set `llvm-config` executable path to `LLVM_CONFIG_PATH` environment variable.
-
-```
-LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config cargo install cargo-spellcheck
-```
-
-### LanguageTool
+#### LanguageTool
 
 Run a instance of the [LanguageTool server i.e. as container](https://hub.docker.com/r/erikvl87/languagetool).
