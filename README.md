@@ -65,7 +65,7 @@ mistakes are found instead of `0`.
 * [x] `cargo-spellcheck check`
 * [x] Spell checking using `hunspell`
 * [x] Merge multiline doc comments
-* [ ] Properly handle grammar mistakes spanning accross multiple lines
+* [ ] Handle multiline and fragmented mistakes (i.e. for grammar) [#25](https://github.com/drahnr/cargo-spellcheck/issues/25)
 * [x] Grammar check using `languagetool` http API
 * [x] Follow module declarations rather than blindly recurse
 * [x] Be `markdown` aware
