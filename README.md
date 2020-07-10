@@ -111,8 +111,6 @@ extra_dictonaries = []
 To increase verbosity use `CARGO_SPELLCHECK=cargo_spellcheck=trace` to see internal details or
 add `-v` (multiple) to increase verbosity.
 
-Windows currently suffers from an issue of the inability to build `hunspell` (the C lib) easily on windows or specify where it exists, see [#14](https://github.com/drahnr/cargo-spellcheck/issues/14) for details, there is an upcoming upstream fix in [hunspell-sys/#2](https://github.com/euclio/hunspell-sys/pull/2).
-
 ### Hunspell
 
 Requires the native library
