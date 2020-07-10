@@ -40,7 +40,7 @@ isolang = { version = "1", features = ["serde_serialize"] }
 url = { version = "2", features = ["serde"] }
 
 # dictionary
-hunspell-rs = { version = "0.1", optional = true }
+hunspell-rs = { version = "0.2", optional = true }
 
 # full grammar check
 languagetool-rs = { version = "0.1", package = "languagetool", optional = true }
