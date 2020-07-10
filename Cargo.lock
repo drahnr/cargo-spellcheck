@@ -210,9 +210,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.0.54"
+version = "1.0.58"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7bbb73db36c1246e9034e307d0fba23f9a2e251faa47ade70c1bd252220c8311"
+checksum = "f9a06fb2e53271d7c279ec1efea6ab691c35a2ae67ec0d91d7acec0caf13b518"
 
 [[package]]
 name = "cexpr"
@@ -707,9 +707,9 @@ dependencies = [
 
 [[package]]
 name = "hunspell-rs"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "de083fbce75a3f4ddd28e9edf37a396ec645ebdfeefe1411f9250c966b94bfc7"
+checksum = "6c24d12fc6308fed12469846419baec12ad78de0c97d4f2e4a4ffc1b3f910838"
 dependencies = [
  "hunspell-sys",
 ]
@@ -721,6 +721,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b843d878e9211fe6af0c41f76a9b47bf8033cc01b6a59e99a3961316cf48ddce"
 dependencies = [
  "bindgen",
+ "cc",
  "pkg-config",
 ]
 

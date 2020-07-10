@@ -40,7 +40,7 @@ isolang = { version = "1", features = ["serde_serialize"] }
 url = { version = "2", features = ["serde"] }
 
 # dictionary
-hunspell-rs = { version = "0.2", optional = true }
+hunspell-rs = { version = "0.3", default-features=false, optional = true }
 
 # full grammar check
 languagetool-rs = { version = "0.1", package = "languagetool", optional = true }
@@ -54,6 +54,6 @@ console = "0.11"
 default = ["hunspell"]
 
 languagetool = ["languagetool-rs"]
-hunspell = ["hunspell-rs"]
+hunspell = ["hunspell-rs/bundled"]
 
 all = ["hunspell", "languagetool"]
