@@ -130,6 +130,12 @@ brew install hunspell llvm
 
 and building should succeed just fine.
 
+On macOS, set `llvm-config` executable path to `LLVM_CONFIG_PATH` environment variable.
+
+```
+LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config cargo install cargo-spellcheck
+```
+
 ### LanguageTool
 
 Run a instance of the [LanguageTool server i.e. as container](https://hub.docker.com/r/erikvl87/languagetool).
