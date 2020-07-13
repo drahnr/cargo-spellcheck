@@ -1,6 +1,6 @@
-//! Wrap
+//! Re-wrap documentation comments to a desired line width.
 //!
-//! Re-wrap doc comments for prettier styling in code
+//! Will handle hyphenation eventually if desired.
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -27,7 +27,7 @@ impl Default for WrapConfig {
 }
 
 #[derive(Debug)]
-pub struct Wrapper {}
+pub struct Wrapper;
 
 impl Checker for Wrapper {
     type Config = WrapConfig;
@@ -42,11 +42,12 @@ impl Checker for Wrapper {
             SuggestionSet::new(),
             |mut acc, (origin, chunks)| {
                 for chunk in chunks {
-                    let mut new_lines = dbg!(&chunk)
+                    let mut sections = dbg!(&chunk)
                         .as_str()
                         .split("\n\n")
                         .collect::<Vec<&str>>()
                         .iter()
+                        // @todo assumes `/// x` where no additional newline is required
                         .map(|s| s.replace("\n", ""))
                         .fold::<Vec<String>, _>(Vec::new(), |mut acc, comment| {
                             let mut new_comment = wrapper
@@ -54,13 +55,12 @@ impl Checker for Wrapper {
                                 .map(|b| b.into_owned())
                                 .collect();
                             acc.append(&mut new_comment);
-                            acc.push("".into());
                             acc
                         });
-                    // remove last newline
-                    let _ = new_lines.pop();
+                    // obtain the first section
+                    let _ = sections.pop();
                     // @todo that's too easy
-                    if new_lines.len() == chunk.as_str().lines().count() {
+                    if sections.len() == chunk.as_str().lines().count() {
                         log::trace!("No rewrapping required for '{:?}'", chunk);
                         break; // the chunk did not change
                     }
@@ -108,45 +108,67 @@ impl Checker for Wrapper {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::end2end;
+    use crate::fluff_up;
+
     use crate::documentation::*;
     use std::path::PathBuf;
 
+    macro_rules! reflow {
+        ([ $( $line:literal ),+ $(,)?] => $expected:literal) => {
+            reflow!(80usize break [ $( $line ),+ ] => $expected );
+        };
+        ($n:literal break [ $( $line:literal ),+ $(,)?] => $expected:literal) => {
+            const CONTENT:&'static str = fluff_up!($( $line ),+);
+            let docs = Documentation::from((ContentOrigin::TestEntity, CONTENT));
+            assert_eq!(docs.entry_count(), 1);
+            let chunks = docs.get(&ContentOrigin::TestEntity).expect("Must contain dummy path");
+            assert_eq!(dbg!(chunks).len(), 1);
+            let chunk = &chunks[0];
+            let _plain = chunk.erase_markdown();
+
+            let cfg = WrapConfig {
+                max_line_length: $n,
+                .. Default::default()
+            };
+        let suggestion_set = Wrapper::check(&docs, &cfg)
+            .expect("Must not fail to extract suggestions");
+        let (_, suggestions) = suggestion_set
+            .iter()
+            .next()
+            .expect("Must contain exactly one item");
+
+            let suggestion = suggestions.into_iter().next().expect("Missing");
+            let replacement = suggestion.replacements.iter().next().expect("Must have a replacement");
+            assert_eq!(replacement.as_str(), $expected);
+        };
+        ($line:literal => $expected:literal) => {
+            reflow!([$line] => $expected);
+        };
+    }
+
     #[test]
     fn rewrap_into_suggestion() {
-        let _ = env_logger::builder()
-            .filter(None, log::LevelFilter::Trace)
-            .is_test(true)
-            .try_init();
+        reflow!(41 break ["This module contains documentation thats \
+is too long for one line and moreover, \
+it spans over mulitple lines such that \
+we can test our rewrapping algorithm. \
+Smart, isn't it? Lorem ipsum and some more \
+blanket text without any meaning",
+        "",
+        "But lets also see what happens if \
+there are two consecutive newlines \
+in one connected documentation span."] =>
 
-        const TEST: &str = include_str!("../../demo/src/nested/just_very_long.rs");
-        const TEST_STR: &str = r#"This module contains documentation thats is too long for one line and moreover, it spans over mulitple lines such that we can test our rewrapping algorithm. Smart, isn't it? Lorem ipsum and some more blanket text without any meaning
+r#" This module contains documentation thats
+ is too long for one line and moreover,
+ it spans over mulitple lines such that
+ we can test our rewrapping algorithm.
+ Smart, isn't it? Lorem ipsum and some
+ more blanket text without any meaning
 
-But lets also see what happens if there are two consecutive newlines in one connected documentation span."#;
-
-        let stream =
-            syn::parse_str::<proc_macro2::TokenStream>(TEST).expect("Must parse just fine");
-
-        let d = Documentation::from((
-            ContentOrigin::RustSourceFile(PathBuf::from("dummy/dummy.rs")),
-            stream,
-        ));
-
-        let wrapped = textwrap::Wrapper::new(WrapConfig::default().max_line_length)
-            .initial_indent(" ")
-            .subsequent_indent(" ").fill(TEST_STR);
-        // the string resulting from fill() has one whitespace in the empty line which
-        let wrapped = wrapped.replace("\n \n", "\n\n");
-
-        let suggestions = Wrapper::check(&d, &WrapConfig::default()).expect("failed");
-
-        // one file
-        assert_eq!(suggestions.len(), 1);
-        // one too long comment
-        assert_eq!(suggestions.total_count(), 1);
-        for (orig, suggestion_vec) in suggestions {
-            for suggestion in suggestion_vec {
-                assert_eq!(suggestion.replacements.first().unwrap(), &wrapped);
-            }
-        }
+ But lets also see what happens if there
+ are two consecutive newlines in one
+ connected documentation span."#);
     }
 }

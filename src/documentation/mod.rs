@@ -48,14 +48,17 @@ impl Documentation {
         }
     }
 
+    #[inline(always)]
     pub fn is_empty(&self) -> bool {
         self.index.is_empty()
     }
 
+    #[inline(always)]
     pub fn iter(&self) -> impl Iterator<Item = (&ContentOrigin, &Vec<CheckableChunk>)> {
         self.index.iter()
     }
 
+    #[inline(always)]
     pub fn into_iter(self) -> impl Iterator<Item = (ContentOrigin, Vec<CheckableChunk>)> {
         self.index.into_iter()
     }
@@ -88,6 +91,18 @@ impl Documentation {
             .or_insert_with(|| chunks);
         // Ok(()) @todo make this failable
     }
+
+    /// get funky
+    #[inline(always)]
+    pub fn get(&self, origin: &ContentOrigin) -> Option<&[CheckableChunk]> {
+        self.index.get(origin).map(AsRef::as_ref)
+    }
+
+    /// get funky
+    #[inline(always)]
+    pub fn entry_count(&self) -> usize {
+        self.index.len()
+    }
 }
 
 /// only a shortcut to avoid duplicate code
@@ -109,7 +124,7 @@ impl From<(ContentOrigin, &str)> for Documentation {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::checker::Checker;
     use crate::fluff_up;
@@ -132,11 +147,9 @@ mod tests {
         const TEST_RAW: &str = r#" **A** _very_ good test."#;
         const TEST_PLAIN: &str = r#"A very good test."#;
 
-        let test_path = PathBuf::from("/tmp/dummy");
-        let origin = ContentOrigin::RustSourceFile(test_path.clone());
-        let docs = Documentation::from((origin.clone(), TEST_SOURCE));
-        assert_eq!(docs.index.len(), 1);
-        let chunks = docs.index.get(&origin).expect("Must contain dummy path");
+        let docs = Documentation::from((ContentOrigin::TestEntity, TEST_SOURCE));
+        assert_eq!(docs.entry_count(), 1);
+        let chunks = docs.get(&ContentOrigin::TestEntity).expect("Must contain dummy path");
         assert_eq!(dbg!(chunks).len(), 1);
 
         // @todo
@@ -175,21 +188,23 @@ mod tests {
         assert_eq!(z, chunk.find_spans(expected_raw_range));
     }
 
-    macro_rules! end2end {
-        ($test:expr, $n:expr) => {
-            end2end!(
-                $test,
-                $n,
-                ContentOrigin::RustSourceFile(PathBuf::from("/tmp/dummy"))
-            )
-        };
+    // use crate::literalset::tests::{annotated_literals,gen_literal_set};
+    use crate::checker::dummy::DummyChecker;
+    use crate::documentation::Documentation;
 
-        ($test:expr, $n:expr, $origin:expr) => {{
+    #[macro_export]
+    macro_rules! end2end {
+        ($test:expr, $n:expr) => {{
+            end2end!($test, ContentOrigin::TestEntity, $n, DummyChecker);
+        }};
+
+        ($test:expr, $origin:expr, $n:expr, $checker:ty) => {{
             let _ = env_logger::from_env(
-                env_logger::Env::new().filter_or("CARGO_SPELLCHECK", "cargo_spellcheck=trace"),
-            )
-            .is_test(true)
-            .try_init();
+                    env_logger::Env::new()
+                        .filter_or("CARGO_SPELLCHECK", "cargo_spellcheck=trace")
+                )
+                .is_test(true)
+                .try_init();
 
             let origin = $origin;
             let docs = Documentation::from((origin.clone(), $test));
@@ -199,14 +214,14 @@ mod tests {
             let chunk = &chunks[0];
             let _plain = chunk.erase_markdown();
 
-            let suggestion_set = crate::checker::dummy::DummyChecker::check(&docs, &())
+            let cfg = Default::default();
+            let suggestion_set = <$checker>::check(&docs, &cfg)
                 .expect("Must not fail to extract suggestions");
             let (_, suggestions) = suggestion_set
                 .iter()
                 .next()
                 .expect("Must contain exactly one item");
             assert_eq!(suggestions.len(), $n);
-            suggestion_set
         }};
     }
 
@@ -216,9 +231,10 @@ mod tests {
             let origin = ContentOrigin::RustSourceFile(path2);
             end2end!(
                 include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/", $path)),
+                origin,
                 $n,
-                origin
-            )
+                DummyChecker
+            );
         }};
     }
 
@@ -241,10 +257,6 @@ mod tests {
     fn two() {
         end2end_file!("demo/src/nested/justtwo.rs", 2);
     }
-
-    // use crate::literalset::tests::{annotated_literals,gen_literal_set};
-    use crate::checker::dummy::DummyChecker;
-    use crate::documentation::Documentation;
 
     #[cfg(feature = "hunspell")]
     #[test]
