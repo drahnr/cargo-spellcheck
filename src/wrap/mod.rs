@@ -7,9 +7,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::checker::Checker;
 use crate::Documentation;
-use crate::{Detector, Suggestion, SuggestionSet};
-use crate::Span;
 use crate::LineColumn;
+use crate::Span;
+use crate::{Detector, Suggestion, SuggestionSet};
 
 /// Parameters for wrapping doc comments
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -42,25 +42,48 @@ impl Checker for Wrapper {
             SuggestionSet::new(),
             |mut acc, (origin, chunks)| {
                 for chunk in chunks {
-                    let mut new_lines = chunk
+                    let mut new_lines = dbg!(&chunk)
                         .as_str()
                         .split("\n\n")
                         .collect::<Vec<&str>>()
                         .iter()
-                        .map(|s| s.replace("\n", "") )
+                        .map(|s| s.replace("\n", ""))
                         .fold::<Vec<String>, _>(Vec::new(), |mut acc, comment| {
                             let mut new_comment = wrapper
                                 .wrap_iter(comment.trim())
-                                .map(|b| b.into_owned()).collect();
+                                .map(|b| b.into_owned())
+                                .collect();
                             acc.append(&mut new_comment);
                             acc.push("".into());
                             acc
                         });
                     // remove last newline
                     let _ = new_lines.pop();
+                    // @todo that's too easy
+                    if new_lines.len() == chunk.as_str().lines().count() {
+                        log::trace!("No rewrapping required for '{:?}'", chunk);
+                        break; // the chunk did not change
+                    }
                     // @todo find proper span and range
-                    let range = 0..chunk.as_str().len();
-                    let span = Span { start: LineColumn { line: 0, column: 0}, end: LineColumn { line: 1, column: 5}};
+                    let range = dbg!(0..chunk.as_str().len());
+                    let mut start = 1000..1001;
+                    let mut end = 0..1;
+                    let mut span = Span {
+                        start: LineColumn { line: 0, column: 0 },
+                        end: LineColumn { line: 0, column: 0 },
+                    };
+                    chunk.iter().for_each(|(r, s)| {
+                        if start.start > r.start {
+                            start = r.clone();
+                            span.start = s.start;
+                        }
+                        if end.end < r.end {
+                            end = r.clone();
+                            span.end = s.end;
+                        }
+                    });
+                    dbg!(&span);
+
                     acc.add(
                         origin.clone(),
                         Suggestion {
@@ -68,7 +91,7 @@ impl Checker for Wrapper {
                             range,
                             span,
                             origin: origin.clone(),
-                            replacements: vec!["".into()],
+                            replacements: vec![new_lines.join("\n")],
                             chunk,
                             description: Some("Rewrapped".to_owned()),
                         },
@@ -89,13 +112,16 @@ mod tests {
     use std::path::PathBuf;
 
     #[test]
-    fn rewrap() {
+    fn rewrap_into_suggestion() {
         let _ = env_logger::builder()
             .filter(None, log::LevelFilter::Trace)
             .is_test(true)
             .try_init();
 
         const TEST: &str = include_str!("../../demo/src/nested/just_very_long.rs");
+        const TEST_STR: &str = r#"This module contains documentation thats is too long for one line and moreover, it spans over mulitple lines such that we can test our rewrapping algorithm. Smart, isn't it? Lorem ipsum and some more blanket text without any meaning
+
+But lets also see what happens if there are two consecutive newlines in one connected documentation span."#;
 
         let stream =
             syn::parse_str::<proc_macro2::TokenStream>(TEST).expect("Must parse just fine");
@@ -105,9 +131,22 @@ mod tests {
             stream,
         ));
 
-        let suggestions = Wrapper::check(&d, &WrapConfig::default()).expect("failed");
-        dbg!(suggestions);
+        let wrapped = textwrap::Wrapper::new(WrapConfig::default().max_line_length)
+            .initial_indent(" ")
+            .subsequent_indent(" ").fill(TEST_STR);
+        // the string resulting from fill() has one whitespace in the empty line which
+        let wrapped = wrapped.replace("\n \n", "\n\n");
 
-        assert!(false);
+        let suggestions = Wrapper::check(&d, &WrapConfig::default()).expect("failed");
+
+        // one file
+        assert_eq!(suggestions.len(), 1);
+        // one too long comment
+        assert_eq!(suggestions.total_count(), 1);
+        for (orig, suggestion_vec) in suggestions {
+            for suggestion in suggestion_vec {
+                assert_eq!(suggestion.replacements.first().unwrap(), &wrapped);
+            }
+        }
     }
 }
