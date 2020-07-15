@@ -13,6 +13,7 @@
 
 use crate::documentation::{CheckableChunk, ContentOrigin};
 
+use std::cmp;
 use std::convert::TryFrom;
 
 use enumflags2::BitFlags;
@@ -44,6 +45,34 @@ pub fn get_terminal_size() -> usize {
         }
     }
 }
+
+pub fn get_current_statement<'a>(arr: &'a Vec<&'_ str>, range: Range) -> &'a str {
+    let mut stripped_line: &str = "";
+    let mut initial_sentence: usize = 0;
+    for (pos, sentence) in arr.iter().enumerate() {
+        initial_sentence += sentence.chars().count();
+        stripped_line = sentence;
+        if range.end < initial_sentence {
+            break;
+        }
+
+    }
+    stripped_line
+}
+
+pub fn char_sub_window(s: &str, range: Range) -> &str {
+    // @todo can be done in a single iterator, use `fold()`
+    let start = match s.char_indices().nth(range.start) {
+        None => 0,
+        Some((start, _)) => start,
+    };
+    let end = match s.char_indices().nth(range.end) {
+        None => s.char_indices().count(),
+        Some((end, _)) => end,
+    };
+    &s[start..end]
+}
+
 // impl
 // // TODO use this to display included compiled backends
 // fn list_available() {
@@ -81,11 +110,15 @@ pub fn convert_long_statements_to_short(
     terminal_size: usize,
     marker_range_relative: Range,
     marker_size: &mut usize,
-    chunk: &CheckableChunk,
+    chunk_str: &str,
     offset: &mut usize,
     indent: usize,
     padding_till_literal_start: usize,
+    last_line: usize,
+    stripped_line: &str,
+    range: Range,
 ) -> String {
+
     //
     // The paddings give some space for the ` {} ...` and extra indentation and formatting:
     //
@@ -113,14 +146,10 @@ pub fn convert_long_statements_to_short(
     // |-----left_context-----|---start_word----|----end_word---|-----right_context-----|
     //
     // Obs: paddings are not being considered in the illustration, but info is above.
-    let mut range_left_context = Range {
-        start: 0usize,
-        end: marker_range_relative.start,
-    };
-    let mut range_right_context = Range {
-        start: marker_range_relative.end,
-        end: chunk.as_str().chars().count(),
-    };
+    use super::*;
+    // the line being analysed can affect how the indentation is done
+    // this values is dynamically calculated according to the line number
+
     let mut range_start_word = Range {
         start: marker_range_relative.start,
         end: marker_range_relative.start,
@@ -129,28 +158,27 @@ pub fn convert_long_statements_to_short(
         start: marker_range_relative.end,
         end: marker_range_relative.end,
     };
-    // the line being analysed can affect how the indentation is done
-    // this values is dynamically calculated according to the line number
     let mut misspelled_word = format!(
         "{}",
-        // Exactly range to use sub() and have access to the misspelled word
-        // without extra spaces or punctuation around
-        chunk.char_sub_window(Range {
-            start: (marker_range_relative.start).saturating_sub(1),
-            end: (marker_range_relative.end).saturating_sub(1)
-        })
+        char_sub_window(
+            chunk_str,
+            Range {
+                start: (marker_range_relative.start),
+                end: (marker_range_relative.end)
+            }
+        )
     );
     // Check words that are considered too long; Word will be formatted for fitting
     if *marker_size > TOO_LONG_WORD {
         range_start_word = Range {
-            start: marker_range_relative.start - 1,
+            start: marker_range_relative.start,
             end: range_start_word.start + DISPLAYED_LONG_WORD,
         };
         range_end_word = Range {
             start: marker_range_relative
                 .end //non inclusive
                 .saturating_sub(DISPLAYED_LONG_WORD),
-            end: marker_range_relative.end - 1,
+            end: marker_range_relative.end,
         };
 
         //  too long word will be shorter as it follows:
@@ -325,40 +353,60 @@ impl<'s> fmt::Display for Suggestion<'s> {
 
         // if the offset starts from 0, we still want to continue if the length
         // of the marker is at least length 1
-
         let mut offset = marker_range_relative.start;
-        let chunk_str = self.chunk.as_str();
-        let n = self.chunk.len_in_chars();
+        let v = self
+            .chunk
+            .as_str()
+            .lines()
+            .enumerate()
+            .map(|(lineno, content)| (lineno + 1, content))
+            .skip_while(|(lineno, _)| &self.span.start.line < lineno)
+            .take_while(|(lineno, _)| &self.span.end.line >= lineno)
+            .map(|(_, content)| content)
+            .collect::<Vec<&'_ str>>();
+        let mut count: usize = 0;
+        let mut last_line = 0;
+        for (i, c) in self.chunk.as_str().chars().enumerate() {
+            if c == '\n' {
+                count = count + 1;
+                last_line = i;
+            }
+            if i >= self.range.end {
+                break;
+            }
+        }
+        let mut initial_sentence = 0;
+        let mut lines: usize = 0;
+        let mut stripped_line = get_current_statement(&v.as_ref(), self.range.clone());
+        
+        let n = stripped_line.char_indices().count();
 
         let terminal_size: usize = get_terminal_size();
         // the line being analysed can affect how the indentation is done
         // this values is dynamically calculated for each line where the documentation
         let padding_till_literal_start = indent + 2; // 2 extra spaces are considered for starting the literal already
-
+        let chunk_str = self.chunk.as_str();
         // Check whether the statement is too long for the remaining space left of the terminal size
         // and if it is, we shall do the fitting
         if n + padding_till_literal_start > terminal_size {
-            let mut misspelled_word = format!(
-                "{}",
-                self.chunk.char_sub_window(Range {
-                    start: marker_range_relative.start - 1,
-                    end: marker_range_relative.end
-                })
-            );
             let formatted_literal: String = convert_long_statements_to_short(
                 terminal_size,
                 marker_range_relative,
                 &mut marker_size,
-                self.chunk,
+                chunk_str,
                 &mut offset,
                 indent,
                 padding_till_literal_start,
+                last_line,
+                stripped_line,
+                self.range.clone(),
             );
-            writeln!(formatter, "{}", &formatted_literal)?;
+            writeln!(formatter, "{}", formatted_literal)?;
 
         // literal is smaller than terminal size and it can be fully displayed
         } else {
-            writeln!(formatter, " {}", chunk_str)?;
+            offset = offset.saturating_sub(last_line);
+            writeln!(formatter, " {}", stripped_line)?;
         }
 
         if marker_size > 0 {
