@@ -111,10 +111,10 @@ pub(crate) mod tests {
     #[macro_export]
     macro_rules! feather_up {
         ([ $( $line:literal ),+ $(,)?]) => {
-            concat!("", r##"#[doc=r#""## $(, $line, "\n")+, r##""#]"##, "\n", "struct Mechanical;")
+            feather_up!( $( $line ),+ )
         };
-        ($( $line:literal ),+ $(,)?) => {
-            feather_up!([$( $line ),+])
+        ($first:literal $(, $( $line:literal ),+ )? $(,)? ) => {
+            concat!("", r##"#[doc=r#""##, $first $( $(, "\n", $line )+ )?, r##""#]"##, "\n", "struct Mechanical;")
         };
     }
 
@@ -149,8 +149,11 @@ struct Fluff;"#;
     pub(crate) fn gen_literal_set(source: &str) -> LiteralSet {
         let literals = dbg!(annotated_literals(dbg!(source)));
 
-        let mut cls = LiteralSet::default();
-        for literal in literals {
+        let mut iter = dbg!(literals).into_iter();
+        let literal = iter.next().expect("Must have at least one item in laterals");
+        let mut cls = LiteralSet::from(literal);
+
+        for literal in iter {
             assert!(cls.add_adjacent(literal).is_ok());
         }
         dbg!(cls)
