@@ -85,6 +85,8 @@ impl TraverseModulesIter {
         Ok(me)
     }
 
+    /// Create a new path with (almost) infinite depth bounds
+    #[allow(unused)]
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
         Self::with_depth_limit(path, usize::MAX)
     }
