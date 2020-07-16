@@ -109,12 +109,12 @@ pub(crate) mod tests {
     use super::*;
 
     #[macro_export]
-    macro_rules! feather_up {
+    macro_rules! chyrp_up {
         ([ $( $line:literal ),+ $(,)?]) => {
-            feather_up!( $( $line ),+ )
+            chyrp_up!( $( $line ),+ )
         };
         ($first:literal $(, $( $line:literal ),+ )? $(,)? ) => {
-            concat!("", r##"#[doc=r#""##, $first $( $(, "\n", $line )+ )?, r##""#]"##, "\n", "struct Mechanical;")
+            concat!("", r##"#[doc=r#""##, $first $( $(, "\n", $line )+ )?, r##""#]"##, "\n", "struct ChyrpChyrp;")
         };
     }
 
