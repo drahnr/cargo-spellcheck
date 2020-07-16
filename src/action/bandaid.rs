@@ -114,24 +114,45 @@ pub(crate) mod tests {
             .lines()
             .skip(span.start.line - 1)
             .filter_map(|line| line.ok())
-            .take(span.end.line - span.start.line + 1).collect();
+            .take(span.end.line - span.start.line + 1)
+            .collect();
 
-        assert!(multiline.len() > 0);
+        assert!(dbg!(&multiline).len() > 0);
 
-        match  multiline.len() {
-            0 => unreachable!("Must never be one"),
-            1 => Ok(multiline[0].chars().take(span.end.column).skip(span.start.column.saturating_sub(1)).collect::<String>()),
-            _ => {
-                let first = multiline.first().unwrap().chars().skip(span.start.column.saturating_sub(1)).collect::<String>();
-                let last = multiline.last().unwrap().chars().take(span.end.column).collect::<String>();
-                multiline.first_mut().map(move |val| *val = dbg!(first) ).unwrap();
-                multiline.last_mut().map(move |val| *val = dbg!(last) ).unwrap();
+        match multiline.len() {
+            0 => unreachable!("Must never be nil"),
+            1 => Ok(multiline[0]
+                .chars()
+                .take(span.end.column + 1)
+                .skip(span.start.column)
+                .collect::<String>()),
+            x if x > 1 => {
+                let first = multiline
+                    .first()
+                    .unwrap()
+                    .chars()
+                    .skip(span.start.column)
+                    .collect::<String>();
+                let last = multiline
+                    .last()
+                    .unwrap()
+                    .chars()
+                    .take(span.end.column + 1)
+                    .collect::<String>();
+                multiline
+                    .first_mut()
+                    .map(move |val| *val = dbg!(first))
+                    .unwrap();
+                multiline
+                    .last_mut()
+                    .map(move |val| *val = dbg!(last))
+                    .unwrap();
                 Ok(dbg!(multiline).join("\n"))
             }
+            _ => unreachable!("should not be negative or an invalid number"),
         }
 
         // log::trace!("Loading {:?} from line >{}<", &range, &line);
-
     }
 
     #[test]

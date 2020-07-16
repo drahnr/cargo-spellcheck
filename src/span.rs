@@ -100,6 +100,9 @@ impl Span {
             if line == self.end.line && col == self.end.column {
                 let range2 = (offset + start)..(offset + idx + 1);
                 assert!(range2.len() <= range.len());
+                if span.start.line == span.end.line {
+                    assert_eq!(range2.len(), span.end.column - span.end.column + 1);
+                }
                 return Ok(range2);
             }
 
