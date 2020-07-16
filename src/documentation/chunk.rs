@@ -107,7 +107,7 @@ impl CheckableChunk {
             &range
         );
 
-        let Range { start, end } = range.clone();
+        let Range { start, end } = range;
         let mut active = false;
         self.source_mapping
             .iter()
@@ -128,7 +128,7 @@ impl CheckableChunk {
                     }
                 }
 
-                // assured by filter
+                // fortify assumption
                 assert!(end > 0);
 
                 if sub.contains(&start) {
@@ -143,20 +143,35 @@ impl CheckableChunk {
                         Some((start..sub.end, offset))
                     }
                 } else if active {
+                    // multiline is active
+                    // check for end
                     if sub.contains(&(end - 1)) {
                         active = false;
                         Some((sub.start..end, 0usize)) // @todo double check this
                     } else {
+                        // or take full line
                         Some((sub.clone(), 0usize))
                     }
                 } else {
                     None
                 }
                 .map(|(fragment_range, offset)| {
-                    // @todo handle multiline here
-                    // @todo requires knowledge of how many items are remaining in the line
-                    // @todo which needs to be extracted from chunk
-                    assert_eq!(span.start.line, span.end.line);
+
+                    trace!(
+                        ">> offset={} fragment={:?} range={:?}",
+                        offset,
+                        &fragment_range,
+                        start..end,
+                    );
+                    trace!(">> {:?}", &span);
+
+                    // offset is the relative start offset between `fragment_range` and `span`
+                    // create range 2 line iterator mapping of the fragment
+                    // to handle multiline fragments
+
+                    // this is within one literal, so there are no prefixes, after the first line this is guaranteed
+                    // to have a prefix of zero, and that's why the following math is ok
+
                     // |<--------range----------->|
                     // |<-d1->|<-fragment->|<-.+->|
                     let d1 = fragment_range
@@ -166,18 +181,48 @@ impl CheckableChunk {
 
                     assert!(range.end >= fragment_range.end);
 
-                    trace!(
-                        ">> offset={} fragment={:?} range={:?}",
-                        offset,
-                        &fragment_range,
-                        &range
-                    );
-                    trace!(">> {:?}", &span);
-                    // @todo count line wraps
                     let mut span = span.clone();
-                    span.start.column += offset + d1;
-                    span.end.column = span.start.column + fragment_range.len() - 1;
-                    assert!(span.start.column <= span.end.column);
+                    if span.start.line == span.end.line {
+                        span.start.column += offset + d1;
+                        span.end.column = span.start.column + fragment_range.len() - 1;
+
+                    } else {
+                        let s = &self.as_str()[fragment_range.clone()];
+                        info!("Multiline fragment detected {:?}:\n{}",
+                            fragment_range,
+                            s
+                        );
+
+                        // total characters covered
+                        let mut total = 0usize;
+                        // line count within the rang `fragment_range`
+                        let mut linecount = 0usize;
+                        let mut n_last = 0usize;
+
+                        for (range, _line) in lines_with_ranges(s) {
+                            let linewrap = if total > 0usize {
+                                1usize // @todo calculate the delta between ranges in `range2line`
+                                // @todo that will be accurate
+                            } else {
+                                0usize
+                            };
+                            if fragment_range.len() < total + range.len() {
+                                total += linewrap + range.len();
+                            } else {
+                                n_last = fragment_range.end - range.end;
+                                total += linewrap + n_last;
+                                break;
+                            }
+                            linecount += 1;
+                        }
+
+                        span.start.column += offset + d1;
+                        span.end.line = span.start.line + linecount;
+                        // guaranteed to not be in the same line
+                        assert!(linecount > 0);
+                        span.end.column = n_last;
+                    }
+                    assert!(span.start.line < span.end.line || span.start.column <= span.end.column);
 
                     (fragment_range, span)
                 })
@@ -208,6 +253,21 @@ impl From<Clusters> for Vec<CheckableChunk> {
             .map(|literal_set| CheckableChunk::from_literalset(literal_set))
             .collect::<Vec<_>>()
     }
+}
+
+/// Extract lines together with associated `Range`s relative to str `s`
+///
+/// Easily collectable into a `HashMap`.
+fn lines_with_ranges<'a>(s: &'a str) -> impl Iterator<Item=(Range, &'a str)> + Clone {
+    // @todo line consumes \r\n and \n so the ranges could off by 1 on windows
+    // @todo requires a custom impl of `lines()` iterator
+    s.lines()
+        .scan(0usize, |offset: &mut usize, line: &'_ str| -> Option<(Range, &'_ str)> {
+            let n = line.chars().count();
+            let range = *offset..*offset + n + 1;
+            *offset += n + 1; // for newline, see @todo above
+            Some((range, line))
+        })
 }
 
 use std::fmt;
@@ -380,4 +440,45 @@ mod test {
             assert_eq!(span, expected_span);
         }
     }
+
+
+
+    #[test]
+    fn find_spans_chyrp()    {
+        const SOURCE: &'static str = feather_up!(["Amsel", "Wacholderdrossel", "Buchfink"]);
+        let set = gen_literal_set(SOURCE);
+        let chunk = dbg!(CheckableChunk::from_literalset(set));
+        const CHUNK_RANGES: &[Range] =
+            &[0..(5+1+16+1+8)];
+        const EXPECTED_SPANS: &[Span] = &[
+            Span {
+                start: LineColumn { line: 1, column: 0 + 9 }, // prefix is #[doc=r#"
+                end: LineColumn { line: 3, column: 7 }, // suffix is pointeless
+            },
+        ];
+        const EXPECTED_STR: &[&'static str] = &[
+r#"Amsel
+Wacholderdrossel
+Buchfink"#];
+
+        for (query_range, expected_span, expected_str) in itertools::cons_tuples(
+            CHUNK_RANGES
+                .iter()
+                .zip(EXPECTED_SPANS.iter())
+                .zip(EXPECTED_STR.iter()),
+        ) {
+            let range2span = chunk.find_spans(query_range.clone());
+            // test deals only with a single line, so we know it only is a single entry
+            assert_eq!(range2span.len(), 1);
+            let (range, span) = dbg!(range2span.iter().next().unwrap());
+            assert!(query_range.contains(&(range.start)));
+            assert!(query_range.contains(&(range.end - 1)));
+            assert_eq!(
+                load_span_from(SOURCE.as_bytes(), *span).expect("Span extraction must work"),
+                expected_str.to_owned()
+            );
+            assert_eq!(span, expected_span);
+        }
+    }
+
 }
