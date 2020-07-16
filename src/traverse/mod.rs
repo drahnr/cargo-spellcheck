@@ -360,23 +360,22 @@ pub(crate) fn extract(
                         }
                         // extract the full content span and range
                         let start = LineColumn { line: 1, column: 0 };
-                        let end = content.lines()
+                        let end = content
+                            .lines()
                             .enumerate()
                             .last()
-                            .map(|(idx, line)| (idx+1, line))
-                            .map(|(lineno, line)| {
-                                LineColumn {
-                                    line: lineno,
-                                    column: line.chars().count(),
-                                }
-                            }).ok_or_else(|| {
-                                anyhow!("Common mark / markdown file does not contain a single line")
+                            .map(|(idx, line)| (idx + 1, line))
+                            .map(|(lineno, line)| LineColumn {
+                                line: lineno,
+                                column: line.chars().count(),
+                            })
+                            .ok_or_else(|| {
+                                anyhow!(
+                                    "Common mark / markdown file does not contain a single line"
+                                )
                             })?;
 
-                        let span = Span {
-                            start,
-                            end
-                        };
+                        let span = Span { start, end };
                         let source_mapping = indexmap::indexmap! {
                            0..content.chars().count() => span
                         };

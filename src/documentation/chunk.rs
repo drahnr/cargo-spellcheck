@@ -122,7 +122,8 @@ impl CheckableChunk {
             })
             .filter_map(|(fragment_range, fragment_span)| {
                 // trim range so we only capture the relevant part
-                let sub_fragment_range = std::cmp::max(fragment_range.start, range.start)..std::cmp::min(fragment_range.end, range.end);
+                let sub_fragment_range = std::cmp::max(fragment_range.start, range.start)
+                    ..std::cmp::min(fragment_range.end, range.end);
                 trace!(
                     ">> fragment: span:{:?} => range:{:?} | sub:{:?} -> sub_fragment{:?}",
                     &fragment_span,
@@ -132,15 +133,24 @@ impl CheckableChunk {
                 );
 
                 if sub_fragment_range.len() == 0 {
+                    log::debug!("sub fragment is zero, dropping!");
                     return None;
                 }
-
+                if fragment_span.start.line == fragment_span.end.line {
+                    assert_eq!(
+                        fragment_span.end.column - fragment_span.start.column + 1,
+                        fragment_range.len()
+                    );
+                } else {
+                    assert!(fragment_span.start.column <= fragment_span.end.column);
+                }
                 // take the full fragment string, we need to count newlines before and after
                 let s = &self.as_str()[fragment_range.clone()];
                 // relative to the range given / offset
+                let shift = sub_fragment_range.start - fragment_range.start;
                 let mut sub_fragment_span = fragment_span.clone();
                 let state: LineColumn = fragment_span.start;
-                for (idx, _c, cursor) in s.chars().enumerate().scan(state, |state, (idx, c)| {
+                for (idx, c, cursor) in s.chars().enumerate().scan(state, |state, (idx, c)| {
                     let x: (usize, char, LineColumn) = (idx, c, state.clone());
                     match c {
                         '\r' => {} // @todo assert the following char is a \n
@@ -152,16 +162,15 @@ impl CheckableChunk {
                     }
                     Some(x)
                 }) {
-                    if idx < sub_fragment_range.start {
-                        continue;
-                    }
-                    if idx == sub_fragment_range.start {
+
+                    trace!("char[{}]: {}", idx, c);
+                    if idx == shift {
                         sub_fragment_span.start = cursor;
                         sub_fragment_span.end = cursor; // assure this is valid
                         continue;
                     }
                     sub_fragment_span.end = cursor; // always set, even if we never reach the end of fragment
-                    if idx >= (sub_fragment_range.end - 1) {
+                    if idx >= (sub_fragment_range.len() + shift - 1) {
                         break;
                     }
                 }
@@ -169,12 +178,12 @@ impl CheckableChunk {
                 let _ = dbg!(&sub_fragment_span);
                 let _ = dbg!(&sub_fragment_range);
                 if sub_fragment_span.start.line == sub_fragment_span.end.line {
-                    assert_eq!(dbg!(sub_fragment_span.end.column - sub_fragment_span.start.column + 1),
-                        dbg!(&sub_fragment_range).len());
-                } else {
-                    assert!(
-                        fragment_span.start.column <= fragment_span.end.column
+                    assert_eq!(
+                        dbg!(sub_fragment_span.end.column - sub_fragment_span.start.column + 1),
+                        dbg!(&sub_fragment_range).len()
                     );
+                } else {
+                    assert!(sub_fragment_span.start.column <= sub_fragment_span.end.column);
                 }
                 log::warn!(
                     ">> sub_fragment range={:?} span={:?} => {}",
@@ -184,7 +193,6 @@ impl CheckableChunk {
                 );
 
                 Some((sub_fragment_range, sub_fragment_span))
-
             })
             .collect::<IndexMap<_, _>>()
     }

@@ -150,7 +150,9 @@ struct Fluff;"#;
         let literals = dbg!(annotated_literals(dbg!(source)));
 
         let mut iter = dbg!(literals).into_iter();
-        let literal = iter.next().expect("Must have at least one item in laterals");
+        let literal = iter
+            .next()
+            .expect("Must have at least one item in laterals");
         let mut cls = LiteralSet::from(literal);
 
         for literal in iter {
