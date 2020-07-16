@@ -131,100 +131,75 @@ impl CheckableChunk {
                 // fortify assumption
                 assert!(end > 0);
 
+                // check coverage of `range` vs `sub`-range
+                // and extract the relevant part
                 if sub.contains(&start) {
-                    let offset = start - sub.start;
+                    let start_offset = start - sub.start;
                     if sub.contains(&(end - 1)) {
                         // complete start to end
                         active = false;
-                        Some((start..end, offset))
+                        Some((start..end, start_offset))
                     } else {
                         // only start, continue taking until end
                         active = true;
-                        Some((start..sub.end, offset))
+                        Some((start..sub.end, start_offset))
                     }
                 } else if active {
                     // multiline is active
                     // check for end
                     if sub.contains(&(end - 1)) {
                         active = false;
-                        Some((sub.start..end, 0usize)) // @todo double check this
+                        Some((sub.start..end, 0usize)) // within one fragment, follow ups most be zer0
                     } else {
                         // or take full line
-                        Some((sub.clone(), 0usize))
+                        Some((sub.clone(), 0usize)) // within one fragment, follow ups most be zer0
                     }
                 } else {
                     None
                 }
-                .map(|(fragment_range, offset)| {
+                .map(|(sub_fragment_range, offset)| {
 
                     trace!(
                         ">> offset={} fragment={:?} range={:?}",
                         offset,
-                        &fragment_range,
+                        &sub_fragment_range,
                         start..end,
                     );
                     trace!(">> {:?}", &span);
 
-                    // offset is the relative start offset between `fragment_range` and `span`
-                    // create range 2 line iterator mapping of the fragment
-                    // to handle multiline fragments
 
-                    // this is within one literal, so there are no prefixes, after the first line this is guaranteed
-                    // to have a prefix of zero, and that's why the following math is ok
-
-                    // |<--------range----------->|
-                    // |<-d1->|<-fragment->|<-.+->|
-                    let d1 = fragment_range
-                        .start
-                        .checked_sub(start)
-                        .expect("d1 must be positive");
-
-                    assert!(range.end >= fragment_range.end);
-
-                    let mut span = span.clone();
-                    if span.start.line == span.end.line {
-                        span.start.column += offset + d1;
-                        span.end.column = span.start.column + fragment_range.len() - 1;
-
-                    } else {
-                        let s = &self.as_str()[fragment_range.clone()];
-                        info!("Multiline fragment detected {:?}:\n{}",
-                            fragment_range,
-                            s
-                        );
-
-                        // total characters covered
-                        let mut total = 0usize;
-                        // line count within the rang `fragment_range`
-                        let mut linecount = 0usize;
-                        let mut n_last = 0usize;
-
-                        for (range, _line) in lines_with_ranges(s) {
-                            let linewrap = if total > 0usize {
-                                1usize // @todo calculate the delta between ranges in `range2line`
-                                // @todo that will be accurate
-                            } else {
-                                0usize
-                            };
-                            if fragment_range.len() < total + range.len() {
-                                total += linewrap + range.len();
-                            } else {
-                                n_last = fragment_range.end - range.end;
-                                total += linewrap + n_last;
-                                break;
+                    // take the full sub, we need to count newlines before and after
+                    let s = &self.as_str()[sub.clone()];
+                    // relative to the range given / offset
+                    let mut sub_fragment_span = span.clone();
+                    let state: LineColumn = span.start;
+                    for (idx, _c, cursor) in s.chars().enumerate().scan(state, |state, (idx, c)| {
+                        let x:(usize, char, LineColumn) = (idx, c, state.clone());
+                        match c {
+                            '\r' => {} // @todo assert the following char is a \n
+                            '\n' => {
+                                state.line += 1;
+                                state.column = 0;
                             }
-                            linecount += 1;
+                            _ => { state.column += 1 }
+                        }
+                        Some(x)
+                    }) {
+                        if idx <= sub_fragment_range.start {
+                            sub_fragment_span.start = dbg!(cursor);
+                            sub_fragment_span.end = cursor; // assure this is valid
+                            continue;
                         }
 
-                        span.start.column += offset + d1;
-                        span.end.line = span.start.line + linecount;
-                        // guaranteed to not be in the same line
-                        assert!(linecount > 0);
-                        span.end.column = n_last;
+                        if idx >= (sub_fragment_range.end-1) {
+                            sub_fragment_span.end = dbg!(cursor); // always set, even if we never reach the end of fragment
+                            break;
+                        }
                     }
+
                     assert!(span.start.line < span.end.line || span.start.column <= span.end.column);
 
-                    (fragment_range, span)
+                    (sub_fragment_range, sub_fragment_span)
                 })
             })
             .collect::<IndexMap<_, _>>()

@@ -80,11 +80,13 @@ impl Span {
         let state = span.start;
         for (idx, _c, line, col) in s.chars().enumerate().scan(state, |state, (idx, c)| {
             let x = (idx, c, state.line, state.column);
-            if c == '\n' {
-                state.line += 1;
-                state.column = 0;
-            } else {
-                state.column += 1;
+            match c {
+                '\r' => {} // @todo assert the following char is a \n
+                '\n' => {
+                    state.line += 1;
+                    state.column = 0;
+                }
+                _ => { state.column += 1 }
             }
             Some(x)
         }) {

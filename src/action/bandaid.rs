@@ -106,22 +106,32 @@ pub(crate) mod tests {
         if span.end.line < span.start.line {
             bail!("Line range would be negative, bail")
         }
-        if span.end.column < span.start.column {
+        if span.end.line == span.start.line && span.end.column < span.start.column {
             bail!("Column range would be negative, bail")
         }
-        let line = (&mut source)
+
+        let mut multiline: Vec<_> = (&mut source)
             .lines()
             .skip(span.start.line - 1)
             .filter_map(|line| line.ok())
-            .next()
-            .ok_or_else(|| anyhow!("Line not in buffer or invalid"))?;
+            .take(span.end.line - span.start.line + 1).collect();
 
-        let range = dbg!(span.start.column..(span.end.column + 1));
-        log::trace!("Loading {:?} from line >{}<", &range, &line);
-        dbg!(line)
-            .get(range.clone())
-            .map(|s| dbg!(s.to_owned()))
-            .ok_or_else(|| anyhow!("Columns not in line: {:?}", &range))
+        assert!(multiline.len() > 0);
+
+        match  multiline.len() {
+            0 => unreachable!("Must never be one"),
+            1 => Ok(multiline[0].chars().take(span.end.column).skip(span.start.column.saturating_sub(1)).collect::<String>()),
+            _ => {
+                let first = multiline.first().unwrap().chars().skip(span.start.column.saturating_sub(1)).collect::<String>();
+                let last = multiline.last().unwrap().chars().take(span.end.column).collect::<String>();
+                multiline.first_mut().map(move |val| *val = dbg!(first) ).unwrap();
+                multiline.last_mut().map(move |val| *val = dbg!(last) ).unwrap();
+                Ok(dbg!(multiline).join("\n"))
+            }
+        }
+
+        // log::trace!("Loading {:?} from line >{}<", &range, &line);
+
     }
 
     #[test]
