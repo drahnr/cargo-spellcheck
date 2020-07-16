@@ -94,8 +94,6 @@ impl TryFrom<proc_macro2::Literal> for TrimmedLiteral {
 
         // check if it is a `///` comment, for which the literal
         // span needs to be adjusted, since it would include the `///`
-        // @todo find a better way, potentially doing this when
-        // creating a `TrimmedLiteral` and storing this on construction
         if pre == 1 && span.start.column == 0 {
             span.start.column += 2;
         }

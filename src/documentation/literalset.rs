@@ -109,6 +109,16 @@ pub(crate) mod tests {
     use super::*;
 
     #[macro_export]
+    macro_rules! feather_up {
+        ([ $( $line:literal ),+ $(,)?]) => {
+            concat!("", r##"#[doc=r#""## $(, $line, "\n")+, r##""#]"##, "\n", "struct Mechanical;")
+        };
+        ($( $line:literal ),+ $(,)?) => {
+            feather_up!([$( $line ),+])
+        };
+    }
+
+    #[macro_export]
     macro_rules! fluff_up {
         ([ $( $line:literal ),+ $(,)?]) => {
             concat!("" $(, "/// ", $line, "\n")+ , "struct Fluff;")
