@@ -86,7 +86,7 @@ impl Span {
                     state.line += 1;
                     state.column = 0;
                 }
-                _ => { state.column += 1 }
+                _ => state.column += 1,
             }
             Some(x)
         }) {
