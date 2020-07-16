@@ -5,8 +5,7 @@
 use super::*;
 use crate::Documentation;
 
-use anyhow::{anyhow, Error, Result};
-use indexmap::IndexMap;
+use anyhow::{anyhow, bail, Error, Result};
 use log::{debug, trace, warn};
 use std::convert::TryFrom;
 use std::fs;
@@ -353,8 +352,34 @@ pub(crate) fn extract(
                         }
                     }
                     CheckEntity::Markdown(path) => {
-                        let content = std::fs::read_to_string(&path).unwrap(); // @todo error handling
-                        let source_mapping = IndexMap::new(); // @todo source map should be trivial, start to end
+                        let content = std::fs::read_to_string(&path).map_err(|e| {
+                            anyhow!("Common mark / markdown file does not exist").context(e)
+                        })?;
+                        if content.len() < 1 {
+                            bail!("Common mark / markdown file is empty")
+                        }
+                        // extract the full content span and range
+                        let start = LineColumn { line: 1, column: 0 };
+                        let end = content.lines()
+                            .enumerate()
+                            .last()
+                            .map(|(idx, line)| (idx+1, line))
+                            .map(|(lineno, line)| {
+                                LineColumn {
+                                    line: lineno,
+                                    column: line.chars().count(),
+                                }
+                            }).ok_or_else(|| {
+                                anyhow!("Common mark / markdown file does not contain a single line")
+                            })?;
+
+                        let span = Span {
+                            start,
+                            end
+                        };
+                        let source_mapping = indexmap::indexmap! {
+                           0..content.chars().count() => span
+                        };
                         docs.add(
                             ContentOrigin::CommonMarkFile(path.to_owned()),
                             vec![CheckableChunk::from_string(content, source_mapping)],
