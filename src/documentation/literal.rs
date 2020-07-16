@@ -143,6 +143,8 @@ impl TrimmedLiteral {
         self.span.clone()
     }
 
+    /// Display helper, mostly used for debug investigations
+    #[allow(unused)]
     pub(crate) fn display(&self, highlight: Range) -> TrimmedLiteralDisplay {
         TrimmedLiteralDisplay::from((self, highlight))
     }
