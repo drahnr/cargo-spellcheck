@@ -137,12 +137,11 @@ impl CheckableChunk {
                     return None;
                 }
                 if fragment_span.start.line == fragment_span.end.line {
+                    assert!(fragment_span.start.column <= fragment_span.end.column);
                     assert_eq!(
-                        fragment_span.end.column - fragment_span.start.column + 1,
+                        fragment_span.end.column + 1 - fragment_span.start.column,
                         fragment_range.len()
                     );
-                } else {
-                    assert!(fragment_span.start.column <= fragment_span.end.column);
                 }
                 // take the full fragment string, we need to count newlines before and after
                 let s = &self.as_str()[fragment_range.clone()];
@@ -178,12 +177,11 @@ impl CheckableChunk {
                 let _ = dbg!(&sub_fragment_span);
                 let _ = dbg!(&sub_fragment_range);
                 if sub_fragment_span.start.line == sub_fragment_span.end.line {
+                    assert!(sub_fragment_span.start.column <= sub_fragment_span.end.column);
                     assert_eq!(
-                        dbg!(sub_fragment_span.end.column - sub_fragment_span.start.column + 1),
+                        dbg!(sub_fragment_span.end.column + 1 - sub_fragment_span.start.column),
                         dbg!(&sub_fragment_range).len()
                     );
-                } else {
-                    assert!(sub_fragment_span.start.column <= sub_fragment_span.end.column);
                 }
                 log::warn!(
                     ">> sub_fragment range={:?} span={:?} => {}",
@@ -269,8 +267,6 @@ where
     type Error = Error;
     fn try_from(tuple: (R, Span)) -> Result<Self> {
         let chunk = tuple.0.into();
-        let _first = chunk.source_mapping.iter().next().unwrap().1; // @todo
-        let _last = chunk.source_mapping.iter().rev().next().unwrap().1; // @todo
         let span = tuple.1;
         let range = span.to_content_range(chunk)?;
         Ok(Self(chunk, range))
