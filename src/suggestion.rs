@@ -411,26 +411,34 @@ mod tests {
 
         use crate::documentation::CheckableChunk;
         let chunk = CheckableChunk::from_str(
-r#"0
+            r#"0
 2345
-7@n"#, indexmap::indexmap! { 0..10 => Span {
-    start : LineColumn {
-        line: 7usize,
-        column: 8usize,
-    },
-    end : LineColumn {
-        line: 9usize,
-        column: 4usize,
-    }
-} });
+7@n"#,
+            indexmap::indexmap! { 0..10 => Span {
+                start : LineColumn {
+                    line: 7usize,
+                    column: 8usize,
+                },
+                end : LineColumn {
+                    line: 9usize,
+                    column: 4usize,
+                }
+            } },
+        );
 
         let suggestion = Suggestion {
             detector: Detector::Dummy,
             origin: ContentOrigin::TestEntity,
             chunk: &chunk,
             span: Span {
-                start: LineColumn { line: 8usize, column: 0 },
-                end: LineColumn { line: 8usize, column: 3 }
+                start: LineColumn {
+                    line: 8usize,
+                    column: 0,
+                },
+                end: LineColumn {
+                    line: 8usize,
+                    column: 3,
+                },
             },
             range: 2..6,
             replacements: vec!["whocares".to_owned()],
@@ -441,6 +449,5 @@ r#"0
 
         log::info!("fmt debug=\n{:?}\n<", suggestion);
         log::info!("fmt display=\n{}\n<", suggestion);
-
     }
 }
