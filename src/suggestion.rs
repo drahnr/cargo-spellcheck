@@ -46,18 +46,19 @@ pub fn get_terminal_size() -> usize {
     }
 }
 
-pub fn get_current_statement<'a>(arr: &'a Vec<&'_ str>, range: Range) -> &'a str {
+pub fn get_current_statement<'a>(arr: &'a Vec<&'_ str>, range: Range) -> (&'a str, usize) {
     let mut stripped_line: &str = "";
     let mut initial_sentence: usize = 0;
+    let mut line_pos: usize = 0;
     for (pos, sentence) in arr.iter().enumerate() {
         initial_sentence += sentence.chars().count();
+        line_pos = pos;
         stripped_line = sentence;
         if range.end < initial_sentence {
             break;
         }
-
     }
-    stripped_line
+    (stripped_line, line_pos)
 }
 
 pub fn char_sub_window(s: &str, range: Range) -> &str {
@@ -108,17 +109,14 @@ impl fmt::Display for Detector {
 // Misspelled words that are too long shall also be ellipsized
 pub fn convert_long_statements_to_short(
     terminal_size: usize,
-    marker_range_relative: Range,
-    marker_size: &mut usize,
-    chunk_str: &str,
-    offset: &mut usize,
     indent: usize,
-    padding_till_literal_start: usize,
-    last_line: usize,
     stripped_line: &str,
-    range: Range,
+    offset: &mut usize,
+    range_word: Range,
+    padding_till_literal_start: usize,
+    marker_size: &mut usize,
 ) -> String {
-
+    use super::*;
     //
     // The paddings give some space for the ` {} ...` and extra indentation and formatting:
     //
@@ -134,6 +132,7 @@ pub fn convert_long_statements_to_short(
     //    |
     //    |   Possible spelling mistake found.
     //
+
     const PADDING_OFFSET: usize = 5;
     const TOO_LONG_WORD: usize = 20;
     const DISPLAYED_LONG_WORD: usize = 4;
@@ -146,39 +145,29 @@ pub fn convert_long_statements_to_short(
     // |-----left_context-----|---start_word----|----end_word---|-----right_context-----|
     //
     // Obs: paddings are not being considered in the illustration, but info is above.
-    use super::*;
+
     // the line being analysed can affect how the indentation is done
     // this values is dynamically calculated according to the line number
-
     let mut range_start_word = Range {
-        start: marker_range_relative.start,
-        end: marker_range_relative.start,
+        start: range_word.start,
+        end: range_word.start,
     };
     let mut range_end_word = Range {
-        start: marker_range_relative.end,
-        end: marker_range_relative.end,
+        start: range_word.end,
+        end: range_word.end,
     };
-    let mut misspelled_word = format!(
-        "{}",
-        char_sub_window(
-            chunk_str,
-            Range {
-                start: (marker_range_relative.start),
-                end: (marker_range_relative.end)
-            }
-        )
-    );
+    let mut misspelled_word = format!("{}", char_sub_window(stripped_line, range_word.clone()));
     // Check words that are considered too long; Word will be formatted for fitting
-    if *marker_size > TOO_LONG_WORD {
+    if range_word.len() > TOO_LONG_WORD {
         range_start_word = Range {
-            start: marker_range_relative.start,
+            start: range_word.start,
             end: range_start_word.start + DISPLAYED_LONG_WORD,
         };
         range_end_word = Range {
-            start: marker_range_relative
+            start: range_word
                 .end //non inclusive
                 .saturating_sub(DISPLAYED_LONG_WORD),
-            end: marker_range_relative.end,
+            end: range_word.end,
         };
 
         //  too long word will be shorter as it follows:
@@ -354,7 +343,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
         // if the offset starts from 0, we still want to continue if the length
         // of the marker is at least length 1
         let mut offset = marker_range_relative.start;
-        let v = self
+        let mut v = self
             .chunk
             .as_str()
             .lines()
@@ -377,11 +366,17 @@ impl<'s> fmt::Display for Suggestion<'s> {
         }
         let mut initial_sentence = 0;
         let mut lines: usize = 0;
-        let mut stripped_line = get_current_statement(&v.as_ref(), self.range.clone());
-        
+        let (mut stripped_line, mut pos) = get_current_statement(&v.as_ref(), self.range.clone());
+        let chars_till_start_statement = v[0..pos].iter().fold(0, |sum, x| sum + x.chars().count());
+        let range_word: Range = Range {
+            start: self.range.start.saturating_sub(chars_till_start_statement),
+            end: self.range.end.saturating_sub(chars_till_start_statement),
+        };
+
         let n = stripped_line.char_indices().count();
 
-        let terminal_size: usize = get_terminal_size();
+        let terminal_size = get_terminal_size();
+
         // the line being analysed can affect how the indentation is done
         // this values is dynamically calculated for each line where the documentation
         let padding_till_literal_start = indent + 2; // 2 extra spaces are considered for starting the literal already
@@ -391,22 +386,19 @@ impl<'s> fmt::Display for Suggestion<'s> {
         if n + padding_till_literal_start > terminal_size {
             let formatted_literal: String = convert_long_statements_to_short(
                 terminal_size,
-                marker_range_relative,
-                &mut marker_size,
-                chunk_str,
-                &mut offset,
                 indent,
-                padding_till_literal_start,
-                last_line,
                 stripped_line,
-                self.range.clone(),
+                &mut offset,
+                range_word,
+                padding_till_literal_start,
+                &mut marker_size,
             );
             writeln!(formatter, "{}", formatted_literal)?;
 
         // literal is smaller than terminal size and it can be fully displayed
         } else {
-            offset = offset.saturating_sub(last_line);
-            writeln!(formatter, " {}", stripped_line)?;
+            offset = offset.saturating_sub(chars_till_start_statement);
+            writeln!(formatter, "  {}", stripped_line)?;
         }
 
         if marker_size > 0 {
