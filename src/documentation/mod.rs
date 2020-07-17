@@ -299,7 +299,7 @@ Erronbeous bold uetchkp"#;
             let range: Range = suggestion
                 .span
                 .to_content_range(&suggestion.chunk)
-                .expect("Must be a single line");
+                .expect("Must work to derive content range from chunk and span");
 
             log::info!(
                 "Foxxy funkster: {}",
