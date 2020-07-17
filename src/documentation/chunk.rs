@@ -165,8 +165,6 @@ impl CheckableChunk {
                     trace!("char[{}]: {}", idx, c);
                     if idx == shift {
                         sub_fragment_span.start = cursor;
-                        sub_fragment_span.end = cursor; // assure this is valid
-                        continue;
                     }
                     sub_fragment_span.end = cursor; // always set, even if we never reach the end of fragment
                     if idx >= (sub_fragment_range.len() + shift - 1) {
