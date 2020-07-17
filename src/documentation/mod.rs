@@ -7,7 +7,7 @@
 //! into a `CheckableChunk` (mostly named just `chunk`).
 //!
 //! `CheckableChunk`s can consist of multiple fragments, where
-//! each fragment. Fragments can span multiple lines, yet each fragment
+//! each fragment can span multiple lines, yet each fragment
 //! is covering a consecutive `Span` in the origin content.
 //! Each fragment also has a direct mapping to the `CheckableChunk` internal
 //! string representation.
