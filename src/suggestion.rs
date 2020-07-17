@@ -404,4 +404,37 @@ mod tests {
 
         assert_display_eq(suggestion, EXPECTED);
     }
+
+    #[test]
+    fn multiline_is_dbg_printable() {
+        use crate::documentation::CheckableChunk;
+        let chunk = CheckableChunk::from_str(
+r#"1
+207x
+@#$"#, indexmap::indexmap! { 0..13 => Span {
+    start : LineColumn {
+        line: 7usize,
+        column: 8usize,
+    },
+    end : LineColumn {
+        line: 9usize,
+        column: 4usize,
+    }
+} });
+
+        let suggestion = Suggestion {
+            detector: Detector::Dummy,
+            origin: ContentOrigin::TestEntity,
+            chunk: &chunk,
+            span: Span {
+                start: LineColumn { line: 8usize, column: 0 },
+                end: LineColumn { line: 8usize, column: 3 }
+            },
+            range: 2..7,
+            replacements: vec!["whocares".to_owned()],
+            description: None,
+        };
+        let _suggestion = dbg!(suggestion);
+
+    }
 }
