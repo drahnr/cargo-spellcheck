@@ -108,7 +108,6 @@ impl CheckableChunk {
         );
 
         let Range { start, end } = range;
-        let mut active = false;
         self.source_mapping
             .iter()
             .skip_while(|(fragment_range, _span)| fragment_range.end <= start)
@@ -152,7 +151,6 @@ impl CheckableChunk {
                 for (idx, c, cursor) in s.chars().enumerate().scan(state, |state, (idx, c)| {
                     let x: (usize, char, LineColumn) = (idx, c, state.clone());
                     match c {
-                        '\r' => {} // @todo assert the following char is a \n
                         '\n' => {
                             state.line += 1;
                             state.column = 0;
@@ -172,13 +170,13 @@ impl CheckableChunk {
                     }
                 }
 
-                let _ = dbg!(&sub_fragment_span);
-                let _ = dbg!(&sub_fragment_range);
+                // let _ = dbg!(&sub_fragment_span);
+                // let _ = dbg!(&sub_fragment_range);
                 if sub_fragment_span.start.line == sub_fragment_span.end.line {
                     assert!(sub_fragment_span.start.column <= sub_fragment_span.end.column);
                     assert_eq!(
-                        dbg!(sub_fragment_span.end.column + 1 - sub_fragment_span.start.column),
-                        dbg!(&sub_fragment_range).len()
+                        sub_fragment_span.end.column + 1 - sub_fragment_span.start.column,
+                        sub_fragment_range.len()
                     );
                 }
                 log::warn!(
@@ -203,6 +201,10 @@ impl CheckableChunk {
 
     pub fn iter(&self) -> indexmap::map::Iter<Range, Span> {
         self.source_mapping.iter()
+    }
+
+    pub fn fragment_count(&self) -> usize {
+        self.source_mapping.len()
     }
 }
 

@@ -69,7 +69,7 @@ pub(crate) mod tests {
     use crate::span::Span;
     use anyhow::bail;
     use proc_macro2::LineColumn;
-    use std::io::BufRead;
+    use std::io::Read;
     use std::path::Path;
 
     /// Extract span from file as String
@@ -95,9 +95,9 @@ pub(crate) mod tests {
     /// Helpful to validate bandaids against what's actually in the string
     // @todo does not handle cross line spans @todo yet
     #[allow(unused)]
-    pub(crate) fn load_span_from<S>(mut source: S, span: Span) -> Result<String>
+    pub(crate) fn load_span_from<R>(mut source: R, span: Span) -> Result<String>
     where
-        S: BufRead,
+        R: Read,
     {
         log::trace!("Loading {:?} from source", &span);
         if span.start.line < 1 {
@@ -109,50 +109,39 @@ pub(crate) mod tests {
         if span.end.line == span.start.line && span.end.column < span.start.column {
             bail!("Column range would be negative, bail")
         }
-
-        let mut multiline: Vec<_> = (&mut source)
-            .lines()
-            .skip(span.start.line - 1)
-            .filter_map(|line| line.ok())
-            .take(span.end.line - span.start.line + 1)
-            .collect();
-
-        assert!(dbg!(&multiline).len() > 0);
-
-        match multiline.len() {
-            0 => unreachable!("Must never be nil"),
-            1 => Ok(multiline[0]
-                .chars()
-                .take(span.end.column + 1)
-                .skip(span.start.column)
-                .collect::<String>()),
-            x if x > 1 => {
-                let first = multiline
-                    .first()
-                    .unwrap()
-                    .chars()
-                    .skip(span.start.column)
-                    .collect::<String>();
-                let last = multiline
-                    .last()
-                    .unwrap()
-                    .chars()
-                    .take(span.end.column + 1)
-                    .collect::<String>();
-                multiline
-                    .first_mut()
-                    .map(move |val| *val = dbg!(first))
-                    .unwrap();
-                multiline
-                    .last_mut()
-                    .map(move |val| *val = dbg!(last))
-                    .unwrap();
-                Ok(dbg!(multiline).join("\n"))
+        let mut s = String::with_capacity(256);
+        source.read_to_string(&mut s).expect("Must read successfully");
+        let cursor = LineColumn {line: 1, column: 0};
+        let extraction = s.chars().enumerate().scan(cursor, |cursor, (idx, c)| {
+            let x = (idx, c, cursor.clone());
+            match c {
+                '\n' => {
+                    cursor.line += 1;
+                    cursor.column = 0;
+                }
+                _ => cursor.column += 1,
             }
-            _ => unreachable!("should not be negative or an invalid number"),
-        }
-
+            Some(x)
+        })
+        .filter_map(|(idx, c, cursor)| {
+            if cursor.line < span.start.line {
+                return None;
+            }
+            if cursor.line > span.end.line {
+                return None;
+            }
+            // bounding lines
+            if cursor.line == span.start.line && cursor.column < span.start.column {
+                return None;
+            }
+            if cursor.line == span.end.line && cursor.column > span.end.column {
+                return None;
+            }
+            Some(c)
+        }).collect::<String>();
         // log::trace!("Loading {:?} from line >{}<", &range, &line);
+        Ok(extraction)
+
     }
 
     #[test]

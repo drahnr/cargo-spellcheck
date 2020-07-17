@@ -407,11 +407,13 @@ mod tests {
 
     #[test]
     fn multiline_is_dbg_printable() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
         use crate::documentation::CheckableChunk;
         let chunk = CheckableChunk::from_str(
-r#"1
-207x
-@#$"#, indexmap::indexmap! { 0..13 => Span {
+r#"0
+2345
+7@n"#, indexmap::indexmap! { 0..10 => Span {
     start : LineColumn {
         line: 7usize,
         column: 8usize,
@@ -430,11 +432,15 @@ r#"1
                 start: LineColumn { line: 8usize, column: 0 },
                 end: LineColumn { line: 8usize, column: 3 }
             },
-            range: 2..7,
+            range: 2..6,
             replacements: vec!["whocares".to_owned()],
             description: None,
         };
-        let _suggestion = dbg!(suggestion);
+
+        let suggestion = dbg!(suggestion);
+
+        log::info!("fmt debug=\n{:?}\n<", suggestion);
+        log::info!("fmt display=\n{}\n<", suggestion);
 
     }
 }
