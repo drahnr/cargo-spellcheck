@@ -178,7 +178,7 @@ impl CheckableChunk {
                         sub_fragment_range.len()
                     );
                 }
-                log::warn!(
+                log::trace!(
                     ">> sub_fragment range={:?} span={:?} => {}",
                     &sub_fragment_range,
                     &sub_fragment_span,
