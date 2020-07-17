@@ -137,7 +137,7 @@ impl Span {
         }
         for (fragment_range, fragment_span) in chunk
             .iter()
-            // pre-filter to reduce to many calls to `extract_sub_range`
+            // pre-filter to reduce too many calls to `extract_sub_range`
             .filter(|(fragment_range, fragment_span)| {
                 log::trace!(
                     "extracting sub from {:?} ::: {:?} -> {:?}",
