@@ -200,7 +200,7 @@ mod tests {
                 .iter()
                 .next()
                 .expect("Must contain exactly one item");
-            assert_eq!(dbg!(suggestions).len(), $n);
+            assert_eq!(suggestions.len(), $n);
             suggestion_set
         }};
     }

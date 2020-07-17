@@ -44,7 +44,7 @@ impl Checker for DummyChecker {
                             chunk,
                             description: None,
                         };
-                        acc.add(origin.clone(), dbg!(suggestion));
+                        acc.add(origin.clone(), suggestion);
                     }
                 }
                 Ok(acc)
