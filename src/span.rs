@@ -139,11 +139,21 @@ impl Span {
             .iter()
             // pre-filter to reduce to many calls to `extract_sub_range`
             .filter(|(fragment_range, fragment_span)| {
-                log::trace!("extracting sub from {:?} ::: {:?} -> {:?}", self, &fragment_range, &fragment_span);
-                self.start.line >= fragment_span.start.line && self.end.line <= fragment_span.end.line
+                log::trace!(
+                    "extracting sub from {:?} ::: {:?} -> {:?}",
+                    self,
+                    &fragment_range,
+                    &fragment_span
+                );
+                self.start.line >= fragment_span.start.line
+                    && self.end.line <= fragment_span.end.line
             })
         {
-            match self.extract_sub_range_from_span(*fragment_span, fragment_range.clone(), chunk.as_str()) {
+            match self.extract_sub_range_from_span(
+                *fragment_span,
+                fragment_range.clone(),
+                chunk.as_str(),
+            ) {
                 Ok(range2) => return Ok(range2),
                 Err(_e) => continue,
             }
@@ -230,7 +240,7 @@ mod tests {
     use crate::action::bandaid::tests::load_span_from;
     use crate::documentation::literalset::tests::gen_literal_set;
     use crate::{chyrp_up, fluff_up};
-    use crate::{Span, LineColumn, Range};
+    use crate::{LineColumn, Range, Span};
 
     #[test]
     fn span_to_range_singleline() {
@@ -276,10 +286,18 @@ mod tests {
         // and as such multiple spans
         const FRAGMENT_STR: &[&'static str] = &["you!!", "Game-Over"];
 
-        for (input, expected, fragment) in
-            itertools::cons_tuples(INPUTS.iter().zip(EXPECTED_RANGE.iter()).zip(FRAGMENT_STR.iter()))
-        {
-            log::trace!(">>>>>>>>>>>>>>>>\ninput: {:?}\nexpected: {:?}\nfragment:>{}<", input, expected, fragment);
+        for (input, expected, fragment) in itertools::cons_tuples(
+            INPUTS
+                .iter()
+                .zip(EXPECTED_RANGE.iter())
+                .zip(FRAGMENT_STR.iter()),
+        ) {
+            log::trace!(
+                ">>>>>>>>>>>>>>>>\ninput: {:?}\nexpected: {:?}\nfragment:>{}<",
+                input,
+                expected,
+                fragment
+            );
             let range = input
                 .to_content_range(&chunk)
                 .expect("Inputs are sane, conversion must work.");
@@ -293,16 +311,11 @@ mod tests {
         }
     }
 
-
     #[test]
     fn span_to_range_multiline() {
         let _ = env_logger::builder().is_test(true).try_init();
 
-        const CONTENT: &'static str = chyrp_up!(
-            "Ey you!! Yes.., you there!",
-            "",
-            "GameChange",
-            "");
+        const CONTENT: &'static str = chyrp_up!("Ey you!! Yes.., you there!", "", "GameChange", "");
         let set = gen_literal_set(dbg!(CONTENT));
         let chunk = dbg!(CheckableChunk::from_literalset(set));
 
@@ -346,20 +359,31 @@ mod tests {
             },
         ];
 
-        const EXPECTED_RANGE: &[Range] = &[0..(26+1+0+1+10+1), 3..8, 28..38];
+        const EXPECTED_RANGE: &[Range] = &[0..(26 + 1 + 0 + 1 + 10 + 1), 3..8, 28..38];
 
         // note that this may only be single lines, since `///` implies separate literals
         // and as such multiple spans
         const FRAGMENT_STR: &[&'static str] = &[
-r#"Ey you!! Yes.., you there!
+            r#"Ey you!! Yes.., you there!
 
 GameChange
-"#, "you!!", "GameChange"];
+"#,
+            "you!!",
+            "GameChange",
+        ];
 
-        for (input, expected, fragment) in
-            itertools::cons_tuples(INPUTS.iter().zip(EXPECTED_RANGE.iter()).zip(FRAGMENT_STR.iter()))
-        {
-            log::trace!(">>>>>>>>>>>>>>>>\ninput: {:?}\nexpected: {:?}\nfragment:>{}<", input, expected, fragment);
+        for (input, expected, fragment) in itertools::cons_tuples(
+            INPUTS
+                .iter()
+                .zip(EXPECTED_RANGE.iter())
+                .zip(FRAGMENT_STR.iter()),
+        ) {
+            log::trace!(
+                ">>>>>>>>>>>>>>>>\ninput: {:?}\nexpected: {:?}\nfragment:>{}<",
+                input,
+                expected,
+                fragment
+            );
 
             let range = dbg!(input)
                 .to_content_range(&chunk)

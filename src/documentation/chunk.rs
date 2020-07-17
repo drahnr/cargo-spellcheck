@@ -159,7 +159,6 @@ impl CheckableChunk {
                     }
                     Some(x)
                 }) {
-
                     trace!("char[{}]: {}", idx, c);
                     if idx == shift {
                         sub_fragment_span.start = cursor;

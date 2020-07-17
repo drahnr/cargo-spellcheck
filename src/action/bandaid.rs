@@ -110,38 +110,43 @@ pub(crate) mod tests {
             bail!("Column range would be negative, bail")
         }
         let mut s = String::with_capacity(256);
-        source.read_to_string(&mut s).expect("Must read successfully");
-        let cursor = LineColumn {line: 1, column: 0};
-        let extraction = s.chars().enumerate().scan(cursor, |cursor, (idx, c)| {
-            let x = (idx, c, cursor.clone());
-            match c {
-                '\n' => {
-                    cursor.line += 1;
-                    cursor.column = 0;
+        source
+            .read_to_string(&mut s)
+            .expect("Must read successfully");
+        let cursor = LineColumn { line: 1, column: 0 };
+        let extraction = s
+            .chars()
+            .enumerate()
+            .scan(cursor, |cursor, (idx, c)| {
+                let x = (idx, c, cursor.clone());
+                match c {
+                    '\n' => {
+                        cursor.line += 1;
+                        cursor.column = 0;
+                    }
+                    _ => cursor.column += 1,
                 }
-                _ => cursor.column += 1,
-            }
-            Some(x)
-        })
-        .filter_map(|(idx, c, cursor)| {
-            if cursor.line < span.start.line {
-                return None;
-            }
-            if cursor.line > span.end.line {
-                return None;
-            }
-            // bounding lines
-            if cursor.line == span.start.line && cursor.column < span.start.column {
-                return None;
-            }
-            if cursor.line == span.end.line && cursor.column > span.end.column {
-                return None;
-            }
-            Some(c)
-        }).collect::<String>();
+                Some(x)
+            })
+            .filter_map(|(idx, c, cursor)| {
+                if cursor.line < span.start.line {
+                    return None;
+                }
+                if cursor.line > span.end.line {
+                    return None;
+                }
+                // bounding lines
+                if cursor.line == span.start.line && cursor.column < span.start.column {
+                    return None;
+                }
+                if cursor.line == span.end.line && cursor.column > span.end.column {
+                    return None;
+                }
+                Some(c)
+            })
+            .collect::<String>();
         // log::trace!("Loading {:?} from line >{}<", &range, &line);
         Ok(extraction)
-
     }
 
     #[test]
