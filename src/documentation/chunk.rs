@@ -169,8 +169,6 @@ impl CheckableChunk {
                     }
                 }
 
-                // let _ = dbg!(&sub_fragment_span);
-                // let _ = dbg!(&sub_fragment_range);
                 if sub_fragment_span.start.line == sub_fragment_span.end.line {
                     assert!(sub_fragment_span.start.column <= sub_fragment_span.end.column);
                     assert_eq!(
