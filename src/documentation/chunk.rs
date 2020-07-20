@@ -377,28 +377,30 @@ mod test {
         let _ = env_logger::builder().is_test(true).try_init();
 
         const SOURCE: &'static str = fluff_up!(["xyz", "second", "third", "Converts a span to a range, where `self` is converted to a range reltive to the",
-        "passed span `scope`."] @ "    "
+        "passed span `scope`."] @ "       "
    );
         let set = gen_literal_set(SOURCE);
         let chunk = dbg!(CheckableChunk::from_literalset(set));
+        const SPACES: usize = 7;
+        const TRIPLE_SLASH_SPACE: usize = 4;
         const CHUNK_RANGES: &[Range] =
             &[1..4, (4 + 1 + 1 + 6 + 1 + 1)..(4 + 1 + 1 + 6 + 1 + 1 + 5)];
         const EXPECTED_SPANS: &[Span] = &[
             Span {
-                start: LineColumn { line: 1, column: 4 },
-                end: LineColumn { line: 1, column: 6 },
+                start: LineColumn { line: 1, column: SPACES + TRIPLE_SLASH_SPACE + 0 },
+                end: LineColumn { line: 1, column: SPACES + TRIPLE_SLASH_SPACE + 2 },
             },
             Span {
-                start: LineColumn { line: 3, column: 4 },
-                end: LineColumn { line: 3, column: 8 },
+                start: LineColumn { line: 3, column: SPACES + TRIPLE_SLASH_SPACE + 0 },
+                end: LineColumn { line: 3, column: SPACES + TRIPLE_SLASH_SPACE + 4 },
             },
             Span {
-                start: LineColumn { line: 4, column: 4 },
-                end: LineColumn { line: 4, column: 79+4-1  },
+                start: LineColumn { line: 4, column: SPACES + TRIPLE_SLASH_SPACE + 0 },
+                end: LineColumn { line: 4, column: SPACES + TRIPLE_SLASH_SPACE + 78  },
             },
             Span {
-                start: LineColumn { line: 5, column: 4 },
-                end: LineColumn { line: 5, column: 20+4-1  },
+                start: LineColumn { line: 5, column: SPACES + TRIPLE_SLASH_SPACE + 0 },
+                end: LineColumn { line: 5, column: SPACES + TRIPLE_SLASH_SPACE + 19 },
             },
         ];
         const EXPECTED_STR: &[&'static str] = &["xyz", "third", "Converts a span to a range, where `self` is converted to a range reltive to the",
