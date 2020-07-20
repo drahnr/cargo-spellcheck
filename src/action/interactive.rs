@@ -384,7 +384,7 @@ impl UserPicked {
         }
 
         loop {
-            let guard = ScopedRaw::new();
+            let mut guard = ScopedRaw::new();
 
             self.print_replacements_list(state)?;
 
@@ -403,14 +403,11 @@ impl UserPicked {
             }
 
             let event = match crossterm::event::read()
-                .map(move |event| {
-                    drop(guard);
-                    event
-                })
                 .map_err(|e| anyhow::anyhow!("Something unexpected happened on the CLI: {}", e))?
             {
                 Event::Key(event) => event,
                 Event::Resize(..) => {
+                    drop(guard);
                     continue;
                 }
                 sth => {
@@ -420,8 +417,9 @@ impl UserPicked {
             };
 
             if state.is_custom_entry() {
+                drop(guard);
                 info!("Custom entry mode");
-                let _guard = ScopedRaw::new();
+                guard = ScopedRaw::new();
 
                 let pick = self.enter_custom_replacement(state, event)?;
 
@@ -437,6 +435,7 @@ impl UserPicked {
                 }
             }
 
+            drop(guard);
             // print normally again
             trace!("registered event: {:?}", &event);
 
