@@ -110,11 +110,11 @@ pub(crate) mod tests {
 
     #[macro_export]
     macro_rules! chyrp_up {
-        ([ $( $line:literal ),+ $(,)?]) => {
-            chyrp_up!( $( $line ),+ )
+        ([ $( $line:literal ),+ $(,)? ] $(@ $prefix:literal)? ) => {
+            chyrp_up!( $( $line ),+ $(@ $prefix)? )
         };
-        ($first:literal $(, $( $line:literal ),+ )? $(,)? ) => {
-            concat!("", r##"#[doc=r#""##, $first $( $(, "\n", $line )+ )?, r##""#]"##, "\n", "struct ChyrpChyrp;")
+        ($first:literal $(, $( $line:literal ),+ )? $(,)? $(@ $prefix:literal)? ) => {
+            concat!($( $prefix ,)? r##"#[doc=r#""##, $first $( $(, "\n", $line )+ )?, r##""#]"##, "\n", "struct ChyrpChyrp;")
         };
     }
 
