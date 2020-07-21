@@ -92,8 +92,8 @@ impl fmt::Display for Detector {
     }
 }
 
-// For long lines, literal will be trimmed to display in one terminal line
-// Misspelled words that are too long shall also be ellipsized
+// For long lines, literal will be trimmed to display in one terminal line.
+// Misspelled words that are too long shall also be ellipsized.
 pub fn convert_long_statements_to_short(
     terminal_size: usize,
     indent: usize,
@@ -133,8 +133,7 @@ pub fn convert_long_statements_to_short(
     //
     // Obs: paddings are not being considered in the illustration, but info is above.
 
-    // the line being analysed can affect how the indentation is done
-    // this values is dynamically calculated according to the line number
+    // the line being analysed can affect how the indentation is done.
     let mut range_start_word = Range {
         start: range_word.start,
         end: range_word.start,
@@ -328,37 +327,21 @@ impl<'s> fmt::Display for Suggestion<'s> {
             .take_while(|(lineno, _)| &self.span.end.line >= lineno)
             .map(|(_, content)| content)
             .collect::<Vec<&'_ str>>();
-        let mut count: usize = 0;
-        let mut last_line = 0;
-        for (i, c) in self.chunk.as_str().chars().enumerate() {
-            if c == '\n' {
-                count = count + 1;
-                last_line = i;
-            }
-            if i >= self.range.end {
-                break;
-            }
-        }
-        let mut initial_sentence = 0;
-        let mut lines: usize = 0;
-        let (mut stripped_line, mut pos) = get_current_statement(&v.as_ref(), self.range.clone());
+
+        let (stripped_line, pos) = get_current_statement(&v.as_ref(), self.range.clone());
         let chars_till_start_statement = v[0..pos].iter().fold(0, |sum, x| sum + x.chars().count());
         let range_word: Range = Range {
             start: self.range.start.saturating_sub(chars_till_start_statement),
             end: self.range.end.saturating_sub(chars_till_start_statement),
         };
 
-        let n = stripped_line.char_indices().count();
-
         let terminal_size = get_terminal_size();
 
-        // the line being analysed can affect how the indentation is done
         // this values is dynamically calculated for each line where the documentation
-        let padding_till_literal_start = indent + 2; // 2 extra spaces are considered for starting the literal already
-        let chunk_str = self.chunk.as_str();
-        // Check whether the statement is too long for the remaining space left of the terminal size
-        // and if it is, we shall do the fitting
-        if n + padding_till_literal_start > terminal_size {
+        let padding_till_literal_start = indent + 2;
+
+        // Check whether the statement is too long the terminal size for fitting purposes.
+        if stripped_line.char_indices().count() + padding_till_literal_start > terminal_size {
             let formatted_literal: String = convert_long_statements_to_short(
                 terminal_size,
                 indent,
