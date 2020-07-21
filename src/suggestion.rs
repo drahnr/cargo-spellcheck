@@ -61,19 +61,6 @@ pub fn get_current_statement<'a>(arr: &'a Vec<&'_ str>, range: Range) -> (&'a st
     (stripped_line, line_pos)
 }
 
-pub fn char_sub_window(s: &str, range: Range) -> &str {
-    // @todo can be done in a single iterator, use `fold()`
-    let start = match s.char_indices().nth(range.start) {
-        None => 0,
-        Some((start, _)) => start,
-    };
-    let end = match s.char_indices().nth(range.end) {
-        None => s.char_indices().count(),
-        Some((end, _)) => end,
-    };
-    &s[start..end]
-}
-
 // impl
 // // TODO use this to display included compiled backends
 // fn list_available() {
@@ -156,7 +143,11 @@ pub fn convert_long_statements_to_short(
         start: range_word.end,
         end: range_word.end,
     };
-    let mut misspelled_word = format!("{}", char_sub_window(stripped_line, range_word.clone()));
+    let mut misspelled_word: String = stripped_line
+        .chars()
+        .skip(range_word.start)
+        .take(range_word.len())
+        .collect();
     // Check words that are considered too long; Word will be formatted for fitting
     if range_word.len() > TOO_LONG_WORD {
         range_start_word = Range {
@@ -176,91 +167,75 @@ pub fn convert_long_statements_to_short(
         //
         misspelled_word = format!(
             "{}...{}",
-            chunk.char_sub_window(range_start_word),
-            chunk.char_sub_window(range_end_word)
+            stripped_line
+                .chars()
+                .skip(range_start_word.start)
+                .take(range_start_word.len())
+                .collect::<String>(),
+            stripped_line
+                .chars()
+                .skip(range_start_word.end.saturating_sub(3))
+                .take(3)
+                .collect::<String>()
         );
         *marker_size = misspelled_word.chars().count();
     }
-    // right context has enough info to fill the terminal
-    // |-----misspelled_word-----|--------right_context---------|
-    //
-    // Attempt to fit the misspelled word in the beginning followed by info.
-    if range_right_context.len() >= terminal_size {
-        range_right_context = Range {
-            start: marker_range_relative.end - 1, //char right after the end of the word and it shall be included, white space.
-            end: marker_range_relative.end
-                + (terminal_size.saturating_sub(
-                    misspelled_word.chars().count()
-                        + PADDING_AROUND_LONG_LINES
-                        + padding_till_literal_start
-                        + 1,
-                )),
-        };
-        // Left range will not be used in this case
-        range_left_context = Range {
-            start: 0usize,
-            end: 0usize,
-        };
-        *offset = PADDING_OFFSET;
-    }
-    // left context has enough info to fill the terminal
-    // |---------left_context---------|-----misspelled_word-----|
-    //
-    // Attempt to fit the misspelled word with left context info
-    else if range_left_context.len() > terminal_size {
-        range_left_context = Range {
-            start: marker_range_relative
-                .start
-                .saturating_sub(terminal_size.saturating_sub(
-                    misspelled_word.chars().count()
-                        + PADDING_AROUND_LONG_LINES
-                        + padding_till_literal_start,
-                )),
-            end: marker_range_relative.start - 1,
-        };
-        // Right range will not be used
-        range_right_context = Range {
-            start: 0usize,
-            end: 0usize,
-        };
-        *offset = range_left_context.len() + PADDING_OFFSET;
-    }
-    // information will be shown in both sides of the `misspelled_word`
-    // |--left_context--|----misspelled_word---|--right_context--|
-    //
-    // Attempt to fit the misspelled word in the middle with info in th left and right of it
-    else {
-        let context = (terminal_size.saturating_sub(
-            misspelled_word.chars().count()
-                + padding_till_literal_start
-                + PADDING_AROUND_LONG_LINES,
-        )) / 2;
-        range_left_context = Range {
-            start: range_left_context.end.saturating_sub(context),
-            end: marker_range_relative.start - 1, //before the word starts
-        };
-        range_right_context = Range {
-            start: marker_range_relative.end - 1,
-            end: range_right_context.start + context,
-        };
-        *offset = range_left_context.len() + PADDING_OFFSET;
-    }
-    // Formatting itself added white spaces and punctuation to do the fitting to be considered:
-    //
-    //     |------ info ----| => PADDING_AROUND_LONG_LINES = 10 usize
-    // format!(
-    //     "  ... {}{}{} ...",
-    //     self.chunk.char_sub_window(range_left_context),
-    //     misspelled_word,
-    //     self.chunk.char_sub_window(range_right_context)
-    // )
+    let available_space = (terminal_size.saturating_sub(
+        misspelled_word.chars().count() + padding_till_literal_start + PADDING_AROUND_LONG_LINES,
+    )) / 2;
+    let mut left_context = Range {
+        start: 0,
+        end: range_word.start - 1,
+    };
+    let mut right_context = Range {
+        start: range_word.end,
+        end: stripped_line.chars().count(),
+    };
+    let left_remaining_space: i32 = available_space as i32 - left_context.len() as i32;
+    let right_remaining_space: i32 = available_space as i32 - right_context.len() as i32;
+
+    match (left_remaining_space > 0, right_remaining_space > 0) {
+        (true, false) => {
+            let right_available_space_recalculated =
+                2 * available_space as i32 - left_context.len() as i32;
+            right_context.end = cmp::min(
+                (range_word.end as i32 + right_available_space_recalculated as i32) as usize,
+                stripped_line.chars().count(),
+            )
+        }
+        (false, true) => {
+            let left_available_space_recalculated =
+                2 * available_space as i32 - right_context.len() as i32;
+            left_context.start = cmp::max(
+                (range_word.start as i32 - left_available_space_recalculated as i32) as usize,
+                0usize,
+            );
+        }
+        (false, false) => {
+            left_context.start = range_word.start - available_space;
+            right_context.end = range_word.end + available_space;
+        }
+        _ => (),
+    };
+    *offset = left_context.len() + PADDING_OFFSET;
     format!(
-        "  ... {}{}{} ...",
-        chunk.char_sub_window(range_left_context),
+        "  ... {}|{}|{} ...",
+        stripped_line
+            .chars()
+            .skip(left_context.start)
+            .take(left_context.len())
+            .collect::<String>(),
         misspelled_word,
-        chunk.char_sub_window(range_right_context)
+        stripped_line
+            .chars()
+            .skip(right_context.start)
+            .take(right_context.len())
+            .collect::<String>()
     )
 }
+// Formatting itself added white spaces and punctuation to do the fitting to be considered:
+//
+//     |------ info ----| => PADDING_AROUND_LONG_LINES = 10 usize
 
 /// A suggestion for certain offending span.
 #[derive(Clone, Hash, PartialEq, Eq)]
