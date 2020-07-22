@@ -100,14 +100,14 @@ pub fn convert_long_statements_to_short(
     stripped_line: &str,
     offset: &mut usize,
     range_word: Range,
-    padding_till_literal_start: usize,
+    padding_till_excerpt_start: usize,
     marker_size: &mut usize,
 ) -> String {
     use super::*;
     // The paddings give some space for the ` {} ...` and extra indentation and formatting:
     //
     //|---------------------------------------------------------------------------------------| terminal_size
-    //|-------| padding_till_literal_start = indent (3+line_number_digit_count) + 2 white spaces = 7usize, for this case.
+    //|-------| padding_till_excerpt_start = indent (3+line_number_digit_count) + 2 white spaces = 7usize, for this case.
     //     |------| offset = PADDING_OFFSET; 3 chars for `...` and 2 white spaces more added in the formatting.
     //
     //   --> /home/tmhdev/Documents/cargo-spellcheck/src/suggestion.rs:62
@@ -180,7 +180,7 @@ pub fn convert_long_statements_to_short(
         *marker_size = misspelled_word.chars().count();
     }
     let available_space = (terminal_size.saturating_sub(
-        misspelled_word.chars().count() + padding_till_literal_start + PADDING_AROUND_LONG_LINES,
+        misspelled_word.chars().count() + padding_till_excerpt_start + PADDING_AROUND_LONG_LINES,
     )) / 2;
     let mut left_context = Range {
         start: 0,
@@ -218,7 +218,7 @@ pub fn convert_long_statements_to_short(
     };
     *offset = left_context.len() + PADDING_OFFSET;
     format!(
-        "  ... {}|{}|{} ...",
+        "  ... {}{}{} ...",
         stripped_line
             .chars()
             .skip(left_context.start)
@@ -338,17 +338,17 @@ impl<'s> fmt::Display for Suggestion<'s> {
         let terminal_size = get_terminal_size();
 
         // this values is dynamically calculated for each line where the doc is.
-        let padding_till_literal_start = indent + 2;
+        let padding_till_excerpt_start = indent + 2;
 
         // Check whether the statement is too long the terminal size for fitting purposes.
-        if stripped_line.char_indices().count() + padding_till_literal_start > terminal_size {
+        if stripped_line.char_indices().count() + padding_till_excerpt_start > terminal_size {
             let formatted_literal = convert_long_statements_to_short(
                 terminal_size,
                 indent,
                 stripped_line,
                 &mut offset,
                 range_word,
-                padding_till_literal_start,
+                padding_till_excerpt_start,
                 &mut marker_size,
             );
             writeln!(formatter, "{}", formatted_literal)?;
