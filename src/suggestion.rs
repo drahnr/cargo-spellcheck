@@ -38,7 +38,7 @@ pub fn get_terminal_size() -> usize {
         Ok((terminal_size, _)) => terminal_size as usize,
         Err(_) => {
             warn!(
-                "Unable to get terminal size. Use default: {}",
+                "Unable to get terminal size. Using default: {}",
                 DEFAULT_TERMINAL_SIZE
             );
             DEFAULT_TERMINAL_SIZE
