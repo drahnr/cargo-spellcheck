@@ -315,7 +315,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
         let marker_range_relative: Range = self.range.clone();
 
         // if the offset starts from 0, we still want to continue if the length
-        // of the marker is at least length 1
+        // of the marker is at least length 1.
         let mut offset = marker_range_relative.start;
         let mut v = self
             .chunk
@@ -337,7 +337,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
 
         let terminal_size = get_terminal_size();
 
-        // this values is dynamically calculated for each line where the documentation
+        // this values is dynamically calculated for each line where the doc is.
         let padding_till_literal_start = indent + 2;
 
         // Check whether the statement is too long the terminal size for fitting purposes.
@@ -353,7 +353,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
             );
             writeln!(formatter, "{}", formatted_literal)?;
 
-        // literal is smaller than terminal size and it can be fully displayed
+        // literal is smaller than terminal size and it can be fully displayed.
         } else {
             offset = offset.saturating_sub(chars_till_start_statement);
             writeln!(formatter, "  {}", stripped_line)?;
