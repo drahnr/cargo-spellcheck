@@ -104,7 +104,6 @@ pub fn convert_long_statements_to_short(
     marker_size: &mut usize,
 ) -> String {
     use super::*;
-    //
     // The paddings give some space for the ` {} ...` and extra indentation and formatting:
     //
     //|---------------------------------------------------------------------------------------| terminal_size
@@ -127,9 +126,9 @@ pub fn convert_long_statements_to_short(
 
     // We will be using ranges to help doing the fitting:
     //
-    // |----------------------------------literal_word----------------------------------|
+    // |----------------------------------too long line---------------------------------|
     // |----------------------|---------misspelled_word---------|-----------------------|
-    // |-----left_context-----|---start_word----|----end_word---|-----right_context-----|
+    // |-----left_context-----|range_start_word|-range_end_word-|-----right_context-----|
     //
     // Obs: paddings are not being considered in the illustration, but info is above.
 
@@ -147,7 +146,8 @@ pub fn convert_long_statements_to_short(
         .skip(range_word.start)
         .take(range_word.len())
         .collect();
-    // Check words that are considered too long; Word will be formatted for fitting
+
+    // Misspelled words that are too long will be formatted for fitting.
     if range_word.len() > TOO_LONG_WORD {
         range_start_word = Range {
             start: range_word.start,
@@ -184,7 +184,7 @@ pub fn convert_long_statements_to_short(
     )) / 2;
     let mut left_context = Range {
         start: 0,
-        end: range_word.start - 1,
+        end: range_word.start,
     };
     let mut right_context = Range {
         start: range_word.end,
@@ -342,7 +342,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
 
         // Check whether the statement is too long the terminal size for fitting purposes.
         if stripped_line.char_indices().count() + padding_till_literal_start > terminal_size {
-            let formatted_literal: String = convert_long_statements_to_short(
+            let formatted_literal = convert_long_statements_to_short(
                 terminal_size,
                 indent,
                 stripped_line,
