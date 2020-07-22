@@ -71,16 +71,7 @@ pub fn get_current_statement<'a>(arr: &'a Vec<&'_ str>, range: Range) -> (&'a st
 // }
 
 use std::fmt;
-// @TODO: This needs to be removed this. This is just an example to show all cases that I came up.
-/// Speaking of food, what's up with pie? There's strawberry pie, apple, pumpkin and so many others, but there is no grape pie! I know. I'm just as upset about this unfortunate lack of development in the pie division. Think about it. Grapes are used to make jelly, jam, juice and raisins. What makes them undesirable for pie? Would they dry into raisins? Couldn't you just stick some jelly in a piecrust and bake it? It just doesn't make any sense. Another thing that bothers me is organ grinders. You know, the foreign guys with the bellhop hats and the little music thingy and the cute little monkey with the bellhop hat who collects the money? Okay. They're basically begging on the street. How did they ever afford an organ-thingy? Wouldn't it make more sense to get a kazoo, if you're broke? And if they're so poor, what possessed them to buuuuuuuuuuuuuyyyyyyyyyyyyyyyyyyyyy a monkey?
-/// Speaking of food, what's up with pie? There's strawberry pie, apple, pumpkin and so many others, but there is no grape pie! I know. I'm just as upset about this unfortunate lack of development in the pie division. Think about it. Grapes are used to make jelly, jam, juice and raisins. What makes them undesirable for pie? Would they dry into raisins? Couldn't you just stick some jelly in a piecrust and bake it? It just doesn't make any sense. Another thing that bothers me is organ grinders. You know, the foreign guys with the bellhop hats and the little music thingy and the cute little monkey with the bellhop hat who collects the money? Okay. They're basically begging on the street. How did they ever afford an organ-thingy? Wouldn't it make more sense to get a kazoo, if you're broke? And if they're so poor, what possessed them to buyi a monkey?
-/// Speakiiiiiinnnnnnnnnnnnnnngggggggg of food, what's up with pie? There's strawberry pie, apple, pumpkin and so many others, but there is no grape pie! I know. I'm just as upset about this unfortunate lack of development in the pie division. Think about it. Grapes are used to make jelly, jam, juice and raisins. What makes them undesirable for pie? Would they dry into raisins? Couldn't you just stick some jelly in a piecrust and bake it? It just doesn't make any sense. Another thing that bothers me is organ grinders. You know, the foreign guys with the bellhop hats and the little music thingy and the cute little monkey with the bellhop hat who collects the money? Okay. They're basically begging on the street. How did they ever afford an organ-thingy? Wouldn't it make more sense to get a kazoo, if you're broke? And if they're so poor, what possessed them to buy a monkey?
-/// Speakingi of food, what's up with pie? There's strawberry pie, apple, pumpkin and so many others, but there is no grape pie! I know. I'm just as upset about this unfortunate lack of development in the pie division. Think about it. Grapes are used to make jelly, jam, juice and raisins. What makes them undesirable for pie? Would they dry into raisins? Couldn't you just stick some jelly in a piecrust and bake it? It just doesn't make any sense. Another thing that bothers me is organ grinders. You know, the foreign guys with the bellhop hats and the little music thingy and the cute little monkey with the bellhop hat who collects the money? Okay. They're basically begging on the street. How did they ever afford an organ-thingy? Wouldn't it make more sense to get a kazoo, if you're broke? And if they're so poor, what possessed them to buy a monkey?
-/// pneumonoultramicroscopicsilicovolcanoconiose of food, what's up with pie? There's strawberry pie, apple, pumpkin and so many others, but there is no grape pie! I know. I'm just as upset about this unfortunate lack of development in the pie division. Think about it. Grapes are used to make jelly, jam, juice and raisins. What makes them undesirable for pie? Would they dry into raisins? Couldn't you just stick some jelly in a piecrust and bake it? It just doesn't make any sense. Another thing that bothers me is organ grinders. You know, the foreign guys with the bellhop hats and the little music thingy and the cute little monkey with the bellhop hat who collects the money? Okay. They're basically begging on the street. How did they ever afford an organ-thingy? Wouldn't it make more sense to get a kazoo, if you're broke? And if they're so poor, what possessed them to buy a monkey?
-/// Reasn of food, what's up with pie? There's strawberry pie, apple, pumpkin and so many others, but there is no grape pie! I know. I'm just as upset about this unfortunate lack of development in the pie division. Think about it. Grapes are used to make jelly, jam, juice and raisins. What makes them undesirable for pie? Would they dry into raisins? Couldn't you just stick some jelly in a piecrust and bake it? It just doesn't make any sense. Another thing that bothers me is organ grinders. You know, the foreign guys with the bellhop hats and the little music thingy and the cute little monkey with the bellhop hat who collects the money? Okay. They're basically begging on the street. How did they ever afford an organ-thingy? Wouldn't it make more sense to get a kazoo, if you're broke? And if they're so poor, what possessed them to buy a monkey?
-/// Speaking of food, what's up with pie? There's strawberry pie, apple, pumpkin and so many others, but therie is no grape pie! I know. I'm just as upset about this unfortunate lack of development in the pie division.
-/// Speaking of food, what's up with pie? There's strawberry pie, apple, pumpkin and so many others, but therieeeeeeeeeeeeeeee is no grape pie! I know. I'm just as upset about this unfortunate lack of development in the pie division.
-/// Speaking of food, what's up with pie? There's strawberry pie, apple, pumpkin and so many otherrrrrrrrrrrrrs, but therieeeeeeeeeeeeeeee is no gruuuuuuuuuuuuuuuuuuuuuuuape pie! I know. I'm just as upset about this unfortunate lack of development in the pie division.
+
 impl fmt::Display for Detector {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
@@ -104,6 +95,7 @@ pub fn convert_long_statements_to_short(
     marker_size: &mut usize,
 ) -> String {
     use super::*;
+
     // The paddings give some space for the ` {} ...` and extra indentation and formatting:
     //
     //|---------------------------------------------------------------------------------------| terminal_size
@@ -118,7 +110,6 @@ pub fn convert_long_statements_to_short(
     //    |
     //    |   Possible spelling mistake found.
     //
-
     const PADDING_OFFSET: usize = 5;
     const TOO_LONG_WORD: usize = 20;
     const DISPLAYED_LONG_WORD: usize = 4;
@@ -126,13 +117,12 @@ pub fn convert_long_statements_to_short(
 
     // We will be using ranges to help doing the fitting:
     //
-    // |----------------------------------too long line---------------------------------|
+    // |-----------------------------------excerpt--------------------------------------|
     // |----------------------|---------misspelled_word---------|-----------------------|
     // |-----left_context-----|range_start_word|-range_end_word-|-----right_context-----|
     //
     // Obs: paddings are not being considered in the illustration, but info is above.
 
-    // the line being analysed can affect how the indentation is done.
     let mut range_start_word = Range {
         start: range_word.start,
         end: range_word.start,
@@ -161,23 +151,23 @@ pub fn convert_long_statements_to_short(
         };
 
         //  too long word will be shorter as it follows:
+        //           |-------------------| > TOO_LONG_WORD
+        //           therieeeeeeeeeeeeeeee
         //    4 chars |----|  ... |---| 3 chars
-        //                ther...eee, for therieeeeeeeeeeeeeeee
+        //                ther...eee
         //
-        misspelled_word = format!(
-            "{}...{}",
-            stripped_line
-                .chars()
-                .skip(range_start_word.start)
-                .take(range_start_word.len())
-                .collect::<String>(),
-            stripped_line
-                .chars()
-                .skip(range_start_word.end.saturating_sub(3))
-                .take(3)
-                .collect::<String>()
-        );
-        *marker_size = misspelled_word.chars().count();
+        let start_word = stripped_line
+            .chars()
+            .skip(range_start_word.start)
+            .take(range_start_word.len())
+            .collect::<String>();
+        let end_word = stripped_line
+            .chars()
+            .skip(range_start_word.end.saturating_sub(3))
+            .take(3)
+            .collect::<String>();
+        misspelled_word = format!("{}...{}", start_word, end_word);
+        *marker_size = start_word.chars().count() + end_word.chars().count();
     }
     let available_space = (terminal_size.saturating_sub(
         misspelled_word.chars().count() + padding_till_excerpt_start + PADDING_AROUND_LONG_LINES,
@@ -190,10 +180,11 @@ pub fn convert_long_statements_to_short(
         start: range_word.end,
         end: stripped_line.chars().count(),
     };
-    let left_remaining_space: i32 = available_space as i32 - left_context.len() as i32;
-    let right_remaining_space: i32 = available_space as i32 - right_context.len() as i32;
 
-    match (left_remaining_space > 0, right_remaining_space > 0) {
+    match (
+        available_space > left_context.len(),
+        available_space > right_context.len(),
+    ) {
         (true, false) => {
             let right_available_space_recalculated =
                 2 * available_space as i32 - left_context.len() as i32;
@@ -310,13 +301,9 @@ impl<'s> fmt::Display for Suggestion<'s> {
                 .len_in_chars()
                 .saturating_sub(self.span.start.column)
         };
-
-        let literal_span: Span = self.span.clone();
-        let marker_range_relative: Range = self.range.clone();
-
         // if the offset starts from 0, we still want to continue if the length
         // of the marker is at least length 1.
-        let mut offset = marker_range_relative.start;
+        let mut offset = self.range.start;
         let mut v = self
             .chunk
             .as_str()
@@ -338,6 +325,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
         let terminal_size = get_terminal_size();
 
         // this values is dynamically calculated for each line where the doc is.
+        // the line being analysed can affect how the indentation is done.
         let padding_till_excerpt_start = indent + 2;
 
         // Check whether the statement is too long the terminal size for fitting purposes.
