@@ -197,7 +197,7 @@ impl CheckableChunk {
         PlainOverlay::erase_markdown(self)
     }
 
-    /// Obtain the length in characters
+    /// Obtain the length in characters.
     pub fn len_in_chars(&self) -> usize {
         self.as_str().char_indices().count()
     }
