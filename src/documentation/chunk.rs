@@ -201,21 +201,6 @@ impl CheckableChunk {
     pub fn len_in_chars(&self) -> usize {
         self.as_str().char_indices().count()
     }
-
-    /// Obtain a view to a sub character range
-    pub fn char_sub_window(&self, range: Range) -> &str {
-        let s = self.as_str();
-        // @todo can be done in a single iterator, use `fold()`
-        let start = match s.char_indices().nth(range.start) {
-            None => 0,
-            Some((start, _)) => start,
-        };
-        let end = match s.char_indices().nth(range.end) {
-            None => self.len_in_chars(),
-            Some((end, _)) => end,
-        };
-        &s[start..end]
-    }
 }
 
 /// Convert the clusters of one file into a source description as well
