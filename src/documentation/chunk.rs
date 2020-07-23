@@ -143,12 +143,9 @@ impl CheckableChunk {
                     log::debug!("sub fragment is zero, dropping!");
                     return None;
                 }
-                if fragment_span.start.line == fragment_span.end.line {
-                    assert!(fragment_span.start.column <= fragment_span.end.column);
-                    assert_eq!(
-                        fragment_span.end.column + 1 - fragment_span.start.column,
-                        fragment_range.len()
-                    );
+
+                if let Some(span_len) = fragment_span.one_line_len() {
+                    assert_eq!(span_len, fragment_range.len());
                 }
                 // take the full fragment string, we need to count newlines before and after
                 let s = &self.as_str()[fragment_range.clone()];
@@ -177,12 +174,8 @@ impl CheckableChunk {
                     }
                 }
 
-                if sub_fragment_span.start.line == sub_fragment_span.end.line {
-                    assert!(sub_fragment_span.start.column <= sub_fragment_span.end.column);
-                    assert_eq!(
-                        sub_fragment_span.end.column + 1 - sub_fragment_span.start.column,
-                        sub_fragment_range.len()
-                    );
+                if let Some(sub_fragment_span_len) = sub_fragment_span.one_line_len() {
+                    assert_eq!(sub_fragment_span_len, sub_fragment_range.len());
                 }
                 log::trace!(
                     ">> sub_fragment range={:?} span={:?} => {}",

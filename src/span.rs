@@ -65,6 +65,16 @@ impl Span {
         self.end.line <= line && line >= self.start.line
     }
 
+    /// If this one resembles a single line, returns the a `Some(len)` value.
+    /// For multilines this cannot account for the length.
+    pub fn one_line_len(&self) -> Option<usize> {
+        if self.start.line == self.end.line {
+            Some(self.end.column + 1 - self.start.column)
+        } else {
+            None
+        }
+    }
+
     /// extract a `Range` which maps to `self` as
     /// `span` maps to `range`, where `range` is relative to `full_content`
     fn extract_sub_range_from_span(
@@ -121,9 +131,11 @@ impl Span {
 
         let range2 = (offset + start)..(offset + end + 1);
         assert!(range2.len() <= range.len());
-        if span.start.line == span.end.line {
-            assert_eq!(range.len(), span.end.column - span.start.column + 1);
+
+        if let Some(span_len) = span.one_line_len() {
+            assert_eq!(range.len(), span_len);
         }
+
         return Ok(range2);
     }
 

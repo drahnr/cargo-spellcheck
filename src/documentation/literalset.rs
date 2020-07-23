@@ -64,14 +64,15 @@ impl LiteralSet {
                 start = cursor;
                 cursor += literal.len();
                 end = cursor;
-                // @todo check if the `Span` conversion here is done correctly
-                let span = Span::from(literal);
+
+                let span = literal.span();
                 let range = Range { start, end };
-                // if range.len() > 0 {
+
+                if let Some(span_len) = span.one_line_len() {
+                    assert_eq!(range.len(), span_len);
+                }
+                // keep zero length values too, to guarantee continuity
                 source_mapping.insert(range, span);
-                // } else {
-                // log::debug!("Skipping literal >{}< of len {} with mapping {:?} -> {:?}", literal.as_str(), literal.as_str().len(), range, span);
-                // }
                 content.push_str(literal.as_str());
                 // the newline is _not_ covered by a span, after all it's inserted by us!
                 next = it.next();
