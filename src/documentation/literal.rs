@@ -94,8 +94,20 @@ impl TryFrom<proc_macro2::Literal> for TrimmedLiteral {
 
         // check if it is a `///` comment, for which the literal
         // span needs to be adjusted, since it would include the `///`
-        if pre == 1 && span.start.column == 0 {
-            span.start.column += 2;
+        if pre == 1 && post == 1 && rendered.chars().next().unwrap() == '"' {
+            // we know for sure that `///` are one line literals only
+            if span.start.line == span.end.line {
+                let render_len = rendered.len();
+                let span_len: usize = span.end.column - span.start.column + 1;
+                log::trace!(target: "quirks", "len(span): {:?} ?= len(render): {:?}  for >{}< ", span_len, render_len, &rendered);
+                // includes the ticks, so substract
+                // assert render_len - 2 == span_len - 4 is true
+                if render_len + 2 == span_len {
+                    log::trace!(target: "quirks", "Detected /// comment");
+                    // remove the two leading extra //, since pre=1 the third / will be removed below
+                    span.start.column += 2;
+                }
+            }
         }
         span.start.column += pre;
         span.end.column -= post;
@@ -251,6 +263,7 @@ impl<'a> fmt::Display for TrimmedLiteralDisplay<'a> {
 pub(crate) mod tests {
     use super::*;
     use crate::LineColumn;
+    use crate::action::bandaid::tests::load_span_from;
 
     pub(crate) fn annotated_literals(source: &str) -> Vec<TrimmedLiteral> {
         let stream =
@@ -283,6 +296,7 @@ pub(crate) mod tests {
     const SUFFIX_RAW_LEN: usize = 2;
     const GAENSEFUESSCHEN: usize = 1;
 
+    #[derive(Clone,Debug)]
     struct Triplet {
         /// source content
         source: &'static str,
@@ -297,6 +311,7 @@ pub(crate) mod tests {
     }
 
     const TEST_DATA: &[Triplet] = &[
+        // 0
         Triplet {
             source: r#"
 /// One Doc
@@ -325,6 +340,37 @@ struct One;
                 },
             },
         },
+
+        // 1
+        Triplet {
+            source: r##"
+    ///meanie
+struct Meanie;
+"##,
+            extracted: r#""meanie""#,
+            trimmed: "meanie",
+            extracted_span: Span {
+                start: LineColumn {
+                    line: 2usize,
+                    column: 0usize + 7 - PREFIX_RAW_LEN,
+                },
+                end: LineColumn {
+                    line: 2usize,
+                    column: 0usize + 12 + SUFFIX_RAW_LEN,
+                },
+            },
+            trimmed_span: Span {
+                start: LineColumn {
+                    line: 2usize,
+                    column: 0usize + 7,
+                },
+                end: LineColumn {
+                    line: 2usize,
+                    column: 0usize + 12,
+                },
+            },
+        },
+        // 2
         Triplet {
             source: r#"
 #[doc = "Two Doc"]
@@ -353,6 +399,7 @@ struct Two;
                 },
             },
         },
+        // 3
         Triplet {
             source: r##"
 #[doc = r#"Three Doc"#]
@@ -381,6 +428,7 @@ struct Three;
                 },
             },
         },
+        // 4
         Triplet {
             source: r###"
 #[doc = r##"Four
@@ -423,20 +471,52 @@ lines
         },
     ];
 
+
+    fn comment_variant_span_range_validation(index: usize) {
+        let _ = env_logger::builder().filter(None, log::LevelFilter::Trace).is_test(true).try_init();
+
+        let triplet = TEST_DATA[index].clone();
+        let literals = annotated_literals(triplet.source);
+
+        assert_eq!(literals.len(), 1);
+
+        let literal = literals.first().expect("Must contain exactly one literal");
+
+        assert_eq!(literal.as_untrimmed_str(), triplet.extracted);
+
+        assert_eq!(literal.as_str(), triplet.trimmed);
+
+        // just for better visual errors
+        let excerpt = load_span_from(triplet.source.as_bytes(), literal.span());
+        let expected_excerpt = load_span_from(triplet.source.as_bytes(), triplet.trimmed_span);
+        assert_eq!(excerpt, expected_excerpt);
+
+        assert_eq!(literal.span(), triplet.trimmed_span);
+    }
+
+
     #[test]
-    fn raw_variants_inspection() {
-        for triplet in TEST_DATA {
-            let literals = annotated_literals(triplet.source);
+    fn raw_variant_0() {
+        comment_variant_span_range_validation(0);
+    }
 
-            assert_eq!(literals.len(), 1);
+    #[test]
+    fn raw_variant_1() {
+        comment_variant_span_range_validation(1);
+    }
 
-            let literal = literals.first().expect("Must contain exactly one literal");
+    #[test]
+    fn raw_variant_2() {
+        comment_variant_span_range_validation(2);
+    }
 
-            assert_eq!(literal.as_untrimmed_str(), triplet.extracted);
+    #[test]
+    fn raw_variant_3() {
+        comment_variant_span_range_validation(3);
+    }
 
-            assert_eq!(literal.as_str(), triplet.trimmed);
-
-            assert_eq!(literal.span(), triplet.trimmed_span);
-        }
+    #[test]
+    fn raw_variant_4() {
+        comment_variant_span_range_validation(4);
     }
 }

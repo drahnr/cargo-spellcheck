@@ -251,8 +251,8 @@ struct Vikings;
                 end: range.end + START,
             };
 
-            assert_eq!(&TEST[range_for_raw_str.clone()], &chunk.as_str()[range]);
-            assert_eq!(&TEST[range_for_raw_str], $expected);
+            assert_eq!(&TEST[range_for_raw_str.clone()], &chunk.as_str()[range], "Testing range extract vs stringified chunk for integrity");
+            assert_eq!(&TEST[range_for_raw_str], $expected, "Testing range extract vs expected");
         };
     }
 
