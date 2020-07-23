@@ -12,7 +12,7 @@ use log::{debug, trace};
 
 use hunspell_rs::Hunspell;
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 
 pub struct HunspellChecker;
 
@@ -89,19 +89,19 @@ impl Checker for HunspellChecker {
         for extra_dic in config.extra_dictonaries().iter() {
             trace!("Adding extra hunspell dictionary {}", extra_dic.display());
             if !extra_dic.is_file() {
-                return Err(anyhow!(
+                bail!(
                     "Extra dictionary {} is not a file",
                     extra_dic.display()
-                ));
+                )
             }
             if let Some(extra_dic) = extra_dic.to_str() {
                 if !hunspell.add_dictionary(extra_dic) {
-                    return Err(anyhow!("Failed to add additional dict to hunspell"));
+                    bail!("Failed to add additional dict to hunspell")
                 }
             } else {
-                return Err(anyhow!(
+                bail!(
                     "Failed to convert one of the extra dictionaries to a str"
-                ));
+                )
             }
         }
 

@@ -1,6 +1,6 @@
 use crate::span::Span;
 use crate::suggestion::Suggestion;
-use anyhow::{anyhow, Error, Result};
+use anyhow::{anyhow, bail, Error, Result};
 use log::trace;
 use std::convert::TryFrom;
 
@@ -45,7 +45,7 @@ impl<'s> TryFrom<(&Suggestion<'s>, usize)> for BandAid {
         if let Some(replacement) = suggestion.replacements.iter().nth(pick_idx) {
             Ok(Self::new(replacement.as_str(), &suggestion.span))
         } else {
-            Err(anyhow!("Does not contain any replacements"))
+            bail!("Does not contain any replacements")
         }
     }
 }
