@@ -262,8 +262,8 @@ impl<'a> fmt::Display for TrimmedLiteralDisplay<'a> {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use crate::LineColumn;
     use crate::action::bandaid::tests::load_span_from;
+    use crate::LineColumn;
 
     pub(crate) fn annotated_literals(source: &str) -> Vec<TrimmedLiteral> {
         let stream =
@@ -296,7 +296,7 @@ pub(crate) mod tests {
     const SUFFIX_RAW_LEN: usize = 2;
     const GAENSEFUESSCHEN: usize = 1;
 
-    #[derive(Clone,Debug)]
+    #[derive(Clone, Debug)]
     struct Triplet {
         /// source content
         source: &'static str,
@@ -340,7 +340,6 @@ struct One;
                 },
             },
         },
-
         // 1
         Triplet {
             source: r##"
@@ -471,9 +470,11 @@ lines
         },
     ];
 
-
     fn comment_variant_span_range_validation(index: usize) {
-        let _ = env_logger::builder().filter(None, log::LevelFilter::Trace).is_test(true).try_init();
+        let _ = env_logger::builder()
+            .filter(None, log::LevelFilter::Trace)
+            .is_test(true)
+            .try_init();
 
         let triplet = TEST_DATA[index].clone();
         let literals = annotated_literals(triplet.source);
@@ -487,13 +488,13 @@ lines
         assert_eq!(literal.as_str(), triplet.trimmed);
 
         // just for better visual errors
-        let excerpt = load_span_from(triplet.source.as_bytes(), literal.span());
-        let expected_excerpt = load_span_from(triplet.source.as_bytes(), triplet.trimmed_span);
+        let excerpt = load_span_from(triplet.source.as_bytes(), literal.span()).unwrap();
+        let expected_excerpt =
+            load_span_from(triplet.source.as_bytes(), triplet.trimmed_span).unwrap();
         assert_eq!(excerpt, expected_excerpt);
 
         assert_eq!(literal.span(), triplet.trimmed_span);
     }
-
 
     #[test]
     fn raw_variant_0() {

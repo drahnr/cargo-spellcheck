@@ -124,7 +124,6 @@ impl CheckableChunk {
                 let sub_fragment_range = std::cmp::max(fragment_range.start, range.start)
                     ..std::cmp::min(fragment_range.end, range.end);
 
-
                 trace!(
                     ">> fragment: span: {:?} => range: {:?} | sub: {:?} -> sub_fragment: {:?}",
                     &fragment_span,
@@ -133,9 +132,12 @@ impl CheckableChunk {
                     &sub_fragment_range,
                 );
 
-                log::trace!("[f]display;\n>{}<", ChunkDisplay::try_from((self, fragment_range.clone())).expect("must be convertable"));
+                log::trace!(
+                    "[f]display;\n>{}<",
+                    ChunkDisplay::try_from((self, fragment_range.clone()))
+                        .expect("must be convertable")
+                );
                 log::trace!("[f]content;\n>{}<", &self.as_str()[fragment_range.clone()]);
-
 
                 if sub_fragment_range.len() == 0 {
                     log::debug!("sub fragment is zero, dropping!");
@@ -377,8 +379,8 @@ mod test {
         let _ = env_logger::builder().is_test(true).try_init();
 
         const SOURCE: &'static str = fluff_up!(["xyz", "second", "third", "Converts a span to a range, where `self` is converted to a range reltive to the",
-        "passed span `scope`."] @ "       "
-   );
+             "passed span `scope`."] @ "       "
+        );
         let set = gen_literal_set(SOURCE);
         let chunk = dbg!(CheckableChunk::from_literalset(set));
         const SPACES: usize = 7;
@@ -387,24 +389,52 @@ mod test {
             &[1..4, (4 + 1 + 1 + 6 + 1 + 1)..(4 + 1 + 1 + 6 + 1 + 1 + 5)];
         const EXPECTED_SPANS: &[Span] = &[
             Span {
-                start: LineColumn { line: 1, column: SPACES + TRIPLE_SLASH_SPACE + 0 },
-                end: LineColumn { line: 1, column: SPACES + TRIPLE_SLASH_SPACE + 2 },
+                start: LineColumn {
+                    line: 1,
+                    column: SPACES + TRIPLE_SLASH_SPACE + 0,
+                },
+                end: LineColumn {
+                    line: 1,
+                    column: SPACES + TRIPLE_SLASH_SPACE + 2,
+                },
             },
             Span {
-                start: LineColumn { line: 3, column: SPACES + TRIPLE_SLASH_SPACE + 0 },
-                end: LineColumn { line: 3, column: SPACES + TRIPLE_SLASH_SPACE + 4 },
+                start: LineColumn {
+                    line: 3,
+                    column: SPACES + TRIPLE_SLASH_SPACE + 0,
+                },
+                end: LineColumn {
+                    line: 3,
+                    column: SPACES + TRIPLE_SLASH_SPACE + 4,
+                },
             },
             Span {
-                start: LineColumn { line: 4, column: SPACES + TRIPLE_SLASH_SPACE + 0 },
-                end: LineColumn { line: 4, column: SPACES + TRIPLE_SLASH_SPACE + 78  },
+                start: LineColumn {
+                    line: 4,
+                    column: SPACES + TRIPLE_SLASH_SPACE + 0,
+                },
+                end: LineColumn {
+                    line: 4,
+                    column: SPACES + TRIPLE_SLASH_SPACE + 78,
+                },
             },
             Span {
-                start: LineColumn { line: 5, column: SPACES + TRIPLE_SLASH_SPACE + 0 },
-                end: LineColumn { line: 5, column: SPACES + TRIPLE_SLASH_SPACE + 19 },
+                start: LineColumn {
+                    line: 5,
+                    column: SPACES + TRIPLE_SLASH_SPACE + 0,
+                },
+                end: LineColumn {
+                    line: 5,
+                    column: SPACES + TRIPLE_SLASH_SPACE + 19,
+                },
             },
         ];
-        const EXPECTED_STR: &[&'static str] = &["xyz", "third", "Converts a span to a range, where `self` is converted to a range reltive to the",
-        "passed span `scope`."];
+        const EXPECTED_STR: &[&'static str] = &[
+            "xyz",
+            "third",
+            "Converts a span to a range, where `self` is converted to a range reltive to the",
+            "passed span `scope`.",
+        ];
 
         for (query_range, expected_span, expected_str) in itertools::cons_tuples(
             CHUNK_RANGES

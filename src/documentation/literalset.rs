@@ -131,7 +131,6 @@ pub(crate) mod tests {
         };
     }
 
-
     #[test]
     fn fluff_one() {
         const TEST: &'static str = fluff_up!(["a"]);

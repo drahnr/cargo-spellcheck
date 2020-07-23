@@ -89,19 +89,14 @@ impl Checker for HunspellChecker {
         for extra_dic in config.extra_dictonaries().iter() {
             trace!("Adding extra hunspell dictionary {}", extra_dic.display());
             if !extra_dic.is_file() {
-                bail!(
-                    "Extra dictionary {} is not a file",
-                    extra_dic.display()
-                )
+                bail!("Extra dictionary {} is not a file", extra_dic.display())
             }
             if let Some(extra_dic) = extra_dic.to_str() {
                 if !hunspell.add_dictionary(extra_dic) {
                     bail!("Failed to add additional dict to hunspell")
                 }
             } else {
-                bail!(
-                    "Failed to convert one of the extra dictionaries to a str"
-                )
+                bail!("Failed to convert one of the extra dictionaries to a str")
             }
         }
 

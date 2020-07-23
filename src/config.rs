@@ -133,9 +133,7 @@ impl Config {
                     .join("config.toml"),
             )
         } else {
-            bail!(
-                "No idea where your config directory is located. XDG compliance would be nice."
-            )
+            bail!("No idea where your config directory is located. XDG compliance would be nice.")
         }
     }
 
@@ -185,9 +183,7 @@ impl Config {
         {
             Ok(base.config_dir().join("config.toml"))
         } else {
-            bail!(
-                "No idea where your config directory is located. `$HOME` must be set."
-            )
+            bail!("No idea where your config directory is located. `$HOME` must be set.")
         }
     }
 
