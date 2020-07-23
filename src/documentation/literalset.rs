@@ -1,5 +1,5 @@
 pub use super::{TrimmedLiteral, TrimmedLiteralDisplay};
-use crate::{CheckableChunk, Range, Span};
+use crate::{CheckableChunk, Range};
 /// A set of consecutive literals.
 ///
 /// Provides means to render them as a code block
