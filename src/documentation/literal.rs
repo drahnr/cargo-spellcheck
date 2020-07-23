@@ -65,6 +65,8 @@ impl TryFrom<proc_macro2::Literal> for TrimmedLiteral {
             static ref SUFFIX_ERASER: Regex = Regex::new(r##"("#*)$"##).unwrap();
         };
 
+        // pre and post are for the rendered content
+        // not necessarily for the span
         let pre = if let Some(captures) = PREFIX_ERASER.captures(rendered.as_str()) {
             if let Some(prefix) = captures.get(1) {
                 prefix.as_str().len()
@@ -94,31 +96,63 @@ impl TryFrom<proc_macro2::Literal> for TrimmedLiteral {
 
         // check if it is a `///` comment, for which the literal
         // span needs to be adjusted, since it would include the `///`
-        if pre == 1 && post == 1 && rendered.chars().next().unwrap() == '"' {
-            // we know for sure that `///` are one line literals only
-            if span.start.line == span.end.line {
-                let render_len = rendered.len();
-                let span_len: usize = span.end.column - span.start.column + 1;
-                log::trace!(target: "quirks", "len(span): {:?} ?= len(render): {:?}  for >{}< ", span_len, render_len, &rendered);
-                // includes the ticks, so substract
-                // assert render_len - 2 == span_len - 4 is true
-                if render_len + 2 == span_len {
-                    log::trace!(target: "quirks", "Detected /// comment");
-                    // remove the two leading extra //, since pre=1 the third / will be removed below
-                    span.start.column += 2;
+        let disc = rendered.chars().next().unwrap();
+        match (pre, post, disc) {
+            (1, 1, '"') => {
+                // we know for sure that `///` are one line literals only
+                if let Some(span_len) = dbg!(&span).one_line_len() {
+                    let render_len = rendered.len();
+                    log::trace!(target: "quirks", "len(span): {:?} ?= len(render): {:?}  for >{}< ", span_len, render_len, &rendered);
+                    // includes the ticks, so substract
+                    match (render_len, span_len) {
+                        (rl, sl) if rl + 2 == sl => {
+                            log::trace!(target: "quirks", "Detected /// comment");
+                            // remove the two leading extra //, since pre=1 the third / will be removed below
+                            span.start.column += 2;
+                        }
+                        (rl, sl) if rl + 1 == sl => {
+                            log::trace!(target: "quirks", "Detected #[doc=\"...\"] comment");
+                            span.end.column = span.end.column.saturating_sub(1);
+                        }
+                        (rl, sl) if rl == sl => {
+                            log::trace!(target: "quirks", "Not sure what kind, but seems to be ok comment");
+                        }
+                        _ => {
+                            unreachable!("QED");
+                        }
+                    }
+                }
+                span.start.column += pre;
+                span.end.column -= post;
+            }
+            (pre, post, 'r') if pre == post + 1 => {
+                log::trace!(target: "quirks", "Dealing with #[doc=r####\"...\"#### style comment");
+                span.start.column += pre;
+                span.end.column -= post;
+                if let Some(span_len) = span.one_line_len() {
+                    span.end.column = span.end.column.saturating_sub(1);
                 }
             }
+            (pre, post, c) => {
+                log::error!(target: "quirks", "Dealing with unknown style comment ({},{},{}) . >{}<", pre, post, c, rendered);
+                span.start.column += pre;
+                span.end.column -= post;
+            }
         }
-        span.start.column += pre;
-        span.end.column -= post;
 
-        Ok(Self {
+        if let Some(span_len) = span.one_line_len() {
+            log::trace!(target: "quirks", "{:?} {}||{} for >{}< ", span,pre, post,  &rendered);
+            assert_eq!(len, span_len);
+        }
+
+        let literal = Self {
             len,
             rendered,
             span,
             pre,
             post,
-        })
+        };
+        Ok(literal)
     }
 }
 
@@ -380,11 +414,11 @@ struct Two;
             extracted_span: Span {
                 start: LineColumn {
                     line: 2usize,
-                    column: 0usize + 9 - GAENSEFUESSCHEN,
+                    column: 0usize + 10 - GAENSEFUESSCHEN,
                 },
                 end: LineColumn {
                     line: 2usize,
-                    column: 7usize + 9 + GAENSEFUESSCHEN,
+                    column: 6usize + 10 + GAENSEFUESSCHEN,
                 },
             },
             trimmed_span: Span {
@@ -394,14 +428,14 @@ struct Two;
                 },
                 end: LineColumn {
                     line: 2usize,
-                    column: 7usize + 9,
+                    column: 6usize + 9,
                 },
             },
         },
         // 3
         Triplet {
             source: r##"
-#[doc = r#"Three Doc"#]
+    #[doc=r#"Three Doc"#]
 struct Three;
 "##,
             extracted: r###"r#"Three Doc"#"###,
@@ -409,21 +443,21 @@ struct Three;
             extracted_span: Span {
                 start: LineColumn {
                     line: 2usize,
-                    column: 0usize + 11 - PREFIX_RAW_LEN,
+                    column: 4usize + 11,
                 },
                 end: LineColumn {
                     line: 2usize,
-                    column: 9usize + 11 + SUFFIX_RAW_LEN,
+                    column: 13usize + 11,
                 },
             },
             trimmed_span: Span {
                 start: LineColumn {
                     line: 2usize,
-                    column: 0usize + 11,
+                    column: 0usize + 13,
                 },
                 end: LineColumn {
                     line: 2usize,
-                    column: 9usize + 11,
+                    column: 13usize + 8,
                 },
             },
         },
@@ -468,6 +502,35 @@ lines
                 },
             },
         },
+        // 5
+        Triplet {
+            source: r###"
+#[doc        ="XYZ"]
+struct Five;
+"###,
+            extracted: r#""XYZ""#,
+            trimmed: r#"XYZ"#,
+            extracted_span: Span {
+                start: LineColumn {
+                    line: 2usize,
+                    column: 15usize - GAENSEFUESSCHEN,
+                },
+                end: LineColumn {
+                    line: 2usize,
+                    column: 15usize + 2 + GAENSEFUESSCHEN,
+                },
+            },
+            trimmed_span: Span {
+                start: LineColumn {
+                    line: 2usize,
+                    column: 15usize,
+                },
+                end: LineColumn {
+                    line: 2usize,
+                    column: 15usize + 2,
+                },
+            },
+        },
     ];
 
     fn comment_variant_span_range_validation(index: usize) {
@@ -497,27 +560,32 @@ lines
     }
 
     #[test]
-    fn raw_variant_0() {
+    fn raw_variant_0_triple_slash() {
         comment_variant_span_range_validation(0);
     }
 
     #[test]
-    fn raw_variant_1() {
+    fn raw_variant_1_spaces_triple_slash() {
         comment_variant_span_range_validation(1);
     }
 
     #[test]
-    fn raw_variant_2() {
+    fn raw_variant_2_spaces_doc_eq_single_quote() {
         comment_variant_span_range_validation(2);
     }
 
     #[test]
-    fn raw_variant_3() {
+    fn raw_variant_3_doc_eq_single_r_hash_quote() {
         comment_variant_span_range_validation(3);
     }
 
     #[test]
-    fn raw_variant_4() {
+    fn raw_variant_4_doc_eq_multi() {
         comment_variant_span_range_validation(4);
+    }
+
+    #[test]
+    fn raw_variant_5_doc_spaces_eq_single_quote() {
+        comment_variant_span_range_validation(5);
     }
 }
