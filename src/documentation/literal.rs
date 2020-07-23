@@ -129,7 +129,7 @@ impl TryFrom<proc_macro2::Literal> for TrimmedLiteral {
                 log::trace!(target: "quirks", "Dealing with #[doc=r####\"...\"#### style comment");
                 span.start.column += pre;
                 span.end.column -= post;
-                if let Some(span_len) = span.one_line_len() {
+                if let Some(_span_len) = span.one_line_len() {
                     span.end.column = span.end.column.saturating_sub(1);
                 }
             }

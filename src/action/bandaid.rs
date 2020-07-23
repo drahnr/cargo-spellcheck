@@ -1,6 +1,6 @@
 use crate::span::Span;
 use crate::suggestion::Suggestion;
-use anyhow::{anyhow, bail, Error, Result};
+use anyhow::{bail, Error, Result};
 use log::trace;
 use std::convert::TryFrom;
 
@@ -67,7 +67,7 @@ impl From<(String, Span)> for BandAid {
 pub(crate) mod tests {
     use super::*;
     use crate::span::Span;
-    use anyhow::bail;
+    use anyhow::anyhow;
     use proc_macro2::LineColumn;
     use std::io::Read;
     use std::path::Path;
