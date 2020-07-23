@@ -1,5 +1,5 @@
 use crate::{Range, Span};
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 
 use regex::Regex;
 use std::convert::TryFrom;
@@ -69,20 +69,20 @@ impl TryFrom<proc_macro2::Literal> for TrimmedLiteral {
             if let Some(prefix) = captures.get(1) {
                 prefix.as_str().len()
             } else {
-                return Err(anyhow!("Unknown prefix of literal"));
+                bail!("Unknown prefix of literal");
             }
         } else {
-            return Err(anyhow!("Missing prefix of literal: {}", rendered.as_str()));
+            bail!("Missing prefix of literal: {}", rendered.as_str());
         };
         let post = if let Some(captures) = SUFFIX_ERASER.captures(rendered.as_str()) {
             // capture indices are 1 based, 0 is the full string
             if let Some(suffix) = captures.get(captures.len() - 1) {
                 suffix.as_str().len()
             } else {
-                return Err(anyhow!("Unknown suffix of literal"));
+                bail!("Unknown suffix of literal");
             }
         } else {
-            return Err(anyhow!("Missing suffix of literal: {}", rendered.as_str()));
+            bail!("Missing suffix of literal: {}", rendered.as_str());
         };
 
         let (len, pre, post) = match rendered.len() {
