@@ -124,7 +124,7 @@ pub(crate) mod tests {
             fluff_up!($( $line ),+ $(@ $prefix)?)
         };
         ($($line:literal ),+ $(,)? ) => {
-            fluff_up!($( $line ),+ @ "    ")
+            fluff_up!($( $line ),+ @ "")
         };
         ($($line:literal ),+ $(,)? @ $prefix:literal ) => {
             concat!("" $(, $prefix, "/// ", $line, "\n")+ , "struct Fluff;")
