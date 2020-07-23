@@ -6,7 +6,7 @@
 //! location by default. Default. Default default default.
 
 use crate::suggestion::Detector;
-use anyhow::{anyhow, Error, Result};
+use anyhow::{anyhow, bail, Error, Result};
 use log::trace;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
@@ -133,9 +133,9 @@ impl Config {
                     .join("config.toml"),
             )
         } else {
-            Err(anyhow!(
+            bail!(
                 "No idea where your config directory is located. XDG compliance would be nice."
-            ))
+            )
         }
     }
 
@@ -185,9 +185,9 @@ impl Config {
         {
             Ok(base.config_dir().join("config.toml"))
         } else {
-            Err(anyhow!(
+            bail!(
                 "No idea where your config directory is located. `$HOME` must be set."
-            ))
+            )
         }
     }
 

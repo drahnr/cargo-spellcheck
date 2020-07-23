@@ -1,5 +1,5 @@
 use crate::{Range, Span};
-use anyhow::{anyhow, bail, Result};
+use anyhow::{bail, Result};
 
 use regex::Regex;
 use std::convert::TryFrom;
@@ -87,7 +87,7 @@ impl TryFrom<proc_macro2::Literal> for TrimmedLiteral {
 
         let (len, pre, post) = match rendered.len() {
             len if len >= pre + post => (len - pre - post, pre, post),
-            _len => return Err(anyhow!("Prefix and suffix overlap, which is impossible")),
+            _len => bail!("Prefix and suffix overlap, which is impossible"),
         };
 
         let mut span = Span::from(literal.span());

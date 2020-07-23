@@ -10,7 +10,7 @@ pub use proc_macro2::LineColumn;
 
 use std::hash::{Hash, Hasher};
 
-use anyhow::{anyhow, bail, Error, Result};
+use anyhow::{bail, Error, Result};
 
 use std::convert::TryFrom;
 
@@ -46,10 +46,10 @@ impl Span {
         let scope: Range = scope.try_into()?;
         let me: Range = self.try_into()?;
         if scope.start > me.start {
-            return Err(anyhow!("start of {:?} is not inside of {:?}", me, scope));
+            bail!("start of {:?} is not inside of {:?}", me, scope)
         }
         if scope.end < me.end {
-            return Err(anyhow!("end of {:?} is not inside of {:?}", me, scope));
+            bail!("end of {:?} is not inside of {:?}", me, scope)
         }
         let offset = me.start - scope.start;
         let length = me.end - me.start;
@@ -94,11 +94,11 @@ impl Span {
                 continue;
             }
             if line > self.end.line {
-                bail!("Moved beyond anticipated line");
+                bail!("Moved beyond anticipated line")
             }
 
             if line >= self.end.line && col > self.end.column {
-                bail!("Moved beyond anticipated column and last line");
+                bail!("Moved beyond anticipated column and last line")
             }
             if line == self.start.line && col == self.start.column {
                 start = idx;
@@ -111,11 +111,11 @@ impl Span {
             }
 
             if line > self.end.line {
-                bail!("Moved beyond anticipated line");
+                bail!("Moved beyond anticipated line")
             }
 
             if line >= self.end.line && col > self.end.column {
-                bail!("Moved beyond anticipated column and last line");
+                bail!("Moved beyond anticipated column and last line")
             }
         }
 
@@ -133,7 +133,7 @@ impl Span {
     /// which are used to map.
     pub fn to_content_range(&self, chunk: &CheckableChunk) -> Result<Range> {
         if chunk.fragment_count() == 0 {
-            bail!("Chunk contains 0 fragments");
+            bail!("Chunk contains 0 fragments")
         }
         for (fragment_range, fragment_span) in chunk
             .iter()
@@ -189,11 +189,11 @@ impl TryInto<Range> for &Span {
                 end: self.end.column + 1,
             })
         } else {
-            Err(anyhow!(
+            bail!(
                 "Start and end are not in the same line {} vs {}",
                 self.start.line,
                 self.end.line
-            ))
+            )
         }
     }
 }
@@ -213,11 +213,11 @@ impl TryFrom<(usize, Range)> for Span {
                 },
             })
         } else {
-            Err(anyhow!(
+            bail!(
                 "range must be valid to be converted to a Span {}..{}",
                 original.1.start,
                 original.1.end
-            ))
+            )
         }
     }
 }
