@@ -74,7 +74,10 @@ impl Clusters {
                             <Span as TryInto<Range>>::try_into(Span::from(literal.span())),
                             literal
                         );
-                        self.process_literal(source, literal)?;
+                        if let Err(e) = self.process_literal(source, literal) {
+                            log::error!("BUG: Failed to guarantee literal content/span integrity: {}", e);
+                            continue;
+                        }
                     } else {
                         continue;
                     }

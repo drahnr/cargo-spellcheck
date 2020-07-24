@@ -151,7 +151,7 @@ fn load_manifest<P: AsRef<Path>>(manifest_dir: P) -> Result<cargo_toml::Manifest
                 "Failed to open manifest file {}", manifest_file.display()
             ).context(e)
         })?;
-    let mut manifest = cargo_toml::Manifest::from_str(manifest_content.as_str())
+    let manifest = cargo_toml::Manifest::from_str(manifest_content.as_str())
         .map_err(|e| {
             anyhow::anyhow!(
                 "Failed to parse manifest file {}", manifest_file.display()
@@ -343,9 +343,12 @@ pub(crate) fn extract(
                             docs.extend(iter);
                         } else {
                             let content: String = fs::read_to_string(&path)?;
-                            let cluster = Clusters::try_from(content.as_str())?;
-                            let chunks = Vec::<CheckableChunk>::from(cluster);
-                            docs.add(ContentOrigin::RustSourceFile(path.to_owned()), chunks);
+                            if let Ok(cluster) = Clusters::try_from(content.as_str()) {
+                                let chunks = Vec::<CheckableChunk>::from(cluster);
+                                docs.add(ContentOrigin::RustSourceFile(path.to_owned()), chunks);
+                            } else {
+                                log::error!("BUG: Failed to create cluster for {}", path.display());
+                            }
                         }
                     }
                     CheckEntity::Markdown(path) => {
