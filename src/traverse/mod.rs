@@ -344,9 +344,7 @@ pub(crate) fn extract(
                             docs.extend(iter);
                         } else {
                             let content: String = fs::read_to_string(&path)?;
-                            let stream =
-                                syn::parse_str::<proc_macro2::TokenStream>(content.as_str())?;
-                            let cluster = Clusters::try_from(stream)?;
+                            let cluster = Clusters::try_from(content.as_str())?;
                             let chunks = Vec::<CheckableChunk>::from(cluster);
                             docs.add(ContentOrigin::RustSourceFile(path.to_owned()), chunks);
                         }

@@ -55,9 +55,9 @@ impl std::hash::Hash for TrimmedLiteral {
     }
 }
 
-impl TryFrom<proc_macro2::Literal> for TrimmedLiteral {
+impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
     type Error = anyhow::Error;
-    fn try_from(literal: proc_macro2::Literal) -> Result<Self> {
+    fn try_from((content, literal): (&str, proc_macro2::Literal)) -> Result<Self> {
         let rendered = literal.to_string();
 
         lazy_static::lazy_static! {
@@ -320,7 +320,7 @@ pub(crate) mod tests {
                 }
             })
             .map(|literal| {
-                TrimmedLiteral::try_from(literal)
+                TrimmedLiteral::try_from((source, literal))
                     .expect("Literals must be convertable to trimmed literals")
             })
             .collect()

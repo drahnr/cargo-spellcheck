@@ -274,7 +274,7 @@ mod tests {
                 },
                 end: LineColumn {
                     line: 1usize,
-                    column: 7usize + TRIPPLE_SLASH_PLUS_SPACE,
+                    column: 8usize + TRIPPLE_SLASH_PLUS_SPACE,
                 },
             },
             Span {

@@ -91,10 +91,10 @@ impl Documentation {
 }
 
 /// only a shortcut to avoid duplicate code
-impl From<(ContentOrigin, proc_macro2::TokenStream)> for Documentation {
-    fn from((source, stream): (ContentOrigin, proc_macro2::TokenStream)) -> Self {
+impl From<(ContentOrigin, &str)> for Documentation {
+    fn from((source, content): (ContentOrigin, &str)) -> Self {
         let cluster =
-            Clusters::try_from(stream).expect("Must succeed to create cluster from stream");
+            Clusters::try_from(content).expect("Must succeed to create cluster from content");
         let chunks = Vec::<CheckableChunk>::from(cluster);
         let mut docs = Documentation::new();
         docs.add(source, chunks);
@@ -128,9 +128,7 @@ mod tests {
 
         let test_path = PathBuf::from("/tmp/dummy");
         let origin = ContentOrigin::RustSourceFile(test_path.clone());
-        let stream =
-            syn::parse_str::<proc_macro2::TokenStream>(TEST_SOURCE).expect("Must be valid rust");
-        let docs = Documentation::from((origin.clone(), stream));
+        let docs = Documentation::from((origin.clone(), TEST_SOURCE));
         assert_eq!(docs.index.len(), 1);
         let chunks = docs.index.get(&origin).expect("Must contain dummy path");
         assert_eq!(dbg!(chunks).len(), 1);
@@ -185,9 +183,7 @@ mod tests {
             .try_init();
 
             let origin = $origin;
-            let stream =
-                syn::parse_str::<proc_macro2::TokenStream>($test).expect("Must be valid rust");
-            let docs = Documentation::from((origin.clone(), stream));
+            let docs = Documentation::from((origin.clone(), $test));
             assert_eq!(docs.index.len(), 1);
             let chunks = docs.index.get(&origin).expect("Must contain dummy path");
             assert_eq!(dbg!(chunks).len(), 1);
@@ -266,10 +262,8 @@ struct X"#;
 
 Erronbeous bold uetchkp"#;
 
-        let stream =
-            syn::parse_str::<proc_macro2::TokenStream>(SOURCE).expect("Must parse just fine");
         let origin = ContentOrigin::RustSourceFile(PathBuf::from("/tmp/virtual"));
-        let docs = Documentation::from((origin.clone(), stream));
+        let docs = Documentation::from((origin.clone(), SOURCE));
 
         // @todo contains utter garbage, should be individual tokens, but is multiple literal
         let suggestion_set = dbg!(DummyChecker::check(&docs, &())).expect("Must not error");
