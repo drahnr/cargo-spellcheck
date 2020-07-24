@@ -18,8 +18,8 @@ use std::convert::TryFrom;
 
 use enumflags2::BitFlags;
 
-use crate::{LineColumn, Range, Span};
-use std::path::{Path, PathBuf};
+use crate::{Range, Span};
+
 
 /// Bitflag of available checkers by compilation / configuration.
 #[derive(Debug, Clone, Copy, BitFlags, Eq, PartialEq, Hash)]
@@ -32,13 +32,13 @@ pub enum Detector {
 }
 
 pub fn get_terminal_size() -> usize {
-    use super::*;
+
     const DEFAULT_TERMINAL_SIZE: usize = 80;
     #[cfg(not(test))]
     match crossterm::terminal::size() {
         Ok((terminal_size, _)) => terminal_size as usize,
         Err(_) => {
-            warn!(
+            log::warn!(
                 "Unable to get terminal size. Using default: {}",
                 DEFAULT_TERMINAL_SIZE
             );
@@ -75,7 +75,7 @@ impl fmt::Display for Detector {
 // Misspelled words that are too long shall also be ellipsized.
 pub fn condition_display_content(
     terminal_size: usize,
-    indent: usize,
+    _indent: usize,
     stripped_line: &str,
     mistake_range: Range,
     padding_till_excerpt_start: usize,
@@ -177,17 +177,7 @@ pub fn condition_display_content(
 
     // take both sides of the mistake and insert the possibly shrunken mistake
     // and put them together, after conditioning the left and right context
-
-    let mut left_context = Range {
-        start: 0,
-        end: mistake_range.start,
-    };
-
     let stripped_line_len = stripped_line.chars().count();
-    let mut right_context = Range {
-        start: mistake_range.end,
-        end: stripped_line_len,
-    };
 
     // full, uncut context coverage
     let left_context = Range {
@@ -355,7 +345,6 @@ impl<'s> fmt::Display for Suggestion<'s> {
                 .saturating_sub(self.span.start.column)
         });
 
-
         /// assumes the _mistake_ is within one line
         /// if not we chop it down to the first line
         let (line_range, start_of_line_offset) = self
@@ -368,24 +357,32 @@ impl<'s> fmt::Display for Suggestion<'s> {
                     '\n' => {
                         *last_newline_plus_1 = idx + 1;
                     }
-                    _ => {},
+                    _ => {}
                 }
                 Some((idx, c, *last_newline_plus_1))
             })
-            .skip_while(|(idx, c, last_newline_plus_1)| *idx < self.range.start)
-            .take_while(|(idx, c, last_newline_plus_1)| *c != '\n')
+            .skip_while(|(idx, _c, _last_newline_plus_1)| *idx < self.range.start)
+            .take_while(|(_idx, c, _last_newline_plus_1)| *c != '\n')
             .last() // the last contains the last chars index, and the index of the previous newline
             .map(|(idx, _, last_newline_plus_1)| {
                 let mistake_to_start_of_line_offset = self.range.start - last_newline_plus_1;
-                (last_newline_plus_1..(idx+1), mistake_to_start_of_line_offset)
-            }).expect("Must have at least one relevant line");
+                (
+                    last_newline_plus_1..(idx + 1),
+                    mistake_to_start_of_line_offset,
+                )
+            })
+            .expect("Must have at least one relevant line");
 
         let intra_line_mistake_range = Range {
             start: start_of_line_offset,
             end: cmp::min(start_of_line_offset + self.range.len(), line_range.len()),
         };
-        let relevant_line = self.chunk.as_str().chars().enumerate()
-            .skip_while(|(idx, _)| line_range.start > *idx )
+        let relevant_line = self
+            .chunk
+            .as_str()
+            .chars()
+            .enumerate()
+            .skip_while(|(idx, _)| line_range.start > *idx)
             .take(line_range.len())
             .map(|(_, c)| c)
             .collect::<String>();
