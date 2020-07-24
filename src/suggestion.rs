@@ -97,7 +97,7 @@ pub fn condition_display_content(
 ) -> (String, usize, usize) {
 
     if stripped_line.chars().count() + padding_till_excerpt_start <= terminal_size {
-        offset = offset.saturating_sub(chars_till_start_statement);
+        let offset = offset.saturating_sub(chars_till_start_statement);
         return (stripped_line.to_owned(), offset, marker_size)
     }
 
