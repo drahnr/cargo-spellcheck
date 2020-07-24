@@ -145,23 +145,18 @@ pub enum CheckEntity {
 fn load_manifest<P: AsRef<Path>>(manifest_dir: P) -> Result<cargo_toml::Manifest> {
     let manifest_dir = manifest_dir.as_ref();
     let manifest_file = manifest_dir.join("Cargo.toml");
-    let mut manifest = cargo_toml::Manifest::from_path(&manifest_file).map_err(|e| {
-        anyhow::anyhow!(
-            "Failed to parse manifest file {}: {}",
-            manifest_file.display(),
-            e
-        )
-    })?;
-    // @todo verify which one is the sane one here, internally it calls `parent()`
-    // but semantically it's not entirely clear.
-    // manifest.complete_from_path(manifest_dir.join("Cargo.toml").as_path())?;
-    manifest.complete_from_path(&manifest_file).map_err(|e| {
-        anyhow::anyhow!(
-            "Failed to complete manifest info {}: {}",
-            manifest_file.display(),
-            e
-        )
-    })?;
+    let manifest_content = std::fs::read_to_string(dbg!(&manifest_file))
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to open manifest file {}", manifest_file.display()
+            ).context(e)
+        })?;
+    let mut manifest = cargo_toml::Manifest::from_str(manifest_content.as_str())
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to parse manifest file {}", manifest_file.display()
+            ).context(e)
+        })?;
     Ok(manifest)
 }
 
@@ -236,7 +231,11 @@ fn handle_manifest<P: AsRef<Path>>(manifest_dir: P) -> Result<Vec<CheckEntity>> 
             .try_for_each::<_, Result<()>>(|item| {
                 let d = manifest_dir.join(&item);
                 trace!("Handling manifest member {} -> {}", &item, d.display());
-                acc.extend(extract_products(d)?.into_iter());
+                if let Ok(member) = extract_products(d) {
+                    acc.extend(member.into_iter());
+                } else {
+                    warn!("Workspace member {} could not be found", item);
+                }
                 Ok(())
             })?;
     }
