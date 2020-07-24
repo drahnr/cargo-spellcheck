@@ -20,7 +20,6 @@ use enumflags2::BitFlags;
 
 use crate::{Range, Span};
 
-
 /// Bitflag of available checkers by compilation / configuration.
 #[derive(Debug, Clone, Copy, BitFlags, Eq, PartialEq, Hash)]
 #[repr(u8)]
@@ -32,7 +31,6 @@ pub enum Detector {
 }
 
 pub fn get_terminal_size() -> usize {
-
     const DEFAULT_TERMINAL_SIZE: usize = 80;
     #[cfg(not(test))]
     match crossterm::terminal::size() {
