@@ -632,7 +632,7 @@ mod tests {
 
     #[test]
     fn fmt() {
-        const CONTENT: &'static str = "Is it dyrck again?";
+        const CONTENT: &'static str = " Is it dyrck again?";
         let chunk = CheckableChunk::from_str(
             CONTENT,
             indexmap::indexmap! { 0..18 => Span {
