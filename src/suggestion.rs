@@ -333,8 +333,8 @@ impl<'s> fmt::Display for Suggestion<'s> {
                 .saturating_sub(self.span.start.column)
         });
 
-        /// assumes the _mistake_ is within one line
-        /// if not we chop it down to the first line
+        // assumes the _mistake_ is within one line
+        // if not we chop it down to the first line
         let (line_range, start_of_line_offset) = self
             .chunk
             .as_str()
