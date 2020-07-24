@@ -148,13 +148,9 @@ pub mod tests {
             .filter(None, log::LevelFilter::Trace)
             .is_test(true)
             .try_init();
-
-        let stream =
-            syn::parse_str::<proc_macro2::TokenStream>(content).expect("Must parse just fine");
-
         let d = Documentation::from((
             ContentOrigin::RustSourceFile(PathBuf::from("dummy/dummy.rs")),
-            stream,
+            content,
         ));
         let suggestion_set =
             dummy::DummyChecker::check(&d, &()).expect("Dummy extraction must never fail");

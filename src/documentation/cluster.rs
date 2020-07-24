@@ -3,7 +3,7 @@
 use super::*;
 use crate::documentation::Range;
 use crate::Span;
-use anyhow::{Error, Result};
+use anyhow::{anyhow, Error, Result};
 use std::convert::TryFrom;
 
 /// Cluster literals for one file
@@ -15,8 +15,8 @@ pub struct Clusters {
 impl Clusters {
     /// Only works if the file is processed line by line, otherwise
     /// requires a adjacency list.
-    fn process_literal(&mut self, literal: proc_macro2::Literal) -> Result<()> {
-        let literal = TrimmedLiteral::try_from(literal)?;
+    fn process_literal(&mut self, source: &str, literal: proc_macro2::Literal) -> Result<()> {
+        let literal = TrimmedLiteral::try_from((source, literal))?;
         if let Some(cls) = self.set.last_mut() {
             if let Err(literal) = cls.add_adjacent(literal) {
                 trace!(target: "documentation",
@@ -35,7 +35,7 @@ impl Clusters {
     }
 
     /// Helper function to parse a stream and associated the found literals
-    fn parse_token_tree(&mut self, stream: proc_macro2::TokenStream) -> Result<()> {
+    fn parse_token_tree(&mut self, source: &str, stream: proc_macro2::TokenStream) -> Result<()> {
         let mut iter = stream.into_iter();
         while let Some(tree) = iter.next() {
             match tree {
@@ -74,13 +74,13 @@ impl Clusters {
                             <Span as TryInto<Range>>::try_into(Span::from(literal.span())),
                             literal
                         );
-                        self.process_literal(literal)?;
+                        self.process_literal(source, literal)?;
                     } else {
                         continue;
                     }
                 }
                 TokenTree::Group(group) => {
-                    self.parse_token_tree(group.stream())?;
+                    self.parse_token_tree(source, group.stream())?;
                 }
                 _ => {}
             };
@@ -89,13 +89,16 @@ impl Clusters {
     }
 }
 
-impl TryFrom<proc_macro2::TokenStream> for Clusters {
+impl TryFrom<&str> for Clusters {
     type Error = Error;
-    fn try_from(stream: proc_macro2::TokenStream) -> Result<Self> {
+    fn try_from(source: &str) -> Result<Self> {
         let mut chunk = Self {
             set: Vec::with_capacity(64),
         };
-        chunk.parse_token_tree(stream)?;
+        let stream = syn::parse_str::<proc_macro2::TokenStream>(source).map_err(|e| {
+            anyhow!("Failed to parse content to stream").context(e)
+        })?;
+        chunk.parse_token_tree(source, stream)?;
         Ok(chunk)
     }
 }
