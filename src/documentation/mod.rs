@@ -92,12 +92,18 @@ impl Documentation {
 
 /// only a shortcut to avoid duplicate code
 impl From<(ContentOrigin, &str)> for Documentation {
-    fn from((source, content): (ContentOrigin, &str)) -> Self {
-        let cluster =
-            Clusters::try_from(content).expect("Must succeed to create cluster from content");
-        let chunks = Vec::<CheckableChunk>::from(cluster);
+    fn from((origin, content): (ContentOrigin, &str)) -> Self {
         let mut docs = Documentation::new();
-        docs.add(source, chunks);
+
+        match Clusters::try_from(content) {
+            Ok(cluster) => {
+                let chunks = Vec::<CheckableChunk>::from(cluster);
+                docs.add(origin, chunks);
+            }
+            Err(e) => {
+                log::error!("BUG: Failed to create cluster from {}: {}", &origin, e);
+            }
+        }
         docs
     }
 }
