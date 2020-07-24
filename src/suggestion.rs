@@ -34,6 +34,7 @@ pub enum Detector {
 pub fn get_terminal_size() -> usize {
     use super::*;
     const DEFAULT_TERMINAL_SIZE: usize = 80;
+    #[cfg(not(test))]
     match crossterm::terminal::size() {
         Ok((terminal_size, _)) => terminal_size as usize,
         Err(_) => {
@@ -44,6 +45,8 @@ pub fn get_terminal_size() -> usize {
             DEFAULT_TERMINAL_SIZE
         }
     }
+    #[cfg(test)]
+    DEFAULT_TERMINAL_SIZE
 }
 
 pub fn get_current_statement<'a>(arr: &'a Vec<&'_ str>, range: Range) -> (&'a str, usize) {
@@ -620,6 +623,11 @@ mod tests {
     use crate::LineColumn;
     use console;
     use std::fmt;
+
+    /// A test helper comparing the output against an expected output.
+    ///
+    /// Strips all colour codes from both the expected string as well as the
+    /// display-able object.
     fn assert_display_eq<D: fmt::Display, S: AsRef<str>>(display: D, s: S) {
         let expected = s.as_ref();
         let expected = console::strip_ansi_codes(expected);
@@ -631,7 +639,7 @@ mod tests {
     }
 
     #[test]
-    fn fmt() {
+    fn fmt_0_single() {
         const CONTENT: &'static str = " Is it dyrck again?";
         let chunk = CheckableChunk::from_str(
             CONTENT,
@@ -652,7 +660,7 @@ mod tests {
             detector: Detector::Dummy,
             origin: ContentOrigin::TestEntity,
             chunk: &chunk,
-            range: 6..11,
+            range: 7..12,
             span: Span {
                 start: LineColumn { line: 1, column: 6 },
                 end: LineColumn {
@@ -670,8 +678,8 @@ mod tests {
         const EXPECTED: &'static str = r#"error: spellcheck(Dummy)
   --> /tmp/test/entity:1
    |
- 1 | Is it dyrck again?
-   |       ^^^^^
+ 1 |  Is it dyrck again?
+   |        ^^^^^
    | - replacement_0, replacement_1, or replacement_2
    |
    |   Possible spelling mistake found.
@@ -680,6 +688,82 @@ mod tests {
 
         assert_display_eq(suggestion, EXPECTED);
     }
+
+
+    #[test]
+    fn fmt_1_multi() {
+        const CONTENT: &'static str = r#" Line mitake 1
+ Anowher 2
+ Last"#;
+
+        let chunk = CheckableChunk::from_str(
+            CONTENT,
+            indexmap::indexmap! {
+                0..13 => Span {
+                    start: LineColumn {
+                        line: 1,
+                        column: 4,
+                    },
+                    end: LineColumn {
+                        line: 1,
+                        column: 16,
+                    }
+                },
+                14..24 => Span {
+                    start: LineColumn {
+                        line: 2,
+                        column: 4,
+                    },
+                    end: LineColumn {
+                        line: 2,
+                        column: 12,
+                    }
+                },
+                25..29 => Span {
+                    start: LineColumn {
+                        line: 3,
+                        column: 4,
+                    },
+                    end: LineColumn {
+                        line: 3,
+                        column: 7,
+                    }
+                }
+            },
+        );
+
+        let suggestion = Suggestion {
+            detector: Detector::Dummy,
+            origin: ContentOrigin::TestEntity,
+            chunk: &chunk,
+            range: 6..12,
+            span: Span {
+                start: LineColumn { line: 1, column: 10 },
+                end: LineColumn { line: 1, column: 16 },
+            },
+            replacements: vec!["replacement_0", "replacement_1", "replacement_2"]
+                .into_iter()
+                .map(std::borrow::ToOwned::to_owned)
+                .collect(),
+            description: Some("Possible spelling mistake found.".to_owned()),
+        };
+
+        const EXPECTED: &'static str = r#"error: spellcheck(Dummy)
+  --> /tmp/test/entity:1
+   |
+ 1 |  Line mitake 1
+   |       ^^^^^^
+   | - replacement_0, replacement_1, or replacement_2
+   |
+   |   Possible spelling mistake found.
+   |
+"#;
+
+        assert_display_eq(suggestion, EXPECTED);
+    }
+
+
+
 
     #[test]
     fn multiline_is_dbg_printable() {
