@@ -85,16 +85,21 @@ impl fmt::Display for Detector {
 
 // For long lines, literal will be trimmed to display in one terminal line.
 // Misspelled words that are too long shall also be ellipsized.
-pub fn convert_long_statements_to_short(
+pub fn condition_display_content(
     terminal_size: usize,
     indent: usize,
     stripped_line: &str,
-    offset: &mut usize,
-    range_word: Range,
+    mistake_range: Range,
     padding_till_excerpt_start: usize,
-    marker_size: &mut usize,
-) -> String {
-    use super::*;
+    chars_till_start_statement: usize,
+    offset: usize,
+    marker_size: usize,
+) -> (String, usize, usize) {
+
+    if stripped_line.chars().count() + padding_till_excerpt_start <= terminal_size {
+        offset = offset.saturating_sub(chars_till_start_statement);
+        return (stripped_line.to_owned(), offset, marker_size)
+    }
 
     // The paddings give some space for the ` {} ...` and extra indentation and formatting:
     //
@@ -105,110 +110,165 @@ pub fn convert_long_statements_to_short(
     //   --> /home/tmhdev/Documents/cargo-spellcheck/src/suggestion.rs:62
     //    |
     // 62 |  ... Reasn of food, what's up with pie? There's strawberry pie, apple, pumpkin ...
-    //    |      ^^^^^^
+    //    |      ^^^^^
     //    | - there, Cherie, thither, or tither
     //    |
     //    |   Possible spelling mistake found.
     //
     const PADDING_OFFSET: usize = 5;
-    const TOO_LONG_WORD: usize = 20;
-    const DISPLAYED_LONG_WORD: usize = 4;
-    const PADDING_AROUND_LONG_LINES: usize = 10;
+    const MAX_MISTAKE_LEN: usize = 20;
+
+    const HEAD_DISPLAY_LEN: usize = 4;
+    const TAIL_DISPLAY_LEN: usize = 4;
+    const DOTS_LEN: usize = 3;
+
+    assert!(HEAD_DISPLAY_LEN + DOTS_LEN + TAIL_DISPLAY_LEN <= MAX_MISTAKE_LEN);
+
+    const TOTAL_CONTEXT_CHAR_COUNT: usize = 10;
 
     // We will be using ranges to help doing the fitting:
     //
     // |-----------------------------------excerpt--------------------------------------|
     // |----------------------|---------misspelled_word---------|-----------------------|
-    // |-----left_context-----|range_start_word|-range_end_word-|-----right_context-----|
+    // |-----left_context-----|head_sub_range|-tail_sub_range-|-----right_context-----|
     //
     // Obs: paddings are not being considered in the illustration, but info is above.
 
-    let mut range_start_word = Range {
-        start: range_word.start,
-        end: range_word.start,
+    let mut head_sub_range = Range {
+        start: mistake_range.start,
+        end: mistake_range.start,
     };
-    let mut range_end_word = Range {
-        start: range_word.end,
-        end: range_word.end,
+    let mut tail_sub_range = Range {
+        start: mistake_range.end,
+        end: mistake_range.end,
     };
     let mut misspelled_word: String = stripped_line
         .chars()
-        .skip(range_word.start)
-        .take(range_word.len())
+        .skip(mistake_range.start)
+        .take(mistake_range.len())
         .collect();
 
-    // Misspelled words that are too long will be formatted for fitting.
-    if range_word.len() > TOO_LONG_WORD {
-        range_start_word = Range {
-            start: range_word.start,
-            end: range_start_word.start + DISPLAYED_LONG_WORD,
+    // Misspelled words that are too long will be shrunken by ellipsizing parts of it.
+    let (marker_size, shrunken) = if mistake_range.len() > MAX_MISTAKE_LEN {
+        head_sub_range = Range {
+            start: mistake_range.start,
+            end: head_sub_range.start + HEAD_DISPLAY_LEN,
         };
-        range_end_word = Range {
-            start: range_word
+        tail_sub_range = Range {
+            start: mistake_range
                 .end //non inclusive
-                .saturating_sub(DISPLAYED_LONG_WORD),
-            end: range_word.end,
+                .saturating_sub(HEAD_DISPLAY_LEN),
+            end: mistake_range.end,
         };
 
         //  too long word will be shorter as it follows:
-        //           |-------------------| > TOO_LONG_WORD
+        //           |-------------------| > MAX_MISTAKE_LEN
         //           therieeeeeeeeeeeeeeee
-        //    4 chars |----|  ... |---| 3 chars
-        //                ther...eee
+        //   4 chars |----|  ...    |----| 4 chars
         //
-        let start_word = stripped_line
+        //  result:      ther...eeee
+
+        let head_sub = stripped_line
             .chars()
-            .skip(range_start_word.start)
-            .take(range_start_word.len())
+            .skip(head_sub_range.start)
+            .take(head_sub_range.len())
             .collect::<String>();
-        let end_word = stripped_line
+        let tail_sub = stripped_line
             .chars()
-            .skip(range_start_word.end.saturating_sub(3))
-            .take(3)
+            .skip(head_sub_range.end - TAIL_DISPLAY_LEN)
+            .take(TAIL_DISPLAY_LEN)
             .collect::<String>();
-        misspelled_word = format!("{}...{}", start_word, end_word);
-        *marker_size = start_word.chars().count() + end_word.chars().count();
-    }
-    let available_space = (terminal_size.saturating_sub(
-        misspelled_word.chars().count() + padding_till_excerpt_start + PADDING_AROUND_LONG_LINES,
-    )) / 2;
-    let mut left_context = Range {
-        start: 0,
-        end: range_word.start,
-    };
-    let mut right_context = Range {
-        start: range_word.end,
-        end: stripped_line.chars().count(),
+
+        let shrunken = format!("{}...{}", head_sub, tail_sub);
+        // with the assert we are guaranteed that all iterators always take the desired amount
+        let marker_size = head_sub_range.len() + DOTS_LEN + tail_sub_range.len();
+
+        (marker_size, shrunken)
+    } else {
+        (marker_size, stripped_line.to_owned())
     };
 
-    match (
-        available_space > left_context.len(),
-        available_space > right_context.len(),
+    // calculate the available space after accounting for the static and shrunken mistake
+    let avail_space = terminal_size.saturating_sub(
+        marker_size + padding_till_excerpt_start + TOTAL_CONTEXT_CHAR_COUNT,
+    );
+
+    // take both sides of the mistake and insert the possibly shrunken mistake
+    // and put them together, after conditioning the left and right context
+
+    let mut left_context = Range {
+        start: 0,
+        end: mistake_range.start,
+    };
+
+    let stripped_line_len = stripped_line.chars().count();
+    let mut right_context = Range {
+        start: mistake_range.end,
+        end: stripped_line_len,
+    };
+
+    // full, uncut context coverage
+    let left_context = Range {
+        start: 0,
+        end: mistake_range.start,
+    };
+    let right_context = Range {
+        start: mistake_range.end,
+        end: stripped_line_len,
+    };
+
+    let stripped_line_len = stripped_line.chars().count();
+    // left and right we account half of it
+    let avail_space_half = avail_space / 2usize;
+
+    let (left_context, right_context) = match (
+        avail_space_half > left_context.len(),
+        avail_space_half > right_context.len(),
     ) {
         (true, false) => {
-            let right_available_space_recalculated =
-                2 * available_space as i32 - left_context.len() as i32;
-            right_context.end = cmp::min(
-                (range_word.end as i32 + right_available_space_recalculated as i32) as usize,
-                stripped_line.chars().count(),
-            )
+            // left context does not use all the capacity avail
+            // allow the right context to consume the excess.
+            let right_avail_space = avail_space - left_context.len();
+            (left_context,
+            Range {
+                start: right_context.end,
+                end: cmp::min(mistake_range.end + right_avail_space, stripped_line_len),
+            })
         }
         (false, true) => {
-            let left_available_space_recalculated =
-                2 * available_space as i32 - right_context.len() as i32;
-            left_context.start = cmp::max(
-                (range_word.start as i32 - left_available_space_recalculated as i32) as usize,
-                0usize,
-            );
+            // right context does not use all the capacity avail
+            // allow the left context to consume the excess.
+            let left_avail_space = avail_space - right_context.len();
+            (Range {
+                start : left_context.end.saturating_sub(left_avail_space),
+                end : left_context.end
+            },
+            right_context)
         }
         (false, false) => {
-            left_context.start = range_word.start - available_space;
-            right_context.end = range_word.end + available_space;
+            // both sides have excess chars, so yield `avail_space_half` to both sides
+            (Range {
+                start : left_context.end.saturating_sub(avail_space),
+                end : left_context.end
+            },
+            Range {
+                start : right_context.start,
+                end : right_context.start + avail_space_half
+            })
         }
-        _ => (),
+        _ => {
+            // both sides are less than the allowed context, no need to modify
+            (left_context, right_context)
+        }
     };
-    *offset = left_context.len() + PADDING_OFFSET;
-    format!(
+
+    assert!(left_context.start >= 0);
+    assert!(left_context.end == mistake_range.start);
+    assert!(right_context.end <= stripped_line_len);
+    assert!(left_context.len() + mistake_range.len() + right_context.len() <= stripped_line_len);
+
+    let offset = left_context.len() + PADDING_OFFSET;
+    let conditioned_line = format!(
         "  ... {}{}{} ...",
         stripped_line
             .chars()
@@ -221,11 +281,9 @@ pub fn convert_long_statements_to_short(
             .skip(right_context.start)
             .take(right_context.len())
             .collect::<String>()
-    )
+    );
+    (conditioned_line, offset, marker_size)
 }
-// Formatting itself added white spaces and punctuation to do the fitting to be considered:
-//
-//     |------ info ----| => PADDING_AROUND_LONG_LINES = 10 usize
 
 /// A suggestion for certain offending span.
 #[derive(Clone, Hash, PartialEq, Eq)]
@@ -234,7 +292,7 @@ pub struct Suggestion<'s> {
     pub detector: Detector,
     /// Reference to the file location the `span` and `literal` relate to.
     pub origin: ContentOrigin,
-    /// @todo must become a `CheckableChunk` and properly integrated
+    /// The suggestion is relative to a specific chunk.
     pub chunk: &'s CheckableChunk,
     /// The span (absolute!) within the file or chunk (depens on `origin`).
     pub span: Span,
@@ -293,18 +351,16 @@ impl<'s> fmt::Display for Suggestion<'s> {
         // underline the relevant part with ^^^^^
 
         // @todo this needs some more thought once multiline comments pop up
-        let mut marker_size = if self.span.end.line == self.span.start.line {
-            // column bounds are inclusive, so for a correct length we need to add + 1
-            self.span.end.column.saturating_sub(self.span.start.column) + 1
-        } else {
-            self.chunk
-                .len_in_chars()
-                .saturating_sub(self.span.start.column)
-        };
+        let marker_size =  self.span.one_line_len().unwrap_or_else(|| {
+                self.chunk
+                    .len_in_chars()
+                    .saturating_sub(self.span.start.column)
+            });
+
         // if the offset starts from 0, we still want to continue if the length
         // of the marker is at least length 1.
         let mut offset = self.range.start;
-        let mut v = self
+        let mut relevant_lines = self
             .chunk
             .as_str()
             .lines()
@@ -315,9 +371,9 @@ impl<'s> fmt::Display for Suggestion<'s> {
             .map(|(_, content)| content)
             .collect::<Vec<&'_ str>>();
 
-        let (stripped_line, pos) = get_current_statement(&v.as_ref(), self.range.clone());
-        let chars_till_start_statement = v[0..pos].iter().fold(0, |sum, x| sum + x.chars().count());
-        let range_word: Range = Range {
+        let (stripped_line, pos) = get_current_statement(&relevant_lines.as_ref(), self.range.clone());
+        let chars_till_start_statement = relevant_lines[0..pos].iter().fold(0, |sum, x| sum + x.chars().count());
+        let mistake_range = Range {
             start: self.range.start.saturating_sub(chars_till_start_statement),
             end: self.range.end.saturating_sub(chars_till_start_statement),
         };
@@ -329,23 +385,12 @@ impl<'s> fmt::Display for Suggestion<'s> {
         let padding_till_excerpt_start = indent + 2;
 
         // Check whether the statement is too long the terminal size for fitting purposes.
-        if stripped_line.char_indices().count() + padding_till_excerpt_start > terminal_size {
-            let formatted_literal = convert_long_statements_to_short(
-                terminal_size,
-                indent,
-                stripped_line,
-                &mut offset,
-                range_word,
-                padding_till_excerpt_start,
-                &mut marker_size,
-            );
-            writeln!(formatter, "{}", formatted_literal)?;
 
-        // literal is smaller than terminal size and it can be fully displayed.
-        } else {
-            offset = offset.saturating_sub(chars_till_start_statement);
-            writeln!(formatter, "  {}", stripped_line)?;
-        }
+        let (formatted, offset, marker_size) = condition_display_content(
+            terminal_size, indent, stripped_line, mistake_range, padding_till_excerpt_start, chars_till_start_statement, offset, marker_size);
+
+        formatter.write_str(formatted.as_str())?;
+        formatter.write_str("\n")?;
 
         if marker_size > 0 {
             context_marker
@@ -356,29 +401,21 @@ impl<'s> fmt::Display for Suggestion<'s> {
             help.apply_to(format!("{:^>size$}", "", size = marker_size))
                 .fmt(formatter)?;
             formatter.write_str("\n")?;
-        // @todo
-        // log::trace!(
-        //     "marker_size={} [{}|{}|{}] literal {{ {:?} .. {:?} }} >> {:?} <<",
-        //     marker_size,
-        //     self.chunk.pre(),
-        //     self.chunk.len(),
-        //     self.chunk.post(),
-        //     self.span.start,
-        //     self.span.end,
-        //     self,
-        // );
+            log::trace!(
+                "marker_size={} span {{ {:?} .. {:?} }} >> {:?} <<",
+                marker_size,
+                self.span.start,
+                self.span.end,
+                self,
+            );
         } else {
-            // @todo
-            // log::warn!(
-            //     "marker_size={} [{}|{}|{}] literal {{ {:?} .. {:?} }} >> {:?} <<",
-            //     marker_size,
-            //     self.chunk.pre(),
-            //     self.chunk.len(),
-            //     self.chunk.post(),
-            //     self.span.start,
-            //     self.span.end,
-            //     self,
-            // );
+            log::warn!(
+                "marker_size={} span {{ {:?} .. {:?} }} >> {:?} <<",
+                marker_size,
+                self.span.start,
+                self.span.end,
+                self,
+            );
         }
 
         context_marker
