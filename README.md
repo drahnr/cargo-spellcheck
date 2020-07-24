@@ -65,7 +65,7 @@ mistakes are found instead of `0`.
 * [x] `cargo-spellcheck check`
 * [x] Spell checking using `hunspell`
 * [x] Merge multiline doc comments
-* [ ] Handle multiline and fragmented mistakes (i.e. for grammar) [#25](https://github.com/drahnr/cargo-spellcheck/issues/25)
+* [x] Handle multiline and fragmented mistakes (i.e. for grammar) [#25](https://github.com/drahnr/cargo-spellcheck/issues/25)
 * [x] Grammar check using `languagetool` http API
 * [x] Follow module declarations rather than blindly recurse
 * [x] Be `markdown` aware
@@ -75,7 +75,7 @@ mistakes are found instead of `0`.
 * [ ] Check mdbook `book.toml` file trees [#62](https://github.com/drahnr/cargo-spellcheck/issues/62)
 * [x] `cargo-spellcheck fix --interactive`
 * [x] Improve interactive user interface with `crossterm`
-* [ ] Ellipsize overly long statements with `...` [#42](https://github.com/drahnr/cargo-spellcheck/issues/42)
+* [x] Ellipsize overly long statements with `...` [#42](https://github.com/drahnr/cargo-spellcheck/issues/42)
 * [ ] Learn topic lingo and filter false-positive-suggestions when `fix --interactive` is passed [#41](https://github.com/drahnr/cargo-spellcheck/issues/41)
 * [x] Handle cargo workspaces [#38](https://github.com/drahnr/cargo-spellcheck/issues/38)
 * [ ] Re-wrap doc comments [#39](https://github.com/drahnr/cargo-spellcheck/issues/39)
