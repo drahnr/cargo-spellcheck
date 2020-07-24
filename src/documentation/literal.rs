@@ -533,8 +533,7 @@ struct Five;
         },
         // 6
         Triplet {
-                source:
-r#"
+            source: r#"
 
     /// if a layer is provided a identiacla "input" and "output", it will only be supplied an
     fn compute_in_place(&self) -> bool {
@@ -542,34 +541,32 @@ r#"
     }
 
 "#,
-        extracted: r#"" if a layer is provided a identiacla \"input\" and \"output\", it will only be supplied an""#,
-        trimmed: r#" if a layer is provided a identiacla \"input\" and \"output\", it will only be supplied an"#,
-        extracted_span: Span {
-            start: LineColumn {
-                line: 3usize,
-                column: 7usize - GAENSEFUESSCHEN,
+            extracted: r#"" if a layer is provided a identiacla \"input\" and \"output\", it will only be supplied an""#,
+            trimmed: r#" if a layer is provided a identiacla \"input\" and \"output\", it will only be supplied an"#,
+            extracted_span: Span {
+                start: LineColumn {
+                    line: 3usize,
+                    column: 7usize - GAENSEFUESSCHEN,
+                },
+                end: LineColumn {
+                    line: 2usize,
+                    column: 96usize + GAENSEFUESSCHEN,
+                },
             },
-            end: LineColumn {
-                line: 2usize,
-                column: 96usize + GAENSEFUESSCHEN,
+            trimmed_span: Span {
+                start: LineColumn {
+                    line: 3usize,
+                    column: 7usize,
+                },
+                end: LineColumn {
+                    line: 3usize,
+                    column: 96usize,
+                },
             },
         },
-        trimmed_span: Span {
-            start: LineColumn {
-                line: 3usize,
-                column: 7usize,
-            },
-            end: LineColumn {
-                line: 3usize,
-                column: 96usize,
-            },
-        },
-    },
         // 7
-
         Triplet {
-            source:
-r#"
+            source: r#"
 
 /// A ← αA<sup>OP</sup>x + βy
 fn unicode(&self) -> bool {
@@ -577,29 +574,29 @@ fn unicode(&self) -> bool {
 }
 
 "#,
-    extracted: r#"" A ← αA<sup>OP</sup>x + βy""#,
-    trimmed: r#" A ← αA<sup>OP</sup>x + βy"#,
-    extracted_span: Span {
-        start: LineColumn {
-            line: 3usize,
-            column: 3usize - GAENSEFUESSCHEN,
+            extracted: r#"" A ← αA<sup>OP</sup>x + βy""#,
+            trimmed: r#" A ← αA<sup>OP</sup>x + βy"#,
+            extracted_span: Span {
+                start: LineColumn {
+                    line: 3usize,
+                    column: 3usize - GAENSEFUESSCHEN,
+                },
+                end: LineColumn {
+                    line: 2usize,
+                    column: 28usize + GAENSEFUESSCHEN,
+                },
+            },
+            trimmed_span: Span {
+                start: LineColumn {
+                    line: 3usize,
+                    column: 3usize,
+                },
+                end: LineColumn {
+                    line: 3usize,
+                    column: 28usize,
+                },
+            },
         },
-        end: LineColumn {
-            line: 2usize,
-            column: 28usize + GAENSEFUESSCHEN,
-        },
-    },
-    trimmed_span: Span {
-        start: LineColumn {
-            line: 3usize,
-            column: 3usize,
-        },
-        end: LineColumn {
-            line: 3usize,
-            column: 28usize,
-        },
-    },
-},
     ];
 
     fn comment_variant_span_range_validation(index: usize) {
