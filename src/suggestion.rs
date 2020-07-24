@@ -49,21 +49,6 @@ pub fn get_terminal_size() -> usize {
     DEFAULT_TERMINAL_SIZE
 }
 
-pub fn get_current_statement<'a>(arr: &'a Vec<&'_ str>, range: Range) -> (&'a str, usize) {
-    let mut stripped_line: &str = "";
-    let mut initial_sentence: usize = 0;
-    let mut line_pos: usize = 0;
-    for (pos, sentence) in arr.iter().enumerate() {
-        initial_sentence += sentence.chars().count();
-        line_pos = pos;
-        stripped_line = sentence;
-        if range.end < initial_sentence {
-            break;
-        }
-    }
-    (stripped_line, line_pos)
-}
-
 // impl
 // // TODO use this to display included compiled backends
 // fn list_available() {
@@ -94,13 +79,10 @@ pub fn condition_display_content(
     stripped_line: &str,
     mistake_range: Range,
     padding_till_excerpt_start: usize,
-    chars_till_start_statement: usize,
-    offset: usize,
     marker_size: usize,
 ) -> (String, usize, usize) {
     if stripped_line.chars().count() + padding_till_excerpt_start <= terminal_size {
-        let offset = offset.saturating_sub(chars_till_start_statement);
-        return (stripped_line.to_owned(), offset, marker_size);
+        return (stripped_line.to_owned(), mistake_range.start, marker_size);
     }
 
     // The paddings give some space for the ` {} ...` and extra indentation and formatting:
@@ -373,29 +355,40 @@ impl<'s> fmt::Display for Suggestion<'s> {
                 .saturating_sub(self.span.start.column)
         });
 
-        // if the offset starts from 0, we still want to continue if the length
-        // of the marker is at least length 1.
-        let mut offset = self.range.start;
-        let mut relevant_lines = self
+
+        /// assumes the _mistake_ is within one line
+        /// if not we chop it down to the first line
+        let (line_range, start_of_line_offset) = self
             .chunk
             .as_str()
-            .lines()
+            .chars()
             .enumerate()
-            .map(|(lineno, content)| (lineno + 1, content))
-            .skip_while(|(lineno, _)| &self.span.start.line < lineno)
-            .take_while(|(lineno, _)| &self.span.end.line >= lineno)
-            .map(|(_, content)| content)
-            .collect::<Vec<&'_ str>>();
+            .scan(0usize, |last_newline_plus_1, (idx, c)| {
+                match c {
+                    '\n' => {
+                        *last_newline_plus_1 = idx + 1;
+                    }
+                    _ => {},
+                }
+                Some((idx, c, *last_newline_plus_1))
+            })
+            .skip_while(|(idx, c, last_newline_plus_1)| *idx < self.range.start)
+            .take_while(|(idx, c, last_newline_plus_1)| *c != '\n')
+            .last() // the last contains the last chars index, and the index of the previous newline
+            .map(|(idx, _, last_newline_plus_1)| {
+                let mistake_to_start_of_line_offset = self.range.start - last_newline_plus_1;
+                (last_newline_plus_1..(idx+1), mistake_to_start_of_line_offset)
+            }).expect("Must have at least one relevant line");
 
-        let (stripped_line, pos) =
-            get_current_statement(&relevant_lines.as_ref(), self.range.clone());
-        let chars_till_start_statement = relevant_lines[0..pos]
-            .iter()
-            .fold(0, |sum, x| sum + x.chars().count());
-        let mistake_range = Range {
-            start: self.range.start.saturating_sub(chars_till_start_statement),
-            end: self.range.end.saturating_sub(chars_till_start_statement),
+        let intra_line_mistake_range = Range {
+            start: start_of_line_offset,
+            end: cmp::min(start_of_line_offset + self.range.len(), line_range.len()),
         };
+        let relevant_line = self.chunk.as_str().chars().enumerate()
+            .skip_while(|(idx, _)| line_range.start > *idx )
+            .take(line_range.len())
+            .map(|(_, c)| c)
+            .collect::<String>();
 
         let terminal_size = get_terminal_size();
 
@@ -408,11 +401,9 @@ impl<'s> fmt::Display for Suggestion<'s> {
         let (formatted, offset, marker_size) = condition_display_content(
             terminal_size,
             indent,
-            stripped_line,
-            mistake_range,
+            relevant_line.as_str(),
+            intra_line_mistake_range,
             padding_till_excerpt_start,
-            chars_till_start_statement,
-            offset,
             marker_size,
         );
 
@@ -825,7 +816,7 @@ mod tests {
             detector: Detector::Dummy,
             origin: ContentOrigin::TestEntity,
             chunk: &chunk,
-            range: 65..93,
+            range: 66..94,
             span: Span {
                 start: LineColumn { line: 2, column: 5 },
                 end: LineColumn {
