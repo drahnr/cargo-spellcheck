@@ -100,7 +100,7 @@ impl TryFrom<proc_macro2::Literal> for TrimmedLiteral {
         match (pre, post, disc) {
             (1, 1, '"') => {
                 // we know for sure that `///` are one line literals only
-                if let Some(span_len) = dbg!(&span).one_line_len() {
+                if let Some(span_len) = span.one_line_len() {
                     let render_len = rendered.len();
                     log::trace!(target: "quirks", "len(span): {:?} ?= len(render): {:?}  for >{}< ", span_len, render_len, &rendered);
                     // includes the ticks, so substract
@@ -531,6 +531,75 @@ struct Five;
                 },
             },
         },
+        // 6
+        Triplet {
+                source:
+r#"
+
+    /// if a layer is provided a identiacla "input" and "output", it will only be supplied an
+    fn compute_in_place(&self) -> bool {
+        false
+    }
+
+"#,
+        extracted: r#"" if a layer is provided a identiacla \"input\" and \"output\", it will only be supplied an""#,
+        trimmed: r#" if a layer is provided a identiacla \"input\" and \"output\", it will only be supplied an"#,
+        extracted_span: Span {
+            start: LineColumn {
+                line: 3usize,
+                column: 7usize - GAENSEFUESSCHEN,
+            },
+            end: LineColumn {
+                line: 2usize,
+                column: 96usize + GAENSEFUESSCHEN,
+            },
+        },
+        trimmed_span: Span {
+            start: LineColumn {
+                line: 3usize,
+                column: 7usize,
+            },
+            end: LineColumn {
+                line: 3usize,
+                column: 96usize,
+            },
+        },
+    },
+        // 7
+
+        Triplet {
+            source:
+r#"
+
+/// A ← αA<sup>OP</sup>x + βy
+fn unicode(&self) -> bool {
+    true
+}
+
+"#,
+    extracted: r#"" A ← αA<sup>OP</sup>x + βy""#,
+    trimmed: r#" A ← αA<sup>OP</sup>x + βy"#,
+    extracted_span: Span {
+        start: LineColumn {
+            line: 3usize,
+            column: 3usize - GAENSEFUESSCHEN,
+        },
+        end: LineColumn {
+            line: 2usize,
+            column: 28usize + GAENSEFUESSCHEN,
+        },
+    },
+    trimmed_span: Span {
+        start: LineColumn {
+            line: 3usize,
+            column: 3usize,
+        },
+        end: LineColumn {
+            line: 3usize,
+            column: 28usize,
+        },
+    },
+},
     ];
 
     fn comment_variant_span_range_validation(index: usize) {
@@ -587,5 +656,16 @@ struct Five;
     #[test]
     fn raw_variant_5_doc_spaces_eq_single_quote() {
         comment_variant_span_range_validation(5);
+    }
+
+    #[test]
+    fn raw_variant_6_quote_chars() {
+        comment_variant_span_range_validation(6);
+    }
+
+    #[test]
+    #[ignore]
+    fn raw_variant_7_unicode_symbols() {
+        comment_variant_span_range_validation(7);
     }
 }
