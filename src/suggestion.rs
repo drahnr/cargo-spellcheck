@@ -117,22 +117,13 @@ pub fn condition_display_content(
     //
     // Obs: paddings are not being considered in the illustration, but info is above.
 
-    let mut head_sub_range = Range {
-        start: mistake_range.start,
-        end: mistake_range.start,
-    };
-    let mut tail_sub_range = Range {
-        start: mistake_range.end,
-        end: mistake_range.end,
-    };
-
     // Misspelled words that are too long will be shrunken by ellipsizing parts of it.
     let (marker_size, shrunken) = if mistake_range.len() > MAX_MISTAKE_LEN {
-        head_sub_range = Range {
+        let head_sub_range = Range {
             start: mistake_range.start,
             end: mistake_range.start + HEAD_DISPLAY_LEN,
         };
-        tail_sub_range = Range {
+        let tail_sub_range = Range {
             start: mistake_range
                 .end //non inclusive
                 .saturating_sub(TAIL_DISPLAY_LEN),
@@ -240,7 +231,6 @@ pub fn condition_display_content(
         }
     };
 
-    assert!(left_context.start >= 0);
     assert!(left_context.end == mistake_range.start);
     assert!(right_context.end <= stripped_line_len);
     assert!(left_context.len() + mistake_range.len() + right_context.len() <= stripped_line_len);
