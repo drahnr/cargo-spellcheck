@@ -139,7 +139,7 @@ pub(crate) mod tests {
                 if cursor.line == span.start.line && cursor.column < span.start.column {
                     return None;
                 }
-                if cursor.line == span.end.line && cursor.column > span.end.column {
+                if cursor.line == span.end.line && cursor.column >= span.end.column {
                     return None;
                 }
                 Some(c)
