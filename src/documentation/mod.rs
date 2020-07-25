@@ -111,7 +111,7 @@ impl From<(ContentOrigin, &str)> for Documentation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::action::bandaid::tests::load_span_from;
+    use crate::util::load_span_from;
     use crate::checker::Checker;
     use crate::fluff_up;
 

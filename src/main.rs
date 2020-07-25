@@ -5,7 +5,9 @@ mod documentation;
 mod span;
 mod suggestion;
 mod traverse;
+mod util;
 
+pub use self::util::*;
 pub use self::action::*;
 pub use self::config::{Config, HunspellConfig, LanguageToolConfig};
 pub use self::documentation::*;

@@ -333,7 +333,7 @@ impl<'a> fmt::Display for ChunkDisplay<'a> {
 
 #[cfg(test)]
 mod test {
-    use super::action::bandaid::tests::load_span_from;
+    use super::util::load_span_from;
     use super::literalset::tests::gen_literal_set;
     use super::*;
 

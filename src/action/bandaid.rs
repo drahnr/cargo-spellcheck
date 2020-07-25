@@ -71,6 +71,7 @@ pub(crate) mod tests {
     use proc_macro2::LineColumn;
     use std::io::Read;
     use std::path::Path;
+    use crate::util::load_span_from;
 
     /// Extract span from file as String
     /// Helpful to validate bandaids against what's actually in the file
@@ -91,63 +92,6 @@ pub(crate) mod tests {
         load_span_from(reader, span)
     }
 
-    /// Extract span from String as String
-    /// Helpful to validate bandaids against what's actually in the string
-    // @todo does not handle cross line spans @todo yet
-    #[allow(unused)]
-    pub(crate) fn load_span_from<R>(mut source: R, span: Span) -> Result<String>
-    where
-        R: Read,
-    {
-        log::trace!("Loading {:?} from source", &span);
-        if span.start.line < 1 {
-            bail!("Lines are 1-indexed, can't be less than 1")
-        }
-        if span.end.line < span.start.line {
-            bail!("Line range would be negative, bail")
-        }
-        if span.end.line == span.start.line && span.end.column < span.start.column {
-            bail!("Column range would be negative, bail")
-        }
-        let mut s = String::with_capacity(256);
-        source
-            .read_to_string(&mut s)
-            .expect("Must read successfully");
-        let cursor = LineColumn { line: 1, column: 0 };
-        let extraction = s
-            .chars()
-            .enumerate()
-            .scan(cursor, |cursor, (idx, c)| {
-                let x = (idx, c, cursor.clone());
-                match c {
-                    '\n' => {
-                        cursor.line += 1;
-                        cursor.column = 0;
-                    }
-                    _ => cursor.column += 1,
-                }
-                Some(x)
-            })
-            .filter_map(|(idx, c, cursor)| {
-                if cursor.line < span.start.line {
-                    return None;
-                }
-                if cursor.line > span.end.line {
-                    return None;
-                }
-                // bounding lines
-                if cursor.line == span.start.line && cursor.column < span.start.column {
-                    return None;
-                }
-                if cursor.line == span.end.line && cursor.column >= span.end.column {
-                    return None;
-                }
-                Some(c)
-            })
-            .collect::<String>();
-        // log::trace!("Loading {:?} from line >{}<", &range, &line);
-        Ok(extraction)
-    }
 
     #[test]
     fn span_helper_integrity() {
