@@ -173,8 +173,6 @@ pub fn condition_display_content(
         end: stripped_line_len,
     };
 
-
-    // calculate the available space after accounting for the static and shortened mistake
     let avail_space = terminal_size
         .saturating_sub(marker_size + padding_till_excerpt_start + TOTAL_CONTEXT_CHAR_COUNT);
 
@@ -380,8 +378,6 @@ impl<'s> fmt::Display for Suggestion<'s> {
         // this values is dynamically calculated for each line where the doc is.
         // the line being analysed can affect how the indentation is done.
         let padding_till_excerpt_start = indent + 2;
-
-        // Check whether the statement is too long the terminal size for fitting purposes.
 
         let (formatted, offset, marker_size) = condition_display_content(
             terminal_size,
