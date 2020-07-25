@@ -103,9 +103,11 @@ pub fn condition_display_content(
     const TAIL_DISPLAY_LEN: usize = 4;
     const DOTS_LEN: usize = 3;
 
+    // guarantees that `marker_size` is always less than the max length.
     assert!(HEAD_DISPLAY_LEN + DOTS_LEN + TAIL_DISPLAY_LEN <= MAX_MISTAKE_LEN);
 
-    const TOTAL_CONTEXT_CHAR_COUNT: usize = 10;
+    // worst case conservative estimate, should be calculated based on `indent`
+    const TOTAL_CONTEXT_CHAR_COUNT: usize = 6;
 
     // We will be using ranges to help doing the fitting:
     //
@@ -115,8 +117,8 @@ pub fn condition_display_content(
     //
     // Obs: paddings are not being considered in the illustration, but info is above.
 
-    // Misspelled words that are too long will be shrunken by ellipsizing parts of it.
-    let (marker_size, shrunken) = if mistake_range.len() > MAX_MISTAKE_LEN {
+    // Misspelled words that are too long will be shortened by ellipsizing parts of it.
+    let (marker_size, shortened) = if mistake_range.len() > MAX_MISTAKE_LEN {
         let head_sub_range = Range {
             start: mistake_range.start,
             end: mistake_range.start + HEAD_DISPLAY_LEN,
@@ -146,11 +148,10 @@ pub fn condition_display_content(
             .take(TAIL_DISPLAY_LEN)
             .collect::<String>();
 
-        let shrunken = format!("{}...{}", head_sub, tail_sub);
-        // with the assert we are guaranteed that all iterators always take the desired amount
+        let shortened = format!("{}...{}", head_sub, tail_sub);
         let marker_size = head_sub_range.len() + DOTS_LEN + tail_sub_range.len();
 
-        (marker_size, shrunken)
+        (marker_size, shortened)
     } else {
         let full: String = stripped_line
             .chars()
@@ -160,12 +161,6 @@ pub fn condition_display_content(
         (marker_size, full)
     };
 
-    // calculate the available space after accounting for the static and shrunken mistake
-    let avail_space = terminal_size
-        .saturating_sub(marker_size + padding_till_excerpt_start + TOTAL_CONTEXT_CHAR_COUNT);
-
-    // take both sides of the mistake and insert the possibly shrunken mistake
-    // and put them together, after conditioning the left and right context
     let stripped_line_len = stripped_line.chars().count();
 
     // full, uncut context coverage
@@ -178,10 +173,15 @@ pub fn condition_display_content(
         end: stripped_line_len,
     };
 
-    let stripped_line_len = stripped_line.chars().count();
-    // left and right we account half of it
+
+    // calculate the available space after accounting for the static and shortened mistake
+    let avail_space = terminal_size
+        .saturating_sub(marker_size + padding_till_excerpt_start + TOTAL_CONTEXT_CHAR_COUNT);
+
+    // left and right we would like to partition the remaining space equally
     let avail_space_half = avail_space / 2usize;
 
+    // @todo introduce a threshold, so the shortened version is not longer than than the original
     let (left_context, right_context) = match (
         avail_space_half > left_context.len(),
         avail_space_half > right_context.len(),
@@ -250,7 +250,7 @@ pub fn condition_display_content(
             .skip(left_context.start)
             .take(left_context.len())
             .collect::<String>(),
-        shrunken,
+        shortened,
         stripped_line
             .chars()
             .skip(right_context.start)
@@ -819,8 +819,8 @@ mod tests {
         const EXPECTED: &'static str = r#"error: spellcheck(Dummy)
   --> /tmp/test/entity:2
    |
- 2 | ..uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuper duuu...uper too long
-   |                                               ^^^^^^^^^^^
+ 2 | ..uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuper duuu...uper too long
+   |                                                   ^^^^^^^^^^^
    | - replacement_0, replacement_1, or replacement_2
    |
    |   Possible spelling mistake found.

@@ -245,7 +245,7 @@ struct Vikings;
             let mut iter = dbg!(map_range_to_span).into_iter();
             let (range, _span) = iter.next().expect("Must be at least one literal");
 
-            /// the range for raw str contains an offset of 3 when used with `///`
+            // the range for raw str contains an offset of 3 when used with `///`
             let range_for_raw_str = Range {
                 start: range.start + START,
                 end: range.end + START,
@@ -266,7 +266,7 @@ struct Vikings;
         test_raw!(["+ 12 + x0"] ; 9..10, "0");
     }
 
-    use crate::action::bandaid::tests::load_span_from;
+    use crate::util::load_span_from;
 
     #[test]
     fn literal_set_into_chunk() {

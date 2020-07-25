@@ -1,5 +1,6 @@
 use crate::{Range, Span};
 use anyhow::{bail, Result};
+use crate::util;
 
 use regex::Regex;
 use std::convert::TryFrom;
@@ -58,90 +59,57 @@ impl std::hash::Hash for TrimmedLiteral {
 impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
     type Error = anyhow::Error;
     fn try_from((content, literal): (&str, proc_macro2::Literal)) -> Result<Self> {
-        let rendered = literal.to_string();
+
+        // pretty unusable garabage, since it modifies the content of `///`
+        // comments which could contain " which will be escaped
+        // and therefor cause the `span()` to yield something that does
+        // not align with the rendered literal at all and there are too
+        // many pitfalls to sanitize all cases
+        // let rendered = literal.to_string();
 
         lazy_static::lazy_static! {
-            static ref PREFIX_ERASER: Regex = Regex::new(r##"^((?:r#*)?")"##).unwrap();
-            static ref SUFFIX_ERASER: Regex = Regex::new(r##"("#*)$"##).unwrap();
-        };
-
-        // pre and post are for the rendered content
-        // not necessarily for the span
-        let pre = if let Some(captures) = PREFIX_ERASER.captures(rendered.as_str()) {
-            if let Some(prefix) = captures.get(1) {
-                prefix.as_str().len()
-            } else {
-                bail!("Unknown prefix of literal");
-            }
-        } else {
-            bail!("Missing prefix of literal: {}", rendered.as_str());
-        };
-        let post = if let Some(captures) = SUFFIX_ERASER.captures(rendered.as_str()) {
-            // capture indices are 1 based, 0 is the full string
-            if let Some(suffix) = captures.get(captures.len() - 1) {
-                suffix.as_str().len()
-            } else {
-                bail!("Unknown suffix of literal");
-            }
-        } else {
-            bail!("Missing suffix of literal: {}", rendered.as_str());
-        };
-
-        let (len, pre, post) = match rendered.len() {
-            len if len >= pre + post => (len - pre - post, pre, post),
-            _len => bail!("Prefix and suffix overlap, which is impossible"),
+            static ref BOUNDED: Regex = Regex::new(r##"^(\s*(?:r#*)?").*("#*\s*)$"##).unwrap();
         };
 
         let mut span = Span::from(literal.span());
+        let rendered = dbg!(util::load_span_from(content.as_bytes(), span.clone())?);
 
-        // check if it is a `///` comment, for which the literal
-        // span needs to be adjusted, since it would include the `///`
-        let disc = rendered.chars().next().unwrap();
-        match (pre, post, disc) {
-            (1, 1, '"') => {
-                // we know for sure that `///` are one line literals only
-                if let Some(span_len) = span.one_line_len() {
-                    let render_len = rendered.len();
-                    log::trace!(target: "quirks", "len(span): {:?} ?= len(render): {:?}  for >{}< ", span_len, render_len, &rendered);
-                    // includes the ticks, so substract
-                    match (render_len, span_len) {
-                        (rl, sl) if rl + 2 == sl => {
-                            log::trace!(target: "quirks", "Detected /// comment");
-                            // remove the two leading extra //, since pre=1 the third / will be removed below
-                            span.start.column += 2;
-                        }
-                        (rl, sl) if rl + 1 == sl => {
-                            log::trace!(target: "quirks", "Detected #[doc=\"...\"] comment");
-                            span.end.column = span.end.column.saturating_sub(1);
-                        }
-                        (rl, sl) if rl == sl => {
-                            log::trace!(target: "quirks", "Not sure what kind, but seems to be ok comment");
-                        }
-                        _ => {
-                            unreachable!("QED");
-                        }
-                    }
-                }
-                span.start.column += pre;
-                span.end.column -= post;
-            }
-            (pre, post, 'r') if pre == post + 1 => {
-                log::trace!(target: "quirks", "Dealing with #[doc=r####\"...\"#### style comment");
-                span.start.column += pre;
-                span.end.column -= post;
-                if let Some(_span_len) = span.one_line_len() {
-                    span.end.column = span.end.column.saturating_sub(1);
-                }
-            }
-            (pre, post, c) => {
-                log::error!(target: "quirks", "Dealing with unknown style comment ({},{},{}) . >{}<", pre, post, c, rendered);
-                span.start.column += pre;
-                span.end.column -= post;
-            }
-        }
+
+        log::trace!("extracted from source: >{}< @ {:?}", rendered, span);
+        let (extracted, pre, post) = if rendered.starts_with("///") || rendered.starts_with("//!") {
+            let pre = 3; // `///`
+            let post = 1; // trailing `\n`
+            // but the newline is not part of this
+            (&rendered[pre..(rendered.len()-post)], pre, post)
+        } else {
+            // pre and post are for the rendered content
+            // not necessarily for the span
+            let (pre, post) = if let Some(captures) = BOUNDED.captures(rendered.as_str()) {
+                let pre = if let Some(prefix) = captures.get(1) {
+                    dbg!(prefix.as_str()).len()
+                } else {
+                    bail!("Should have a pre match with a capture group");
+                };
+                let post = if let Some(suffix) = captures.get(captures.len() - 1) {
+                    dbg!(suffix.as_str()).len()
+                } else {
+                    bail!("Should have a post match with a capture group");
+                };
+                (pre, post)
+            } else {
+                bail!("Should match >{}<", rendered);
+            };
+            (&rendered[pre..(dbg!(rendered.len()) - dbg!(post))], pre, post)
+        };
+
+        let len = extracted.chars().count();
+
+        span.start.column += pre;
+        span.end.column -= post;
+
 
         if let Some(span_len) = span.one_line_len() {
-            log::trace!(target: "quirks", "{:?} {}||{} for >{}< ", span,pre, post,  &rendered);
+            log::trace!(target: "quirks", "{:?} {}||{} for \n extracted: >{}<\n rendered:  >{}<", span, pre, post, &extracted, rendered);
             assert_eq!(len, span_len);
         }
 
@@ -296,7 +264,7 @@ impl<'a> fmt::Display for TrimmedLiteralDisplay<'a> {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use crate::action::bandaid::tests::load_span_from;
+    use crate::util::load_span_from;
     use crate::LineColumn;
 
     pub(crate) fn annotated_literals(source: &str) -> Vec<TrimmedLiteral> {
@@ -356,17 +324,17 @@ struct One;
             extracted_span: Span {
                 start: LineColumn {
                     line: 2usize,
-                    column: 0, // @todo file a ticket with proc_macro2 to clarify if this is a bug or intended behaviour
+                    column: 0,
                 },
                 end: LineColumn {
                     line: 2usize,
-                    column: 10usize, // @todo why???
+                    column: 10usize,
                 },
             },
             trimmed_span: Span {
                 start: LineColumn {
                     line: 2usize,
-                    column: 3usize, // the expected start of our data
+                    column: 3usize,
                 },
                 end: LineColumn {
                     line: 2usize,
@@ -611,8 +579,6 @@ fn unicode(&self) -> bool {
         assert_eq!(literals.len(), 1);
 
         let literal = literals.first().expect("Must contain exactly one literal");
-
-        assert_eq!(literal.as_untrimmed_str(), triplet.extracted);
 
         assert_eq!(literal.as_str(), triplet.trimmed);
 

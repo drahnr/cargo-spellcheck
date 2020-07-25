@@ -4,7 +4,7 @@
 //! `.end` is inclusive.
 
 use crate::Range;
-
+use crate::util;
 use super::TrimmedLiteral;
 pub use proc_macro2::LineColumn;
 
@@ -88,18 +88,7 @@ impl Span {
         // relative to the range given / offset
         let mut start = 0usize;
         let mut end = 0usize;
-        let state = span.start;
-        for (idx, _c, line, col) in s.chars().enumerate().scan(state, |state, (idx, c)| {
-            let x = (idx, c, state.line, state.column);
-            match c {
-                '\n' => {
-                    state.line += 1;
-                    state.column = 0;
-                }
-                _ => state.column += 1,
-            }
-            Some(x)
-        }) {
+        for ( _c, idx, LineColumn { line, column }) in util::iter_with_line_column_from(s, span.start) {
             if line < self.start.line {
                 continue;
             }
@@ -107,16 +96,16 @@ impl Span {
                 bail!("Moved beyond anticipated line")
             }
 
-            if line >= self.end.line && col > self.end.column {
+            if line >= self.end.line && column > self.end.column {
                 bail!("Moved beyond anticipated column and last line")
             }
-            if line == self.start.line && col == self.start.column {
+            if line == self.start.line && column == self.start.column {
                 start = idx;
                 // do not continue, the first line/column could be the last one too!
             }
             end = idx;
             // if the iterations go to the end of the string, the condition will never be met inside the loop
-            if line == self.end.line && col == self.end.column {
+            if line == self.end.line && column == self.end.column {
                 break;
             }
 
@@ -124,7 +113,7 @@ impl Span {
                 bail!("Moved beyond anticipated line")
             }
 
-            if line >= self.end.line && col > self.end.column {
+            if line >= self.end.line && column > self.end.column {
                 bail!("Moved beyond anticipated column and last line")
             }
         }
@@ -249,7 +238,7 @@ impl From<&TrimmedLiteral> for Span {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::action::bandaid::tests::load_span_from;
+    use crate::util::load_span_from;
     use crate::documentation::literalset::tests::gen_literal_set;
     use crate::{chyrp_up, fluff_up};
     use crate::{LineColumn, Range, Span};
