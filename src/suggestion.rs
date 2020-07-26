@@ -133,7 +133,7 @@ pub fn condition_display_content(
         //  too long word will be shorter as it follows:
         //           |-------------------| > MAX_MISTAKE_LEN
         //           therieeeeeeeeeeeeeeee
-        //   4 chars |----|  ...    |----| 4 chars
+        //   4 chars  ^^^^   ...     ^^^^  4 chars
         //
         //  result:      ther...eeee
 
