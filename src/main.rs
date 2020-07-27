@@ -26,10 +26,10 @@ const USAGE: &str = r#"
 Spellcheck all your doc comments
 
 Usage:
-    cargo-spellcheck [(-v...|-q)] check [--cfg=<cfg>] [--code=<code>] [--checkers=<checkers>] [[--recursive] <paths>... ]
-    cargo-spellcheck [(-v...|-q)] fix [--cfg=<cfg>] [--interactive] [--code=<code>] [--checkers=<checkers>] [[--recursive] <paths>... ]
+    cargo-spellcheck [(-v...|-q)] check [--cfg=<cfg>] [--code=<code>] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
+    cargo-spellcheck [(-v...|-q)] fix [--cfg=<cfg>] [--interactive] [--code=<code>] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
     cargo-spellcheck [(-v...|-q)] config (--user|--stdout|--cfg=<cfg>) [--force]
-    cargo-spellcheck [(-v...|-q)] [--cfg=<cfg>] [--fix [--interactive]] [--code=<code>] [--checkers=<checkers>] [[--recursive] <paths>... ]
+    cargo-spellcheck [(-v...|-q)] [--cfg=<cfg>] [--fix [--interactive]] [--code=<code>] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
     cargo-spellcheck --help
     cargo-spellcheck --version
 
@@ -50,6 +50,7 @@ Options:
   -v --verbose              Verbosity level.
   -q --quiet                Silences all printed messages. Overrules `-v`.
   -m --code=<code>          Overwrite the exit value for a successful run with content mistakes found. [default=0]
+  --skip-readme             Do not attempt to process README.md files listed in Cargo.toml manifests.
 "#;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -84,8 +85,9 @@ struct Args {
     flag_cfg: Option<PathBuf>,
     flag_force: bool,
     flag_user: bool,
-    flag_stdout: bool,
+    flag_skip_readme: bool,
     flag_code: u8,
+    flag_stdout: bool,
     cmd_fix: bool,
     cmd_check: bool,
     cmd_config: bool,
@@ -258,7 +260,7 @@ fn run() -> anyhow::Result<ExitCode> {
 
     trace!("Executing: {:?} with {:?}", action, &config);
 
-    let combined = traverse::extract(args.arg_paths, args.flag_recursive, &config)?;
+    let combined = traverse::extract(args.arg_paths, args.flag_recursive, args.flag_skip_readme, &config)?;
 
     let suggestion_set = checker::check(&combined, &config)?;
 
