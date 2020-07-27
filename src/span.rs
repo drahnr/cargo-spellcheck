@@ -192,7 +192,7 @@ fn extract_sub_range_from_span(
     sub_span: Span,
 ) -> Result<Range> {
     if let Some(span_len) = span.one_line_len() {
-        debug_assert_eq!(&range.len(), span_len);
+        debug_assert_eq!(range.len(), span_len);
     }
 
     // extract the fragment of interest to which both `range` and `span` correspond.
@@ -239,7 +239,7 @@ fn extract_sub_range_from_span(
     assert!(sub_range.len() <= range.len());
 
     if let Some(sub_span_len) = sub_span.one_line_len() {
-        debug_assert_eq!(&sub_range.len(), sub_span_len);
+        debug_assert_eq!(sub_range.len(), sub_span_len);
     }
 
     return Ok(sub_range);
