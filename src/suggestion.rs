@@ -76,10 +76,11 @@ pub fn condition_display_content(
     _indent: usize,
     stripped_line: &str,
     mistake_range: Range,
-    padding_till_excerpt_start: usize,
+    terminal_print_offset_left: usize,
     marker_size: usize,
 ) -> (String, usize, usize) {
-    if stripped_line.chars().count() + padding_till_excerpt_start <= terminal_size {
+    // if we can fit the full line in there, avoid all the work as much as possible
+    if stripped_line.chars().count() + terminal_print_offset_left <= terminal_size {
         return (stripped_line.to_owned(), mistake_range.start, marker_size);
     }
 
@@ -87,12 +88,11 @@ pub fn condition_display_content(
     //
     //|---------------------------------------------------------------------------------------| terminal_size
     //|-------| padding_till_excerpt_start = indent (3+line_number_digit_count) + 2 white spaces = 7usize, for this case.
-    //     |------| offset = PADDING_OFFSET; 3 chars for `...` and 2 white spaces more added in the formatting.
     //
     //   --> /home/tmhdev/Documents/cargo-spellcheck/src/suggestion.rs:62
     //    |
-    // 62 |  ... Reasn of food, what's up with pie? There's strawberry pie, apple, pumpkin ...
-    //    |      ^^^^^
+    // 62 |  Reasn of food, what's up with pie? There's strawberry pie, apple, pumpkin..
+    //    |  ^^^^^
     //    | - there, Cherie, thither, or tither
     //    |
     //    |   Possible spelling mistake found.
@@ -101,10 +101,14 @@ pub fn condition_display_content(
 
     const HEAD_DISPLAY_LEN: usize = 4;
     const TAIL_DISPLAY_LEN: usize = 4;
-    const DOTS_LEN: usize = 3;
+
+    const CENTER_DOTS: &'static str = "...";
+    const LEFT_DOTS: &'static str = "..";
+    const RIGHT_DOTS: &'static str = "..";
+    const NO_DOTS: &'static str = "";
 
     // guarantees that `marker_size` is always less than the max length.
-    assert!(HEAD_DISPLAY_LEN + DOTS_LEN + TAIL_DISPLAY_LEN <= MAX_MISTAKE_LEN);
+    assert!(HEAD_DISPLAY_LEN + CENTER_DOTS.len() + TAIL_DISPLAY_LEN <= MAX_MISTAKE_LEN);
 
     // worst case conservative estimate, should be calculated based on `indent`
     const TOTAL_CONTEXT_CHAR_COUNT: usize = 6;
@@ -131,9 +135,9 @@ pub fn condition_display_content(
         };
 
         //  too long word will be shorter as it follows:
-        //           |-------------------| > MAX_MISTAKE_LEN
-        //           therieeeeeeeeeeeeeeee
-        //   4 chars  ^^^^   ...     ^^^^  4 chars
+        //            |-------------------| > MAX_MISTAKE_LEN
+        //            therieeeeeeeeeeeeeeee
+        //   4 chars  ^^^^   ...       ^^^^  4 chars
         //
         //  result:      ther...eeee
 
@@ -149,7 +153,7 @@ pub fn condition_display_content(
             .collect::<String>();
 
         let shortened = format!("{}...{}", head_sub, tail_sub);
-        let marker_size = head_sub_range.len() + DOTS_LEN + tail_sub_range.len();
+        let marker_size = head_sub_range.len() + CENTER_DOTS.len() + tail_sub_range.len();
 
         (marker_size, shortened)
     } else {
@@ -174,13 +178,13 @@ pub fn condition_display_content(
     };
 
     let avail_space = terminal_size
-        .saturating_sub(marker_size + padding_till_excerpt_start + TOTAL_CONTEXT_CHAR_COUNT);
+        .saturating_sub(terminal_print_offset_left + marker_size + TOTAL_CONTEXT_CHAR_COUNT);
 
     // left and right we would like to partition the remaining space equally
     let avail_space_half = avail_space / 2usize;
 
     // @todo introduce a threshold, so the shortened version is not longer than than the original
-    let (left_context, right_context) = match (
+    let (left_context, right_context, left_dots, right_dots) = match (
         avail_space_half > left_context.len(),
         avail_space_half > right_context.len(),
     ) {
@@ -188,24 +192,38 @@ pub fn condition_display_content(
             // left context does not use all the capacity avail
             // allow the right context to consume the excess.
             let right_avail_space = avail_space - left_context.len();
+            let rdots = if mistake_range.end + right_avail_space < stripped_line_len {
+                NO_DOTS
+            } else {
+                RIGHT_DOTS
+            };
             (
                 left_context,
                 Range {
                     start: right_context.end,
                     end: cmp::min(mistake_range.end + right_avail_space, stripped_line_len),
                 },
+                NO_DOTS,
+                rdots,
             )
         }
         (false, true) => {
             // right context does not use all the capacity avail
             // allow the left context to consume the excess.
             let left_avail_space = avail_space - right_context.len();
+            let ldots = if left_avail_space > left_context.end {
+                NO_DOTS
+            } else {
+                LEFT_DOTS
+            };
             (
                 Range {
                     start: left_context.end.saturating_sub(left_avail_space),
                     end: left_context.end,
                 },
                 right_context,
+                ldots,
+                NO_DOTS,
             )
         }
         (false, false) => {
@@ -219,11 +237,13 @@ pub fn condition_display_content(
                     start: right_context.start,
                     end: right_context.start + avail_space_half,
                 },
+                LEFT_DOTS,
+                RIGHT_DOTS,
             )
         }
         _ => {
             // both sides are less than the allowed context, no need to modify
-            (left_context, right_context)
+            (left_context, right_context, NO_DOTS, NO_DOTS)
         }
     };
 
@@ -231,30 +251,22 @@ pub fn condition_display_content(
     assert!(right_context.end <= stripped_line_len);
     assert!(left_context.len() + mistake_range.len() + right_context.len() <= stripped_line_len);
 
-    let more_left = if left_context.start == 0 { "" } else { ".." };
-
-    let more_right = if right_context.end == stripped_line_len {
-        ""
-    } else {
-        ".."
-    };
-
-    let offset = more_left.len() + left_context.len();
+    let offset = left_context.len();
     let conditioned_line = format!(
         "{}{}{}{}{}",
-        more_left,
+        left_dots,
         stripped_line
             .chars()
-            .skip(left_context.start)
-            .take(left_context.len())
+            .skip(left_context.start + left_dots.len())
+            .take(left_context.len() - left_dots.len())
             .collect::<String>(),
         shortened,
         stripped_line
             .chars()
             .skip(right_context.start)
-            .take(right_context.len())
+            .take(right_context.len() - right_dots.len())
             .collect::<String>(),
-        more_right,
+        right_dots,
     );
     (conditioned_line, offset, marker_size)
 }
