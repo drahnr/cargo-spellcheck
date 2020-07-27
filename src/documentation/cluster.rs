@@ -75,7 +75,10 @@ impl Clusters {
                             literal
                         );
                         if let Err(e) = self.process_literal(source, literal) {
-                            log::error!("BUG: Failed to guarantee literal content/span integrity: {}", e);
+                            log::error!(
+                                "BUG: Failed to guarantee literal content/span integrity: {}",
+                                e
+                            );
                             continue;
                         }
                     } else {
@@ -98,9 +101,8 @@ impl TryFrom<&str> for Clusters {
         let mut chunk = Self {
             set: Vec::with_capacity(64),
         };
-        let stream = syn::parse_str::<proc_macro2::TokenStream>(source).map_err(|e| {
-            anyhow!("Failed to parse content to stream").context(e)
-        })?;
+        let stream = syn::parse_str::<proc_macro2::TokenStream>(source)
+            .map_err(|e| anyhow!("Failed to parse content to stream").context(e))?;
         chunk.parse_token_tree(source, stream)?;
         Ok(chunk)
     }

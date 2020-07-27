@@ -333,8 +333,8 @@ impl<'a> fmt::Display for ChunkDisplay<'a> {
 
 #[cfg(test)]
 mod test {
-    use super::util::load_span_from;
     use super::literalset::tests::gen_literal_set;
+    use super::util::load_span_from;
     use super::*;
 
     #[test]
@@ -463,6 +463,7 @@ mod test {
         const SOURCE: &'static str = chyrp_up!(["Amsel", "Wacholderdrossel", "Buchfink"]);
         let set = gen_literal_set(SOURCE);
         let chunk = dbg!(CheckableChunk::from_literalset(set));
+
         const CHUNK_RANGES: &[Range] = &[0..(5 + 1 + 16 + 1 + 8)];
         const EXPECTED_SPANS: &[Span] = &[Span {
             start: LineColumn {

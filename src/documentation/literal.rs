@@ -1,6 +1,6 @@
+use crate::util;
 use crate::{Range, Span};
 use anyhow::{bail, Result};
-use crate::util;
 
 use regex::Regex;
 use std::convert::TryFrom;
@@ -59,7 +59,6 @@ impl std::hash::Hash for TrimmedLiteral {
 impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
     type Error = anyhow::Error;
     fn try_from((content, literal): (&str, proc_macro2::Literal)) -> Result<Self> {
-
         // pretty unusable garabage, since it modifies the content of `///`
         // comments which could contain " which will be escaped
         // and therefor cause the `span()` to yield something that does
@@ -68,45 +67,68 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
         // let rendered = literal.to_string();
 
         lazy_static::lazy_static! {
-            static ref BOUNDED: Regex = Regex::new(r##"^(\s*(?:r#*)?").*("#*\s*)$"##).unwrap();
+            static ref BOUNDED: Regex = Regex::new(r##"^(\s*(?:r#+)?")[^#"]+("#*\s*)$"##).unwrap();
         };
-
+        // XXX no idea why we have to match against the trailing `]` character, should not be part of the range
+        // but the span we obtain from literal seems to be wrong, adding one trailing char
         let mut span = Span::from(literal.span());
-        let rendered = dbg!(util::load_span_from(content.as_bytes(), span.clone())?);
+        span.end.column = span.end.column.saturating_sub(1); // either `]` or `\n` we don't need either
 
+        let rendered = util::load_span_from(content.as_bytes(), span.clone())?;
 
         log::trace!("extracted from source: >{}< @ {:?}", rendered, span);
-        let (extracted, pre, post) = if rendered.starts_with("///") || rendered.starts_with("//!") {
-            let pre = 3; // `///`
-            let post = 1; // trailing `\n`
-            // but the newline is not part of this
-            (&rendered[pre..(rendered.len()-post)], pre, post)
-        } else {
-            // pre and post are for the rendered content
-            // not necessarily for the span
-            let (pre, post) = if let Some(captures) = BOUNDED.captures(rendered.as_str()) {
-                let pre = if let Some(prefix) = captures.get(1) {
-                    dbg!(prefix.as_str()).len()
-                } else {
-                    bail!("Should have a pre match with a capture group");
-                };
-                let post = if let Some(suffix) = captures.get(captures.len() - 1) {
-                    dbg!(suffix.as_str()).len()
-                } else {
-                    bail!("Should have a post match with a capture group");
-                };
-                (pre, post)
+        let (extracted, span, pre, post) =
+            if rendered.starts_with("///") || rendered.starts_with("//!") {
+                let pre = 3; // `///`
+                let post = 0; // trailing `\n` is already accounted for above
+
+                span.start.column += pre;
+
+                // must always be a single line
+                assert_eq!(span.start.line, span.end.line);
+                // if the line includes quotes, the rustc converts them internally
+                // to `#[doc="content"]`, where - if `content` contains `"` will substitute
+                // them as `\"` which will inflate the number columns.
+                // Since we can not distinguish between orignally escaped, we simply
+                // use the content read from source.
+
+                (&rendered[pre..rendered.len()], span, pre, post)
             } else {
-                bail!("Should match >{}<", rendered);
+                // pre and post are for the rendered content
+                // not necessarily for the span
+
+                let (pre, post) = if let Some(captures) = BOUNDED.captures(rendered.as_str()) {
+                    let pre = if let Some(prefix) = captures.get(1) {
+                        prefix.as_str().len()
+                    } else {
+                        bail!("Should have a pre match with a capture group");
+                    };
+                    let post = if let Some(suffix) = captures.get(captures.len() - 1) {
+                        suffix.as_str().len()
+                    } else {
+                        bail!("Should have a post match with a capture group");
+                    };
+                    // r####" must match "####
+                    if pre == 1 && post == 1 {
+                        debug_assert_eq!('"', rendered.as_bytes()[0usize] as char);
+                        debug_assert_eq!('"', rendered.as_bytes()[rendered.len() - 1usize] as char);
+                    } else {
+                        debug_assert_eq!(pre, post + 1);
+                    }
+                    (pre, post)
+                } else {
+                    bail!("Regex should match >{}<", rendered);
+                };
+
+                span.start.column += pre;
+                span.end.column = span.end.column.saturating_sub(post);
+
+                let trimmed = &rendered[pre..rendered.len().saturating_sub(post)];
+
+                (trimmed, span, pre, post)
             };
-            (&rendered[pre..(dbg!(rendered.len()) - dbg!(post))], pre, post)
-        };
 
         let len = extracted.chars().count();
-
-        span.start.column += pre;
-        span.end.column -= post;
-
 
         if let Some(span_len) = span.one_line_len() {
             log::trace!(target: "quirks", "{:?} {}||{} for \n extracted: >{}<\n rendered:  >{}<", span, pre, post, &extracted, rendered);
@@ -509,8 +531,8 @@ struct Five;
     }
 
 "#,
-            extracted: r#"" if a layer is provided a identiacla \"input\" and \"output\", it will only be supplied an""#,
-            trimmed: r#" if a layer is provided a identiacla \"input\" and \"output\", it will only be supplied an"#,
+            extracted: r#"" if a layer is provided a identiacla "input" and "output", it will only be supplied an""#,
+            trimmed: r#" if a layer is provided a identiacla "input" and "output", it will only be supplied an"#,
             extracted_span: Span {
                 start: LineColumn {
                     line: 3usize,
@@ -518,7 +540,7 @@ struct Five;
                 },
                 end: LineColumn {
                     line: 2usize,
-                    column: 96usize + GAENSEFUESSCHEN,
+                    column: 92usize + GAENSEFUESSCHEN,
                 },
             },
             trimmed_span: Span {
@@ -528,7 +550,7 @@ struct Five;
                 },
                 end: LineColumn {
                     line: 3usize,
-                    column: 96usize,
+                    column: 92usize,
                 },
             },
         },
