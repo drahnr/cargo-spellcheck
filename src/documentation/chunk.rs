@@ -170,7 +170,7 @@ impl CheckableChunk {
                 }
 
                 if let Some(sub_fragment_span_len) = sub_fragment_span.one_line_len() {
-                    assert_eq!(sub_fragment_span_len, sub_fragment_range.len());
+                    debug_assert_eq!(sub_fragment_span_len, sub_fragment_range.len());
                 }
                 log::trace!(
                     ">> sub_fragment range={:?} span={:?} => {}",
