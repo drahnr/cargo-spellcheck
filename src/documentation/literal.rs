@@ -101,7 +101,9 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
                 static ref BOUNDED_STR: Regex = Regex::new(r##"^"(?:.(?!"\\"))*?"*\s*\]?\s*"$"##).expect("BOUNEDED_STR regex compiles");
             };
 
-            let (pre, post) = if let Some(captures) = BOUNDED_RAW_STR.captures(rendered.as_str()).ok().flatten() {
+            let (pre, post) = if let Some(captures) =
+                BOUNDED_RAW_STR.captures(rendered.as_str()).ok().flatten()
+            {
                 log::trace!("raw str: >{}<", rendered.as_str());
                 let pre = if let Some(prefix) = captures.get(1) {
                     log::trace!("raw str pre: >{}<", prefix.as_str());
@@ -121,7 +123,6 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
 
                 (pre, post)
             } else if let Some(_captures) = BOUNDED_STR.captures(rendered.as_str()).ok().flatten() {
-
                 // r####" must match "####
                 let pre = 1;
                 let post = 1;
