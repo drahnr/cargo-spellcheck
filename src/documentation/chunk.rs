@@ -223,25 +223,6 @@ impl From<Clusters> for Vec<CheckableChunk> {
     }
 }
 
-/// Extract lines together with associated `Range`s relative to str `s`
-///
-/// Easily collectable into a `HashMap`.
-// @todo use this to construct a line index
-#[allow(unused)]
-fn lines_with_ranges<'a>(s: &'a str) -> impl Iterator<Item = (Range, &'a str)> + Clone {
-    // @todo line consumes \r\n and \n so the ranges could off by 1 on windows
-    // @todo requires a custom impl of `lines()` iterator
-    s.lines().scan(
-        0usize,
-        |offset: &mut usize, line: &'_ str| -> Option<(Range, &'_ str)> {
-            let n = line.chars().count();
-            let range = *offset..*offset + n + 1;
-            *offset += n + 1; // for newline, see @todo above
-            Some((range, line))
-        },
-    )
-}
-
 use std::fmt;
 
 /// A display style wrapper for a trimmed literal.
