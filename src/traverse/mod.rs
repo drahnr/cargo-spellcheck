@@ -153,7 +153,14 @@ fn load_manifest<P: AsRef<Path>>(manifest_dir: P) -> Result<cargo_toml::Manifest
         anyhow::anyhow!("Failed to parse manifest file {}", manifest_file.display()).context(e)
     })?;
     // load default products based on whatever exists on the filesystem
-    manifest.complete_from_path(&manifest_file)?;
+    if manifest.complete_from_path(&manifest_file).is_err() {
+        if manifest.complete_from_path(manifest_dir).is_err() {
+            debug!(
+                "Failed to complete {} from filesystem",
+                manifest_file.display()
+            );
+        }
+    }
     Ok(manifest)
 }
 
@@ -175,10 +182,14 @@ fn to_manifest_dir<P: AsRef<Path>>(manifest_dir: P) -> Result<PathBuf> {
 }
 
 /// Extract all cargo manifest products / build targets.
-fn extract_products(manifest: &cargo_toml::Manifest, manifest_dir: &Path) -> Result<Vec<CheckEntity>> {
+fn extract_products(
+    manifest: &cargo_toml::Manifest,
+    manifest_dir: &Path,
+) -> Result<Vec<CheckEntity>> {
     let iter = manifest
         .bin
-        .iter().cloned()
+        .iter()
+        .cloned()
         .chain(manifest.lib.iter().cloned().map(|x| x));
 
     let items = iter
@@ -191,8 +202,10 @@ fn extract_products(manifest: &cargo_toml::Manifest, manifest_dir: &Path) -> Res
     Ok(items)
 }
 
-
-fn extract_readme(manifest: &cargo_toml::Manifest, manifest_dir: &Path) -> Result<Vec<CheckEntity>> {
+fn extract_readme(
+    manifest: &cargo_toml::Manifest,
+    manifest_dir: &Path,
+) -> Result<Vec<CheckEntity>> {
     let mut acc = Vec::with_capacity(2);
     if let Some(package) = manifest.package.clone() {
         if let Some(readme) = package.readme {
@@ -218,12 +231,31 @@ fn handle_manifest<P: AsRef<Path>>(manifest_dir: P, skip_readme: bool) -> Result
     trace!("Handle manifest in dir: {}", manifest_dir.display());
 
     let manifest_dir = manifest_dir.as_path();
-    let manifest = load_manifest(manifest_dir)?;
+    let manifest = load_manifest(manifest_dir).map_err(|e| {
+        anyhow!(
+            "Failed to load manifest from dir {}",
+            manifest_dir.display()
+        )
+        .context(e)
+    })?;
 
-    let mut acc = extract_products(&manifest, &manifest_dir)?;
+    let mut acc = extract_products(&manifest, &manifest_dir).map_err(|e| {
+        anyhow!(
+            "Failed to extract products from manifest {}",
+            manifest_dir.display()
+        )
+        .context(e)
+    })?;
 
     if !skip_readme {
-        acc.extend(extract_readme(&manifest, &manifest_dir)?);
+        let v = extract_readme(&manifest, &manifest_dir).map_err(|e| {
+            anyhow!(
+                "Failed to extract readme / description from manifest {}",
+                manifest_dir.display()
+            )
+            .context(e)
+        })?;
+        acc.extend(v);
     }
 
     if let Some(workspace) = manifest.workspace {
@@ -232,13 +264,26 @@ fn handle_manifest<P: AsRef<Path>>(manifest_dir: P, skip_readme: bool) -> Result
             .members
             .into_iter()
             .try_for_each::<_, Result<()>>(|item| {
-                let d = manifest_dir.join(&item);
-                trace!("Handling manifest member {} -> {}", &item, d.display());
-                let member_manifest = load_manifest(&d)?;
-                if let Ok(member) = extract_products(&member_manifest, &d) {
-                    acc.extend(member.into_iter());
+                let member_dir = manifest_dir.join(&item);
+                trace!(
+                    "Handling manifest member {} -> {}",
+                    &item,
+                    member_dir.display()
+                );
+                if let Ok(member_manifest) = load_manifest(&member_dir).map_err(|e| {
+                    anyhow!(
+                        "Failed to load manifest from member directory {}",
+                        member_dir.display()
+                    )
+                    .context(e)
+                }) {
+                    if let Ok(member) = extract_products(&member_manifest, &member_dir) {
+                        acc.extend(member.into_iter());
+                    } else {
+                        warn!("Workspace member {} product extraction failed", item);
+                    }
                 } else {
-                    warn!("Workspace member {} could not be found", item);
+                    warn!("Opening manifest from member failed {}", item);
                 }
                 Ok(())
             })?;
@@ -348,7 +393,9 @@ pub(crate) fn extract(
                             let iter = traverse(path.as_path())?;
                             docs.extend(iter);
                         } else {
-                            let content: String = fs::read_to_string(&path)?;
+                            let content: String = fs::read_to_string(&path).map_err(|e| {
+                                anyhow!("Failed to read {}", path.display()).context(e)
+                            })?;
                             if let Ok(cluster) = Clusters::try_from(content.as_str()) {
                                 let chunks = Vec::<CheckableChunk>::from(cluster);
                                 docs.add(ContentOrigin::RustSourceFile(path.to_owned()), chunks);
@@ -452,7 +499,10 @@ mod tests {
     }
 
     fn demo_dir_manifest() -> (cargo_toml::Manifest, PathBuf) {
-        (load_manifest(demo_dir()).expect("Demo dir manifest must exist"), demo_dir())
+        (
+            load_manifest(demo_dir()).expect("Demo dir manifest must exist"),
+            demo_dir(),
+        )
     }
 
     use std::collections::HashSet;
