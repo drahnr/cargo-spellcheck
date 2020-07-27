@@ -14,7 +14,7 @@ pub fn iter_with_line_column_from<'a>(
         cursor: LineColumn,
         previous_char_was_newline: bool,
     };
-    let mut initial = State {
+    let initial = State {
         cursor: start_point,
         previous_char_was_newline: false,
     };
@@ -62,20 +62,15 @@ where
         .expect("Must read successfully");
 
     let extraction = iter_with_line_column(s.as_str())
-        .skip_while(|(c, _idx, cursor)| {
+        .skip_while(|(_c, _idx, cursor)| {
             cursor.line < span.start.line
                 || (cursor.line == span.start.line && cursor.column < span.start.column)
         })
-        .take_while(|(c, _idx, cursor)| {
-            dbg!(
-                cursor.line < span.end.line
-                    || (cursor.line == span.end.line && cursor.column <= span.end.column)
-            )
+        .take_while(|(_c, _idx, cursor)| {
+			cursor.line < span.end.line
+				|| (cursor.line == span.end.line && cursor.column <= span.end.column)
         })
         .fuse()
-        .inspect(|(c, _idx, _cursor)| {
-            dbg!((c, _idx, _cursor));
-        })
         .map(|(c, _idx, _cursor)| c)
         .collect::<String>();
     // log::trace!("Loading {:?} from line >{}<", &range, &line);
