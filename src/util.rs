@@ -67,8 +67,8 @@ where
                 || (cursor.line == span.start.line && cursor.column < span.start.column)
         })
         .take_while(|(_c, _idx, cursor)| {
-			cursor.line < span.end.line
-				|| (cursor.line == span.end.line && cursor.column <= span.end.column)
+            cursor.line < span.end.line
+                || (cursor.line == span.end.line && cursor.column <= span.end.column)
         })
         .fuse()
         .map(|(c, _idx, _cursor)| c)

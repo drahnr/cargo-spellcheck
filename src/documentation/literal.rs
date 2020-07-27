@@ -66,7 +66,6 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
         // many pitfalls to sanitize all cases
         // let rendered = literal.to_string();
 
-
         // XXX no idea why we have to match against the trailing `]` character, should not be part of the range
         // but the span we obtain from literal seems to be wrong, adding one trailing char
         let mut span = Span::from(literal.span());
@@ -75,60 +74,61 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
         let rendered = util::load_span_from(content.as_bytes(), span.clone())?;
 
         log::trace!("extracted from source: >{}< @ {:?}", rendered, span);
-        let (extracted, span, pre, post) =
-            if rendered.starts_with("///") || rendered.starts_with("//!") {
-                let pre = 3; // `///`
-                let post = 0; // trailing `\n` is already accounted for above
+        let (extracted, span, pre, post) = if rendered.starts_with("///")
+            || rendered.starts_with("//!")
+        {
+            let pre = 3; // `///`
+            let post = 0; // trailing `\n` is already accounted for above
 
-                span.start.column += pre;
+            span.start.column += pre;
 
-                // must always be a single line
-                assert_eq!(span.start.line, span.end.line);
-                // if the line includes quotes, the rustc converts them internally
-                // to `#[doc="content"]`, where - if `content` contains `"` will substitute
-                // them as `\"` which will inflate the number columns.
-                // Since we can not distinguish between orignally escaped, we simply
-                // use the content read from source.
+            // must always be a single line
+            assert_eq!(span.start.line, span.end.line);
+            // if the line includes quotes, the rustc converts them internally
+            // to `#[doc="content"]`, where - if `content` contains `"` will substitute
+            // them as `\"` which will inflate the number columns.
+            // Since we can not distinguish between orignally escaped, we simply
+            // use the content read from source.
 
-                (&rendered[pre..rendered.len()], span, pre, post)
-            } else {
-                // pre and post are for the rendered content
-                // not necessarily for the span
+            (&rendered[pre..rendered.len()], span, pre, post)
+        } else {
+            // pre and post are for the rendered content
+            // not necessarily for the span
 
-                lazy_static::lazy_static! {
-                    static ref BOUNDED: Regex = Regex::new(r##"^(\s*(?:r#+)?").*("#*\s*)\]?$"##).unwrap();
-                };
-
-                let (pre, post) = if let Some(captures) = BOUNDED.captures(rendered.as_str()) {
-                    let pre = if let Some(prefix) = captures.get(1) {
-                        prefix.as_str().len()
-                    } else {
-                        bail!("Should have a pre match with a capture group");
-                    };
-                    let post = if let Some(suffix) = captures.get(captures.len() - 1) {
-                        suffix.as_str().len()
-                    } else {
-                        bail!("Should have a post match with a capture group");
-                    };
-                    // r####" must match "####
-                    if pre == 1 && post == 1 {
-                        debug_assert_eq!('"', rendered.as_bytes()[0usize] as char);
-                        debug_assert_eq!('"', rendered.as_bytes()[rendered.len() - 1usize] as char);
-                    } else {
-                        debug_assert_eq!(pre, post + 1);
-                    }
-                    (pre, post)
-                } else {
-                    bail!("Regex should match >{}<", rendered);
-                };
-
-                span.start.column += pre;
-                span.end.column = span.end.column.saturating_sub(post);
-
-                let trimmed = &rendered[pre..rendered.len().saturating_sub(post)];
-
-                (trimmed, span, pre, post)
+            lazy_static::lazy_static! {
+                static ref BOUNDED: Regex = Regex::new(r##"^(\s*(?:r#+)?").*("#*\s*)\]?$"##).unwrap();
             };
+
+            let (pre, post) = if let Some(captures) = BOUNDED.captures(rendered.as_str()) {
+                let pre = if let Some(prefix) = captures.get(1) {
+                    prefix.as_str().len()
+                } else {
+                    bail!("Should have a pre match with a capture group");
+                };
+                let post = if let Some(suffix) = captures.get(captures.len() - 1) {
+                    suffix.as_str().len()
+                } else {
+                    bail!("Should have a post match with a capture group");
+                };
+                // r####" must match "####
+                if pre == 1 && post == 1 {
+                    debug_assert_eq!('"', rendered.as_bytes()[0usize] as char);
+                    debug_assert_eq!('"', rendered.as_bytes()[rendered.len() - 1usize] as char);
+                } else {
+                    debug_assert_eq!(pre, post + 1);
+                }
+                (pre, post)
+            } else {
+                bail!("Regex should match >{}<", rendered);
+            };
+
+            span.start.column += pre;
+            span.end.column = span.end.column.saturating_sub(post);
+
+            let trimmed = &rendered[pre..rendered.len().saturating_sub(post)];
+
+            (trimmed, span, pre, post)
+        };
 
         let len = extracted.chars().count();
 

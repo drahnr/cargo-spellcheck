@@ -260,7 +260,12 @@ fn run() -> anyhow::Result<ExitCode> {
 
     trace!("Executing: {:?} with {:?}", action, &config);
 
-    let combined = traverse::extract(args.arg_paths, args.flag_recursive, args.flag_skip_readme, &config)?;
+    let combined = traverse::extract(
+        args.arg_paths,
+        args.flag_recursive,
+        args.flag_skip_readme,
+        &config,
+    )?;
 
     let suggestion_set = checker::check(&combined, &config)?;
 
