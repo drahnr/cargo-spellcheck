@@ -2,7 +2,7 @@ use crate::util;
 use crate::{Range, Span};
 use anyhow::{bail, Result};
 
-use regex::Regex;
+use fancy_regex::Regex;
 use std::convert::TryFrom;
 use std::fmt;
 
@@ -95,28 +95,38 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
             // pre and post are for the rendered content
             // not necessarily for the span
 
+            //^r(#+?)"(?:.*\s*)+(?=(?:"\1))("\1)$
             lazy_static::lazy_static! {
-                static ref BOUNDED: Regex = Regex::new(r##"^(\s*(?:r#+)?").*("#*\s*)\]?$"##).unwrap();
+                static ref BOUNDED_RAW_STR: Regex = Regex::new(r##"^(r(#+)?")(?:.*\s*)+?(?=(?:"\2))("\2)\s*\]?\s*$"##).expect("BOUNEDED_RAW_STR regex compiles");
+                static ref BOUNDED_STR: Regex = Regex::new(r##"^"(?:.(?!"\\"))*?"*\s*\]?\s*"$"##).expect("BOUNEDED_STR regex compiles");
             };
 
-            let (pre, post) = if let Some(captures) = BOUNDED.captures(rendered.as_str()) {
+            let (pre, post) = if let Some(captures) = BOUNDED_RAW_STR.captures(rendered.as_str()).ok().flatten() {
+                log::trace!("raw str: >{}<", rendered.as_str());
                 let pre = if let Some(prefix) = captures.get(1) {
+                    log::trace!("raw str pre: >{}<", prefix.as_str());
                     prefix.as_str().len()
                 } else {
-                    bail!("Should have a pre match with a capture group");
+                    bail!("Should have a raw str pre match with a capture group");
                 };
                 let post = if let Some(suffix) = captures.get(captures.len() - 1) {
+                    log::trace!("raw str post: >{}<", suffix.as_str());
                     suffix.as_str().len()
                 } else {
-                    bail!("Should have a post match with a capture group");
+                    bail!("Should have a raw str post match with a capture group");
                 };
+
                 // r####" must match "####
-                if pre == 1 && post == 1 {
-                    debug_assert_eq!('"', rendered.as_bytes()[0usize] as char);
-                    debug_assert_eq!('"', rendered.as_bytes()[rendered.len() - 1usize] as char);
-                } else {
-                    debug_assert_eq!(pre, post + 1);
-                }
+                debug_assert_eq!(pre, post + 1);
+
+                (pre, post)
+            } else if let Some(_captures) = BOUNDED_STR.captures(rendered.as_str()).ok().flatten() {
+
+                // r####" must match "####
+                let pre = 1;
+                let post = 1;
+                debug_assert_eq!('"', rendered.as_bytes()[0usize] as char);
+                debug_assert_eq!('"', rendered.as_bytes()[rendered.len() - 1usize] as char);
                 (pre, post)
             } else {
                 bail!("Regex should match >{}<", rendered);
