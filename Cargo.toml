@@ -31,7 +31,7 @@ lazy_static = "1"
 pulldown-cmark = "0.7"
 itertools = "0.9"
 crossterm = "0.17"
-regex = "1"
+fancy-regex = "0.3"
 signal-hook = "0.1"
 
 
