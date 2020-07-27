@@ -7,12 +7,12 @@ mod suggestion;
 mod traverse;
 mod util;
 
-pub use self::util::*;
 pub use self::action::*;
 pub use self::config::{Config, HunspellConfig, LanguageToolConfig};
 pub use self::documentation::*;
 pub use self::span::*;
 pub use self::suggestion::*;
+pub use self::util::*;
 
 use docopt::Docopt;
 

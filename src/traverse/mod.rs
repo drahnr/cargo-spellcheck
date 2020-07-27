@@ -145,18 +145,12 @@ pub enum CheckEntity {
 fn load_manifest<P: AsRef<Path>>(manifest_dir: P) -> Result<cargo_toml::Manifest> {
     let manifest_dir = manifest_dir.as_ref();
     let manifest_file = manifest_dir.join("Cargo.toml");
-    let manifest_content = std::fs::read_to_string(dbg!(&manifest_file))
-        .map_err(|e| {
-            anyhow::anyhow!(
-                "Failed to open manifest file {}", manifest_file.display()
-            ).context(e)
-        })?;
-    let manifest = cargo_toml::Manifest::from_str(manifest_content.as_str())
-        .map_err(|e| {
-            anyhow::anyhow!(
-                "Failed to parse manifest file {}", manifest_file.display()
-            ).context(e)
-        })?;
+    let manifest_content = std::fs::read_to_string(dbg!(&manifest_file)).map_err(|e| {
+        anyhow::anyhow!("Failed to open manifest file {}", manifest_file.display()).context(e)
+    })?;
+    let manifest = cargo_toml::Manifest::from_str(manifest_content.as_str()).map_err(|e| {
+        anyhow::anyhow!("Failed to parse manifest file {}", manifest_file.display()).context(e)
+    })?;
     Ok(manifest)
 }
 

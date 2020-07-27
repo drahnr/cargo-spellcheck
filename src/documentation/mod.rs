@@ -111,9 +111,9 @@ impl From<(ContentOrigin, &str)> for Documentation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::util::load_span_from;
     use crate::checker::Checker;
     use crate::fluff_up;
+    use crate::util::load_span_from;
 
     use std::convert::From;
 

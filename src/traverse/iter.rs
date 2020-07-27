@@ -136,9 +136,9 @@ pub(crate) fn traverse_with_depth_limit(
 ) -> Result<impl Iterator<Item = Documentation>> {
     let it = TraverseModulesIter::with_depth_limit(path, max_depth)?
         .filter_map(|path: PathBuf| -> Option<Documentation> {
-            fs::read_to_string(&path)
-                .ok()
-                .map(|content| Documentation::from((ContentOrigin::RustSourceFile(path), content.as_str())))
+            fs::read_to_string(&path).ok().map(|content| {
+                Documentation::from((ContentOrigin::RustSourceFile(path), content.as_str()))
+            })
         })
         .filter(|documentation| !documentation.is_empty());
     Ok(it)

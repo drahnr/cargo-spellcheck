@@ -110,6 +110,14 @@ pub(crate) mod tests {
     use super::*;
 
     #[macro_export]
+    macro_rules! chyrp_dbg {
+        ($first:literal $(, $( $line:literal ),+ )? $(,)? $(@ $prefix:literal)? ) => {
+            dbg!(concat!($first $( $(, "\n", $line )+ )?).len());
+            dbg!(concat!($first $( $(, "\n", $line )+ )?));
+        }
+    }
+
+    #[macro_export]
     macro_rules! chyrp_up {
         ([ $( $line:literal ),+ $(,)? ] $(@ $prefix:literal)? ) => {
             chyrp_up!( $( $line ),+ $(@ $prefix)? )

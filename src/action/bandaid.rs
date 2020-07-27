@@ -67,11 +67,11 @@ impl From<(String, Span)> for BandAid {
 pub(crate) mod tests {
     use super::*;
     use crate::span::Span;
+    use crate::util::load_span_from;
     use anyhow::anyhow;
     use proc_macro2::LineColumn;
     use std::io::Read;
     use std::path::Path;
-    use crate::util::load_span_from;
 
     /// Extract span from file as String
     /// Helpful to validate bandaids against what's actually in the file
@@ -91,7 +91,6 @@ pub(crate) mod tests {
 
         load_span_from(reader, span)
     }
-
 
     #[test]
     fn span_helper_integrity() {
