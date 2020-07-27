@@ -145,12 +145,15 @@ pub enum CheckEntity {
 fn load_manifest<P: AsRef<Path>>(manifest_dir: P) -> Result<cargo_toml::Manifest> {
     let manifest_dir = manifest_dir.as_ref();
     let manifest_file = manifest_dir.join("Cargo.toml");
-    let manifest_content = std::fs::read_to_string(dbg!(&manifest_file)).map_err(|e| {
+    // read to str first to provide better error messages
+    let manifest_content = std::fs::read_to_string(&manifest_file).map_err(|e| {
         anyhow::anyhow!("Failed to open manifest file {}", manifest_file.display()).context(e)
     })?;
-    let manifest = cargo_toml::Manifest::from_str(manifest_content.as_str()).map_err(|e| {
+    let mut manifest = cargo_toml::Manifest::from_str(manifest_content.as_str()).map_err(|e| {
         anyhow::anyhow!("Failed to parse manifest file {}", manifest_file.display()).context(e)
     })?;
+    // load default products based on whatever exists on the filesystem
+    manifest.complete_from_path(&manifest_file)?;
     Ok(manifest)
 }
 
@@ -172,27 +175,30 @@ fn to_manifest_dir<P: AsRef<Path>>(manifest_dir: P) -> Result<PathBuf> {
 }
 
 /// Extract all cargo manifest products / build targets.
-// @todo code with an enum to allow source and markdown files
-fn extract_products<P: AsRef<Path>>(manifest_dir: P) -> Result<Vec<CheckEntity>> {
-    let manifest_dir = manifest_dir.as_ref();
-    let manifest = load_manifest(manifest_dir)?;
-
+fn extract_products(manifest: &cargo_toml::Manifest, manifest_dir: &Path) -> Result<Vec<CheckEntity>> {
     let iter = manifest
         .bin
-        .into_iter()
-        .chain(manifest.lib.into_iter().map(|x| x));
+        .iter().cloned()
+        .chain(manifest.lib.iter().cloned().map(|x| x));
 
-    let mut items = iter
+    let items = iter
         .filter(|product| product.doctest)
         .filter_map(|product| product.path)
         .map(|path_str| CheckEntity::Source(manifest_dir.join(path_str)))
         .collect::<Vec<CheckEntity>>();
 
-    if let Some(package) = manifest.package {
+    trace!("manifest products {:?}", &items);
+    Ok(items)
+}
+
+
+fn extract_readme(manifest: &cargo_toml::Manifest, manifest_dir: &Path) -> Result<Vec<CheckEntity>> {
+    let mut acc = Vec::with_capacity(2);
+    if let Some(package) = manifest.package.clone() {
         if let Some(readme) = package.readme {
             let readme = PathBuf::from(readme);
             if readme.is_file() {
-                items.push(CheckEntity::Markdown(manifest_dir.join(readme)))
+                acc.push(CheckEntity::Markdown(manifest_dir.join(readme)));
             } else {
                 warn!(
                     "README.md defined in Cargo.toml {} is not a file",
@@ -201,21 +207,24 @@ fn extract_products<P: AsRef<Path>>(manifest_dir: P) -> Result<Vec<CheckEntity>>
             }
         }
         if let Some(description) = package.description {
-            items.push(CheckEntity::ManifestDescription(description.to_owned()))
+            acc.push(CheckEntity::ManifestDescription(description.to_owned()));
         }
     }
-    trace!("manifest products {:?}", &items);
-    Ok(items)
+    Ok(acc)
 }
 
-fn handle_manifest<P: AsRef<Path>>(manifest_dir: P) -> Result<Vec<CheckEntity>> {
+fn handle_manifest<P: AsRef<Path>>(manifest_dir: P, skip_readme: bool) -> Result<Vec<CheckEntity>> {
     let manifest_dir = to_manifest_dir(manifest_dir)?;
     trace!("Handle manifest in dir: {}", manifest_dir.display());
 
     let manifest_dir = manifest_dir.as_path();
     let manifest = load_manifest(manifest_dir)?;
 
-    let mut acc = extract_products(manifest_dir)?;
+    let mut acc = extract_products(&manifest, &manifest_dir)?;
+
+    if !skip_readme {
+        acc.extend(extract_readme(&manifest, &manifest_dir)?);
+    }
 
     if let Some(workspace) = manifest.workspace {
         trace!("Handling manifest workspace");
@@ -225,7 +234,8 @@ fn handle_manifest<P: AsRef<Path>>(manifest_dir: P) -> Result<Vec<CheckEntity>> 
             .try_for_each::<_, Result<()>>(|item| {
                 let d = manifest_dir.join(&item);
                 trace!("Handling manifest member {} -> {}", &item, d.display());
-                if let Ok(member) = extract_products(d) {
+                let member_manifest = load_manifest(&d)?;
+                if let Ok(member) = extract_products(&member_manifest, &d) {
                     acc.extend(member.into_iter());
                 } else {
                     warn!("Workspace member {} could not be found", item);
@@ -240,6 +250,7 @@ fn handle_manifest<P: AsRef<Path>>(manifest_dir: P) -> Result<Vec<CheckEntity>> 
 pub(crate) fn extract(
     mut paths: Vec<PathBuf>,
     mut recurse: bool,
+    skip_readme: bool,
     _config: &Config,
 ) -> Result<Documentation> {
     let cwd = cwd()?;
@@ -273,7 +284,7 @@ pub(crate) fn extract(
     // stage 2 - check for manifest, .rs , .md files and directories
     let mut files_to_check = Vec::with_capacity(64);
     while let Some(path) = flow.pop_front() {
-        files_to_check.push(if let Ok(meta) = path.metadata() {
+        let x = if let Ok(meta) = path.metadata() {
             if meta.is_file() {
                 match path.file_name().map(|x| x.to_str()).flatten() {
                     Some(file_name) if file_name == "Cargo.toml" => Extraction::Manifest(path),
@@ -302,7 +313,8 @@ pub(crate) fn extract(
             }
         } else {
             Extraction::Missing(path)
-        })
+        };
+        files_to_check.push(x);
     }
 
     // stage 3 - resolve the manifest products and workspaces, warn about missing
@@ -311,7 +323,7 @@ pub(crate) fn extract(
         .try_fold::<Vec<_>, _, Result<_>>(Vec::with_capacity(64), |mut acc, tagged_path| {
             match tagged_path {
                 Extraction::Manifest(ref cargo_toml_path) => {
-                    let manifest_list = handle_manifest(cargo_toml_path)?;
+                    let manifest_list = handle_manifest(cargo_toml_path, skip_readme)?;
                     acc.extend(manifest_list);
                 }
                 Extraction::Missing(ref missing_path) => warn!(
@@ -416,11 +428,17 @@ mod tests {
 
     #[test]
     fn manifest_entries() {
+        let (manifest, dir) = demo_dir_manifest();
         assert_eq!(
-            extract_products(demo_dir()).expect("Must succeed"),
+            extract_products(&manifest, &dir).expect("Must succeed"),
             vec![
                 CheckEntity::Source(demo_dir().join("src/main.rs")),
                 CheckEntity::Source(demo_dir().join("src/lib.rs")),
+            ]
+        );
+        assert_eq!(
+            extract_readme(&manifest, &dir).expect("Must succeed"),
+            vec![
                 CheckEntity::Markdown(demo_dir().join("README.md")),
                 CheckEntity::ManifestDescription(
                     "A silly demo with plenty of spelling mistakes for cargo-spellcheck demos and CI".to_string()
@@ -431,6 +449,10 @@ mod tests {
 
     fn demo_dir() -> PathBuf {
         manifest_dir().join("demo")
+    }
+
+    fn demo_dir_manifest() -> (cargo_toml::Manifest, PathBuf) {
+        (load_manifest(demo_dir()).expect("Demo dir manifest must exist"), demo_dir())
     }
 
     use std::collections::HashSet;
@@ -468,11 +490,8 @@ mod tests {
         };
 
         ([ $( $path:literal ),* $(,)?] + $recurse: expr => [ $( $file:literal ),* $(,)?] ) => {
-            let _ = env_logger::from_env(
-                env_logger::Env::new().filter_or("CARGO_SPELLCHECK", "cargo_spellcheck=trace"),
-            )
-            .is_test(true)
-            .try_init();
+            let _ = env_logger::builder().is_test(true).try_init();
+
             let docs = extract(
                 vec![
                     $(
@@ -480,6 +499,7 @@ mod tests {
                     )*
                 ],
                 $recurse,
+                false,
                 &Config::default(),
             )
             .expect("Must be able to extract demo dir");
