@@ -827,8 +827,8 @@ mod tests {
         const EXPECTED: &'static str = r#"error: spellcheck(Dummy)
   --> /tmp/test/entity:2
    |
- 2 | ..uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuper duuu...uper too long
-   |                                                   ^^^^^^^^^^^
+ 2 | ..uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuper duuu...uper too long
+   |                                                 ^^^^^^^^^^^
    | - replacement_0, replacement_1, or replacement_2
    |
    |   Possible spelling mistake found.
