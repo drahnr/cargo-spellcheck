@@ -183,7 +183,7 @@ dependencies = [
 
 [[package]]
 name = "cargo-spellcheck"
-version = "0.3.0-alpha.6"
+version = "0.3.0-beta.1"
 dependencies = [
  "anyhow",
  "cargo_toml",
