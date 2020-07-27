@@ -66,9 +66,7 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
         // many pitfalls to sanitize all cases
         // let rendered = literal.to_string();
 
-        lazy_static::lazy_static! {
-            static ref BOUNDED: Regex = Regex::new(r##"^(\s*(?:r#+)?")[^#"]+("#*\s*)$"##).unwrap();
-        };
+
         // XXX no idea why we have to match against the trailing `]` character, should not be part of the range
         // but the span we obtain from literal seems to be wrong, adding one trailing char
         let mut span = Span::from(literal.span());
@@ -96,6 +94,10 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
             } else {
                 // pre and post are for the rendered content
                 // not necessarily for the span
+
+                lazy_static::lazy_static! {
+                    static ref BOUNDED: Regex = Regex::new(r##"^(\s*(?:r#+)?").*("#*\s*)\]?$"##).unwrap();
+                };
 
                 let (pre, post) = if let Some(captures) = BOUNDED.captures(rendered.as_str()) {
                     let pre = if let Some(prefix) = captures.get(1) {
