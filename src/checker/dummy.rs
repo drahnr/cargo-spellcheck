@@ -22,7 +22,10 @@ impl Checker for DummyChecker {
         let suggestions = docu.iter().try_fold::<SuggestionSet, _, Result<_>>(
             SuggestionSet::new(),
             |mut acc, (origin, chunks)| {
-                let chunk = chunks.iter().next().expect("DummyChecker expects at least one chunk");
+                let chunk = chunks
+                    .iter()
+                    .next()
+                    .expect("DummyChecker expects at least one chunk");
                 let plain = chunk.erase_markdown();
                 for (index, range) in dbg!(tokenize(plain.as_str())).into_iter().enumerate() {
                     trace!("Token: >{}<", &plain.as_str()[range.clone()]);
