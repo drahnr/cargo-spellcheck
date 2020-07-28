@@ -5,10 +5,10 @@
 //! the defined affixes.
 //! Can handle multiple dictionaries.
 
-use crate::util::sub_chars;
 use super::{tokenize, Checker, Detector, Documentation, Suggestion, SuggestionSet};
-use std::path::PathBuf;
+use crate::util::sub_chars;
 use log::{debug, trace};
+use std::path::PathBuf;
 
 use hunspell_rs::Hunspell;
 
