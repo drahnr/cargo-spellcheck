@@ -1,4 +1,4 @@
-use crate::util;
+use crate::util::{self, sub_chars};
 use crate::{Range, Span};
 use anyhow::{bail, Result};
 
@@ -13,13 +13,13 @@ pub struct TrimmedLiteral {
     span: Span,
     /// the complete rendered string including post and pre.
     rendered: String,
-    /// Literal prefx
-    pub pre: usize,
-    /// Literal postfix
-    pub post: usize,
-    /// Length of rendered **minus** `pre` and `post`.
-    /// If the literal is all empty, `pre` and `post` become `0`, and `len` covers the full length of `rendered`.
-    len: usize,
+    /// Literal prefix length.
+    pre: usize,
+    /// Literal postfix length.
+    post: usize,
+    /// Length of rendered **minus** `pre` and `post` in UTF-8 characters.
+    len_in_chars: usize,
+    len_in_bytes: usize,
 }
 
 impl std::cmp::PartialEq for TrimmedLiteral {
@@ -52,7 +52,8 @@ impl std::hash::Hash for TrimmedLiteral {
         self.span.hash(hasher);
         self.pre.hash(hasher);
         self.post.hash(hasher);
-        self.len.hash(hasher);
+        self.len_in_bytes.hash(hasher);
+        self.len_in_chars.hash(hasher);
     }
 }
 
@@ -72,11 +73,13 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
         span.end.column = span.end.column.saturating_sub(1); // either `]` or `\n` we don't need either
 
         let rendered = util::load_span_from(content.as_bytes(), span.clone())?;
+        // @todo cache the offsets for faster processing and avoiding repeated O(n) ops
+        // let byteoffset2char = rendered.char_indices().enumerate().collect::<indexmap::IndexMap<usize, (usize, char)>>();
+        // let rendered_len = byteoffset2char.len();
+        let rendered_len = rendered.chars().count();
 
         log::trace!("extracted from source: >{}< @ {:?}", rendered, span);
-        let (extracted, span, pre, post) = if rendered.starts_with("///")
-            || rendered.starts_with("//!")
-        {
+        let (span, pre, post) = if rendered.starts_with("///") || rendered.starts_with("//!") {
             let pre = 3; // `///`
             let post = 0; // trailing `\n` is already accounted for above
 
@@ -90,7 +93,7 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
             // Since we can not distinguish between orignally escaped, we simply
             // use the content read from source.
 
-            (&rendered[pre..rendered.len()], span, pre, post)
+            (span, pre, post)
         } else {
             // pre and post are for the rendered content
             // not necessarily for the span
@@ -136,20 +139,21 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
             span.start.column += pre;
             span.end.column = span.end.column.saturating_sub(post);
 
-            let trimmed = &rendered[pre..rendered.len().saturating_sub(post)];
-
-            (trimmed, span, pre, post)
+            (span, pre, post)
         };
 
-        let len = extracted.chars().count();
+        let len_in_chars = rendered_len.saturating_sub(post + pre);
 
         if let Some(span_len) = span.one_line_len() {
+            let extracted = sub_chars(rendered.as_str(), pre..rendered_len.saturating_sub(post));
             log::trace!(target: "quirks", "{:?} {}||{} for \n extracted: >{}<\n rendered:  >{}<", span, pre, post, &extracted, rendered);
-            assert_eq!(len, span_len);
+            assert_eq!(len_in_chars, span_len);
         }
 
+        let len_in_bytes = rendered.len().saturating_sub(post + pre);
         let literal = Self {
-            len,
+            len_in_chars,
+            len_in_bytes,
             rendered,
             span,
             pre,
@@ -161,21 +165,27 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
 
 impl TrimmedLiteral {
     pub fn as_str(&self) -> &str {
-        &self.rendered.as_str()[self.pre..(self.pre + self.len)]
+        &self.rendered.as_str()[self.pre..(self.pre + self.len_in_bytes)]
     }
     pub fn prefix(&self) -> &str {
         &self.rendered.as_str()[..self.pre]
     }
     pub fn suffix(&self) -> &str {
-        &self.rendered.as_str()[(self.pre + self.len)..]
+        &self.rendered.as_str()[(self.pre + self.len_in_bytes)..]
     }
 
     pub fn as_untrimmed_str(&self) -> &str {
         &self.rendered.as_str()
     }
 
+    /// Length in characters, excluding `pre` and `post`.
+    pub fn len_in_chars(&self) -> usize {
+        self.len_in_chars
+    }
+
+    /// Length in bytes, excluding `pre` and `post`.
     pub fn len(&self) -> usize {
-        self.len
+        self.len_in_bytes
     }
 
     pub fn pre(&self) -> usize {
@@ -188,6 +198,10 @@ impl TrimmedLiteral {
 
     pub fn span(&self) -> Span {
         self.span.clone()
+    }
+
+    pub fn chars<'a>(&'a self) -> impl Iterator<Item = char> + 'a {
+        self.as_str().chars()
     }
 
     /// Display helper, mostly used for debug investigations
@@ -261,33 +275,48 @@ impl<'a> fmt::Display for TrimmedLiteralDisplay<'a> {
         // content without quote characters
         let data = literal.as_str();
 
+        use util::sub_chars;
+
         // colour the preceding quote character
         // and the context preceding the highlight
         let (pre, ctx1) = if start > literal.pre() {
             (
+                // ok since that is ascii, so it's single bytes
                 cutoff.apply_to(&data[..literal.pre()]).to_string(),
-                context.apply_to(&data[literal.pre()..start]).to_string(),
+                {
+                    let s = sub_chars(data, literal.pre()..start);
+                    context.apply_to(s.as_str()).to_string()
+                },
             )
-        } else if start <= data.len() {
-            (cutoff.apply_to(&data[..start]).to_string(), String::new())
+        } else if start <= literal.len_in_chars() {
+            let s = sub_chars(data, 0..start);
+            (cutoff.apply_to(s.as_str()).to_string(), String::new())
         } else {
             (String::new(), "!!!".to_owned())
         };
         // highlight the given range
-        let highlight = if end >= data.len() {
-            oob.apply_to(&data[start..data.len()]).to_string()
+        let highlight = if end >= literal.len_in_chars() {
+            let s = sub_chars(data, start..literal.len_in_chars());
+            oob.apply_to(s.as_str()).to_string()
         } else {
-            highlight.apply_to(&data[start..end]).to_string()
+            let s = sub_chars(data, start..end);
+            highlight.apply_to(s.as_str()).to_string()
         };
         // color trailing context if any as well as the closing quote character
-        let post_idx = literal.pre() + literal.len();
+        let post_idx = literal.pre() + literal.len_in_chars();
         let (ctx2, post) = if post_idx > end {
+            let s_ctx = sub_chars(data, end..post_idx);
+            let s_cutoff = sub_chars(data, post_idx..literal.len_in_chars());
             (
-                context.apply_to(&data[end..post_idx]).to_string(),
-                cutoff.apply_to(&data[post_idx..]).to_string(),
+                context.apply_to(s_ctx.as_str()).to_string(),
+                cutoff.apply_to(s_cutoff.as_str()).to_string(),
             )
-        } else if end < data.len() {
-            (String::new(), cutoff.apply_to(&data[end..]).to_string())
+        } else if end < literal.len_in_chars() {
+            let s = sub_chars(
+                data,
+                end..(literal.len_in_chars() + literal.pre() + literal.post()),
+            );
+            (String::new(), cutoff.apply_to(s.as_str()).to_string())
         } else {
             (String::new(), oob.apply_to("!!!").to_string())
         };
@@ -571,14 +600,14 @@ struct Five;
         Triplet {
             source: r#"
 
-/// A ← αA<sup>OP</sup>x + βy
+/// 🍉 ← αA<sup>OP</sup>x + βy
 fn unicode(&self) -> bool {
     true
 }
 
 "#,
-            extracted: r#"" A ← αA<sup>OP</sup>x + βy""#,
-            trimmed: r#" A ← αA<sup>OP</sup>x + βy"#,
+            extracted: r#"" 🍉 ← αA<sup>OP</sup>x + βy""#,
+            trimmed: r#" 🍉 ← αA<sup>OP</sup>x + βy"#,
             extracted_span: Span {
                 start: LineColumn {
                     line: 3usize,
@@ -662,7 +691,6 @@ fn unicode(&self) -> bool {
     }
 
     #[test]
-    #[ignore]
     fn raw_variant_7_unicode_symbols() {
         comment_variant_span_range_validation(7);
     }

@@ -196,12 +196,14 @@ fn extract_sub_range_from_span(
     }
 
     // extract the fragment of interest to which both `range` and `span` correspond.
-    let s = &full_content[range.clone()];
+    let s = util::sub_chars(full_content, range.clone());
     let offset = range.start;
     // relative to the range given / offset
     let mut start = 0usize;
     let mut end = 0usize;
-    for (_c, idx, LineColumn { line, column }) in util::iter_with_line_column_from(s, span.start) {
+    for (_c, idx, LineColumn { line, column }) in
+        util::iter_with_line_column_from(s.as_str(), span.start)
+    {
         if line < sub_span.start.line {
             continue;
         }
