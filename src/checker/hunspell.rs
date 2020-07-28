@@ -5,9 +5,9 @@
 //! the defined affixes.
 //! Can handle multiple dictionaries.
 
+use crate::util::sub_chars;
 use super::{tokenize, Checker, Detector, Documentation, Suggestion, SuggestionSet};
 use std::path::PathBuf;
-
 use log::{debug, trace};
 
 use hunspell_rs::Hunspell;
@@ -109,12 +109,12 @@ impl Checker for HunspellChecker {
                     trace!("{:?}", &plain);
                     let txt = plain.as_str();
                     for range in tokenize(txt) {
-                        let word = &txt[range.clone()];
-                        if !hunspell.check(word) {
-                            trace!("No match for word (plain range: {:?}): >{}<", &range, word);
+                        let word = sub_chars(txt, range.clone());
+                        if !hunspell.check(&word) {
+                            trace!("No match for word (plain range: {:?}): >{}<", &range, &word);
                             // get rid of single character suggestions
                             let replacements = hunspell
-                                .suggest(word)
+                                .suggest(&word)
                                 .into_iter()
                                 .filter(|x| x.len() > 1) // single char suggestions tend to be useless
                                 .collect::<Vec<_>>();
