@@ -138,7 +138,7 @@ impl CheckableChunk {
                 );
 
                 if sub_fragment_range.len() == 0 {
-                    log::debug!("sub fragment is zero, dropping!");
+                    log::trace!("sub fragment is zero, dropping!");
                     return None;
                 }
 

@@ -303,10 +303,11 @@ pub(crate) fn extract(
     let cwd = cwd()?;
     // if there are no arguments, pretend to be told to check the whole project
     if paths.is_empty() {
-        // @todo also traverse parent dirs
-        paths.push(cwd.join("Cargo.toml"));
+        paths.push(cwd.clone());
         recurse = true;
     }
+
+    debug!("Running on inputs {:?} / recursive={}", &paths, recurse);
 
     #[derive(Debug, Clone)]
     enum Extraction {
@@ -327,6 +328,8 @@ pub(crate) fn extract(
         debug!("Processing {} -> {}", path_in.display(), path.display());
         path.canonicalize().ok()
     }));
+
+    debug!("Running on absolute dirs {:?} ", &flow);
 
     // stage 2 - check for manifest, .rs , .md files and directories
     let mut files_to_check = Vec::with_capacity(64);
@@ -363,6 +366,8 @@ pub(crate) fn extract(
         };
         files_to_check.push(x);
     }
+
+    debug!("Found a total of {} files to check ", files_to_check.len());
 
     // stage 3 - resolve the manifest products and workspaces, warn about missing
     let files_to_check = files_to_check

@@ -103,6 +103,7 @@ impl Checker for HunspellChecker {
         let suggestions = docu.iter().try_fold::<SuggestionSet, _, Result<_>>(
             SuggestionSet::new(),
             |mut acc, (origin, chunks)| {
+                debug!("Processing {}", origin.as_path().display());
                 for chunk in chunks {
                     let plain = chunk.erase_markdown();
                     trace!("{:?}", &plain);
