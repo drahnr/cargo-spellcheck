@@ -8,7 +8,7 @@ use indexmap::IndexMap;
 use std::path::Path;
 
 use crate::documentation::PlainOverlay;
-use crate::{Range, Span};
+use crate::{util::sub_chars, Range, Span};
 /// Definition of the source of a checkable chunk
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub enum ContentOrigin {
@@ -132,7 +132,10 @@ impl CheckableChunk {
                     ChunkDisplay::try_from((self, fragment_range.clone()))
                         .expect("must be convertable")
                 );
-                log::trace!("[f]content;\n>{}<", &self.as_str()[fragment_range.clone()]);
+                log::trace!(
+                    "[f]content;\n>{}<",
+                    crate::util::sub_chars(self.as_str(), fragment_range.clone())
+                );
 
                 if sub_fragment_range.len() == 0 {
                     log::debug!("sub fragment is zero, dropping!");
@@ -140,10 +143,10 @@ impl CheckableChunk {
                 }
 
                 if let Some(span_len) = fragment_span.one_line_len() {
-                    assert_eq!(span_len, fragment_range.len());
+                    debug_assert_eq!(span_len, fragment_range.len());
                 }
                 // take the full fragment string, we need to count newlines before and after
-                let s = &self.as_str()[fragment_range.clone()];
+                let s = sub_chars(self.as_str(), fragment_range.clone());
                 // relative to the range given / offset
                 let shift = sub_fragment_range.start - fragment_range.start;
                 let mut sub_fragment_span = fragment_span.clone();
@@ -207,7 +210,7 @@ impl CheckableChunk {
 
     /// Obtain the length in characters.
     pub fn len_in_chars(&self) -> usize {
-        self.as_str().char_indices().count()
+        self.content.chars().count()
     }
 }
 
@@ -277,33 +280,36 @@ impl<'a> fmt::Display for ChunkDisplay<'a> {
         let oob = Style::new().blink().bold().on_yellow().red();
 
         // simplify
-        let _literal = self.0;
+        let literal = self.0;
         let start = self.1.start;
         let end = self.1.end;
 
         assert!(start <= end);
 
         // content without quote characters
-        let data = self.0.as_str();
+        let data = literal.as_str();
 
         // colour the preceding quote character
         // and the context preceding the highlight
-        let ctx1 = if start < data.len() {
-            context.apply_to(&data[..start])
+        let s = sub_chars(data, 0..start);
+        let ctx1 = if start < literal.len_in_chars() {
+            context.apply_to(s.as_str())
         } else {
             oob.apply_to("!!!")
         };
 
         // highlight the given range
-        let highlight = if end > data.len() {
-            oob.apply_to(&data[start..])
+        let s = sub_chars(data, start..end);
+        let highlight = if end > literal.len_in_chars() {
+            oob.apply_to(s.as_str())
         } else {
-            highlight.apply_to(&data[start..end])
+            highlight.apply_to(s.as_str())
         };
 
         // color trailing context if any as well as the closing quote character
-        let ctx2 = if end <= data.len() {
-            context.apply_to(&data[end..])
+        let s = sub_chars(data, end..literal.len_in_chars());
+        let ctx2 = if end <= literal.len_in_chars() {
+            context.apply_to(s.as_str())
         } else {
             oob.apply_to("!!!")
         };

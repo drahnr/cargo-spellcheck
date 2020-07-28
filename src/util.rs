@@ -1,4 +1,4 @@
-use crate::{LineColumn, Span};
+use crate::{LineColumn, Range, Span};
 use anyhow::{anyhow, bail, Error, Result};
 use std::io::Read;
 
@@ -75,6 +75,15 @@ where
         .collect::<String>();
     // log::trace!("Loading {:?} from line >{}<", &range, &line);
     Ok(extraction)
+}
+
+/// Extract a subset of chars by iterating.
+/// Range must be in characters.
+pub fn sub_chars(s: &str, range: Range) -> String {
+    s.chars()
+        .skip(range.start)
+        .take(range.len())
+        .collect::<String>()
 }
 
 #[cfg(test)]

@@ -9,6 +9,7 @@ use log::trace;
 use pulldown_cmark::{Event, Options, Parser, Tag};
 
 use crate::documentation::{CheckableChunk, Range};
+use crate::util::sub_chars;
 use crate::Span;
 
 /// A plain representation of markdown riddled set of trimmed literals.
@@ -27,10 +28,12 @@ impl<'a> PlainOverlay<'a> {
         // map the range within the plain data,
         // which is fed to the checker,
         // back to the repr with markdown modifiers
+        let x = plain.chars().count();
+        let d = s.chars().count();
         let _ = mapping.insert(
             Range {
-                start: plain.len(),
-                end: plain.len() + s.len(),
+                start: x,
+                end: x + d,
             },
             markdown,
         );
@@ -45,7 +48,7 @@ impl<'a> PlainOverlay<'a> {
 
     /// ranges are mapped `cmakr reduced/plain -> raw`
     fn extract_plain_with_mapping(markdown: &str) -> (String, IndexMap<Range, Range>) {
-        let mut plain = String::with_capacity(markdown.len());
+        let mut plain = String::with_capacity(markdown.chars().count());
         let mut mapping = indexmap::IndexMap::with_capacity(128);
 
         let parser = Parser::new_ext(markdown, Options::all());
@@ -252,35 +255,23 @@ impl<'a> fmt::Debug for PlainOverlay<'a> {
         let mut coloured_md = String::with_capacity(1024);
 
         let mut previous_md_end = 0usize;
-        for (_plain_range, md_range, style) in
+        for (plain_range, md_range, style) in
             itertools::cons_tuples(itertools::zip(self.mapping.iter(), color_cycle))
         {
             // @todo do this properly, `saturating sub` just prevents crashing
             let delta = md_range.start.saturating_sub(previous_md_end);
             // take care of the markers and things that are not rendered
             if delta > 0 {
-                coloured_md.push_str(
-                    uncovered
-                        .apply_to(&markdown[previous_md_end..md_range.start])
-                        .to_string()
-                        .as_str(),
-                );
+                let s = sub_chars(markdown.as_str(), previous_md_end..md_range.start);
+                coloured_md.push_str(uncovered.apply_to(s.as_str()).to_string().as_str());
             }
             previous_md_end = md_range.end;
 
-            coloured_md.push_str(
-                style
-                    .apply_to(&markdown[md_range.clone()])
-                    .to_string()
-                    .as_str(),
-            );
+            let s = sub_chars(markdown.as_str(), md_range.clone());
+            coloured_md.push_str(style.apply_to(s.as_str()).to_string().as_str());
 
-            coloured_plain.push_str(
-                style
-                    .apply_to(&self.plain[_plain_range.clone()])
-                    .to_string()
-                    .as_str(),
-            );
+            let s = sub_chars(self.plain.as_str(), plain_range.clone());
+            coloured_plain.push_str(style.apply_to(s.as_str()).to_string().as_str());
         }
         // write!(formatter, "{}", coloured_md)?;
 

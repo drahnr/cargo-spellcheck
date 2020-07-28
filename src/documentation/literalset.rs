@@ -24,7 +24,8 @@ impl LiteralSet {
     ///
     /// Returns literl within the Err variant if not adjacent
     pub fn add_adjacent(&mut self, literal: TrimmedLiteral) -> Result<(), TrimmedLiteral> {
-        let previous_line = literal.span().end.line;
+        dbg!((literal.as_str(), literal.pre(), literal.post()));
+        let previous_line = dbg!(&literal).span().end.line;
         if previous_line == self.coverage.1 + 1 {
             self.coverage.1 += 1;
             let _ = self.literals.push(literal);
@@ -54,6 +55,7 @@ impl LiteralSet {
         let mut source_mapping = indexmap::IndexMap::with_capacity(n);
         let mut content = String::with_capacity(n * 120);
         if n > 0 {
+            // cursor operates on characters
             let mut cursor = 0usize;
             // for use with `Range`
             let mut start; // inclusive
@@ -62,7 +64,7 @@ impl LiteralSet {
             let mut next = it.next();
             while let Some(literal) = next {
                 start = cursor;
-                cursor += literal.len();
+                cursor += literal.len_in_chars();
                 end = cursor;
 
                 let span = literal.span();
@@ -179,14 +181,14 @@ struct Fluff;"#;
     const EXMALIBU_RANGE_END: usize = EXMALIBU_RANGE_START + 8;
     const EXMALIBU_RANGE: Range = EXMALIBU_RANGE_START..EXMALIBU_RANGE_END;
     const TEST: &str = r#"/// Another exmalibu verification pass.
-///
-/// Boats float, don't they?
+/// 🚤w🌴x🌋y🍈z🍉0
+/// ♫ Boats float, ♫♫ don't they? ♫
 struct Vikings;
 "#;
 
     const TEST_LITERALS_COMBINED: &str = r#" Another exmalibu verification pass.
-
- Boats float, don't they?"#;
+ 🚤w🌴x🌋y🍈z🍉0
+ ♫ Boats float, ♫♫ don't they? ♫"#;
 
     #[test]
     fn combine_literals() {
@@ -295,14 +297,15 @@ struct Vikings;
             }
             assert_eq!(
                 load_span_from(TEST.as_bytes(), span.clone()).expect("Span extraction must work"),
-                &chunk.as_str()[range.clone()]
+                crate::util::sub_chars(chunk.as_str(), range.clone())
             );
 
-            // @todo try_into() only works on one-line spans/ranges
             let r: Range = span.to_content_range(&chunk).expect("Should work");
-            // assert_eq!(spa);
             // the range for raw str contains an offset of 3 when used with `///`
-            assert_eq!(&chunk.as_str()[range.clone()], s.as_str());
+            assert_eq!(
+                crate::util::sub_chars(chunk.as_str(), range.clone()),
+                s.as_str().to_owned()
+            );
             assert_eq!(&r, range);
         }
     }

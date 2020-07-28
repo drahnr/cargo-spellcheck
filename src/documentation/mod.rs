@@ -161,7 +161,10 @@ mod tests {
         // ```
         let expected_plain_range = 2..6;
 
-        assert_eq!("very", &dbg!(plain.as_str())[expected_plain_range.clone()]);
+        assert_eq!(
+            "very".to_owned(),
+            sub_chars(plain.as_str(), expected_plain_range.clone())
+        );
 
         let z: IndexMap<Range, Span> = plain.find_spans(expected_plain_range);
         // FIXME the expected result would be
@@ -309,7 +312,7 @@ Erronbeous bold uetchkp"#;
             let _alternative = load_span_from(SOURCE.as_bytes(), suggestion.span.clone())
                 .expect("Span loading must succeed");
 
-            assert_eq!(word, &chunk.as_str()[range]);
+            assert_eq!(word, crate::util::sub_chars(chunk.as_str(), range));
             log::info!("Found word >> {} <<", word);
         };
 
