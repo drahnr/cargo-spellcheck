@@ -24,8 +24,7 @@ impl LiteralSet {
     ///
     /// Returns literl within the Err variant if not adjacent
     pub fn add_adjacent(&mut self, literal: TrimmedLiteral) -> Result<(), TrimmedLiteral> {
-        dbg!((literal.as_str(), literal.pre(), literal.post()));
-        let previous_line = dbg!(&literal).span().end.line;
+        let previous_line = literal.span().end.line;
         if previous_line == self.coverage.1 + 1 {
             self.coverage.1 += 1;
             let _ = self.literals.push(literal);
