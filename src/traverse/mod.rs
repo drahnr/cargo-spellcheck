@@ -195,6 +195,8 @@ fn extract_products(
     let items = iter
         .filter(|product| product.doctest)
         .filter_map(|product| product.path)
+        // cargo_toml's complete is not very truthfull
+        .filter(|path_str| manifest_dir.join(path_str).is_file())
         .map(|path_str| CheckEntity::Source(manifest_dir.join(path_str)))
         .collect::<Vec<CheckEntity>>();
 

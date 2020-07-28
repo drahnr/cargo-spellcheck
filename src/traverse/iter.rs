@@ -33,8 +33,12 @@ impl TraverseModulesIter {
         P: AsRef<Path>,
     {
         let path = path.as_ref();
-        let path = path.canonicalize().unwrap();
-        let meta = path.metadata().unwrap();
+        let path = path.canonicalize().map_err(|e| {
+            anyhow!("Failed to canonicalize path {}", path.display()).context(e)
+        })?;
+        let meta = path.metadata().map_err(|e| {
+            anyhow!("Failed to obtain meta data for path {}", path.display()).context(e)
+        })?;
         if meta.is_file() {
             self.queue.push_back((path, level));
         } else if meta.is_dir() {
