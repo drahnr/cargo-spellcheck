@@ -275,8 +275,6 @@ impl<'a> fmt::Display for TrimmedLiteralDisplay<'a> {
         // content without quote characters
         let data = literal.as_str();
 
-        use util::sub_chars;
-
         // colour the preceding quote character
         // and the context preceding the highlight
         let (pre, ctx1) = if start > literal.pre() {
