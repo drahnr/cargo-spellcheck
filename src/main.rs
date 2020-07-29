@@ -27,9 +27,9 @@ Spellcheck all your doc comments
 
 Usage:
     cargo-spellcheck [(-v...|-q)] check [--cfg=<cfg>] [--code=<code>] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
-    cargo-spellcheck [(-v...|-q)] fix [--cfg=<cfg>] [--interactive] [--code=<code>] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
+    cargo-spellcheck [(-v...|-q)] fix [--cfg=<cfg>] [--code=<code>] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
     cargo-spellcheck [(-v...|-q)] config (--user|--stdout|--cfg=<cfg>) [--force]
-    cargo-spellcheck [(-v...|-q)] [--cfg=<cfg>] [--fix [--interactive]] [--code=<code>] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
+    cargo-spellcheck [(-v...|-q)] [--cfg=<cfg>] [--fix] [--code=<code>] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
     cargo-spellcheck --help
     cargo-spellcheck --version
 
@@ -37,8 +37,7 @@ Options:
   -h --help                 Show this screen.
   --version                 Print the version and exit.
 
-  --fix                     Synonym to running the `fix` subcommand.
-  -i --interactive          Interactively apply spelling and grammer fixes.
+  --fix                     Interactively apply spelling and grammer fixes, synonym to `fix` sub-command.
   -r --recursive            If a path is provided, if recursion into subdirectories is desired.
   --checkers=<checkers>     Calculate the intersection between
                             configured by config file and the ones provided on commandline.
@@ -75,7 +74,6 @@ impl ExitCode {
 struct Args {
     arg_paths: Vec<PathBuf>,
     flag_fix: bool,
-    flag_interactive: bool,
     flag_recursive: bool,
     flag_verbose: usize,
     flag_quiet: bool,
@@ -249,9 +247,7 @@ fn run() -> anyhow::Result<ExitCode> {
     checkers(&mut config);
 
     // extract operation mode
-    let action = if args.flag_interactive {
-        Action::Interactive
-    } else if args.cmd_fix || args.flag_fix {
+    let action = if args.cmd_fix || args.flag_fix {
         Action::Fix
     } else {
         // check
@@ -296,21 +292,14 @@ mod tests {
             "cargo spellcheck",
             "cargo spellcheck -vvvv",
             "cargo spellcheck --fix",
-            "cargo spellcheck --fix --interactive",
             "cargo spellcheck fix",
-            "cargo spellcheck fix --interactive",
-            "cargo spellcheck fix --interactive -r file.rs",
-            "cargo spellcheck -q fix --interactive Cargo.toml",
-            "cargo spellcheck -v fix --interactive Cargo.toml",
             "cargo-spellcheck",
             "cargo-spellcheck -vvvv",
             "cargo-spellcheck --fix",
-            "cargo-spellcheck --fix --interactive",
             "cargo-spellcheck fix",
-            "cargo-spellcheck fix --interactive",
-            "cargo-spellcheck fix --interactive -r file.rs",
-            "cargo-spellcheck -q fix --interactive Cargo.toml",
-            "cargo spellcheck -v fix --interactive Cargo.toml",
+            "cargo-spellcheck fix -r file.rs",
+            "cargo-spellcheck -q fix Cargo.toml",
+            "cargo spellcheck -v fix Cargo.toml",
             "cargo spellcheck -m 11 check",
         ];
         for command in commands {
