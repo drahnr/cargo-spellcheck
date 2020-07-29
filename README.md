@@ -9,9 +9,9 @@ Check your spelling with `hunspell` and/or `languagetool`.
 ## Use Cases
 
 Run `cargo spellcheck --fix` or `cargo spellcheck fix` to fix all your documentation comments
-in order to avoid narsty types all over the place.
+in order to avoid narsty typos all over your source tree.
 
-Meant as a helper simplifying review as well as possibly improving CI
+Meant as a helper simplifying review as well as improving CI checks
 after a learning phase for custom/topic specifc lingo.
 
 ### Check For Spelling and/or Grammar Mistakes
@@ -32,7 +32,7 @@ cargo spellcheck check
 ### Apply Suggestions Interactively
 
 ```zsh
-cargo spellcheck fix --interactive
+cargo spellcheck fix
 ```
 
 <pre><font color="#CC0000"><b>error</b></font><font color="#D3D7CF"><b>: spellcheck(Hunspell)</b></font>
@@ -73,10 +73,9 @@ mistakes are found instead of `0`.
   * [ ] Verify all types of links [#44](https://github.com/drahnr/cargo-spellcheck/issues/44)
 * [x] Check `README.md` files [#37](https://github.com/drahnr/cargo-spellcheck/issues/37)
 * [ ] Check mdbook `book.toml` file trees [#62](https://github.com/drahnr/cargo-spellcheck/issues/62)
-* [x] `cargo-spellcheck fix --interactive`
 * [x] Improve interactive user interface with `crossterm`
 * [x] Ellipsize overly long statements with `...` [#42](https://github.com/drahnr/cargo-spellcheck/issues/42)
-* [ ] Learn topic lingo and filter false-positive-suggestions when `fix --interactive` is passed [#41](https://github.com/drahnr/cargo-spellcheck/issues/41)
+* [ ] Learn topic lingo and filter false-positive-suggestions [#41](https://github.com/drahnr/cargo-spellcheck/issues/41)
 * [x] Handle cargo workspaces [#38](https://github.com/drahnr/cargo-spellcheck/issues/38)
 * [ ] Re-wrap doc comments [#39](https://github.com/drahnr/cargo-spellcheck/issues/39)
 * [ ] Word split validation [#40](https://github.com/drahnr/cargo-spellcheck/issues/40)
