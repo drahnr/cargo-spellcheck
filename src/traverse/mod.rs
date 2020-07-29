@@ -156,7 +156,7 @@ fn load_manifest<P: AsRef<Path>>(manifest_dir: P) -> Result<cargo_toml::Manifest
     if manifest.complete_from_path(&manifest_file).is_err() {
         if manifest.complete_from_path(manifest_dir).is_err() {
             debug!(
-                "Failed to complete {} from filesystem",
+                "Complete from filesystem did not yield new information for manifest {}",
                 manifest_file.display()
             );
         }
