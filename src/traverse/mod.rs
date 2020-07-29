@@ -486,8 +486,8 @@ mod tests {
         assert_eq!(
             extract_products(&manifest, &dir).expect("Must succeed"),
             vec![
-                CheckEntity::Source(demo_dir().join("src/main.rs")),
-                CheckEntity::Source(demo_dir().join("src/lib.rs")),
+                CheckEntity::Source(demo_dir().join("src/main.rs"), true),
+                CheckEntity::Source(demo_dir().join("src/lib.rs"), true),
             ]
         );
         assert_eq!(
@@ -583,8 +583,15 @@ mod tests {
     fn traverse_manifest_1() {
         extract_test!(["Cargo.toml"] + false => [
             "README.md",
+            "src/lib.rs",
             "src/main.rs",
-            "src/lib.rs"
+            "src/nested/again/mod.rs",
+            "src/nested/fragments/enumerate.rs",
+            "src/nested/fragments/simple.rs",
+            "src/nested/fragments.rs",
+            "src/nested/justone.rs",
+            "src/nested/justtwo.rs",
+            "src/nested/mod.rs",
         ]);
     }
 
