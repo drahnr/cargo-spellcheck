@@ -118,12 +118,10 @@ fn correct_lines<'s>(
 /// Mode in which `cargo-spellcheck` operates
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum Action {
-    /// Fix issues without interaction if there is sufficient information
-    Fix,
     /// Only show errors
     Check,
-    /// Interactively choose from __candidates__ provided, similar to `git add -p` .
-    Interactive,
+    /// Interactively choose from checker provided suggestions.
+    Fix,
 }
 
 impl Action {
@@ -222,9 +220,8 @@ impl Action {
     /// Run the requested action.
     pub fn run(self, suggestions: SuggestionSet, config: &Config) -> Result<Finish> {
         match self {
-            Self::Fix => unimplemented!("Unsupervised fixing is not implemented just yet"),
             Self::Check => self.check(suggestions, config),
-            Self::Interactive => {
+            Self::Fix => {
                 let (picked, user_sel) =
                     interactive::UserPicked::select_interactive(suggestions, config)?;
                 if user_sel == UserSelection::Abort {
