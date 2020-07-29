@@ -138,7 +138,7 @@ pub(crate) fn extract_modules_from_file<P: AsRef<Path>>(path: P) -> Result<Vec<P
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum CheckEntity {
     Markdown(PathBuf),
-    Source(PathBuf),
+    Source(PathBuf, bool), // recurse is the bool
     ManifestDescription(String),
 }
 
@@ -197,7 +197,7 @@ fn extract_products(
         .filter_map(|product| product.path)
         // cargo_toml's complete is not very truthfull
         .filter(|path_str| manifest_dir.join(path_str).is_file())
-        .map(|path_str| CheckEntity::Source(manifest_dir.join(path_str)))
+        .map(|path_str| CheckEntity::Source(manifest_dir.join(path_str), true))
         .collect::<Vec<CheckEntity>>();
 
     trace!("manifest products {:?}", &items);
@@ -382,7 +382,7 @@ pub(crate) fn extract(
                     "File passed as argument or listed in Cargo.toml manifest does not exist: {}",
                     missing_path.display()
                 ),
-                Extraction::Source(path) => acc.push(CheckEntity::Source(path)),
+                Extraction::Source(path) => acc.push(CheckEntity::Source(path, recurse)),
                 Extraction::Markdown(path) => acc.push(CheckEntity::Markdown(path)),
             }
             Ok(acc)
@@ -395,7 +395,7 @@ pub(crate) fn extract(
             Documentation::new(),
             |mut docs, item| {
                 match item {
-                    CheckEntity::Source(path) => {
+                    CheckEntity::Source(path, recurse) => {
                         if recurse {
                             let iter = traverse(path.as_path())?;
                             docs.extend(iter);
