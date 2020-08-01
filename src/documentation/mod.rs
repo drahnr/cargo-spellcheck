@@ -1,6 +1,16 @@
 //! Representation of multiple documents.
 //!
 //! So to speak documentation of project as whole.
+//!
+//! A `literal` is a token provided by `proc_macro2`, which is then
+//! converted by means of `TrimmedLiteral` using `Cluster`ing
+//! into a `CheckableChunk` (mostly named just `chunk`).
+//!
+//! `CheckableChunk`s can consist of multiple fragments, where
+//! each fragment can span multiple lines, yet each fragment
+//! is covering a consecutive `Span` in the origin content.
+//! Each fragment also has a direct mapping to the `CheckableChunk` internal
+//! string representation.
 
 use super::*;
 
@@ -81,13 +91,19 @@ impl Documentation {
 }
 
 /// only a shortcut to avoid duplicate code
-impl From<(ContentOrigin, proc_macro2::TokenStream)> for Documentation {
-    fn from((source, stream): (ContentOrigin, proc_macro2::TokenStream)) -> Self {
-        let cluster =
-            Clusters::try_from(stream).expect("Must succeed to create cluster from stream");
-        let chunks = Vec::<CheckableChunk>::from(cluster);
+impl From<(ContentOrigin, &str)> for Documentation {
+    fn from((origin, content): (ContentOrigin, &str)) -> Self {
         let mut docs = Documentation::new();
-        docs.add(source, chunks);
+
+        match Clusters::try_from(content) {
+            Ok(cluster) => {
+                let chunks = Vec::<CheckableChunk>::from(cluster);
+                docs.add(origin, chunks);
+            }
+            Err(e) => {
+                log::error!("BUG: Failed to create cluster from {}: {}", &origin, e);
+            }
+        }
         docs
     }
 }
@@ -95,9 +111,9 @@ impl From<(ContentOrigin, proc_macro2::TokenStream)> for Documentation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::action::bandaid::tests::load_span_from;
     use crate::checker::Checker;
     use crate::fluff_up;
+    use crate::util::load_span_from;
 
     use std::convert::From;
 
@@ -118,9 +134,7 @@ mod tests {
 
         let test_path = PathBuf::from("/tmp/dummy");
         let origin = ContentOrigin::RustSourceFile(test_path.clone());
-        let stream =
-            syn::parse_str::<proc_macro2::TokenStream>(TEST_SOURCE).expect("Must be valid rust");
-        let docs = Documentation::from((origin.clone(), stream));
+        let docs = Documentation::from((origin.clone(), TEST_SOURCE));
         assert_eq!(docs.index.len(), 1);
         let chunks = docs.index.get(&origin).expect("Must contain dummy path");
         assert_eq!(dbg!(chunks).len(), 1);
@@ -147,7 +161,10 @@ mod tests {
         // ```
         let expected_plain_range = 2..6;
 
-        assert_eq!("very", &dbg!(plain.as_str())[expected_plain_range.clone()]);
+        assert_eq!(
+            "very".to_owned(),
+            sub_chars(plain.as_str(), expected_plain_range.clone())
+        );
 
         let z: IndexMap<Range, Span> = plain.find_spans(expected_plain_range);
         // FIXME the expected result would be
@@ -175,9 +192,7 @@ mod tests {
             .try_init();
 
             let origin = $origin;
-            let stream =
-                syn::parse_str::<proc_macro2::TokenStream>($test).expect("Must be valid rust");
-            let docs = Documentation::from((origin.clone(), stream));
+            let docs = Documentation::from((origin.clone(), $test));
             assert_eq!(docs.index.len(), 1);
             let chunks = docs.index.get(&origin).expect("Must contain dummy path");
             assert_eq!(dbg!(chunks).len(), 1);
@@ -190,7 +205,7 @@ mod tests {
                 .iter()
                 .next()
                 .expect("Must contain exactly one item");
-            assert_eq!(dbg!(suggestions).len(), $n);
+            assert_eq!(suggestions.len(), $n);
             suggestion_set
         }};
     }
@@ -256,10 +271,8 @@ struct X"#;
 
 Erronbeous bold uetchkp"#;
 
-        let stream =
-            syn::parse_str::<proc_macro2::TokenStream>(SOURCE).expect("Must parse just fine");
         let origin = ContentOrigin::RustSourceFile(PathBuf::from("/tmp/virtual"));
-        let docs = Documentation::from((origin.clone(), stream));
+        let docs = Documentation::from((origin.clone(), SOURCE));
 
         // @todo contains utter garbage, should be individual tokens, but is multiple literal
         let suggestion_set = dbg!(DummyChecker::check(&docs, &())).expect("Must not error");
@@ -289,7 +302,7 @@ Erronbeous bold uetchkp"#;
             let range: Range = suggestion
                 .span
                 .to_content_range(&suggestion.chunk)
-                .expect("Must be a single line");
+                .expect("Must work to derive content range from chunk and span");
 
             log::info!(
                 "Foxxy funkster: {}",
@@ -299,7 +312,7 @@ Erronbeous bold uetchkp"#;
             let _alternative = load_span_from(SOURCE.as_bytes(), suggestion.span.clone())
                 .expect("Span loading must succeed");
 
-            assert_eq!(word, &chunk.as_str()[range]);
+            assert_eq!(word, crate::util::sub_chars(chunk.as_str(), range));
             log::info!("Found word >> {} <<", word);
         };
 

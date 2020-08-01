@@ -6,6 +6,7 @@ use super::tokenize;
 use super::Checker;
 use crate::documentation::Documentation;
 use crate::suggestion::{Detector, Suggestion, SuggestionSet};
+use crate::util::sub_chars;
 use anyhow::Result;
 use log::trace;
 
@@ -22,10 +23,13 @@ impl Checker for DummyChecker {
         let suggestions = docu.iter().try_fold::<SuggestionSet, _, Result<_>>(
             SuggestionSet::new(),
             |mut acc, (origin, chunks)| {
-                let chunk = chunks.iter().next().unwrap();
+                let chunk = chunks
+                    .iter()
+                    .next()
+                    .expect("DummyChecker expects at least one chunk");
                 let plain = chunk.erase_markdown();
                 for (index, range) in dbg!(tokenize(plain.as_str())).into_iter().enumerate() {
-                    trace!("Token: >{}<", &plain.as_str()[range.clone()]);
+                    trace!("Token: >{}<", sub_chars(plain.as_str(), range.clone()));
                     let detector = Detector::Dummy;
                     let range2span = plain.find_spans(range.clone());
                     for (range, span) in range2span {
@@ -44,7 +48,7 @@ impl Checker for DummyChecker {
                             chunk,
                             description: None,
                         };
-                        acc.add(origin.clone(), dbg!(suggestion));
+                        acc.add(origin.clone(), suggestion);
                     }
                 }
                 Ok(acc)

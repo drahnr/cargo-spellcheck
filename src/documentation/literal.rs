@@ -1,7 +1,8 @@
+use crate::util::{self, sub_chars};
 use crate::{Range, Span};
-use anyhow::{anyhow, Result};
+use anyhow::{bail, Result};
 
-use regex::Regex;
+use fancy_regex::Regex;
 use std::convert::TryFrom;
 use std::fmt;
 
@@ -12,13 +13,13 @@ pub struct TrimmedLiteral {
     span: Span,
     /// the complete rendered string including post and pre.
     rendered: String,
-    /// Literal prefx
-    pub pre: usize,
-    /// Literal postfix
-    pub post: usize,
-    /// Length of rendered **minus** `pre` and `post`.
-    /// If the literal is all empty, `pre` and `post` become `0`, and `len` covers the full length of `rendered`.
-    len: usize,
+    /// Literal prefix length.
+    pre: usize,
+    /// Literal postfix length.
+    post: usize,
+    /// Length of rendered **minus** `pre` and `post` in UTF-8 characters.
+    len_in_chars: usize,
+    len_in_bytes: usize,
 }
 
 impl std::cmp::PartialEq for TrimmedLiteral {
@@ -51,84 +52,140 @@ impl std::hash::Hash for TrimmedLiteral {
         self.span.hash(hasher);
         self.pre.hash(hasher);
         self.post.hash(hasher);
-        self.len.hash(hasher);
+        self.len_in_bytes.hash(hasher);
+        self.len_in_chars.hash(hasher);
     }
 }
 
-impl TryFrom<proc_macro2::Literal> for TrimmedLiteral {
+impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
     type Error = anyhow::Error;
-    fn try_from(literal: proc_macro2::Literal) -> Result<Self> {
-        let rendered = literal.to_string();
+    fn try_from((content, literal): (&str, proc_macro2::Literal)) -> Result<Self> {
+        // pretty unusable garabage, since it modifies the content of `///`
+        // comments which could contain " which will be escaped
+        // and therefor cause the `span()` to yield something that does
+        // not align with the rendered literal at all and there are too
+        // many pitfalls to sanitize all cases
+        // let rendered = literal.to_string();
 
-        lazy_static::lazy_static! {
-            static ref PREFIX_ERASER: Regex = Regex::new(r##"^((?:r#*)?")"##).unwrap();
-            static ref SUFFIX_ERASER: Regex = Regex::new(r##"("#*)$"##).unwrap();
-        };
-
-        let pre = if let Some(captures) = PREFIX_ERASER.captures(rendered.as_str()) {
-            if let Some(prefix) = captures.get(1) {
-                prefix.as_str().len()
-            } else {
-                return Err(anyhow!("Unknown prefix of literal"));
-            }
-        } else {
-            return Err(anyhow!("Missing prefix of literal: {}", rendered.as_str()));
-        };
-        let post = if let Some(captures) = SUFFIX_ERASER.captures(rendered.as_str()) {
-            // capture indices are 1 based, 0 is the full string
-            if let Some(suffix) = captures.get(captures.len() - 1) {
-                suffix.as_str().len()
-            } else {
-                return Err(anyhow!("Unknown suffix of literal"));
-            }
-        } else {
-            return Err(anyhow!("Missing suffix of literal: {}", rendered.as_str()));
-        };
-
-        let (len, pre, post) = match rendered.len() {
-            len if len >= pre + post => (len - pre - post, pre, post),
-            _len => return Err(anyhow!("Prefix and suffix overlap, which is impossible")),
-        };
-
+        // XXX no idea why we have to match against the trailing `]` character, should not be part of the range
+        // but the span we obtain from literal seems to be wrong, adding one trailing char
         let mut span = Span::from(literal.span());
+        span.end.column = span.end.column.saturating_sub(1); // either `]` or `\n` we don't need either
 
-        // check if it is a `///` comment, for which the literal
-        // span needs to be adjusted, since it would include the `///`
-        // @todo find a better way, potentially doing this when
-        // creating a `TrimmedLiteral` and storing this on construction
-        if pre == 1 && span.start.column == 0 {
-            span.start.column += 2;
+        let rendered = util::load_span_from(content.as_bytes(), span.clone())?;
+        // @todo cache the offsets for faster processing and avoiding repeated O(n) ops
+        // let byteoffset2char = rendered.char_indices().enumerate().collect::<indexmap::IndexMap<usize, (usize, char)>>();
+        // let rendered_len = byteoffset2char.len();
+        let rendered_len = rendered.chars().count();
+
+        log::trace!("extracted from source: >{}< @ {:?}", rendered, span);
+        let (span, pre, post) = if rendered.starts_with("///") || rendered.starts_with("//!") {
+            let pre = 3; // `///`
+            let post = 0; // trailing `\n` is already accounted for above
+
+            span.start.column += pre;
+
+            // must always be a single line
+            assert_eq!(span.start.line, span.end.line);
+            // if the line includes quotes, the rustc converts them internally
+            // to `#[doc="content"]`, where - if `content` contains `"` will substitute
+            // them as `\"` which will inflate the number columns.
+            // Since we can not distinguish between orignally escaped, we simply
+            // use the content read from source.
+
+            (span, pre, post)
+        } else {
+            // pre and post are for the rendered content
+            // not necessarily for the span
+
+            //^r(#+?)"(?:.*\s*)+(?=(?:"\1))("\1)$
+            lazy_static::lazy_static! {
+                static ref BOUNDED_RAW_STR: Regex = Regex::new(r##"^(r(#+)?")(?:.*\s*)+?(?=(?:"\2))("\2)\s*\]?\s*$"##).expect("BOUNEDED_RAW_STR regex compiles");
+                static ref BOUNDED_STR: Regex = Regex::new(r##"^"(?:.(?!"\\"))*?"*\s*\]?\s*"$"##).expect("BOUNEDED_STR regex compiles");
+            };
+
+            let (pre, post) = if let Some(captures) =
+                BOUNDED_RAW_STR.captures(rendered.as_str()).ok().flatten()
+            {
+                log::trace!("raw str: >{}<", rendered.as_str());
+                let pre = if let Some(prefix) = captures.get(1) {
+                    log::trace!("raw str pre: >{}<", prefix.as_str());
+                    prefix.as_str().len()
+                } else {
+                    bail!("Should have a raw str pre match with a capture group");
+                };
+                let post = if let Some(suffix) = captures.get(captures.len() - 1) {
+                    log::trace!("raw str post: >{}<", suffix.as_str());
+                    suffix.as_str().len()
+                } else {
+                    bail!("Should have a raw str post match with a capture group");
+                };
+
+                // r####" must match "####
+                debug_assert_eq!(pre, post + 1);
+
+                (pre, post)
+            } else if let Some(_captures) = BOUNDED_STR.captures(rendered.as_str()).ok().flatten() {
+                // r####" must match "####
+                let pre = 1;
+                let post = 1;
+                debug_assert_eq!('"', rendered.as_bytes()[0usize] as char);
+                debug_assert_eq!('"', rendered.as_bytes()[rendered.len() - 1usize] as char);
+                (pre, post)
+            } else {
+                bail!("Regex should match >{}<", rendered);
+            };
+
+            span.start.column += pre;
+            span.end.column = span.end.column.saturating_sub(post);
+
+            (span, pre, post)
+        };
+
+        let len_in_chars = rendered_len.saturating_sub(post + pre);
+
+        if let Some(span_len) = span.one_line_len() {
+            let extracted = sub_chars(rendered.as_str(), pre..rendered_len.saturating_sub(post));
+            log::trace!(target: "quirks", "{:?} {}||{} for \n extracted: >{}<\n rendered:  >{}<", span, pre, post, &extracted, rendered);
+            assert_eq!(len_in_chars, span_len);
         }
-        span.start.column += pre;
-        span.end.column -= post;
 
-        Ok(Self {
-            len,
+        let len_in_bytes = rendered.len().saturating_sub(post + pre);
+        let literal = Self {
+            len_in_chars,
+            len_in_bytes,
             rendered,
             span,
             pre,
             post,
-        })
+        };
+        Ok(literal)
     }
 }
 
 impl TrimmedLiteral {
     pub fn as_str(&self) -> &str {
-        &self.rendered.as_str()[self.pre..(self.pre + self.len)]
+        &self.rendered.as_str()[self.pre..(self.pre + self.len_in_bytes)]
     }
     pub fn prefix(&self) -> &str {
         &self.rendered.as_str()[..self.pre]
     }
     pub fn suffix(&self) -> &str {
-        &self.rendered.as_str()[(self.pre + self.len)..]
+        &self.rendered.as_str()[(self.pre + self.len_in_bytes)..]
     }
 
     pub fn as_untrimmed_str(&self) -> &str {
         &self.rendered.as_str()
     }
 
+    /// Length in characters, excluding `pre` and `post`.
+    pub fn len_in_chars(&self) -> usize {
+        self.len_in_chars
+    }
+
+    /// Length in bytes, excluding `pre` and `post`.
     pub fn len(&self) -> usize {
-        self.len
+        self.len_in_bytes
     }
 
     pub fn pre(&self) -> usize {
@@ -143,6 +200,12 @@ impl TrimmedLiteral {
         self.span.clone()
     }
 
+    pub fn chars<'a>(&'a self) -> impl Iterator<Item = char> + 'a {
+        self.as_str().chars()
+    }
+
+    /// Display helper, mostly used for debug investigations
+    #[allow(unused)]
     pub(crate) fn display(&self, highlight: Range) -> TrimmedLiteralDisplay {
         TrimmedLiteralDisplay::from((self, highlight))
     }
@@ -216,29 +279,42 @@ impl<'a> fmt::Display for TrimmedLiteralDisplay<'a> {
         // and the context preceding the highlight
         let (pre, ctx1) = if start > literal.pre() {
             (
+                // ok since that is ascii, so it's single bytes
                 cutoff.apply_to(&data[..literal.pre()]).to_string(),
-                context.apply_to(&data[literal.pre()..start]).to_string(),
+                {
+                    let s = sub_chars(data, literal.pre()..start);
+                    context.apply_to(s.as_str()).to_string()
+                },
             )
-        } else if start <= data.len() {
-            (cutoff.apply_to(&data[..start]).to_string(), String::new())
+        } else if start <= literal.len_in_chars() {
+            let s = sub_chars(data, 0..start);
+            (cutoff.apply_to(s.as_str()).to_string(), String::new())
         } else {
             (String::new(), "!!!".to_owned())
         };
         // highlight the given range
-        let highlight = if end >= data.len() {
-            oob.apply_to(&data[start..data.len()]).to_string()
+        let highlight = if end >= literal.len_in_chars() {
+            let s = sub_chars(data, start..literal.len_in_chars());
+            oob.apply_to(s.as_str()).to_string()
         } else {
-            highlight.apply_to(&data[start..end]).to_string()
+            let s = sub_chars(data, start..end);
+            highlight.apply_to(s.as_str()).to_string()
         };
         // color trailing context if any as well as the closing quote character
-        let post_idx = literal.pre() + literal.len();
+        let post_idx = literal.pre() + literal.len_in_chars();
         let (ctx2, post) = if post_idx > end {
+            let s_ctx = sub_chars(data, end..post_idx);
+            let s_cutoff = sub_chars(data, post_idx..literal.len_in_chars());
             (
-                context.apply_to(&data[end..post_idx]).to_string(),
-                cutoff.apply_to(&data[post_idx..]).to_string(),
+                context.apply_to(s_ctx.as_str()).to_string(),
+                cutoff.apply_to(s_cutoff.as_str()).to_string(),
             )
-        } else if end < data.len() {
-            (String::new(), cutoff.apply_to(&data[end..]).to_string())
+        } else if end < literal.len_in_chars() {
+            let s = sub_chars(
+                data,
+                end..(literal.len_in_chars() + literal.pre() + literal.post()),
+            );
+            (String::new(), cutoff.apply_to(s.as_str()).to_string())
         } else {
             (String::new(), oob.apply_to("!!!").to_string())
         };
@@ -250,6 +326,7 @@ impl<'a> fmt::Display for TrimmedLiteralDisplay<'a> {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+    use crate::util::load_span_from;
     use crate::LineColumn;
 
     pub(crate) fn annotated_literals(source: &str) -> Vec<TrimmedLiteral> {
@@ -273,7 +350,7 @@ pub(crate) mod tests {
                 }
             })
             .map(|literal| {
-                TrimmedLiteral::try_from(literal)
+                TrimmedLiteral::try_from((source, literal))
                     .expect("Literals must be convertable to trimmed literals")
             })
             .collect()
@@ -283,6 +360,7 @@ pub(crate) mod tests {
     const SUFFIX_RAW_LEN: usize = 2;
     const GAENSEFUESSCHEN: usize = 1;
 
+    #[derive(Clone, Debug)]
     struct Triplet {
         /// source content
         source: &'static str,
@@ -297,6 +375,7 @@ pub(crate) mod tests {
     }
 
     const TEST_DATA: &[Triplet] = &[
+        // 0
         Triplet {
             source: r#"
 /// One Doc
@@ -307,17 +386,17 @@ struct One;
             extracted_span: Span {
                 start: LineColumn {
                     line: 2usize,
-                    column: 0, // @todo file a ticket with proc_macro2 to clarify if this is a bug or intended behaviour
+                    column: 0,
                 },
                 end: LineColumn {
                     line: 2usize,
-                    column: 10usize, // @todo why???
+                    column: 10usize,
                 },
             },
             trimmed_span: Span {
                 start: LineColumn {
                     line: 2usize,
-                    column: 3usize, // the expected start of our data
+                    column: 3usize,
                 },
                 end: LineColumn {
                     line: 2usize,
@@ -325,6 +404,36 @@ struct One;
                 },
             },
         },
+        // 1
+        Triplet {
+            source: r##"
+    ///meanie
+struct Meanie;
+"##,
+            extracted: r#""meanie""#,
+            trimmed: "meanie",
+            extracted_span: Span {
+                start: LineColumn {
+                    line: 2usize,
+                    column: 0usize + 7 - PREFIX_RAW_LEN,
+                },
+                end: LineColumn {
+                    line: 2usize,
+                    column: 0usize + 12 + SUFFIX_RAW_LEN,
+                },
+            },
+            trimmed_span: Span {
+                start: LineColumn {
+                    line: 2usize,
+                    column: 0usize + 7,
+                },
+                end: LineColumn {
+                    line: 2usize,
+                    column: 0usize + 12,
+                },
+            },
+        },
+        // 2
         Triplet {
             source: r#"
 #[doc = "Two Doc"]
@@ -335,11 +444,11 @@ struct Two;
             extracted_span: Span {
                 start: LineColumn {
                     line: 2usize,
-                    column: 0usize + 9 - GAENSEFUESSCHEN,
+                    column: 0usize + 10 - GAENSEFUESSCHEN,
                 },
                 end: LineColumn {
                     line: 2usize,
-                    column: 7usize + 9 + GAENSEFUESSCHEN,
+                    column: 6usize + 10 + GAENSEFUESSCHEN,
                 },
             },
             trimmed_span: Span {
@@ -349,13 +458,14 @@ struct Two;
                 },
                 end: LineColumn {
                     line: 2usize,
-                    column: 7usize + 9,
+                    column: 6usize + 9,
                 },
             },
         },
+        // 3
         Triplet {
             source: r##"
-#[doc = r#"Three Doc"#]
+    #[doc=r#"Three Doc"#]
 struct Three;
 "##,
             extracted: r###"r#"Three Doc"#"###,
@@ -363,24 +473,25 @@ struct Three;
             extracted_span: Span {
                 start: LineColumn {
                     line: 2usize,
-                    column: 0usize + 11 - PREFIX_RAW_LEN,
+                    column: 4usize + 11,
                 },
                 end: LineColumn {
                     line: 2usize,
-                    column: 9usize + 11 + SUFFIX_RAW_LEN,
+                    column: 13usize + 11,
                 },
             },
             trimmed_span: Span {
                 start: LineColumn {
                     line: 2usize,
-                    column: 0usize + 11,
+                    column: 0usize + 13,
                 },
                 end: LineColumn {
                     line: 2usize,
-                    column: 9usize + 11,
+                    column: 13usize + 8,
                 },
             },
         },
+        // 4
         Triplet {
             source: r###"
 #[doc = r##"Four
@@ -421,22 +532,164 @@ lines
                 },
             },
         },
+        // 5
+        Triplet {
+            source: r###"
+#[doc        ="XYZ"]
+struct Five;
+"###,
+            extracted: r#""XYZ""#,
+            trimmed: r#"XYZ"#,
+            extracted_span: Span {
+                start: LineColumn {
+                    line: 2usize,
+                    column: 15usize - GAENSEFUESSCHEN,
+                },
+                end: LineColumn {
+                    line: 2usize,
+                    column: 15usize + 2 + GAENSEFUESSCHEN,
+                },
+            },
+            trimmed_span: Span {
+                start: LineColumn {
+                    line: 2usize,
+                    column: 15usize,
+                },
+                end: LineColumn {
+                    line: 2usize,
+                    column: 15usize + 2,
+                },
+            },
+        },
+        // 6
+        Triplet {
+            source: r#"
+
+    /// if a layer is provided a identiacla "input" and "output", it will only be supplied an
+    fn compute_in_place(&self) -> bool {
+        false
+    }
+
+"#,
+            extracted: r#"" if a layer is provided a identiacla "input" and "output", it will only be supplied an""#,
+            trimmed: r#" if a layer is provided a identiacla "input" and "output", it will only be supplied an"#,
+            extracted_span: Span {
+                start: LineColumn {
+                    line: 3usize,
+                    column: 7usize - GAENSEFUESSCHEN,
+                },
+                end: LineColumn {
+                    line: 2usize,
+                    column: 92usize + GAENSEFUESSCHEN,
+                },
+            },
+            trimmed_span: Span {
+                start: LineColumn {
+                    line: 3usize,
+                    column: 7usize,
+                },
+                end: LineColumn {
+                    line: 3usize,
+                    column: 92usize,
+                },
+            },
+        },
+        // 7
+        Triplet {
+            source: r#"
+
+/// 🍉 ← αA<sup>OP</sup>x + βy
+fn unicode(&self) -> bool {
+    true
+}
+
+"#,
+            extracted: r#"" 🍉 ← αA<sup>OP</sup>x + βy""#,
+            trimmed: r#" 🍉 ← αA<sup>OP</sup>x + βy"#,
+            extracted_span: Span {
+                start: LineColumn {
+                    line: 3usize,
+                    column: 3usize - GAENSEFUESSCHEN,
+                },
+                end: LineColumn {
+                    line: 2usize,
+                    column: 28usize + GAENSEFUESSCHEN,
+                },
+            },
+            trimmed_span: Span {
+                start: LineColumn {
+                    line: 3usize,
+                    column: 3usize,
+                },
+                end: LineColumn {
+                    line: 3usize,
+                    column: 28usize,
+                },
+            },
+        },
     ];
 
+    fn comment_variant_span_range_validation(index: usize) {
+        let _ = env_logger::builder()
+            .filter(None, log::LevelFilter::Trace)
+            .is_test(true)
+            .try_init();
+
+        let triplet = TEST_DATA[index].clone();
+        let literals = annotated_literals(triplet.source);
+
+        assert_eq!(literals.len(), 1);
+
+        let literal = literals.first().expect("Must contain exactly one literal");
+
+        assert_eq!(literal.as_str(), triplet.trimmed);
+
+        // just for better visual errors
+        let excerpt = load_span_from(triplet.source.as_bytes(), literal.span()).unwrap();
+        let expected_excerpt =
+            load_span_from(triplet.source.as_bytes(), triplet.trimmed_span).unwrap();
+        assert_eq!(excerpt, expected_excerpt);
+
+        assert_eq!(literal.span(), triplet.trimmed_span);
+    }
+
     #[test]
-    fn raw_variants_inspection() {
-        for triplet in TEST_DATA {
-            let literals = annotated_literals(triplet.source);
+    fn raw_variant_0_triple_slash() {
+        comment_variant_span_range_validation(0);
+    }
 
-            assert_eq!(literals.len(), 1);
+    #[test]
+    fn raw_variant_1_spaces_triple_slash() {
+        comment_variant_span_range_validation(1);
+    }
 
-            let literal = literals.first().expect("Must contain exactly one literal");
+    #[test]
+    fn raw_variant_2_spaces_doc_eq_single_quote() {
+        comment_variant_span_range_validation(2);
+    }
 
-            assert_eq!(literal.as_untrimmed_str(), triplet.extracted);
+    #[test]
+    fn raw_variant_3_doc_eq_single_r_hash_quote() {
+        comment_variant_span_range_validation(3);
+    }
 
-            assert_eq!(literal.as_str(), triplet.trimmed);
+    #[test]
+    fn raw_variant_4_doc_eq_multi() {
+        comment_variant_span_range_validation(4);
+    }
 
-            assert_eq!(literal.span(), triplet.trimmed_span);
-        }
+    #[test]
+    fn raw_variant_5_doc_spaces_eq_single_quote() {
+        comment_variant_span_range_validation(5);
+    }
+
+    #[test]
+    fn raw_variant_6_quote_chars() {
+        comment_variant_span_range_validation(6);
+    }
+
+    #[test]
+    fn raw_variant_7_unicode_symbols() {
+        comment_variant_span_range_validation(7);
     }
 }

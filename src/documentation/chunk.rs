@@ -8,7 +8,7 @@ use indexmap::IndexMap;
 use std::path::Path;
 
 use crate::documentation::PlainOverlay;
-use crate::{Range, Span};
+use crate::{util::sub_chars, Range, Span};
 /// Definition of the source of a checkable chunk
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub enum ContentOrigin {
@@ -82,11 +82,6 @@ impl CheckableChunk {
         }
     }
 
-    /// Obtain an accessor object containing mapping and string repr, removing the markdown anotations.
-    pub fn erase_markdown(&self) -> PlainOverlay {
-        PlainOverlay::erase_markdown(self)
-    }
-
     /// Find which part of the range maps to which span.
     /// Note that Range can very well be split into multiple fragments
     /// where each of them can be mapped to a potentially non-continuous
@@ -107,80 +102,87 @@ impl CheckableChunk {
             &range
         );
 
-        let Range { start, end } = range.clone();
-        let mut active = false;
+        let Range { start, end } = range;
         self.source_mapping
             .iter()
-            .skip_while(|(sub, _span)| sub.end <= start)
-            .take_while(|(sub, _span)| end <= sub.end)
+            .skip_while(|(fragment_range, _span)| fragment_range.end <= start)
+            .take_while(|(fragment_range, _span)| end <= fragment_range.end)
             .inspect(|x| {
                 trace!(">>> item {:?} ∈ {:?}", &range, x.0);
             })
-            .filter(|(sub, _)| {
+            .filter(|(fragment_range, _)| {
                 // could possibly happen on empty documentation lines with `///`
-                sub.len() > 0
+                fragment_range.len() > 0
             })
-            .filter_map(|(sub, span)| {
-                if span.start.line == span.end.line {
-                    debug_assert!(span.start.column <= span.end.column);
-                    if span.start.column > span.end.column {
-                        return None;
+            .filter_map(|(fragment_range, fragment_span)| {
+                // trim range so we only capture the relevant part
+                let sub_fragment_range = std::cmp::max(fragment_range.start, range.start)
+                    ..std::cmp::min(fragment_range.end, range.end);
+
+                trace!(
+                    ">> fragment: span: {:?} => range: {:?} | sub: {:?} -> sub_fragment: {:?}",
+                    &fragment_span,
+                    &fragment_range,
+                    range,
+                    &sub_fragment_range,
+                );
+
+                log::trace!(
+                    "[f]display;\n>{}<",
+                    ChunkDisplay::try_from((self, fragment_range.clone()))
+                        .expect("must be convertable")
+                );
+                log::trace!(
+                    "[f]content;\n>{}<",
+                    crate::util::sub_chars(self.as_str(), fragment_range.clone())
+                );
+
+                if sub_fragment_range.len() == 0 {
+                    log::trace!("sub fragment is zero, dropping!");
+                    return None;
+                }
+
+                if let Some(span_len) = fragment_span.one_line_len() {
+                    debug_assert_eq!(span_len, fragment_range.len());
+                }
+                // take the full fragment string, we need to count newlines before and after
+                let s = sub_chars(self.as_str(), fragment_range.clone());
+                // relative to the range given / offset
+                let shift = sub_fragment_range.start - fragment_range.start;
+                let mut sub_fragment_span = fragment_span.clone();
+                let state: LineColumn = fragment_span.start;
+                for (idx, c, cursor) in s.chars().enumerate().scan(state, |state, (idx, c)| {
+                    let x: (usize, char, LineColumn) = (idx, c, state.clone());
+                    match c {
+                        '\n' => {
+                            state.line += 1;
+                            state.column = 0;
+                        }
+                        _ => state.column += 1,
+                    }
+                    Some(x)
+                }) {
+                    trace!("char[{}]: {}", idx, c);
+                    if idx == shift {
+                        sub_fragment_span.start = cursor;
+                    }
+                    sub_fragment_span.end = cursor; // always set, even if we never reach the end of fragment
+                    if idx >= (sub_fragment_range.len() + shift - 1) {
+                        break;
                     }
                 }
 
-                // assured by filter
-                assert!(end > 0);
-
-                if sub.contains(&start) {
-                    let offset = start - sub.start;
-                    if sub.contains(&(end - 1)) {
-                        // complete start to end
-                        active = false;
-                        Some((start..end, offset))
-                    } else {
-                        // only start, continue taking until end
-                        active = true;
-                        Some((start..sub.end, offset))
-                    }
-                } else if active {
-                    if sub.contains(&(end - 1)) {
-                        active = false;
-                        Some((sub.start..end, 0usize)) // @todo double check this
-                    } else {
-                        Some((sub.clone(), 0usize))
-                    }
-                } else {
-                    None
+                if let Some(sub_fragment_span_len) = sub_fragment_span.one_line_len() {
+                    debug_assert_eq!(sub_fragment_span_len, sub_fragment_range.len());
                 }
-                .map(|(fragment_range, offset)| {
-                    // @todo handle multiline here
-                    // @todo requires knowledge of how many items are remaining in the line
-                    // @todo which needs to be extracted from chunk
-                    assert_eq!(span.start.line, span.end.line);
-                    // |<--------range----------->|
-                    // |<-d1->|<-fragment->|<-.+->|
-                    let d1 = fragment_range
-                        .start
-                        .checked_sub(start)
-                        .expect("d1 must be positive");
+                log::trace!(
+                    ">> sub_fragment range={:?} span={:?} => {}",
+                    &sub_fragment_range,
+                    &sub_fragment_span,
+                    self.display(sub_fragment_range.clone()),
+                );
 
-                    assert!(range.end >= fragment_range.end);
-
-                    trace!(
-                        ">> offset={} fragment={:?} range={:?}",
-                        offset,
-                        &fragment_range,
-                        &range
-                    );
-                    trace!(">> {:?}", &span);
-                    // @todo count line wraps
-                    let mut span = span.clone();
-                    span.start.column += offset + d1;
-                    span.end.column = span.start.column + fragment_range.len() - 1;
-                    assert!(span.start.column <= span.end.column);
-
-                    (fragment_range, span)
-                })
+                Some((sub_fragment_range, sub_fragment_span))
             })
             .collect::<IndexMap<_, _>>()
     }
@@ -195,6 +197,20 @@ impl CheckableChunk {
 
     pub fn iter(&self) -> indexmap::map::Iter<Range, Span> {
         self.source_mapping.iter()
+    }
+
+    pub fn fragment_count(&self) -> usize {
+        self.source_mapping.len()
+    }
+
+    /// Obtain an accessor object containing mapping and string repr, removing the markdown anotations.
+    pub fn erase_markdown(&self) -> PlainOverlay {
+        PlainOverlay::erase_markdown(self)
+    }
+
+    /// Obtain the length in characters.
+    pub fn len_in_chars(&self) -> usize {
+        self.content.chars().count()
     }
 }
 
@@ -240,8 +256,6 @@ where
     type Error = Error;
     fn try_from(tuple: (R, Span)) -> Result<Self> {
         let chunk = tuple.0.into();
-        let _first = chunk.source_mapping.iter().next().unwrap().1; // @todo
-        let _last = chunk.source_mapping.iter().rev().next().unwrap().1; // @todo
         let span = tuple.1;
         let range = span.to_content_range(chunk)?;
         Ok(Self(chunk, range))
@@ -266,33 +280,36 @@ impl<'a> fmt::Display for ChunkDisplay<'a> {
         let oob = Style::new().blink().bold().on_yellow().red();
 
         // simplify
-        let _literal = self.0;
+        let literal = self.0;
         let start = self.1.start;
         let end = self.1.end;
 
         assert!(start <= end);
 
         // content without quote characters
-        let data = self.0.as_str();
+        let data = literal.as_str();
 
         // colour the preceding quote character
         // and the context preceding the highlight
-        let ctx1 = if start < data.len() {
-            context.apply_to(&data[..start])
+        let s = sub_chars(data, 0..start);
+        let ctx1 = if start < literal.len_in_chars() {
+            context.apply_to(s.as_str())
         } else {
             oob.apply_to("!!!")
         };
 
         // highlight the given range
-        let highlight = if end > data.len() {
-            oob.apply_to(&data[start..])
+        let s = sub_chars(data, start..end);
+        let highlight = if end > literal.len_in_chars() {
+            oob.apply_to(s.as_str())
         } else {
-            highlight.apply_to(&data[start..end])
+            highlight.apply_to(s.as_str())
         };
 
         // color trailing context if any as well as the closing quote character
-        let ctx2 = if end <= data.len() {
-            context.apply_to(&data[end..])
+        let s = sub_chars(data, end..literal.len_in_chars());
+        let ctx2 = if end <= literal.len_in_chars() {
+            context.apply_to(s.as_str())
         } else {
             oob.apply_to("!!!")
         };
@@ -303,12 +320,14 @@ impl<'a> fmt::Display for ChunkDisplay<'a> {
 
 #[cfg(test)]
 mod test {
-    use super::action::bandaid::tests::load_span_from;
     use super::literalset::tests::gen_literal_set;
+    use super::util::load_span_from;
     use super::*;
 
     #[test]
     fn find_spans_simple() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
         // generate  `///<space>...`
         const SOURCE: &'static str = fluff_up!(["xyz"]);
         let set = gen_literal_set(SOURCE);
@@ -344,22 +363,115 @@ mod test {
 
     #[test]
     fn find_spans_multiline() {
-        const SOURCE: &'static str = fluff_up!(["xyz", "second", "third", "fourth"]);
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        const SOURCE: &'static str = fluff_up!(["xyz", "second", "third", "Converts a span to a range, where `self` is converted to a range reltive to the",
+             "passed span `scope`."] @ "       "
+        );
         let set = gen_literal_set(SOURCE);
         let chunk = dbg!(CheckableChunk::from_literalset(set));
+        const SPACES: usize = 7;
+        const TRIPLE_SLASH_SPACE: usize = 4;
         const CHUNK_RANGES: &[Range] =
             &[1..4, (4 + 1 + 1 + 6 + 1 + 1)..(4 + 1 + 1 + 6 + 1 + 1 + 5)];
         const EXPECTED_SPANS: &[Span] = &[
             Span {
-                start: LineColumn { line: 1, column: 4 },
-                end: LineColumn { line: 1, column: 6 },
+                start: LineColumn {
+                    line: 1,
+                    column: SPACES + TRIPLE_SLASH_SPACE + 0,
+                },
+                end: LineColumn {
+                    line: 1,
+                    column: SPACES + TRIPLE_SLASH_SPACE + 2,
+                },
             },
             Span {
-                start: LineColumn { line: 3, column: 4 },
-                end: LineColumn { line: 3, column: 8 },
+                start: LineColumn {
+                    line: 3,
+                    column: SPACES + TRIPLE_SLASH_SPACE + 0,
+                },
+                end: LineColumn {
+                    line: 3,
+                    column: SPACES + TRIPLE_SLASH_SPACE + 4,
+                },
+            },
+            Span {
+                start: LineColumn {
+                    line: 4,
+                    column: SPACES + TRIPLE_SLASH_SPACE + 0,
+                },
+                end: LineColumn {
+                    line: 4,
+                    column: SPACES + TRIPLE_SLASH_SPACE + 78,
+                },
+            },
+            Span {
+                start: LineColumn {
+                    line: 5,
+                    column: SPACES + TRIPLE_SLASH_SPACE + 0,
+                },
+                end: LineColumn {
+                    line: 5,
+                    column: SPACES + TRIPLE_SLASH_SPACE + 19,
+                },
             },
         ];
-        const EXPECTED_STR: &[&'static str] = &["xyz", "third"];
+        const EXPECTED_STR: &[&'static str] = &[
+            "xyz",
+            "third",
+            "Converts a span to a range, where `self` is converted to a range reltive to the",
+            "passed span `scope`.",
+        ];
+
+        for (query_range, expected_span, expected_str) in itertools::cons_tuples(
+            CHUNK_RANGES
+                .iter()
+                .zip(EXPECTED_SPANS.iter())
+                .zip(EXPECTED_STR.iter()),
+        ) {
+            let range2span = chunk.find_spans(query_range.clone());
+            // test deals only with a single line, so we know it only is a single entry
+            assert_eq!(range2span.len(), 1);
+            let (range, span) = dbg!(range2span.iter().next().unwrap());
+            assert!(query_range.contains(&(range.start)));
+            assert!(query_range.contains(&(range.end - 1)));
+            assert_eq!(
+                load_span_from(SOURCE.as_bytes(), *span).expect("Span extraction must work"),
+                expected_str.to_owned()
+            );
+            assert_eq!(span, expected_span);
+        }
+    }
+
+    #[test]
+    fn find_spans_chyrp() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        const SOURCE: &'static str = chyrp_up!(["Amsel", "Wacholderdrossel", "Buchfink"]);
+        let set = gen_literal_set(SOURCE);
+        let chunk = dbg!(CheckableChunk::from_literalset(set));
+
+        const CHUNK_RANGES: &[Range] = &[0..(5 + 1 + 16 + 1 + 8)];
+        const EXPECTED_SPANS: &[Span] = &[Span {
+            start: LineColumn {
+                line: 1,
+                column: 0 + 9,
+            }, // prefix is #[doc=r#"
+            end: LineColumn { line: 3, column: 7 }, // suffix is pointeless
+        }];
+
+        assert_eq!(
+            dbg!(&EXPECTED_SPANS[0]
+                .to_content_range(&chunk)
+                .expect("Must be ok to extract span from chunk")),
+            dbg!(&CHUNK_RANGES[0])
+        );
+
+        const EXPECTED_STR: &[&'static str] = &[r#"Amsel
+Wacholderdrossel
+Buchfink"#];
+
+        assert_eq!(EXPECTED_STR[0], chunk.as_str());
 
         for (query_range, expected_span, expected_str) in itertools::cons_tuples(
             CHUNK_RANGES

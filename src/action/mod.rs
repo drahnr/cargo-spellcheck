@@ -63,6 +63,7 @@ fn correct_lines<'s>(
             }
         }
 
+        let content_len = content.chars().count();
         while let Some(bandaid) = nxt.take() {
             trace!("Applying next bandaid {:?}", bandaid);
             trace!("where line {} is: >{}<", line_number, content);
@@ -72,7 +73,7 @@ fn correct_lines<'s>(
                 .expect("There should be no multiline strings as of today");
             // write prelude for this line between start or previous replacement
             if range.start > remainder_column {
-                sink.write(content[remainder_column..range.start].as_bytes())?;
+                sink.write(util::sub_chars(&content, remainder_column..range.start).as_bytes())?;
             }
             // write the replacement chunk
             sink.write(bandaid.replacement.as_bytes())?;
@@ -87,22 +88,20 @@ fn correct_lines<'s>(
             };
             if complete_current_line {
                 // the last replacement may be the end of content
-                if remainder_column < content.len() {
+                if remainder_column < content_len {
                     debug!(
                         "line {} len is {}, and remainder column is {}",
-                        line_number,
-                        content.len(),
-                        remainder_column
+                        line_number, content_len, remainder_column
                     );
                     // otherwise write all
                     // not that this also covers writing a line without any suggestions
-                    sink.write(content[remainder_column..].as_bytes())?;
+                    sink.write(
+                        util::sub_chars(&content, remainder_column..content_len).as_bytes(),
+                    )?;
                 } else {
                     debug!(
                         "line {} len is {}, and remainder column is {}",
-                        line_number,
-                        content.len(),
-                        remainder_column
+                        line_number, content_len, remainder_column
                     );
                 }
                 sink.write("\n".as_bytes())?;
@@ -119,12 +118,10 @@ fn correct_lines<'s>(
 /// Mode in which `cargo-spellcheck` operates
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum Action {
-    /// Fix issues without interaction if there is sufficient information
-    Fix,
     /// Only show errors
     Check,
-    /// Interactively choose from __candidates__ provided, similar to `git add -p` .
-    Interactive,
+    /// Interactively choose from checker provided suggestions.
+    Fix,
 }
 
 impl Action {
@@ -223,9 +220,8 @@ impl Action {
     /// Run the requested action.
     pub fn run(self, suggestions: SuggestionSet, config: &Config) -> Result<Finish> {
         match self {
-            Self::Fix => unimplemented!("Unsupervised fixing is not implemented just yet"),
             Self::Check => self.check(suggestions, config),
-            Self::Interactive => {
+            Self::Fix => {
                 let (picked, user_sel) =
                     interactive::UserPicked::select_interactive(suggestions, config)?;
                 if user_sel == UserSelection::Abort {

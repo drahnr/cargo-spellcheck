@@ -12,11 +12,13 @@
 //! ```
 
 use crate::documentation::{CheckableChunk, ContentOrigin};
-use crate::{Range, Span};
 
+use std::cmp;
 use std::convert::TryFrom;
 
 use enumflags2::BitFlags;
+
+use crate::{Range, Span};
 
 /// Bitflag of available checkers by compilation / configuration.
 #[derive(Debug, Clone, Copy, BitFlags, Eq, PartialEq, Hash)]
@@ -26,6 +28,23 @@ pub enum Detector {
     LanguageTool = 0b0010,
     #[cfg(test)]
     Dummy = 0b1000,
+}
+
+pub fn get_terminal_size() -> usize {
+    const DEFAULT_TERMINAL_SIZE: usize = 80;
+    #[cfg(not(test))]
+    match crossterm::terminal::size() {
+        Ok((terminal_size, _)) => terminal_size as usize,
+        Err(_) => {
+            log::warn!(
+                "Unable to get terminal size. Using default: {}",
+                DEFAULT_TERMINAL_SIZE
+            );
+            DEFAULT_TERMINAL_SIZE
+        }
+    }
+    #[cfg(test)]
+    DEFAULT_TERMINAL_SIZE
 }
 
 // impl
@@ -50,6 +69,208 @@ impl fmt::Display for Detector {
     }
 }
 
+// For long lines, literal will be trimmed to display in one terminal line.
+// Misspelled words that are too long shall also be ellipsized.
+pub fn condition_display_content(
+    terminal_size: usize,
+    _indent: usize,
+    stripped_line: &str,
+    mistake_range: Range,
+    terminal_print_offset_left: usize,
+    marker_size: usize,
+) -> (String, usize, usize) {
+    // if we can fit the full line in there, avoid all the work as much as possible
+    if stripped_line.chars().count() + terminal_print_offset_left <= terminal_size {
+        return (stripped_line.to_owned(), mistake_range.start, marker_size);
+    }
+
+    // The paddings give some space for the ` {} ...` and extra indentation and formatting:
+    //
+    //|---------------------------------------------------------------------------------------| terminal_size
+    //|-------| padding_till_excerpt_start = indent (3+line_number_digit_count) + 2 white spaces = 7usize, for this case.
+    //
+    //   --> /home/tmhdev/Documents/cargo-spellcheck/src/suggestion.rs:62
+    //    |
+    // 62 |  Reasn of food, what's up with pie? There's strawberry pie, apple, pumpkin..
+    //    |  ^^^^^
+    //    | - there, Cherie, thither, or tither
+    //    |
+    //    |   Possible spelling mistake found.
+    //
+    const MAX_MISTAKE_LEN: usize = 20;
+
+    const HEAD_DISPLAY_LEN: usize = 4;
+    const TAIL_DISPLAY_LEN: usize = 4;
+
+    const CENTER_DOTS: &'static str = "...";
+    const LEFT_DOTS: &'static str = "..";
+    const RIGHT_DOTS: &'static str = "..";
+    const NO_DOTS: &'static str = "";
+
+    // guarantees that `marker_size` is always less than the max length.
+    assert!(HEAD_DISPLAY_LEN + CENTER_DOTS.len() + TAIL_DISPLAY_LEN <= MAX_MISTAKE_LEN);
+
+    // worst case conservative estimate, should be calculated based on `indent`
+    const TOTAL_CONTEXT_CHAR_COUNT: usize = 6;
+
+    // We will be using ranges to help doing the fitting:
+    //
+    // |-----------------------------------excerpt--------------------------------------|
+    // |----------------------|---------misspelled_word---------|-----------------------|
+    // |-----left_context-----|head_sub_range|-tail_sub_range-|-----right_context-----|
+    //
+    // Obs: paddings are not being considered in the illustration, but info is above.
+
+    // Misspelled words that are too long will be shortened by ellipsizing parts of it.
+    let (marker_size, shortened) = if mistake_range.len() > MAX_MISTAKE_LEN {
+        let head_sub_range = Range {
+            start: mistake_range.start,
+            end: mistake_range.start + HEAD_DISPLAY_LEN,
+        };
+        let tail_sub_range = Range {
+            start: mistake_range
+                .end //non inclusive
+                .saturating_sub(TAIL_DISPLAY_LEN),
+            end: mistake_range.end,
+        };
+
+        //  too long word will be shorter as it follows:
+        //            |-------------------| > MAX_MISTAKE_LEN
+        //            therieeeeeeeeeeeeeeee
+        //   4 chars  ^^^^   ...       ^^^^  4 chars
+        //
+        //  result:      ther...eeee
+
+        let head_sub = stripped_line
+            .chars()
+            .skip(head_sub_range.start)
+            .take(HEAD_DISPLAY_LEN)
+            .collect::<String>();
+        let tail_sub = stripped_line
+            .chars()
+            .skip(tail_sub_range.start)
+            .take(TAIL_DISPLAY_LEN)
+            .collect::<String>();
+
+        let shortened = format!("{}...{}", head_sub, tail_sub);
+        let marker_size = head_sub_range.len() + CENTER_DOTS.len() + tail_sub_range.len();
+
+        (marker_size, shortened)
+    } else {
+        let full: String = stripped_line
+            .chars()
+            .skip(mistake_range.start)
+            .take(mistake_range.len())
+            .collect();
+        (marker_size, full)
+    };
+
+    let stripped_line_len = stripped_line.chars().count();
+
+    // full, uncut context coverage
+    let left_context = Range {
+        start: 0,
+        end: mistake_range.start,
+    };
+    let right_context = Range {
+        start: mistake_range.end,
+        end: stripped_line_len,
+    };
+
+    let avail_space = terminal_size
+        .saturating_sub(terminal_print_offset_left + marker_size + TOTAL_CONTEXT_CHAR_COUNT);
+
+    // left and right we would like to partition the remaining space equally
+    let avail_space_half = avail_space / 2usize;
+
+    // @todo introduce a threshold, so the shortened version is not longer than than the original
+    let (left_context, right_context, left_dots, right_dots) = match (
+        avail_space_half > left_context.len(),
+        avail_space_half > right_context.len(),
+    ) {
+        (true, false) => {
+            // left context does not use all the capacity avail
+            // allow the right context to consume the excess.
+            let right_avail_space = avail_space - left_context.len();
+            let rdots = if mistake_range.end + right_avail_space < stripped_line_len {
+                NO_DOTS
+            } else {
+                RIGHT_DOTS
+            };
+            (
+                left_context,
+                Range {
+                    start: right_context.end,
+                    end: cmp::min(mistake_range.end + right_avail_space, stripped_line_len),
+                },
+                NO_DOTS,
+                rdots,
+            )
+        }
+        (false, true) => {
+            // right context does not use all the capacity avail
+            // allow the left context to consume the excess.
+            let left_avail_space = avail_space - right_context.len();
+            let ldots = if left_avail_space > left_context.end {
+                NO_DOTS
+            } else {
+                LEFT_DOTS
+            };
+            (
+                Range {
+                    start: left_context.end.saturating_sub(left_avail_space),
+                    end: left_context.end,
+                },
+                right_context,
+                ldots,
+                NO_DOTS,
+            )
+        }
+        (false, false) => {
+            // both sides have excess chars, so yield `avail_space_half` to both sides
+            (
+                Range {
+                    start: left_context.end.saturating_sub(avail_space_half),
+                    end: left_context.end,
+                },
+                Range {
+                    start: right_context.start,
+                    end: right_context.start + avail_space_half,
+                },
+                LEFT_DOTS,
+                RIGHT_DOTS,
+            )
+        }
+        _ => {
+            // both sides are less than the allowed context, no need to modify
+            (left_context, right_context, NO_DOTS, NO_DOTS)
+        }
+    };
+
+    assert!(left_context.end == mistake_range.start);
+    assert!(right_context.end <= stripped_line_len);
+    assert!(left_context.len() + mistake_range.len() + right_context.len() <= stripped_line_len);
+
+    let offset = left_context.len();
+    let conditioned_line = format!(
+        "{}{}{}{}{}",
+        left_dots,
+        stripped_line
+            .chars()
+            .skip(left_context.start + left_dots.len())
+            .take(left_context.len() - left_dots.len())
+            .collect::<String>(),
+        shortened,
+        stripped_line
+            .chars()
+            .skip(right_context.start)
+            .take(right_context.len() - right_dots.len())
+            .collect::<String>(),
+        right_dots,
+    );
+    (conditioned_line, offset, marker_size)
+}
+
 /// A suggestion for certain offending span.
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub struct Suggestion<'s> {
@@ -57,7 +278,7 @@ pub struct Suggestion<'s> {
     pub detector: Detector,
     /// Reference to the file location the `span` and `literal` relate to.
     pub origin: ContentOrigin,
-    /// @todo must become a `CheckableChunk` and properly integrated
+    /// The suggestion is relative to a specific chunk.
     pub chunk: &'s CheckableChunk,
     /// The span (absolute!) within the file or chunk (depens on `origin`).
     pub span: Span,
@@ -113,23 +334,73 @@ impl<'s> fmt::Display for Suggestion<'s> {
             ))
             .fmt(formatter)?;
 
-        writeln!(formatter, " {}", self.chunk.as_str())?;
-
         // underline the relevant part with ^^^^^
-        let marker_size = if self.span.end.line == self.span.start.line {
-            // column bounds are inclusive, so for a correct length we need to add + 1
-            self.span.end.column.saturating_sub(self.span.start.column) + 1
-        } else {
-            self.chunk
-                .as_str()
-                .chars()
-                .count()
-                .saturating_sub(self.span.start.column)
-        };
 
-        // if the offset starts from 0, we still want to continue if the length
-        // of the marker is at least length 1
-        let offset = self.range.start;
+        // @todo this needs some more thought once multiline comments pop up
+        let marker_size = self.span.one_line_len().unwrap_or_else(|| {
+            self.chunk
+                .len_in_chars()
+                .saturating_sub(self.span.start.column)
+        });
+
+        // assumes the _mistake_ is within one line
+        // if not we chop it down to the first line
+        let (line_range, start_of_line_offset) = self
+            .chunk
+            .as_str()
+            .chars()
+            .enumerate()
+            .scan(0usize, |last_newline_plus_1, (idx, c)| {
+                match c {
+                    '\n' => {
+                        *last_newline_plus_1 = idx + 1;
+                    }
+                    _ => {}
+                }
+                Some((idx, c, *last_newline_plus_1))
+            })
+            .skip_while(|(idx, _c, _last_newline_plus_1)| *idx < self.range.start)
+            .take_while(|(_idx, c, _last_newline_plus_1)| *c != '\n')
+            .last() // the last contains the last chars index, and the index of the previous newline
+            .map(|(idx, _, last_newline_plus_1)| {
+                let mistake_to_start_of_line_offset = self.range.start - last_newline_plus_1;
+                (
+                    last_newline_plus_1..(idx + 1),
+                    mistake_to_start_of_line_offset,
+                )
+            })
+            .expect("Must have at least one relevant line");
+
+        let intra_line_mistake_range = Range {
+            start: start_of_line_offset,
+            end: cmp::min(start_of_line_offset + self.range.len(), line_range.len()),
+        };
+        let relevant_line = self
+            .chunk
+            .as_str()
+            .chars()
+            .enumerate()
+            .skip_while(|(idx, _)| line_range.start > *idx)
+            .take(line_range.len())
+            .map(|(_, c)| c)
+            .collect::<String>();
+
+        let terminal_size = get_terminal_size();
+
+        // this values is dynamically calculated for each line where the doc is.
+        // the line being analysed can affect how the indentation is done.
+        let padding_till_excerpt_start = indent + 2;
+
+        let (formatted, offset, marker_size) = condition_display_content(
+            terminal_size,
+            indent,
+            relevant_line.as_str(),
+            intra_line_mistake_range,
+            padding_till_excerpt_start,
+            marker_size,
+        );
+
+        writeln!(formatter, " {}", formatted.as_str())?;
 
         if marker_size > 0 {
             context_marker
@@ -140,6 +411,21 @@ impl<'s> fmt::Display for Suggestion<'s> {
             help.apply_to(format!("{:^>size$}", "", size = marker_size))
                 .fmt(formatter)?;
             formatter.write_str("\n")?;
+            log::trace!(
+                "marker_size={} span {{ {:?} .. {:?} }} >> {:?} <<",
+                marker_size,
+                self.span.start,
+                self.span.end,
+                self,
+            );
+        } else {
+            log::warn!(
+                "marker_size={} span {{ {:?} .. {:?} }} >> {:?} <<",
+                marker_size,
+                self.span.start,
+                self.span.end,
+                self,
+            );
         }
 
         context_marker
@@ -344,6 +630,11 @@ mod tests {
     use crate::LineColumn;
     use console;
     use std::fmt;
+
+    /// A test helper comparing the output against an expected output.
+    ///
+    /// Strips all colour codes from both the expected string as well as the
+    /// display-able object.
     fn assert_display_eq<D: fmt::Display, S: AsRef<str>>(display: D, s: S) {
         let expected = s.as_ref();
         let expected = console::strip_ansi_codes(expected);
@@ -355,8 +646,8 @@ mod tests {
     }
 
     #[test]
-    fn fmt() {
-        const CONTENT: &'static str = "Is it dyrck again?";
+    fn fmt_0_single() {
+        const CONTENT: &'static str = " Is it dyrck again?";
         let chunk = CheckableChunk::from_str(
             CONTENT,
             indexmap::indexmap! { 0..18 => Span {
@@ -376,7 +667,7 @@ mod tests {
             detector: Detector::Dummy,
             origin: ContentOrigin::TestEntity,
             chunk: &chunk,
-            range: 6..11,
+            range: 7..12,
             span: Span {
                 start: LineColumn { line: 1, column: 6 },
                 end: LineColumn {
@@ -394,8 +685,85 @@ mod tests {
         const EXPECTED: &'static str = r#"error: spellcheck(Dummy)
   --> /tmp/test/entity:1
    |
- 1 | Is it dyrck again?
-   |       ^^^^^
+ 1 |  Is it dyrck again?
+   |        ^^^^^
+   | - replacement_0, replacement_1, or replacement_2
+   |
+   |   Possible spelling mistake found.
+   |
+"#;
+        assert_display_eq(suggestion, EXPECTED);
+    }
+
+    #[test]
+    fn fmt_1_multi() {
+        const CONTENT: &'static str = r#" Line mitake 1
+ Anowher 2
+ Last"#;
+
+        let chunk = CheckableChunk::from_str(
+            CONTENT,
+            indexmap::indexmap! {
+                0..13 => Span {
+                    start: LineColumn {
+                        line: 1,
+                        column: 4,
+                    },
+                    end: LineColumn {
+                        line: 1,
+                        column: 16,
+                    }
+                },
+                14..24 => Span {
+                    start: LineColumn {
+                        line: 2,
+                        column: 4,
+                    },
+                    end: LineColumn {
+                        line: 2,
+                        column: 12,
+                    }
+                },
+                25..29 => Span {
+                    start: LineColumn {
+                        line: 3,
+                        column: 4,
+                    },
+                    end: LineColumn {
+                        line: 3,
+                        column: 7,
+                    }
+                }
+            },
+        );
+
+        let suggestion = Suggestion {
+            detector: Detector::Dummy,
+            origin: ContentOrigin::TestEntity,
+            chunk: &chunk,
+            range: 6..12,
+            span: Span {
+                start: LineColumn {
+                    line: 1,
+                    column: 10,
+                },
+                end: LineColumn {
+                    line: 1,
+                    column: 15,
+                },
+            },
+            replacements: vec!["replacement_0", "replacement_1", "replacement_2"]
+                .into_iter()
+                .map(std::borrow::ToOwned::to_owned)
+                .collect(),
+            description: Some("Possible spelling mistake found.".to_owned()),
+        };
+
+        const EXPECTED: &'static str = r#"error: spellcheck(Dummy)
+  --> /tmp/test/entity:1
+   |
+ 1 |  Line mitake 1
+   |       ^^^^^^
    | - replacement_0, replacement_1, or replacement_2
    |
    |   Possible spelling mistake found.
@@ -403,5 +771,116 @@ mod tests {
 "#;
 
         assert_display_eq(suggestion, EXPECTED);
+    }
+
+    #[test]
+    fn fmt_2_multi_80_plus() {
+        const CONTENT: &'static str = r#" Line mitake 1
+ Suuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuper duuuuuuuuuuuuuuuuuuuuuuuuper too long
+ "#;
+
+        let chunk = CheckableChunk::from_str(
+            CONTENT,
+            indexmap::indexmap! {
+                0..13 => Span {
+                    start: LineColumn {
+                        line: 1,
+                        column: 4,
+                    },
+                    end: LineColumn {
+                        line: 1,
+                        column: 16,
+                    }
+                },
+                14..101 => Span {
+                    start: LineColumn {
+                        line: 2,
+                        column: 4,
+                    },
+                    end: LineColumn {
+                        line: 2,
+                        column: 90,
+                    }
+                }
+            },
+        );
+
+        let suggestion = Suggestion {
+            detector: Detector::Dummy,
+            origin: ContentOrigin::TestEntity,
+            chunk: &chunk,
+            range: 66..94,
+            span: Span {
+                start: LineColumn { line: 2, column: 5 },
+                end: LineColumn {
+                    line: 2,
+                    column: 92,
+                },
+            },
+            replacements: vec!["replacement_0", "replacement_1", "replacement_2"]
+                .into_iter()
+                .map(std::borrow::ToOwned::to_owned)
+                .collect(),
+            description: Some("Possible spelling mistake found.".to_owned()),
+        };
+
+        const EXPECTED: &'static str = r#"error: spellcheck(Dummy)
+  --> /tmp/test/entity:2
+   |
+ 2 | ..uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuper duuu...uper too long
+   |                                                 ^^^^^^^^^^^
+   | - replacement_0, replacement_1, or replacement_2
+   |
+   |   Possible spelling mistake found.
+   |
+"#;
+
+        assert_display_eq(suggestion, EXPECTED);
+    }
+
+    #[test]
+    fn multiline_is_dbg_printable() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        use crate::documentation::CheckableChunk;
+        let chunk = CheckableChunk::from_str(
+            r#"0
+2345
+7@n"#,
+            indexmap::indexmap! { 0..10 => Span {
+                start : LineColumn {
+                    line: 7usize,
+                    column: 8usize,
+                },
+                end : LineColumn {
+                    line: 9usize,
+                    column: 4usize,
+                }
+            } },
+        );
+
+        let suggestion = Suggestion {
+            detector: Detector::Dummy,
+            origin: ContentOrigin::TestEntity,
+            chunk: &chunk,
+            span: Span {
+                start: LineColumn {
+                    line: 8usize,
+                    column: 0,
+                },
+                end: LineColumn {
+                    line: 8usize,
+                    column: 3,
+                },
+            },
+            range: 2..6,
+            replacements: vec!["whocares".to_owned()],
+            description: None,
+        };
+
+        let suggestion = dbg!(suggestion);
+
+        log::info!("fmt debug=\n{:?}\n<", suggestion);
+        log::info!("fmt display=\n{}\n<", suggestion);
     }
 }

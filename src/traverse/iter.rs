@@ -33,8 +33,12 @@ impl TraverseModulesIter {
         P: AsRef<Path>,
     {
         let path = path.as_ref();
-        let path = path.canonicalize().unwrap();
-        let meta = path.metadata().unwrap();
+        let path = path
+            .canonicalize()
+            .map_err(|e| anyhow!("Failed to canonicalize path {}", path.display()).context(e))?;
+        let meta = path.metadata().map_err(|e| {
+            anyhow!("Failed to obtain meta data for path {}", path.display()).context(e)
+        })?;
         if meta.is_file() {
             self.queue.push_back((path, level));
         } else if meta.is_dir() {
@@ -85,6 +89,8 @@ impl TraverseModulesIter {
         Ok(me)
     }
 
+    /// Create a new path with (almost) infinite depth bounds
+    #[allow(unused)]
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
         Self::with_depth_limit(path, usize::MAX)
     }
@@ -134,12 +140,9 @@ pub(crate) fn traverse_with_depth_limit(
 ) -> Result<impl Iterator<Item = Documentation>> {
     let it = TraverseModulesIter::with_depth_limit(path, max_depth)?
         .filter_map(|path: PathBuf| -> Option<Documentation> {
-            fs::read_to_string(&path)
-                .ok()
-                .and_then(|content: String| {
-                    syn::parse_str::<proc_macro2::TokenStream>(&content).ok()
-                })
-                .map(|stream| Documentation::from((ContentOrigin::RustSourceFile(path), stream)))
+            fs::read_to_string(&path).ok().map(|content| {
+                Documentation::from((ContentOrigin::RustSourceFile(path), content.as_str()))
+            })
         })
         .filter(|documentation| !documentation.is_empty());
     Ok(it)

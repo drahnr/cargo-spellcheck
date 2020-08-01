@@ -6,13 +6,13 @@
 //! Can handle multiple dictionaries.
 
 use super::{tokenize, Checker, Detector, Documentation, Suggestion, SuggestionSet};
-use std::path::PathBuf;
-
+use crate::util::sub_chars;
 use log::{debug, trace};
+use std::path::PathBuf;
 
 use hunspell_rs::Hunspell;
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 
 pub struct HunspellChecker;
 
@@ -41,7 +41,12 @@ impl Checker for HunspellChecker {
                 if !keep {
                     // search_dir also contains the default paths, so just silently ignore these
                     debug!(
-                        "Dictionary search path {} is not a directory",
+                        "Dictionary search path is not a directory {}",
+                        search_dir.display()
+                    );
+                } else {
+                    debug!(
+                        "Found dictionary search path {}",
                         search_dir.display()
                     );
                 }
@@ -51,7 +56,7 @@ impl Checker for HunspellChecker {
                 let dic = search_dir.join(lang).with_extension("dic");
                 if !dic.is_file() {
                     debug!(
-                        "Dictionary path dervied from search dir {} is not a file",
+                        "Dictionary path dervied from search dir is not a file {}",
                         dic.display()
                     );
                     return None;
@@ -59,12 +64,12 @@ impl Checker for HunspellChecker {
                 let aff = search_dir.join(lang).with_extension("aff");
                 if !aff.is_file() {
                     debug!(
-                        "Affixes path dervied from search dir {} is not a file",
+                        "Affixes path dervied from search dir is not a file {}",
                         aff.display()
                     );
                     return None;
                 }
-                trace!("Using dic {} and aff {}", dic.display(), aff.display());
+                debug!("Using dic {} and aff {}", dic.display(), aff.display());
                 Some((dic, aff))
             })
             .ok_or_else(|| {
@@ -85,40 +90,43 @@ impl Checker for HunspellChecker {
             assert!(hunspell.suggest("Test").contains(&"Test".to_string()));
         }
 
+        // suggestion must contain the word itself if it is valid extra dictionary
         // be more strict about the extra dictionaries, they have to exist
         for extra_dic in config.extra_dictonaries().iter() {
-            trace!("Adding extra hunspell dictionary {}", extra_dic.display());
+            trace!("Adding extra dictionary {}", extra_dic.display());
             if !extra_dic.is_file() {
-                return Err(anyhow!(
-                    "Extra dictionary {} is not a file",
-                    extra_dic.display()
-                ));
+                bail!("Extra dictionary {} is not a file", extra_dic.display())
             }
             if let Some(extra_dic) = extra_dic.to_str() {
                 if !hunspell.add_dictionary(extra_dic) {
-                    return Err(anyhow!("Failed to add additional dict to hunspell"));
+                    bail!(
+                        "Failed to add extra dictionary path to context {}",
+                        extra_dic
+                    )
                 }
             } else {
-                return Err(anyhow!(
-                    "Failed to convert one of the extra dictionaries to a str"
-                ));
+                bail!(
+                    "Failed to convert extra dictionary path to str {}",
+                    extra_dic.display()
+                )
             }
         }
 
         let suggestions = docu.iter().try_fold::<SuggestionSet, _, Result<_>>(
             SuggestionSet::new(),
             |mut acc, (origin, chunks)| {
+                debug!("Processing {}", origin.as_path().display());
                 for chunk in chunks {
                     let plain = chunk.erase_markdown();
                     trace!("{:?}", &plain);
                     let txt = plain.as_str();
                     for range in tokenize(txt) {
-                        let word = &txt[range.clone()];
-                        if !hunspell.check(word) {
-                            trace!("No match for word (plain range: {:?}): >{}<", &range, word);
+                        let word = sub_chars(txt, range.clone());
+                        if !hunspell.check(&word) {
+                            trace!("No match for word (plain range: {:?}): >{}<", &range, &word);
                             // get rid of single character suggestions
                             let replacements = hunspell
-                                .suggest(word)
+                                .suggest(&word)
                                 .into_iter()
                                 .filter(|x| x.len() > 1) // single char suggestions tend to be useless
                                 .collect::<Vec<_>>();

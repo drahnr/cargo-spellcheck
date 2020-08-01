@@ -3,14 +3,14 @@
 //! Re-uses `LineColumn`, where `.line` is 1-indexed, and `.column`s are 0-indexed,
 //! `.end` is inclusive.
 
-use crate::Range;
-
 use super::TrimmedLiteral;
+use crate::util;
+use crate::Range;
 pub use proc_macro2::LineColumn;
 
 use std::hash::{Hash, Hasher};
 
-use anyhow::{anyhow, bail, Error, Result};
+use anyhow::{bail, Error, Result};
 
 use std::convert::TryFrom;
 
@@ -46,10 +46,10 @@ impl Span {
         let scope: Range = scope.try_into()?;
         let me: Range = self.try_into()?;
         if scope.start > me.start {
-            return Err(anyhow!("start of {:?} is not inside of {:?}", me, scope));
+            bail!("start of {:?} is not inside of {:?}", me, scope)
         }
         if scope.end < me.end {
-            return Err(anyhow!("end of {:?} is not inside of {:?}", me, scope));
+            bail!("end of {:?} is not inside of {:?}", me, scope)
         }
         let offset = me.start - scope.start;
         let length = me.end - me.start;
@@ -65,66 +65,49 @@ impl Span {
         self.end.line <= line && line >= self.start.line
     }
 
-    /// extract a `Range` which maps to `self` as
-    /// `span` maps to `range`, where `range` is relative to `full_content`
-    fn extract_sub_range_from_span(
-        &self,
-        span: Span,
-        range: Range,
-        full_content: &str,
-    ) -> Result<Range> {
-        let s = &full_content[range.clone()];
-        let offset = range.start;
-        // relative to the range given / offset
-        let mut start = 0usize;
-        let state = span.start;
-        for (idx, _c, line, col) in s.chars().enumerate().scan(state, |state, (idx, c)| {
-            let x = (idx, c, state.line, state.column);
-            if c == '\n' {
-                state.line += 1;
-                state.column = 0;
-            } else {
-                state.column += 1;
-            }
-            Some(x)
-        }) {
-            if line < self.start.line {
-                continue;
-            }
-            if line == self.start.line && col == self.start.column {
-                start = idx;
-            }
-
-            if line == self.end.line && col == self.end.column {
-                let range2 = (offset + start)..(offset + idx + 1);
-                assert!(range2.len() <= range.len());
-                return Ok(range2);
-            }
-
-            if line > self.end.line {
-                break;
-            }
-
-            if line >= self.end.line && col >= self.end.column {
-                break;
-            }
+    /// If this one resembles a single line, returns the a `Some(len)` value.
+    /// For multilines this cannot account for the length.
+    pub fn one_line_len(&self) -> Option<usize> {
+        if self.start.line == self.end.line {
+            Some(self.end.column + 1 - self.start.column)
+        } else {
+            None
         }
-        bail!("Missing content in str I guess")
     }
 
-    /// Convert a given span with the associated extraction string based on literals with trimming
+    /// Convert a given span `self` into a `Range`
+    ///
+    /// The `Chunk` has a associated `Span` (or a set of `Range` -> `Span` mappings)
+    /// which are used to map.
     pub fn to_content_range(&self, chunk: &CheckableChunk) -> Result<Range> {
-        for (range, span) in chunk
+        if chunk.fragment_count() == 0 {
+            bail!("Chunk contains 0 fragments")
+        }
+        for (fragment_range, fragment_span) in chunk
             .iter()
-            .skip_while(|(_range, span)| span.start.line < self.start.line)
-            .take_while(|(_range, span)| self.end.line >= span.end.line)
+            // pre-filter to reduce too many calls to `extract_sub_range`
+            .filter(|(fragment_range, fragment_span)| {
+                log::trace!(
+                    "extracting sub from {:?} ::: {:?} -> {:?}",
+                    self,
+                    &fragment_range,
+                    &fragment_span
+                );
+                fragment_span.start.line <= self.start.line
+                    && self.end.line <= fragment_span.end.line
+            })
         {
-            match self.extract_sub_range_from_span(*span, range.clone(), chunk.as_str()) {
-                Ok(range2) => return Ok(range2),
+            match extract_sub_range_from_span(
+                chunk.as_str(),
+                *fragment_span,
+                fragment_range.clone(),
+                self.clone(),
+            ) {
+                Ok(fragment_sub_range) => return Ok(fragment_sub_range),
                 Err(_e) => continue,
             }
         }
-        bail!("No candidate matched")
+        bail!("The chunk internal map from range to span did not contain an overlapping entry")
     }
 }
 
@@ -155,11 +138,11 @@ impl TryInto<Range> for &Span {
                 end: self.end.column + 1,
             })
         } else {
-            Err(anyhow!(
+            bail!(
                 "Start and end are not in the same line {} vs {}",
                 self.start.line,
                 self.end.line
-            ))
+            )
         }
     }
 }
@@ -179,11 +162,11 @@ impl TryFrom<(usize, Range)> for Span {
                 },
             })
         } else {
-            Err(anyhow!(
+            bail!(
                 "range must be valid to be converted to a Span {}..{}",
                 original.1.start,
                 original.1.end
-            ))
+            )
         }
     }
 }
@@ -200,16 +183,83 @@ impl From<&TrimmedLiteral> for Span {
 //     }
 // }
 
+/// extract a `Range` which maps to `self` as
+/// `span` maps to `range`, where `range` is relative to `full_content`
+fn extract_sub_range_from_span(
+    full_content: &str,
+    span: Span,
+    range: Range,
+    sub_span: Span,
+) -> Result<Range> {
+    if let Some(span_len) = span.one_line_len() {
+        debug_assert_eq!(range.len(), span_len);
+    }
+
+    // extract the fragment of interest to which both `range` and `span` correspond.
+    let s = util::sub_chars(full_content, range.clone());
+    let offset = range.start;
+    // relative to the range given / offset
+    let mut start = 0usize;
+    let mut end = 0usize;
+    for (_c, idx, LineColumn { line, column }) in
+        util::iter_with_line_column_from(s.as_str(), span.start)
+    {
+        if line < sub_span.start.line {
+            continue;
+        }
+        if line > sub_span.end.line {
+            bail!("Moved beyond anticipated line")
+        }
+
+        if line == sub_span.start.line && column < sub_span.start.column {
+            continue;
+        }
+
+        if line >= sub_span.end.line && column > sub_span.end.column {
+            bail!("Moved beyond anticipated column and last line")
+        }
+        if line == sub_span.start.line && column == sub_span.start.column {
+            start = idx;
+            // do not continue, the first line/column could be the last one too!
+        }
+        end = idx;
+        // if the iterations go to the end of the string, the condition will never be met inside the loop
+        if line == sub_span.end.line && column == sub_span.end.column {
+            break;
+        }
+
+        if line > sub_span.end.line {
+            bail!("Moved beyond anticipated line")
+        }
+
+        if line >= sub_span.end.line && column > sub_span.end.column {
+            bail!("Moved beyond anticipated column and last line")
+        }
+    }
+
+    let sub_range = (offset + start)..(offset + end + 1);
+    assert!(sub_range.len() <= range.len());
+
+    if let Some(sub_span_len) = sub_span.one_line_len() {
+        debug_assert_eq!(sub_range.len(), sub_span_len);
+    }
+
+    return Ok(sub_range);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::action::bandaid::tests::load_span_from;
     use crate::documentation::literalset::tests::gen_literal_set;
-    use crate::fluff_up;
+    use crate::util::load_span_from;
+    use crate::{chyrp_dbg, chyrp_up, fluff_up};
+    use crate::{LineColumn, Range, Span};
 
     #[test]
-    fn span_to_range_with_content() {
-        const CONTENT: &'static str = fluff_up!("Ey you!! Yes.., you there!", "", "GameChange", "");
+    fn span_to_range_singleline() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        const CONTENT: &'static str = fluff_up!("Itsyou!!", "", "Game-Over!!", "");
         let set = gen_literal_set(CONTENT);
         let chunk = dbg!(CheckableChunk::from_literalset(set));
 
@@ -235,7 +285,7 @@ mod tests {
                 },
                 end: LineColumn {
                     line: 3usize,
-                    column: 9usize + TRIPPLE_SLASH_PLUS_SPACE,
+                    column: 8usize + TRIPPLE_SLASH_PLUS_SPACE,
                 },
             },
         ];
@@ -243,25 +293,202 @@ mod tests {
         // ranges to be used with `chunk.as_str()`
         // remember that ///<space> counts towards the range!
         // and that newlines are also one char
-        const EXPECTED: &[Range] = &[4..9, 31..41];
+        const EXPECTED_RANGE: &[Range] = &[4..9, 13..22];
 
         // note that this may only be single lines, since `///` implies separate literals
         // and as such multiple spans
-        const FRAGMENT: &[&'static str] = &["you!!", "GameChange"];
+        const FRAGMENT_STR: &[&'static str] = &["you!!", "Game-Over"];
 
-        for (input, expected, fract) in
-            itertools::cons_tuples(INPUTS.iter().zip(EXPECTED.iter()).zip(FRAGMENT.iter()))
-        {
+        for (input, expected, fragment) in itertools::cons_tuples(
+            INPUTS
+                .iter()
+                .zip(EXPECTED_RANGE.iter())
+                .zip(FRAGMENT_STR.iter()),
+        ) {
+            log::trace!(
+                ">>>>>>>>>>>>>>>>\ninput: {:?}\nexpected: {:?}\nfragment:>{}<",
+                input,
+                expected,
+                fragment
+            );
             let range = input
                 .to_content_range(&chunk)
                 .expect("Inputs are sane, conversion must work.");
             assert_eq!(range, *expected);
-            /// make sure the span covers what we expect it to cover
+            // make sure the span covers what we expect it to cover
             assert_eq!(
                 load_span_from(CONTENT.as_bytes(), input.clone()).unwrap(),
-                fract.to_owned()
+                fragment.to_owned()
             );
-            assert_eq!(&(&chunk.as_str()[range]), fract);
+            assert_eq!(&(&chunk.as_str()[range]), fragment);
+        }
+    }
+
+    #[test]
+    fn span_to_range_multiline() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        chyrp_dbg!("Xy fff?? Not.., you again!", "", "AlphaOmega", "");
+        const CONTENT: &'static str = chyrp_up!("Xy fff?? Not.., you again!", "", "AlphaOmega", "");
+        let set = gen_literal_set(dbg!(CONTENT));
+        let chunk = dbg!(CheckableChunk::from_literalset(set));
+
+        // assuming a `#[doc=r#"` comment
+        const HASH_BRACKET_DOC_EQ_RAW_HASH_QUOTE: usize = 9;
+        // const QUOTE_HASH: usize = 2;
+
+        // within a file
+        const INPUTS: &[Span] = &[
+            // full
+            Span {
+                start: LineColumn {
+                    line: 1usize,
+                    column: 0usize + HASH_BRACKET_DOC_EQ_RAW_HASH_QUOTE,
+                },
+                end: LineColumn {
+                    line: 3usize,
+                    column: 10usize,
+                },
+            },
+            // sub
+            Span {
+                start: LineColumn {
+                    line: 1usize,
+                    column: 3usize + HASH_BRACKET_DOC_EQ_RAW_HASH_QUOTE,
+                },
+                end: LineColumn {
+                    line: 1usize,
+                    column: 7usize + HASH_BRACKET_DOC_EQ_RAW_HASH_QUOTE,
+                },
+            },
+            Span {
+                start: LineColumn {
+                    line: 3usize,
+                    column: 0usize,
+                },
+                end: LineColumn {
+                    line: 3usize,
+                    column: 4usize,
+                },
+            },
+        ];
+
+        const EXPECTED_RANGE: &[Range] = &[0..(26 + 1 + 0 + 1 + 10 + 1), 3..8, 28..33];
+
+        const FRAGMENT_STR: &[&'static str] = &[
+            r#"Xy fff?? Not.., you again!
+
+AlphaOmega
+"#,
+            "fff??",
+            "Alpha",
+        ];
+
+        for (input, expected, fragment) in itertools::cons_tuples(
+            INPUTS
+                .iter()
+                .zip(EXPECTED_RANGE.iter())
+                .zip(FRAGMENT_STR.iter()),
+        ) {
+            log::trace!(
+                ">>>>>>>>>>>>>>>>\ninput: {:?}\nexpected: {:?}\nfragment:>{}<",
+                input,
+                expected,
+                fragment
+            );
+
+            let range = dbg!(input)
+                .to_content_range(&chunk)
+                .expect("Inputs are sane, conversion must work. qed");
+            assert_eq!(range, *expected);
+
+            assert_eq!(
+                load_span_from(CONTENT.as_bytes(), input.clone()).unwrap(),
+                fragment.to_owned()
+            );
+            assert_eq!(&(&chunk.as_str()[range]), fragment);
+        }
+    }
+
+    #[test]
+    fn extraction_fluff() {
+        const SOURCE: &'static str = fluff_up!(["one", "two", "three"]);
+
+        const CHUNK_S: &'static str = r#" one
+ two
+ three"#;
+        const FRAGMENT_SPAN: Span = Span {
+            start: LineColumn { line: 1, column: 3 },
+            end: LineColumn { line: 1, column: 6 },
+        };
+        const FRAGMENT_RANGE: Range = 0..4;
+
+        const FRAGMENT_SUB_SPAN: Span = Span {
+            start: LineColumn { line: 1, column: 5 },
+            end: LineColumn { line: 1, column: 6 },
+        };
+        let range = dbg!(extract_sub_range_from_span(
+            CHUNK_S,
+            FRAGMENT_SPAN,
+            FRAGMENT_RANGE,
+            FRAGMENT_SUB_SPAN,
+        )
+        .expect("Must be able to extract trivial sub span"));
+        assert_eq!(&CHUNK_S[dbg!(range.clone())], "ne");
+        assert_eq!(range, 2..4);
+    }
+
+    #[test]
+    fn extraction_chyrp() {
+        const SOURCE: &'static str = chyrp_up!(["one", "two", "three"]);
+
+        const CHUNK_S: &'static str = r#"one
+two
+three"#;
+        const FRAGMENT_SPAN: Span = Span {
+            start: LineColumn {
+                line: 1,
+                column: 9 + 2,
+            },
+            end: LineColumn { line: 3, column: 5 },
+        };
+        const FRAGMENT_RANGE: Range = 0..(3 + 1 + 3 + 5);
+
+        {
+            const FRAGMENT_SUB_SPAN: Span = Span {
+                start: LineColumn {
+                    line: 1,
+                    column: 9 + 2 + 1,
+                },
+                end: LineColumn {
+                    line: 1,
+                    column: 9 + 2 + 1 + 1,
+                },
+            };
+            let range = dbg!(extract_sub_range_from_span(
+                CHUNK_S,
+                FRAGMENT_SPAN,
+                FRAGMENT_RANGE,
+                FRAGMENT_SUB_SPAN,
+            )
+            .expect("Must be able to extract trivial sub span"));
+            assert_eq!(&CHUNK_S[dbg!(range.clone())], "ne");
+            assert_eq!(range, 1..3);
+        }
+        {
+            const FRAGMENT_SUB_SPAN: Span = Span {
+                start: LineColumn { line: 2, column: 1 },
+                end: LineColumn { line: 2, column: 2 },
+            };
+            let range = dbg!(extract_sub_range_from_span(
+                CHUNK_S,
+                FRAGMENT_SPAN,
+                FRAGMENT_RANGE,
+                FRAGMENT_SUB_SPAN,
+            )
+            .expect("Must be able to extract trivial sub span"));
+            assert_eq!(&CHUNK_S[dbg!(range.clone())], "wo");
+            assert_eq!(range, 5..7);
         }
     }
 }

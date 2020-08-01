@@ -5,8 +5,7 @@
 use super::*;
 use crate::Documentation;
 
-use anyhow::{anyhow, Error, Result};
-use indexmap::IndexMap;
+use anyhow::{anyhow, bail, Error, Result};
 use log::{debug, trace, warn};
 use std::convert::TryFrom;
 use std::fs;
@@ -139,30 +138,29 @@ pub(crate) fn extract_modules_from_file<P: AsRef<Path>>(path: P) -> Result<Vec<P
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum CheckEntity {
     Markdown(PathBuf),
-    Source(PathBuf),
+    Source(PathBuf, bool), // recurse is the bool
     ManifestDescription(String),
 }
 
 fn load_manifest<P: AsRef<Path>>(manifest_dir: P) -> Result<cargo_toml::Manifest> {
     let manifest_dir = manifest_dir.as_ref();
     let manifest_file = manifest_dir.join("Cargo.toml");
-    let mut manifest = cargo_toml::Manifest::from_path(&manifest_file).map_err(|e| {
-        anyhow::anyhow!(
-            "Failed to parse manifest file {}: {}",
-            manifest_file.display(),
-            e
-        )
+    // read to str first to provide better error messages
+    let manifest_content = std::fs::read_to_string(&manifest_file).map_err(|e| {
+        anyhow::anyhow!("Failed to open manifest file {}", manifest_file.display()).context(e)
     })?;
-    // @todo verify which one is the sane one here, internally it calls `parent()`
-    // but semantically it's not entirely clear.
-    // manifest.complete_from_path(manifest_dir.join("Cargo.toml").as_path())?;
-    manifest.complete_from_path(&manifest_file).map_err(|e| {
-        anyhow::anyhow!(
-            "Failed to complete manifest info {}: {}",
-            manifest_file.display(),
-            e
-        )
+    let mut manifest = cargo_toml::Manifest::from_str(manifest_content.as_str()).map_err(|e| {
+        anyhow::anyhow!("Failed to parse manifest file {}", manifest_file.display()).context(e)
     })?;
+    // load default products based on whatever exists on the filesystem
+    if manifest.complete_from_path(&manifest_file).is_err() {
+        if manifest.complete_from_path(manifest_dir).is_err() {
+            debug!(
+                "Complete from filesystem did not yield new information for manifest {}",
+                manifest_file.display()
+            );
+        }
+    }
     Ok(manifest)
 }
 
@@ -184,27 +182,38 @@ fn to_manifest_dir<P: AsRef<Path>>(manifest_dir: P) -> Result<PathBuf> {
 }
 
 /// Extract all cargo manifest products / build targets.
-// @todo code with an enum to allow source and markdown files
-fn extract_products<P: AsRef<Path>>(manifest_dir: P) -> Result<Vec<CheckEntity>> {
-    let manifest_dir = manifest_dir.as_ref();
-    let manifest = load_manifest(manifest_dir)?;
-
+fn extract_products(
+    manifest: &cargo_toml::Manifest,
+    manifest_dir: &Path,
+) -> Result<Vec<CheckEntity>> {
     let iter = manifest
         .bin
-        .into_iter()
-        .chain(manifest.lib.into_iter().map(|x| x));
+        .iter()
+        .cloned()
+        .chain(manifest.lib.iter().cloned().map(|x| x));
 
-    let mut items = iter
+    let items = iter
         .filter(|product| product.doctest)
         .filter_map(|product| product.path)
-        .map(|path_str| CheckEntity::Source(manifest_dir.join(path_str)))
+        // cargo_toml's complete is not very truthfull
+        .filter(|path_str| manifest_dir.join(path_str).is_file())
+        .map(|path_str| CheckEntity::Source(manifest_dir.join(path_str), true))
         .collect::<Vec<CheckEntity>>();
 
-    if let Some(package) = manifest.package {
+    trace!("manifest products {:?}", &items);
+    Ok(items)
+}
+
+fn extract_readme(
+    manifest: &cargo_toml::Manifest,
+    manifest_dir: &Path,
+) -> Result<Vec<CheckEntity>> {
+    let mut acc = Vec::with_capacity(2);
+    if let Some(package) = manifest.package.clone() {
         if let Some(readme) = package.readme {
             let readme = PathBuf::from(readme);
             if readme.is_file() {
-                items.push(CheckEntity::Markdown(manifest_dir.join(readme)))
+                acc.push(CheckEntity::Markdown(manifest_dir.join(readme)));
             } else {
                 warn!(
                     "README.md defined in Cargo.toml {} is not a file",
@@ -213,21 +222,43 @@ fn extract_products<P: AsRef<Path>>(manifest_dir: P) -> Result<Vec<CheckEntity>>
             }
         }
         if let Some(description) = package.description {
-            items.push(CheckEntity::ManifestDescription(description.to_owned()))
+            acc.push(CheckEntity::ManifestDescription(description.to_owned()));
         }
     }
-    trace!("manifest products {:?}", &items);
-    Ok(items)
+    Ok(acc)
 }
 
-fn handle_manifest<P: AsRef<Path>>(manifest_dir: P) -> Result<Vec<CheckEntity>> {
+fn handle_manifest<P: AsRef<Path>>(manifest_dir: P, skip_readme: bool) -> Result<Vec<CheckEntity>> {
     let manifest_dir = to_manifest_dir(manifest_dir)?;
     trace!("Handle manifest in dir: {}", manifest_dir.display());
 
     let manifest_dir = manifest_dir.as_path();
-    let manifest = load_manifest(manifest_dir)?;
+    let manifest = load_manifest(manifest_dir).map_err(|e| {
+        anyhow!(
+            "Failed to load manifest from dir {}",
+            manifest_dir.display()
+        )
+        .context(e)
+    })?;
 
-    let mut acc = extract_products(manifest_dir)?;
+    let mut acc = extract_products(&manifest, &manifest_dir).map_err(|e| {
+        anyhow!(
+            "Failed to extract products from manifest {}",
+            manifest_dir.display()
+        )
+        .context(e)
+    })?;
+
+    if !skip_readme {
+        let v = extract_readme(&manifest, &manifest_dir).map_err(|e| {
+            anyhow!(
+                "Failed to extract readme / description from manifest {}",
+                manifest_dir.display()
+            )
+            .context(e)
+        })?;
+        acc.extend(v);
+    }
 
     if let Some(workspace) = manifest.workspace {
         trace!("Handling manifest workspace");
@@ -235,9 +266,27 @@ fn handle_manifest<P: AsRef<Path>>(manifest_dir: P) -> Result<Vec<CheckEntity>> 
             .members
             .into_iter()
             .try_for_each::<_, Result<()>>(|item| {
-                let d = manifest_dir.join(&item);
-                trace!("Handling manifest member {} -> {}", &item, d.display());
-                acc.extend(extract_products(d)?.into_iter());
+                let member_dir = manifest_dir.join(&item);
+                trace!(
+                    "Handling manifest member {} -> {}",
+                    &item,
+                    member_dir.display()
+                );
+                if let Ok(member_manifest) = load_manifest(&member_dir).map_err(|e| {
+                    anyhow!(
+                        "Failed to load manifest from member directory {}",
+                        member_dir.display()
+                    )
+                    .context(e)
+                }) {
+                    if let Ok(member) = extract_products(&member_manifest, &member_dir) {
+                        acc.extend(member.into_iter());
+                    } else {
+                        warn!("Workspace member {} product extraction failed", item);
+                    }
+                } else {
+                    warn!("Opening manifest from member failed {}", item);
+                }
                 Ok(())
             })?;
     }
@@ -248,15 +297,17 @@ fn handle_manifest<P: AsRef<Path>>(manifest_dir: P) -> Result<Vec<CheckEntity>> 
 pub(crate) fn extract(
     mut paths: Vec<PathBuf>,
     mut recurse: bool,
+    skip_readme: bool,
     _config: &Config,
 ) -> Result<Documentation> {
     let cwd = cwd()?;
     // if there are no arguments, pretend to be told to check the whole project
     if paths.is_empty() {
-        // @todo also traverse parent dirs
-        paths.push(cwd.join("Cargo.toml"));
+        paths.push(cwd.clone());
         recurse = true;
     }
+
+    debug!("Running on inputs {:?} / recursive={}", &paths, recurse);
 
     #[derive(Debug, Clone)]
     enum Extraction {
@@ -278,10 +329,12 @@ pub(crate) fn extract(
         path.canonicalize().ok()
     }));
 
+    debug!("Running on absolute dirs {:?} ", &flow);
+
     // stage 2 - check for manifest, .rs , .md files and directories
     let mut files_to_check = Vec::with_capacity(64);
     while let Some(path) = flow.pop_front() {
-        files_to_check.push(if let Ok(meta) = path.metadata() {
+        let x = if let Ok(meta) = path.metadata() {
             if meta.is_file() {
                 match path.file_name().map(|x| x.to_str()).flatten() {
                     Some(file_name) if file_name == "Cargo.toml" => Extraction::Manifest(path),
@@ -310,8 +363,11 @@ pub(crate) fn extract(
             }
         } else {
             Extraction::Missing(path)
-        })
+        };
+        files_to_check.push(x);
     }
+
+    debug!("Found a total of {} files to check ", files_to_check.len());
 
     // stage 3 - resolve the manifest products and workspaces, warn about missing
     let files_to_check = files_to_check
@@ -319,14 +375,14 @@ pub(crate) fn extract(
         .try_fold::<Vec<_>, _, Result<_>>(Vec::with_capacity(64), |mut acc, tagged_path| {
             match tagged_path {
                 Extraction::Manifest(ref cargo_toml_path) => {
-                    let manifest_list = handle_manifest(cargo_toml_path)?;
+                    let manifest_list = handle_manifest(cargo_toml_path, skip_readme)?;
                     acc.extend(manifest_list);
                 }
                 Extraction::Missing(ref missing_path) => warn!(
                     "File passed as argument or listed in Cargo.toml manifest does not exist: {}",
                     missing_path.display()
                 ),
-                Extraction::Source(path) => acc.push(CheckEntity::Source(path)),
+                Extraction::Source(path) => acc.push(CheckEntity::Source(path, recurse)),
                 Extraction::Markdown(path) => acc.push(CheckEntity::Markdown(path)),
             }
             Ok(acc)
@@ -339,22 +395,50 @@ pub(crate) fn extract(
             Documentation::new(),
             |mut docs, item| {
                 match item {
-                    CheckEntity::Source(path) => {
+                    CheckEntity::Source(path, recurse) => {
                         if recurse {
                             let iter = traverse(path.as_path())?;
                             docs.extend(iter);
                         } else {
-                            let content: String = fs::read_to_string(&path)?;
-                            let stream =
-                                syn::parse_str::<proc_macro2::TokenStream>(content.as_str())?;
-                            let cluster = Clusters::try_from(stream)?;
-                            let chunks = Vec::<CheckableChunk>::from(cluster);
-                            docs.add(ContentOrigin::RustSourceFile(path.to_owned()), chunks);
+                            let content: String = fs::read_to_string(&path).map_err(|e| {
+                                anyhow!("Failed to read {}", path.display()).context(e)
+                            })?;
+                            if let Ok(cluster) = Clusters::try_from(content.as_str()) {
+                                let chunks = Vec::<CheckableChunk>::from(cluster);
+                                docs.add(ContentOrigin::RustSourceFile(path.to_owned()), chunks);
+                            } else {
+                                log::error!("BUG: Failed to create cluster for {}", path.display());
+                            }
                         }
                     }
                     CheckEntity::Markdown(path) => {
-                        let content = std::fs::read_to_string(&path).unwrap(); // @todo error handling
-                        let source_mapping = IndexMap::new(); // @todo source map should be trivial, start to end
+                        let content = std::fs::read_to_string(&path).map_err(|e| {
+                            anyhow!("Common mark / markdown file does not exist").context(e)
+                        })?;
+                        if content.len() < 1 {
+                            bail!("Common mark / markdown file is empty")
+                        }
+                        // extract the full content span and range
+                        let start = LineColumn { line: 1, column: 0 };
+                        let end = content
+                            .lines()
+                            .enumerate()
+                            .last()
+                            .map(|(idx, line)| (idx + 1, line))
+                            .map(|(lineno, line)| LineColumn {
+                                line: lineno,
+                                column: line.chars().count(),
+                            })
+                            .ok_or_else(|| {
+                                anyhow!(
+                                    "Common mark / markdown file does not contain a single line"
+                                )
+                            })?;
+
+                        let span = Span { start, end };
+                        let source_mapping = indexmap::indexmap! {
+                           0..content.chars().count() => span
+                        };
                         docs.add(
                             ContentOrigin::CommonMarkFile(path.to_owned()),
                             vec![CheckableChunk::from_string(content, source_mapping)],
@@ -398,11 +482,17 @@ mod tests {
 
     #[test]
     fn manifest_entries() {
+        let (manifest, dir) = demo_dir_manifest();
         assert_eq!(
-            extract_products(demo_dir()).expect("Must succeed"),
+            extract_products(&manifest, &dir).expect("Must succeed"),
             vec![
-                CheckEntity::Source(demo_dir().join("src/main.rs")),
-                CheckEntity::Source(demo_dir().join("src/lib.rs")),
+                CheckEntity::Source(demo_dir().join("src/main.rs"), true),
+                CheckEntity::Source(demo_dir().join("src/lib.rs"), true),
+            ]
+        );
+        assert_eq!(
+            extract_readme(&manifest, &dir).expect("Must succeed"),
+            vec![
                 CheckEntity::Markdown(demo_dir().join("README.md")),
                 CheckEntity::ManifestDescription(
                     "A silly demo with plenty of spelling mistakes for cargo-spellcheck demos and CI".to_string()
@@ -413,6 +503,13 @@ mod tests {
 
     fn demo_dir() -> PathBuf {
         manifest_dir().join("demo")
+    }
+
+    fn demo_dir_manifest() -> (cargo_toml::Manifest, PathBuf) {
+        (
+            load_manifest(demo_dir()).expect("Demo dir manifest must exist"),
+            demo_dir(),
+        )
     }
 
     use std::collections::HashSet;
@@ -450,11 +547,8 @@ mod tests {
         };
 
         ([ $( $path:literal ),* $(,)?] + $recurse: expr => [ $( $file:literal ),* $(,)?] ) => {
-            let _ = env_logger::from_env(
-                env_logger::Env::new().filter_or("CARGO_SPELLCHECK", "cargo_spellcheck=trace"),
-            )
-            .is_test(true)
-            .try_init();
+            let _ = env_logger::builder().is_test(true).try_init();
+
             let docs = extract(
                 vec![
                     $(
@@ -462,6 +556,7 @@ mod tests {
                     )*
                 ],
                 $recurse,
+                false,
                 &Config::default(),
             )
             .expect("Must be able to extract demo dir");
@@ -488,8 +583,15 @@ mod tests {
     fn traverse_manifest_1() {
         extract_test!(["Cargo.toml"] + false => [
             "README.md",
+            "src/lib.rs",
             "src/main.rs",
-            "src/lib.rs"
+            "src/nested/again/mod.rs",
+            "src/nested/fragments/enumerate.rs",
+            "src/nested/fragments/simple.rs",
+            "src/nested/fragments.rs",
+            "src/nested/justone.rs",
+            "src/nested/justtwo.rs",
+            "src/nested/mod.rs",
         ]);
     }
 

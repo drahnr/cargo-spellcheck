@@ -1,6 +1,6 @@
 use crate::span::Span;
 use crate::suggestion::Suggestion;
-use anyhow::{anyhow, Error, Result};
+use anyhow::{bail, Error, Result};
 use log::trace;
 use std::convert::TryFrom;
 
@@ -45,7 +45,7 @@ impl<'s> TryFrom<(&Suggestion<'s>, usize)> for BandAid {
         if let Some(replacement) = suggestion.replacements.iter().nth(pick_idx) {
             Ok(Self::new(replacement.as_str(), &suggestion.span))
         } else {
-            Err(anyhow!("Does not contain any replacements"))
+            bail!("Does not contain any replacements")
         }
     }
 }
@@ -67,9 +67,10 @@ impl From<(String, Span)> for BandAid {
 pub(crate) mod tests {
     use super::*;
     use crate::span::Span;
-    use anyhow::bail;
+    use crate::util::load_span_from;
+    use anyhow::anyhow;
     use proc_macro2::LineColumn;
-    use std::io::BufRead;
+    use std::io::Read;
     use std::path::Path;
 
     /// Extract span from file as String
@@ -89,39 +90,6 @@ pub(crate) mod tests {
         let mut reader = std::io::BufReader::new(ro);
 
         load_span_from(reader, span)
-    }
-
-    /// Extract span from String as String
-    /// Helpful to validate bandaids against what's actually in the string
-    // @todo does not handle cross line spans @todo yet
-    #[allow(unused)]
-    pub(crate) fn load_span_from<S>(mut source: S, span: Span) -> Result<String>
-    where
-        S: BufRead,
-    {
-        log::trace!("Loading {:?} from source", &span);
-        if span.start.line < 1 {
-            bail!("Lines are 1-indexed, can't be less than 1")
-        }
-        if span.end.line < span.start.line {
-            bail!("Line range would be negative, bail")
-        }
-        if span.end.column < span.start.column {
-            bail!("Column range would be negative, bail")
-        }
-        let line = (&mut source)
-            .lines()
-            .skip(span.start.line - 1)
-            .filter_map(|line| line.ok())
-            .next()
-            .ok_or_else(|| anyhow!("Line not in buffer or invalid"))?;
-
-        let range = dbg!(span.start.column..(span.end.column + 1));
-        log::trace!("Loading {:?} from line >{}<", &range, &line);
-        dbg!(line)
-            .get(range.clone())
-            .map(|s| dbg!(s.to_owned()))
-            .ok_or_else(|| anyhow!("Columns not in line: {:?}", &range))
     }
 
     #[test]
