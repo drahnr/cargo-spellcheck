@@ -105,9 +105,7 @@ impl Config {
     }
 
     pub fn parse<S: AsRef<str>>(s: S) -> Result<Self> {
-        let cfg =
-            toml::from_str(s.as_ref()).map_err(|e| anyhow!("Failed parse toml").context(e))?;
-        Ok(cfg)
+        toml::from_str(s.as_ref()).map_err(|e| anyhow!("Failed parse toml").context(e))
     }
 
     pub fn load_from<P: AsRef<Path>>(path: P) -> Result<Self> {
