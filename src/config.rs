@@ -16,7 +16,9 @@ use std::path::{Path, PathBuf};
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Config {
+    #[serde(rename = "Hunspell")]
     pub hunspell: Option<HunspellConfig>,
+    #[serde(rename = "LanguageTool")]
     pub languagetool: Option<LanguageToolConfig>,
 }
 
