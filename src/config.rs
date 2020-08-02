@@ -16,7 +16,9 @@ use std::path::{Path, PathBuf};
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Config {
+    #[serde(rename = "Hunspell")]
     pub hunspell: Option<HunspellConfig>,
+    #[serde(rename = "LanguageTool")]
     pub languagetool: Option<LanguageToolConfig>,
 }
 
@@ -265,7 +267,7 @@ mod tests {
         let _ = Config::parse(
             r#"
 [LanguageTool]
-url = "127.0.0.1:8010/"
+url = "http://127.0.0.1:8010/"
 
 [Hunspell]
 lang = "en_US"
@@ -330,7 +332,7 @@ extra_dictonaries = ["/home/bernhard/test.dic"]
         let _ = Config::parse(
             r#"
 [LanguageTool]
-url = "192.1.1.11:1337/"
+url = "http://127.0.0.1:8010/"
 
 [Hunspell]
 lang = "en_US"
