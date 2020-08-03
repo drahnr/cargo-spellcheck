@@ -345,31 +345,16 @@ impl<'s> fmt::Display for Suggestion<'s> {
 
         // assumes the _mistake_ is within one line
         // if not we chop it down to the first line
-        let (line_range, start_of_line_offset) = self
-            .chunk
-            .as_str()
-            .chars()
-            .enumerate()
-            .scan(0usize, |last_newline_plus_1, (idx, c)| {
-                match c {
-                    '\n' => {
-                        *last_newline_plus_1 = idx + 1;
-                    }
-                    _ => {}
-                }
-                Some((idx, c, *last_newline_plus_1))
-            })
-            .skip_while(|(idx, _c, _last_newline_plus_1)| *idx < self.range.start)
-            .take_while(|(_idx, c, _last_newline_plus_1)| *c != '\n')
-            .last() // the last contains the last chars index, and the index of the previous newline
-            .map(|(idx, _, last_newline_plus_1)| {
-                let mistake_to_start_of_line_offset = self.range.start - last_newline_plus_1;
+        let mistake_lines = self.chunk.find_covered_lines(self.range.clone());
+        let (line_range, start_of_line_offset) = mistake_lines
+            .first()
+            .map(|line_range| {
                 (
-                    last_newline_plus_1..(idx + 1),
-                    mistake_to_start_of_line_offset,
+                    line_range,
+                    self.range.start.saturating_sub(line_range.start),
                 )
             })
-            .expect("Must have at least one relevant line");
+            .expect("Lines covered must exist");
 
         let intra_line_mistake_range = Range {
             start: start_of_line_offset,

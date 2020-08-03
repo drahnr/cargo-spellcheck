@@ -187,6 +187,40 @@ impl CheckableChunk {
             .collect::<IndexMap<_, _>>()
     }
 
+    /// Yields a set of ranges covering all spanned lines (the full line)
+    pub fn find_covered_lines<'i>(&'i self, range: Range) -> Vec<Range> {
+        // assumes the _mistake_ is within one line
+        // if not we chop it down to the first line
+        let mut acc = Vec::with_capacity(32);
+        let mut iter = self.as_str().chars().enumerate().peekable();
+
+        let mut last_newline_idx = 0usize;
+        let mut idx = 0usize;
+        loop {
+            // we want to include the last character, so the last one ends one beyond the current
+            if iter.peek().is_none() {
+                acc.push(last_newline_idx..(idx + 1));
+                break;
+            }
+            idx = if let Some((idx, c)) = iter.next() {
+                if c == '\n' {
+                    if range.start <= idx {
+                        // do not include the newline
+                        acc.push(last_newline_idx..idx);
+                    }
+                    last_newline_idx = idx + 1;
+                    if last_newline_idx >= range.end {
+                        break;
+                    }
+                }
+                idx
+            } else {
+                break;
+            };
+        }
+        acc
+    }
+
     pub fn as_str(&self) -> &str {
         self.content.as_str()
     }
