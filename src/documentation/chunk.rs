@@ -192,17 +192,14 @@ impl CheckableChunk {
         // assumes the _mistake_ is within one line
         // if not we chop it down to the first line
         let mut acc = Vec::with_capacity(32);
-        let mut iter = self.as_str().chars().enumerate().peekable();
+        let mut iter = self.as_str().chars().enumerate();
 
         let mut last_newline_idx = 0usize;
-        let mut idx = 0usize;
+        // simulate the previous newline was at virtual `-1`
+        let mut state_idx = 0usize;
+        let mut state_c = '\n';
         loop {
-            // we want to include the last character, so the last one ends one beyond the current
-            if iter.peek().is_none() {
-                acc.push(last_newline_idx..(idx + 1));
-                break;
-            }
-            idx = if let Some((idx, c)) = iter.next() {
+            if let Some((idx, c)) = iter.next() {
                 if c == '\n' {
                     if range.start <= idx {
                         // do not include the newline
@@ -213,8 +210,17 @@ impl CheckableChunk {
                         break;
                     }
                 }
-                idx
+                state_c = c;
+                state_idx = idx;
             } else {
+                // if the previous character was a new line,
+                // such that the common mark chunk ended with
+                // a newline, we do not want to append another empty line
+                // for no reason, we include empty lines for `\n\n` though
+                if state_c != '\n' {
+                    // we want to include the last character
+                    acc.push(last_newline_idx..(state_idx + 1));
+                }
                 break;
             };
         }
