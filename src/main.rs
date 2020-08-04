@@ -230,16 +230,7 @@ fn run() -> anyhow::Result<ExitCode> {
         Ok(config) => config,
         Err(e) => {
             if explicit_cfg {
-                if e.root_cause().to_string() == "Failed parse toml" {
-                    return Err(anyhow::anyhow!(
-                        "Syntax of a given config file({:?}) is broken",
-                        config_path
-                    ));
-                } else {
-                    return Err(anyhow::anyhow!(
-                        "Explicitly given config file does not exist"
-                    ));
-                }
+                return Err(e);
             } else {
                 warn!(
                     "Loading configuration from {}, due to: {}",

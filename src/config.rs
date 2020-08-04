@@ -105,7 +105,7 @@ impl Config {
     }
 
     pub fn parse<S: AsRef<str>>(s: S) -> Result<Self> {
-        toml::from_str(s.as_ref()).map_err(|e| anyhow!("Failed parse toml").context(e))
+        Ok(toml::from_str(s.as_ref())?)
     }
 
     pub fn load_from<P: AsRef<Path>>(path: P) -> Result<Self> {
@@ -115,12 +115,19 @@ impl Config {
         file.read_to_string(&mut contents).map_err(|e| {
             anyhow!("Failed to read from file {}", path.as_ref().display()).context(e)
         })?;
-        Self::parse(&contents).and_then(|mut cfg| {
-            if let Some(base) = path.as_ref().parent() {
-                cfg.sanitize_paths(base)?;
-            }
-            Ok(cfg)
-        })
+        Self::parse(&contents)
+            .map_err(|e| {
+                e.context(anyhow::anyhow!(
+                    "Syntax of a given config file({}) is broken",
+                    path.as_ref().display()
+                ))
+            })
+            .and_then(|mut cfg| {
+                if let Some(base) = path.as_ref().parent() {
+                    cfg.sanitize_paths(base)?;
+                }
+                Ok(cfg)
+            })
     }
 
     pub fn load() -> Result<Self> {
