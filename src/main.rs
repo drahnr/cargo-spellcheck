@@ -230,9 +230,7 @@ fn run() -> anyhow::Result<ExitCode> {
         Ok(config) => config,
         Err(e) => {
             if explicit_cfg {
-                return Err(anyhow::anyhow!(
-                    "Explicitly given config file does not exist"
-                ));
+                return Err(e);
             } else {
                 warn!(
                     "Loading configuration from {}, due to: {}",
