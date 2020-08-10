@@ -7,8 +7,10 @@
 
 use crate::suggestion::Detector;
 use anyhow::{anyhow, bail, Error, Result};
+use fancy_regex::Regex;
 use log::trace;
 use serde::{Deserialize, Serialize};
+use std::fmt;
 use std::fs::File;
 use std::io::Read;
 use std::io::Write;
@@ -22,12 +24,87 @@ pub struct Config {
     pub languagetool: Option<LanguageToolConfig>,
 }
 
+#[derive(Debug)]
+pub struct WrappedRegex(pub Regex);
+
+impl Clone for WrappedRegex {
+    fn clone(&self) -> Self {
+        // @todo inefficient..
+        Self(Regex::new(self.as_str()).unwrap())
+    }
+}
+
+impl std::ops::Deref for WrappedRegex {
+    type Target = Regex;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Serialize for WrappedRegex {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::ser::Serializer,
+    {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for WrappedRegex {
+    fn deserialize<D>(deserializer: D) -> Result<WrappedRegex, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        deserializer
+            .deserialize_any(RegexVisitor)
+            .map(WrappedRegex::from)
+    }
+}
+
+impl Into<Regex> for WrappedRegex {
+    fn into(self) -> Regex {
+        self.0
+    }
+}
+
+impl From<Regex> for WrappedRegex {
+    fn from(other: Regex) -> WrappedRegex {
+        WrappedRegex(other)
+    }
+}
+
+struct RegexVisitor;
+
+impl<'de> serde::de::Visitor<'de> for RegexVisitor {
+    type Value = Regex;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("String with valid regex expression")
+    }
+
+    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        let re = Regex::new(value).map_err(E::custom)?;
+        Ok(re)
+    }
+
+    fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        self.visit_str::<E>(value.as_str())
+    }
+}
+
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct HunspellConfig {
     pub lang: Option<String>, // TODO impl a custom xx_YY code deserializer based on iso crates
     // must be option so it can be omitted in the config
     pub search_dirs: Option<Vec<PathBuf>>,
     pub extra_dictonaries: Option<Vec<PathBuf>>,
+    pub whitelist_regex: Option<Vec<WrappedRegex>>,
 }
 
 impl HunspellConfig {
@@ -241,6 +318,7 @@ impl Default for Config {
                 lang: Some("en_US".to_owned()),
                 search_dirs: Some(search_dirs),
                 extra_dictonaries: Some(Vec::new()),
+                whitelist_regex: None,
             }),
             languagetool: None,
         }
