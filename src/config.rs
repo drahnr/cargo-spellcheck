@@ -29,7 +29,8 @@ pub struct WrappedRegex(pub Regex);
 
 impl Clone for WrappedRegex {
     fn clone(&self) -> Self {
-        // @todo inefficient..
+        // @todo inefficient.. but right now this should almost never happen
+        // @todo implement a lazy static `Arc<Mutex<HashMap<&'static str,Regex>>`
         Self(Regex::new(self.as_str()).unwrap())
     }
 }
@@ -100,11 +101,17 @@ impl<'de> serde::de::Visitor<'de> for RegexVisitor {
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct HunspellConfig {
-    pub lang: Option<String>, // TODO impl a custom xx_YY code deserializer based on iso crates
+    /// The language we want to check against, used as the dictionary and affixes file name.
+    // TODO impl a custom xx_YY code deserializer based on iso crates
+    pub lang: Option<String>,
+    /// Addition search dirs for `.dic` and `.aff` files.
     // must be option so it can be omitted in the config
     pub search_dirs: Option<Vec<PathBuf>>,
+    /// Additional dictionaries for topic specific lingo.
     pub extra_dictonaries: Option<Vec<PathBuf>>,
-    pub whitelist_regex: Option<Vec<WrappedRegex>>,
+    /// A regular expression, whose capture groups will be checked, instead of the initial token.
+    /// Only the first one that matches will be used to split the word.
+    pub transform_regex: Option<Vec<WrappedRegex>>,
 }
 
 impl HunspellConfig {
@@ -318,7 +325,7 @@ impl Default for Config {
                 lang: Some("en_US".to_owned()),
                 search_dirs: Some(search_dirs),
                 extra_dictonaries: Some(Vec::new()),
-                whitelist_regex: None,
+                transform_regex: None,
             }),
             languagetool: None,
         }
