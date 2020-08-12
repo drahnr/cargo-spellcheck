@@ -6,13 +6,12 @@
 //! Can handle multiple dictionaries.
 
 use super::{tokenize, Checker, Detector, Documentation, Suggestion, SuggestionSet};
-use crate::documentation::CheckableChunk;
-use crate::documentation::ContentOrigin;
-use crate::documentation::PlainOverlay;
+use crate::config::WrappedRegex;
+use crate::documentation::{CheckableChunk, ContentOrigin, PlainOverlay};
 use crate::util::sub_chars;
 use crate::Range;
+use fancy_regex::Regex;
 use log::{debug, trace, warn};
-use std::collections::VecDeque;
 use std::path::PathBuf;
 
 use hunspell_rs::Hunspell;
@@ -125,8 +124,6 @@ impl Checker for HunspellChecker {
             move |mut acc, (origin, chunks)| {
                 debug!("Processing {}", origin.as_path().display());
 
-
-
                 for chunk in chunks {
                     let plain = chunk.erase_markdown();
                     trace!("{:?}", &plain);
@@ -134,43 +131,34 @@ impl Checker for HunspellChecker {
                     for range in tokenize(txt) {
                         let word = sub_chars(txt, range.clone());
                         if transform_regex.is_empty() {
-                            obtain_suggestions(&plain, chunk, &hunspell, origin, word, range, &mut acc)
+                            obtain_suggestions(
+                                &plain, chunk, &hunspell, origin, word, range, &mut acc,
+                            )
                         } else {
-                            let mut matched = false;
-                            for regex in transform_regex.iter() {
-                                match regex.captures(word.as_str()) {
-                                    Ok(Some(captures)) => {
-                                        matched = true;
-                                        // first one is always the full match
-                                        if captures.len() == 1 {
-                                            // means match, but no captures,
-                                            // which is equiv to an implicit whitelist
-                                            break;
-                                        }
-                                        for m in captures.iter().skip(1).filter_map(|x| x) {
-                                            trace!("found capture for word >{}<, with match >{}< and capture >{}<", captures.get(0).unwrap().as_str(), word.as_str(), m.as_str());
-                                            let offset = word.char_indices().take_while(|(offset, _)| m.start() < *offset).count();
-                                            let range = Range {
-                                                start: range.start + offset,
-                                                end: range.start + offset + m.as_str().chars().count(),
-                                            };
-                                            obtain_suggestions(&plain, chunk, &hunspell, origin, m.as_str().to_owned(), range, &mut acc);
-                                        }
-                                        break;
-                                    },
-                                    Ok(None) => {
-                                        // no regex match, try the next regex
-                                        continue;
-                                    },
-                                    Err(e) => {
-                                        warn!("Matching regex >{}< errored: {}", regex.as_str(), e);
-                                        break;
-                                    }
+                            if let Some(word_fragments) =
+                                transform(&transform_regex[..], word.as_str(), range.clone())
+                            {
+                                for (range, word_fragment) in word_fragments {
+                                    obtain_suggestions(
+                                        &plain,
+                                        chunk,
+                                        &hunspell,
+                                        origin,
+                                        word_fragment.to_owned(),
+                                        range,
+                                        &mut acc,
+                                    );
                                 }
-                            }
-                            // nothing matched, check the entire word
-                            if !matched {
-                                obtain_suggestions(&plain, chunk, &hunspell, origin, word, range, &mut acc)
+                            } else {
+                                obtain_suggestions(
+                                    &plain,
+                                    chunk,
+                                    &hunspell,
+                                    origin,
+                                    word.clone(),
+                                    range,
+                                    &mut acc,
+                                );
                             }
                         }
                     }
@@ -221,6 +209,97 @@ fn obtain_suggestions<'s>(
             "Found a match for word (plain range: {:?}): >{}<",
             &range,
             word
+        );
+    }
+}
+
+fn transform<'i, R: AsRef<Regex>>(
+    transform_regex: &[R],
+    word: &'i str,
+    range: Range,
+) -> Option<Vec<(Range, &'i str)>> {
+    for regex in transform_regex.iter().map(AsRef::as_ref) {
+        match regex.captures(word) {
+            Ok(Some(captures)) => {
+                // first one is always the full match
+                if captures.len() == 1 {
+                    // means match, but no captures,
+                    // which is equiv to an implicit whitelist
+                    break;
+                }
+                let intermediate = captures
+                    .iter()
+                    .skip(1)
+                    .filter_map(|m_opt| m_opt)
+                    .map(|m| {
+                        let intra_word_range = m.start()..m.end();
+                        trace!(
+                            "Found capture for word >{}<, with match >{}< and capture >{}< at {:?}",
+                            captures.get(0).unwrap().as_str(),
+                            word,
+                            m.as_str(),
+                            &intra_word_range
+                        );
+                        let offset = dbg!(word
+                            .char_indices()
+                            .take_while(|(byte_pos, _)| m.start() > *byte_pos)
+                            .count());
+                        let range = Range {
+                            start: dbg!(range.start + offset),
+                            end: range.start + offset + m.as_str().chars().count(),
+                        };
+                        (range, &word[intra_word_range])
+                    })
+                    .collect::<Vec<_>>();
+
+                return Some(intermediate);
+            }
+            Ok(None) => {
+                // no regex match, try the next regex
+                continue;
+            }
+            Err(e) => {
+                warn!("Matching regex >{}< errored: {}", regex.as_str(), e);
+                break;
+            }
+        }
+    }
+    // nothing matched, check the entire word instead
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use env_logger;
+    #[test]
+    fn transformer() {
+        let _ = env_logger::builder()
+            .is_test(true)
+            .filter(None, log::LevelFilter::Trace)
+            .try_init();
+
+        let re = vec![
+            WrappedRegex::from(Regex::new("^[0-9]+x$").unwrap()), //whitelist
+            WrappedRegex::from(Regex::new(r#"'([^\s]+)'"#).unwrap()),
+            WrappedRegex::from(Regex::new("(Alpha)(beta)").unwrap()),
+        ];
+
+        let words = vec!["2x", r#"'so-to-speak'"#, "Alphabeta"];
+
+        // whitelist
+        assert_eq!(transform(re.as_slice(), words[0], 10..24), None);
+
+        // single quoted
+        assert_eq!(
+            transform(re.as_slice(), words[1], 10..23),
+            Some(vec![(11..22, &words[1][1..12])])
+        );
+
+        // multi
+        assert_eq!(
+            transform(re.as_slice(), words[2], 10..19),
+            Some(vec![(10..15, &words[2][0..5]), (15..19, &words[2][5..9]),])
         );
     }
 }
