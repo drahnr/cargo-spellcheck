@@ -10,12 +10,12 @@ use anyhow::{anyhow, bail, Error, Result};
 use fancy_regex::Regex;
 use log::trace;
 use serde::{Deserialize, Serialize};
+use std::convert::AsRef;
 use std::fmt;
 use std::fs::File;
 use std::io::Read;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Config {
     #[serde(rename = "Hunspell")]
@@ -38,6 +38,12 @@ impl Clone for WrappedRegex {
 impl std::ops::Deref for WrappedRegex {
     type Target = Regex;
     fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::convert::AsRef<Regex> for WrappedRegex {
+    fn as_ref(&self) -> &Regex {
         &self.0
     }
 }
