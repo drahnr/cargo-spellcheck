@@ -6,7 +6,7 @@
 //! Can handle multiple dictionaries.
 
 use super::{tokenize, Checker, Detector, Documentation, Suggestion, SuggestionSet};
-use crate::config::WrappedRegex;
+
 use crate::documentation::{CheckableChunk, ContentOrigin, PlainOverlay};
 use crate::util::sub_chars;
 use crate::Range;
@@ -160,7 +160,7 @@ impl Checker for HunspellChecker {
                                         &mut acc,
                                     );
                                 }
-                                Transformed::Whitelisted(_) => {},
+                                Transformed::Whitelisted(_) => {}
                             }
                         }
                     }
@@ -232,13 +232,11 @@ fn transform<'i, R: AsRef<Regex>>(
     word: &'i str,
     range: Range,
 ) -> Transformed<'i> {
-
     let mut q = std::collections::VecDeque::<(Range, &'_ str)>::with_capacity(32);
     let mut words = Vec::with_capacity(16);
     let mut whitelisted = 0usize;
     q.push_back((range.clone(), word));
     while let Some((range, word)) = q.pop_front() {
-
         // work on a fragment now
         match transform_inner(transform_regex, word, range.clone()) {
             // we try to match the fragments with the regex expr until they become atomic words or whitelisted
@@ -264,7 +262,6 @@ fn transform<'i, R: AsRef<Regex>>(
         Transformed::Whitelisted((range, word))
     }
 }
-
 
 /// Inner loop transform
 ///
@@ -327,6 +324,7 @@ fn transform_inner<'i, R: AsRef<Regex>>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::WrappedRegex;
     use env_logger;
     #[test]
     fn transformer() {
@@ -344,7 +342,10 @@ mod tests {
         let words = vec!["2x", r#"''so-to-speak''"#, "Alphabeta", "Nothing"];
 
         // whitelist
-        assert_eq!(transform(re.as_slice(), words[0], 10..24), Transformed::Whitelisted((10..24, words[0])));
+        assert_eq!(
+            transform(re.as_slice(), words[0], 10..24),
+            Transformed::Whitelisted((10..24, words[0]))
+        );
 
         // single quoted, recursive 2x
         assert_eq!(
