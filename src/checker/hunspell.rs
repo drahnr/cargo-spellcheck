@@ -135,30 +135,32 @@ impl Checker for HunspellChecker {
                                 &plain, chunk, &hunspell, origin, word, range, &mut acc,
                             )
                         } else {
-                            if let Some(word_fragments) =
-                                transform(&transform_regex[..], word.as_str(), range.clone())
-                            {
-                                for (range, word_fragment) in word_fragments {
+                            match transform(&transform_regex[..], word.as_str(), range.clone()) {
+                                Transformed::Fragments(word_fragments) => {
+                                    for (range, word_fragment) in word_fragments {
+                                        obtain_suggestions(
+                                            &plain,
+                                            chunk,
+                                            &hunspell,
+                                            origin,
+                                            word_fragment.to_owned(),
+                                            range,
+                                            &mut acc,
+                                        );
+                                    }
+                                }
+                                Transformed::Atomic((range, word)) => {
                                     obtain_suggestions(
                                         &plain,
                                         chunk,
                                         &hunspell,
                                         origin,
-                                        word_fragment.to_owned(),
+                                        word.to_owned(),
                                         range,
                                         &mut acc,
                                     );
                                 }
-                            } else {
-                                obtain_suggestions(
-                                    &plain,
-                                    chunk,
-                                    &hunspell,
-                                    origin,
-                                    word.clone(),
-                                    range,
-                                    &mut acc,
-                                );
+                                Transformed::Whitelisted(_) => {},
                             }
                         }
                     }
@@ -213,11 +215,65 @@ fn obtain_suggestions<'s>(
     }
 }
 
+/// Transformed word with information on the transformation outcome.
+#[derive(Debug, Eq, PartialEq)]
+enum Transformed<'i> {
+    /// A whitelisted chunk
+    Whitelisted((Range, &'i str)),
+    /// A set of word-fragments to be checked.
+    Fragments(Vec<(Range, &'i str)>),
+    /// A word to be checked. Equiv to no match.
+    Atomic((Range, &'i str)),
+}
+
+/// Transforms a word into a set of fragment-ranges and associated str slices.
 fn transform<'i, R: AsRef<Regex>>(
     transform_regex: &[R],
     word: &'i str,
     range: Range,
-) -> Option<Vec<(Range, &'i str)>> {
+) -> Transformed<'i> {
+
+    let mut q = std::collections::VecDeque::<(Range, &'_ str)>::with_capacity(32);
+    let mut words = Vec::with_capacity(16);
+    let mut whitelisted = 0usize;
+    q.push_back((range.clone(), word));
+    while let Some((range, word)) = q.pop_front() {
+
+        // work on a fragment now
+        match transform_inner(transform_regex, word, range.clone()) {
+            // we try to match the fragments with the regex expr until they become atomic words or whitelisted
+            Transformed::Fragments(v) => q.extend(v),
+            Transformed::Atomic(word) => words.push(word),
+            Transformed::Whitelisted(_) => whitelisted += 1,
+        }
+    }
+
+    // no match found at all, this word is "atomic" and will be checked as is
+    if whitelisted == 0usize {
+        // empty means nothing, one word with the same range means we only found the initial provided word
+        if words.is_empty() || (words.len() == 1 && words[0].0.len() == word.len()) {
+            return Transformed::Atomic((range, word));
+        }
+    }
+
+    if !words.is_empty() {
+        // collect all the words as fragments again (they actually really are)
+        Transformed::Fragments(words)
+    } else {
+        // if there are no words to be checked, everything is whitelisted
+        Transformed::Whitelisted((range, word))
+    }
+}
+
+
+/// Inner loop transform
+///
+/// Returns `Some(vec![..])` if any captures were found.
+fn transform_inner<'i, R: AsRef<Regex>>(
+    transform_regex: &[R],
+    word: &'i str,
+    range: Range,
+) -> Transformed<'i> {
     for regex in transform_regex.iter().map(AsRef::as_ref) {
         match regex.captures(word) {
             Ok(Some(captures)) => {
@@ -225,7 +281,7 @@ fn transform<'i, R: AsRef<Regex>>(
                 if captures.len() == 1 {
                     // means match, but no captures,
                     // which is equiv to an implicit whitelist
-                    break;
+                    return Transformed::Whitelisted((range, word));
                 }
                 let intermediate = captures
                     .iter()
@@ -240,19 +296,19 @@ fn transform<'i, R: AsRef<Regex>>(
                             m.as_str(),
                             &intra_word_range
                         );
-                        let offset = dbg!(word
+                        let offset = word
                             .char_indices()
                             .take_while(|(byte_pos, _)| m.start() > *byte_pos)
-                            .count());
+                            .count();
                         let range = Range {
-                            start: dbg!(range.start + offset),
+                            start: range.start + offset,
                             end: range.start + offset + m.as_str().chars().count(),
                         };
                         (range, &word[intra_word_range])
                     })
                     .collect::<Vec<_>>();
 
-                return Some(intermediate);
+                return Transformed::Fragments(intermediate);
             }
             Ok(None) => {
                 // no regex match, try the next regex
@@ -265,7 +321,7 @@ fn transform<'i, R: AsRef<Regex>>(
         }
     }
     // nothing matched, check the entire word instead
-    None
+    Transformed::Atomic((range, word))
 }
 
 #[cfg(test)]
@@ -281,25 +337,31 @@ mod tests {
 
         let re = vec![
             WrappedRegex::from(Regex::new("^[0-9]+x$").unwrap()), //whitelist
-            WrappedRegex::from(Regex::new(r#"'([^\s]+)'"#).unwrap()),
+            WrappedRegex::from(Regex::new(r#"^'([^\s]+)'$"#).unwrap()),
             WrappedRegex::from(Regex::new("(Alpha)(beta)").unwrap()),
         ];
 
-        let words = vec!["2x", r#"'so-to-speak'"#, "Alphabeta"];
+        let words = vec!["2x", r#"''so-to-speak''"#, "Alphabeta", "Nothing"];
 
         // whitelist
-        assert_eq!(transform(re.as_slice(), words[0], 10..24), None);
+        assert_eq!(transform(re.as_slice(), words[0], 10..24), Transformed::Whitelisted((10..24, words[0])));
 
-        // single quoted
+        // single quoted, recursive 2x
         assert_eq!(
-            transform(re.as_slice(), words[1], 10..23),
-            Some(vec![(11..22, &words[1][1..12])])
+            transform(re.as_slice(), words[1], 10..25),
+            Transformed::Fragments(vec![(12..23, &words[1][2..13])])
         );
 
-        // multi
+        // multi capture
         assert_eq!(
             transform(re.as_slice(), words[2], 10..19),
-            Some(vec![(10..15, &words[2][0..5]), (15..19, &words[2][5..9]),])
+            Transformed::Fragments(vec![(10..15, &words[2][0..5]), (15..19, &words[2][5..9]),])
+        );
+
+        // no match
+        assert_eq!(
+            transform(re.as_slice(), words[3], 10..17),
+            Transformed::Atomic((10..17, words[3]))
         );
     }
 }
