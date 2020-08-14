@@ -16,6 +16,9 @@ mod hunspell;
 #[cfg(feature = "languagetool")]
 mod languagetool;
 
+#[cfg(any(feature = "languagetool", feature = "hunspell"))]
+mod quirks;
+
 /// Implementation for a checker
 pub(crate) trait Checker {
     type Config;

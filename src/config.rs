@@ -106,6 +106,41 @@ impl<'de> serde::de::Visitor<'de> for RegexVisitor {
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct Quirks {
+    /// A regular expression, whose capture groups will be checked, instead of the initial token.
+    /// Only the first one that matches will be used to split the word.
+    pub transform_regex: Option<Vec<WrappedRegex>>,
+    /// Allow concatenated words instead of dashed connection.
+    /// Note that this only applies, if one of the suggestions.
+    pub allow_concatenation: Option<bool>,
+}
+
+impl Default for Quirks {
+    fn default() -> Self {
+        // use some for default, so for generating the default config has the default values
+        // but the options are necessary to allow omitting them in the config file
+        Self {
+            transform_regex: Some(vec![]),
+            allow_concatenation: Some(false),
+        }
+    }
+}
+
+impl Quirks {
+    pub(crate) fn allow_concatenated(&self) -> bool {
+        self.allow_concatenation.unwrap_or(false)
+    }
+
+    pub(crate) fn transform_regex(&self) -> &[WrappedRegex] {
+        if let Some(ref tr) = self.transform_regex {
+            tr.as_slice()
+        } else {
+            &[]
+        }
+    }
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct HunspellConfig {
     /// The language we want to check against, used as the dictionary and affixes file name.
     // TODO impl a custom xx_YY code deserializer based on iso crates
@@ -115,9 +150,8 @@ pub struct HunspellConfig {
     pub search_dirs: Option<Vec<PathBuf>>,
     /// Additional dictionaries for topic specific lingo.
     pub extra_dictonaries: Option<Vec<PathBuf>>,
-    /// A regular expression, whose capture groups will be checked, instead of the initial token.
-    /// Only the first one that matches will be used to split the word.
-    pub transform_regex: Option<Vec<WrappedRegex>>,
+    /// Additional quirks besides dictionary lookups.
+    pub quirks: Option<Quirks>,
 }
 
 impl HunspellConfig {
@@ -336,7 +370,7 @@ impl Default for Config {
                 lang: Some("en_US".to_owned()),
                 search_dirs: Some(search_dirs),
                 extra_dictonaries: Some(Vec::new()),
-                transform_regex: None,
+                quirks: Some(Quirks::default()),
             }),
             languagetool: None,
         }
@@ -453,6 +487,19 @@ lang = "en_US"
         let _ = Config::parse(
             r#"
 [hunspell]
+			"#,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn partial_7() {
+        let _ = Config::parse(
+            r#"
+[hunspell]
+[hunspell.quirks]
+allow_concatenation = true
+transform_regex = ["^'([^\\s])'$", "^[0-9]+x$"]
 			"#,
         )
         .unwrap();
