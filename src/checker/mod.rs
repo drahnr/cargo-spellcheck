@@ -89,11 +89,10 @@ where
                 .languagetool
                 .as_ref()
                 .expect("Must be Some(LanguageToolConfig) if is_enabled returns true");
-            if let Ok(mut suggestions) =
-                self::languagetool::LanguageToolChecker::check(documentation, config)
-            {
-                collective.join(suggestions);
-            }
+
+            let mut suggestions =
+                self::languagetool::LanguageToolChecker::check(documentation, config)?;
+            collective.join(suggestions);
         }
     }
 
@@ -105,9 +104,8 @@ where
                 .hunspell
                 .as_ref()
                 .expect("Must be Some(HunspellConfig) if is_enabled returns true");
-            if let Ok(suggestions) = self::hunspell::HunspellChecker::check(documentation, config) {
-                collective.join(suggestions);
-            }
+            let mut suggestions = self::hunspell::HunspellChecker::check(documentation, config)?;
+            collective.join(suggestions);
         }
     }
 
