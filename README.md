@@ -100,6 +100,15 @@ lang = "en_US"
 # macOS [ /home/alice/Libraries/hunspell, /Libraries/hunspell ]
 search_dirs = []
 extra_dictonaries = []
+
+[Hunspell.quirks]
+# transforms words that are provided by the tokenizer
+# into word fragments based on the capture groups which are to be checked.
+# If no capture groups are present, the matched word is whitelisted.
+transform_regex = ["^'([^\\s])'$", "^[0-9]+x$"]
+# accepts `alphabeta` variants if the checker provides a replacement suggestion
+# of `alpha-beta`.
+allow_concatenation = true
 ```
 
 To increase verbosity use `CARGO_SPELLCHECK=cargo_spellcheck=trace` to see internal details or
