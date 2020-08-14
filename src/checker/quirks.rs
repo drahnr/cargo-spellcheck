@@ -37,7 +37,7 @@ pub(crate) fn transform<'i, R: AsRef<Regex>>(
     while let Some((range, word)) = q.pop_front() {
         // work on a fragment now
         match transform_inner(transform_regex, word, range.clone()) {
-            // we try to match the fragments with the regex expr until they become atomic words or whitelisted
+            // we try to recursively match the fragments with the regex expr until they become atomic words or whitelisted
             Transformed::Fragments(v) => q.extend(v),
             Transformed::Atomic(word) => words.push(word),
             Transformed::Whitelisted(_) => whitelisted += 1,
