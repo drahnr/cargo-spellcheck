@@ -111,7 +111,8 @@ pub struct Quirks {
     /// Only the first one that matches will be used to split the word.
     pub transform_regex: Option<Vec<WrappedRegex>>,
     /// Allow concatenated words instead of dashed connection.
-    /// Note that this only applies, if one of the suggestions.
+    /// Note that this only applies, if one of the suggested replacements has an item that is
+    /// equivalent except for addition dashes (`-`).
     pub allow_concatenation: Option<bool>,
 }
 
