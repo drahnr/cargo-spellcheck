@@ -450,22 +450,21 @@ impl<'s> fmt::Display for Suggestion<'s> {
         };
 
         error.apply_to(replacement).fmt(formatter)?;
-        formatter.write_str("\n")?;
 
-        context_marker
-            .apply_to(format!("{:>width$}", "|\n", width = indent + 1))
-            .fmt(formatter)?;
+        if self.replacements.len() > 0 {
+            formatter.write_str("\n")?;
+            context_marker
+                .apply_to(format!("{:>width$}", "|\n", width = indent + 1))
+                .fmt(formatter)?;
+            context_marker
+                .apply_to(format!("{:>width$}", "|", width = indent))
+                .fmt(formatter)?;
+        }
 
-        context_marker
-            .apply_to(format!("{:>width$}", "|", width = indent))
-            .fmt(formatter)?;
         if let Some(ref description) = self.description {
             writeln!(formatter, "   {}", description)?;
         }
-
-        context_marker
-            .apply_to(format!("{:>width$}", "|\n", width = indent + 1))
-            .fmt(formatter)
+        Ok(())
     }
 }
 
@@ -675,7 +674,6 @@ mod tests {
    | - replacement_0, replacement_1, or replacement_2
    |
    |   Possible spelling mistake found.
-   |
 "#;
         assert_display_eq(suggestion, EXPECTED);
     }
@@ -752,7 +750,6 @@ mod tests {
    | - replacement_0, replacement_1, or replacement_2
    |
    |   Possible spelling mistake found.
-   |
 "#;
 
         assert_display_eq(suggestion, EXPECTED);
@@ -817,7 +814,6 @@ mod tests {
    | - replacement_0, replacement_1, or replacement_2
    |
    |   Possible spelling mistake found.
-   |
 "#;
 
         assert_display_eq(suggestion, EXPECTED);
