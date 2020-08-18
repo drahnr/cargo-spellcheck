@@ -586,7 +586,7 @@ impl<'s> SuggestionSet<'s> {
         self.per_file.len()
     }
 
-    /// Count the number of suggestions accross all files in total
+    /// Count the number of suggestions across all files in total
     pub fn total_count(&self) -> usize {
         self.per_file.iter().map(|(_origin, vec)| vec.len()).sum()
     }
@@ -673,6 +673,50 @@ mod tests {
    |        ^^^^^
    | - replacement_0, replacement_1, or replacement_2
    |
+   |   Possible spelling mistake found.
+"#;
+        assert_display_eq(suggestion, EXPECTED);
+    }
+
+    #[test]
+    fn fmt_0_no_suggestion() {
+        const CONTENT: &'static str = " Is it dyrck again?";
+        let chunk = CheckableChunk::from_str(
+            CONTENT,
+            indexmap::indexmap! { 0..18 => Span {
+                    start: LineColumn {
+                        line: 1,
+                        column: 0,
+                    },
+                    end: LineColumn {
+                        line: 1,
+                        column: 17,
+                    }
+                }
+            },
+        );
+
+        let suggestion = Suggestion {
+            detector: Detector::Dummy,
+            origin: ContentOrigin::TestEntity,
+            chunk: &chunk,
+            range: 7..12,
+            span: Span {
+                start: LineColumn { line: 1, column: 6 },
+                end: LineColumn {
+                    line: 1,
+                    column: 10,
+                },
+            },
+            replacements: vec![],
+            description: Some("Possible spelling mistake found.".to_owned()),
+        };
+
+        const EXPECTED: &'static str = r#"error: spellcheck(Dummy)
+  --> /tmp/test/entity:1
+   |
+ 1 |  Is it dyrck again?
+   |        ^^^^^
    |   Possible spelling mistake found.
 "#;
         assert_display_eq(suggestion, EXPECTED);
