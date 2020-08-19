@@ -451,7 +451,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
 
         error.apply_to(replacement).fmt(formatter)?;
 
-        if self.replacements.len() > 0 {
+        if !self.replacements.is_empty() {
             formatter.write_str("\n")?;
             context_marker
                 .apply_to(format!("{:>width$}", "|\n", width = indent + 1))
