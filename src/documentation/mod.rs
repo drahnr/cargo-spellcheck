@@ -453,14 +453,9 @@ A relly boring test.
 
 ## Engineering
 
-<<<<<<< HEAD
 ```rust
 I am so code!
 ```
-=======
-        let plain = chunk.erase_cmark();
-        assert_eq!(PLAIN, plain.as_str());
->>>>>>> 3e365e7... chore/rename: wrapper -> reflow, markdown -> cmark
 
 ---
 

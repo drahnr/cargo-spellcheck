@@ -11,11 +11,11 @@ mod action;
 mod checker;
 mod config;
 mod documentation;
+mod reflow;
 mod span;
 mod suggestion;
 mod traverse;
 mod util;
-mod reflow;
 
 pub use self::action::*;
 pub use self::config::{Config, HunspellConfig, LanguageToolConfig};
