@@ -27,7 +27,7 @@ impl Checker for DummyChecker {
                     .iter()
                     .next()
                     .expect("DummyChecker expects at least one chunk");
-                let plain = chunk.erase_markdown();
+                let plain = chunk.erase_cmark();
                 for (index, range) in dbg!(tokenize(plain.as_str())).into_iter().enumerate() {
                     trace!(
                         "****Token[{}]: >{}<",

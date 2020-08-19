@@ -68,7 +68,7 @@ mistakes are found instead of `0`.
 * [x] Handle multiline and fragmented mistakes (i.e. for grammar) [#25](https://github.com/drahnr/cargo-spellcheck/issues/25)
 * [x] Grammar check using `languagetool` http API
 * [x] Follow module declarations rather than blindly recurse
-* [x] Be `commonmark` aware
+* [x] Be `commonmark`/`markdown` aware
   * [ ] Handle doctests with ` ```rust` as virtual files [#43](https://github.com/drahnr/cargo-spellcheck/issues/43)
   * [ ] Verify all types of links [#44](https://github.com/drahnr/cargo-spellcheck/issues/44)
 * [x] Check `README.md` files [#37](https://github.com/drahnr/cargo-spellcheck/issues/37)
@@ -76,7 +76,7 @@ mistakes are found instead of `0`.
 * [x] Ellipsize overly long statements with `...` [#42](https://github.com/drahnr/cargo-spellcheck/issues/42)
 * [ ] Learn topic lingo and filter false-positive-suggestions [#41](https://github.com/drahnr/cargo-spellcheck/issues/41)
 * [x] Handle cargo workspaces [#38](https://github.com/drahnr/cargo-spellcheck/issues/38)
-* [ ] Re-wrap doc comments [#39](https://github.com/drahnr/cargo-spellcheck/issues/39)
+* [ ] Re-flow doc comments [#39](https://github.com/drahnr/cargo-spellcheck/issues/39)
 
 `hunspell` and `languagetool` are currently the two supported featuresets.
 

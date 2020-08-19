@@ -29,7 +29,7 @@ pub enum Detector {
     /// Language tool server based detection.
     LanguageTool = 0b0010,
     /// Reflow according to a given max column.
-    Wrapper = 0b0100,
+    Reflow = 0b0100,
     /// Detection of nothing, a test helper.
     #[cfg(test)]
     Dummy = 0b1000,
@@ -72,7 +72,7 @@ impl fmt::Display for Detector {
         formatter.write_str(match self {
             Self::LanguageTool => "LanguageTool",
             Self::Hunspell => "Hunspell",
-            Self::Wrapper => "Wrapper",
+            Self::Reflow => "Reflow",
             #[cfg(test)]
             Self::Dummy => "Dummy",
         })
