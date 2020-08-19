@@ -209,7 +209,7 @@ pub(crate) mod tests {
         // TODO
         let chunk = &chunks[0];
         assert_eq!(chunk.as_str(), TEST_RAW.to_owned());
-        let plain = chunk.erase_markdown();
+        let plain = chunk.erase_cmark();
         println!("{:?}", &plain);
 
         assert_eq!(TEST_PLAIN, plain.as_str());
@@ -266,7 +266,7 @@ pub(crate) mod tests {
             let chunks = docs.index.get(&origin).expect("Must contain dummy path");
             assert_eq!(dbg!(chunks).len(), 1);
             let chunk = &chunks[0];
-            let _plain = chunk.erase_markdown();
+            let _plain = chunk.erase_cmark();
 
             let cfg = Default::default();
             let suggestion_set = <$checker>::check(&docs, &cfg)
@@ -453,9 +453,14 @@ A relly boring test.
 
 ## Engineering
 
+<<<<<<< HEAD
 ```rust
 I am so code!
 ```
+=======
+        let plain = chunk.erase_cmark();
+        assert_eq!(PLAIN, plain.as_str());
+>>>>>>> 3e365e7... chore/rename: wrapper -> reflow, markdown -> cmark
 
 ---
 

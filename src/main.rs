@@ -15,7 +15,7 @@ mod span;
 mod suggestion;
 mod traverse;
 mod util;
-mod wrap;
+mod reflow;
 
 pub use self::action::*;
 pub use self::config::{Config, HunspellConfig, LanguageToolConfig};
