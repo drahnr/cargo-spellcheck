@@ -47,11 +47,11 @@ impl<'a> PlainOverlay<'a> {
     }
 
     /// ranges are mapped `cmakr reduced/plain -> raw`
-    fn extract_plain_with_mapping(markdown: &str) -> (String, IndexMap<Range, Range>) {
-        let mut plain = String::with_capacity(markdown.chars().count());
+    fn extract_plain_with_mapping(cmark: &str) -> (String, IndexMap<Range, Range>) {
+        let mut plain = String::with_capacity(cmark.len());
         let mut mapping = indexmap::IndexMap::with_capacity(128);
 
-        let parser = Parser::new_ext(markdown, Options::all());
+        let parser = Parser::new_ext(cmark, Options::all());
 
         let rust_fence =
             pulldown_cmark::CodeBlockKind::Fenced(pulldown_cmark::CowStr::Borrowed("rust"));
