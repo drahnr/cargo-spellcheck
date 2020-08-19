@@ -98,7 +98,11 @@ lang = "en_US"
 # Linux: [ /usr/share/myspell ]
 # Windows: []
 # macOS [ /home/alice/Libraries/hunspell, /Libraries/hunspell ]
-search_dirs = []
+
+# overwrites the default os specific search dirs
+# search_dirs = []
+
+# adds additional dictionary lookup dirs
 extra_dictonaries = []
 
 [Hunspell.quirks]

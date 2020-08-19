@@ -17,10 +17,13 @@ use std::io::Read;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 #[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct Config {
-    #[serde(rename = "Hunspell")]
+    #[serde(alias = "Hunspell")]
     pub hunspell: Option<HunspellConfig>,
-    #[serde(rename = "LanguageTool")]
+    #[serde(alias = "LanguageTool")]
+    #[serde(alias = "languageTool")]
+    #[serde(alias = "Languagetool")]
     pub languagetool: Option<LanguageToolConfig>,
 }
 
@@ -141,14 +144,109 @@ impl Quirks {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct SearchDirs(pub Option<Vec<PathBuf>>);
+
+impl std::ops::Deref for SearchDirs {
+    type Target = Option<Vec<PathBuf>>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::convert::AsRef<Option<Vec<PathBuf>>> for SearchDirs {
+    fn as_ref(&self) -> &Option<Vec<PathBuf>> {
+        &self.0
+    }
+}
+
+impl Serialize for SearchDirs {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::ser::Serializer,
+    {
+        if let Some(x) = self.as_ref() {
+            serializer.serialize_some(x)
+        } else {
+            serializer.serialize_none()
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for SearchDirs {
+    fn deserialize<D>(deserializer: D) -> Result<SearchDirs, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        deserializer
+            .deserialize_option(SearchDirVisitor)
+            .map(Into::into)
+    }
+}
+
+impl Into<Option<Vec<PathBuf>>> for SearchDirs {
+    fn into(self) -> Option<Vec<PathBuf>> {
+        self.0
+    }
+}
+
+impl From<Option<Vec<PathBuf>>> for SearchDirs {
+    fn from(other: Option<Vec<PathBuf>>) -> SearchDirs {
+        SearchDirs(other)
+    }
+}
+
+struct SearchDirVisitor;
+
+impl<'de> serde::de::Visitor<'de> for SearchDirVisitor {
+    type Value = Option<Vec<PathBuf>>;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("Search Dir Visitors must be an optional sequence of path")
+    }
+
+    fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        Ok(deserializer.deserialize_seq(self)?.map(|mut seq| {
+            seq.extend(
+                os_specific_search_dirs()
+                    .iter()
+                    .map(|path: &PathBuf| PathBuf::from(path)),
+            );
+            seq
+        }))
+    }
+
+    fn visit_none<E>(self) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(Some(os_specific_search_dirs().to_vec()))
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+    where
+        A: serde::de::SeqAccess<'de>,
+    {
+        let mut v = Vec::with_capacity(8);
+        while let Some(item) = seq.next_element()? {
+            v.push(item);
+        }
+        Ok(Some(v))
+    }
+}
+
 #[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct HunspellConfig {
     /// The language we want to check against, used as the dictionary and affixes file name.
     // TODO impl a custom xx_YY code deserializer based on iso crates
     pub lang: Option<String>,
-    /// Addition search dirs for `.dic` and `.aff` files.
+    /// Additional search dirs for `.dic` and `.aff` files.
     // must be option so it can be omitted in the config
-    pub search_dirs: Option<Vec<PathBuf>>,
+    pub search_dirs: SearchDirs,
     /// Additional dictionaries for topic specific lingo.
     pub extra_dictonaries: Option<Vec<PathBuf>>,
     /// Additional quirks besides dictionary lookups.
@@ -165,14 +263,10 @@ impl HunspellConfig {
     }
 
     pub fn search_dirs(&self) -> &[PathBuf] {
-        if let Some(ref search_dirs) = &self.search_dirs {
+        if let Some(ref search_dirs) = self.search_dirs.as_ref() {
             search_dirs.as_slice()
         } else {
-            lazy_static::lazy_static! {
-                static ref LOOKUP_DIRS: Vec<PathBuf> = vec![PathBuf::from("/usr/share/myspell")];
-            };
-
-            LOOKUP_DIRS.as_slice()
+            os_specific_search_dirs()
         }
     }
 
@@ -185,7 +279,7 @@ impl HunspellConfig {
     }
 
     pub fn sanitize_paths(&mut self, base: &Path) -> Result<()> {
-        if let Some(ref mut search_dirs) = &mut self.search_dirs {
+        if let Some(ref mut search_dirs) = self.search_dirs.0 {
             for path in search_dirs.iter_mut() {
                 let abspath = if !path.is_absolute() {
                     base.join(path.clone())
@@ -207,6 +301,7 @@ impl HunspellConfig {
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct LanguageToolConfig {
     pub url: url::Url,
 }
@@ -344,32 +439,35 @@ impl Config {
     }
 }
 
+fn os_specific_search_dirs() -> &'static [PathBuf] {
+    lazy_static::lazy_static! {
+        static ref OS_SPECIFIC_LOOKUP_DIRS: Vec<PathBuf> =
+            if cfg!(target_os = "macos") {
+                directories::BaseDirs::new()
+                    .map(|base| vec![base.home_dir().to_owned().join("/Library/Spelling/"), PathBuf::from("/Library/Spelling/")])
+                    .unwrap_or_else(|| Vec::new())
+            } else if cfg!(target_os = "linux") {
+                vec![
+                    // Fedora
+                    PathBuf::from("/usr/share/myspell/"),
+                    PathBuf::from("/usr/share/hunspell/"),
+                    // Arch Linux
+                    PathBuf::from("/usr/share/myspell/dicts/"),
+                ]
+            } else {
+                Vec::new()
+            };
+
+    }
+    OS_SPECIFIC_LOOKUP_DIRS.as_slice()
+}
+
 impl Default for Config {
     fn default() -> Self {
-        let mut search_dirs = if cfg!(target_os = "macos") {
-            directories::BaseDirs::new()
-                .map(|base| vec![base.home_dir().to_owned().join("/Library/Spelling/")])
-                .unwrap_or_else(|| Vec::with_capacity(2))
-        } else {
-            Vec::with_capacity(2)
-        };
-
-        #[cfg(target_os = "macos")]
-        search_dirs.push(PathBuf::from("/Library/Spelling/"));
-
-        #[cfg(target_os = "linux")]
-        search_dirs.extend(vec![
-            // Fedora
-            PathBuf::from("/usr/share/myspell/"),
-            // Arch Linux
-            PathBuf::from("/usr/share/hunspell/"),
-            PathBuf::from("/usr/share/myspell/dicts/"),
-        ]);
-
         Self {
             hunspell: Some(HunspellConfig {
                 lang: Some("en_US".to_owned()),
-                search_dirs: Some(search_dirs),
+                search_dirs: Some(os_specific_search_dirs().to_vec()).into(),
                 extra_dictonaries: Some(Vec::new()),
                 quirks: Some(Quirks::default()),
             }),
@@ -411,15 +509,15 @@ extra_dictonaries = ["/home/bernhard/test.dic"]
 
     #[test]
     fn empty() {
-        let _ = Config::parse(
+        assert!(Config::parse(
             r#"
 			"#,
         )
-        .unwrap();
+        .is_ok());
     }
     #[test]
     fn partial_1() {
-        let _ = Config::parse(
+        let _cfg = Config::parse(
             r#"
 [hunspell]
 lang = "en_US"
@@ -432,9 +530,10 @@ extra_dictonaries = ["/home/bernhard/test.dic"]
 
     #[test]
     fn partial_2() {
-        let _ = Config::parse(
+        assert!(Config::parse(
             r#"
 [languageTool]
+
 
 [Hunspell]
 lang = "en_US"
@@ -442,12 +541,12 @@ search_dirs = ["/usr/lib64/hunspell"]
 extra_dictonaries = ["/home/bernhard/test.dic"]
 			"#,
         )
-        .unwrap();
+        .is_err());
     }
 
     #[test]
     fn partial_3() {
-        let _ = Config::parse(
+        let cfg = Config::parse(
             r#"
 [Hunspell]
 lang = "en_US"
@@ -456,11 +555,12 @@ extra_dictonaries = ["/home/bernhard/test.dic"]
 			"#,
         )
         .unwrap();
+        let _hunspell = cfg.hunspell.expect("Must contain hunspell cfg");
     }
 
     #[test]
     fn partial_4() {
-        let _ = Config::parse(
+        let cfg = Config::parse(
             r#"
 [LanguageTool]
 url = "http://127.0.0.1:8010/"
@@ -470,39 +570,66 @@ lang = "en_US"
 			"#,
         )
         .unwrap();
+        let _hunspell = cfg.hunspell.expect("Must contain hunspell cfg");
+        let _langtool = cfg.languagetool.expect("Must contain language tool cfg");
     }
 
     #[test]
     fn partial_5() {
-        let _ = Config::parse(
+        assert!(Config::parse(
             r#"
 [hUNspell]
 lang = "en_US"
 			"#,
         )
-        .unwrap();
+        .is_err());
     }
 
     #[test]
     fn partial_6() {
-        let _ = Config::parse(
+        let cfg = Config::parse(
             r#"
 [hunspell]
 			"#,
         )
         .unwrap();
+        let _hunspell = cfg.hunspell.expect("Must contain hunspell cfg");
     }
 
     #[test]
     fn partial_7() {
-        let _ = Config::parse(
+        let cfg = Config::parse(
             r#"
-[hunspell]
-[hunspell.quirks]
+[Hunspell.quirks]
 allow_concatenation = true
 transform_regex = ["^'([^\\s])'$", "^[0-9]+x$"]
 			"#,
         )
         .unwrap();
+        let _hunspell = cfg.hunspell.expect("Must contain hunspell cfg");
+    }
+
+    #[test]
+    fn partial_8() {
+        let cfg = Config::parse(
+            r#"
+[Hunspell]
+search_dirs = ["/search/1", "/search/2"]
+			"#,
+        )
+        .unwrap();
+
+        let hunspell: HunspellConfig = cfg.hunspell.expect("Must contain hunspell cfg");
+        let search_dirs = hunspell.search_dirs;
+        let search_dirs: Option<_> = search_dirs.as_ref().clone();
+        let search_dirs = search_dirs.expect("Must be some search dirs");
+        #[cfg(target_os = "linux")]
+        assert_eq!(search_dirs.len(), 4);
+
+        #[cfg(target_os = "windows")]
+        assert_eq!(search_dirs.len(), 2);
+
+        #[cfg(target_os = "macos")]
+        assert!(search_dirs.len() >= 3);
     }
 }

@@ -104,7 +104,7 @@ where
                 .hunspell
                 .as_ref()
                 .expect("Must be Some(HunspellConfig) if is_enabled returns true");
-            let mut suggestions = self::hunspell::HunspellChecker::check(documentation, config)?;
+            let suggestions = self::hunspell::HunspellChecker::check(documentation, config)?;
             collective.join(suggestions);
         }
     }
