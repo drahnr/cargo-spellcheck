@@ -11,6 +11,27 @@ resources:
     branch: master
     uri: https://github.com/drahnr/cargo-spellcheck.git
 
+- name: git-rustlang-rust
+  type: git
+  source:
+    branch: master
+    uri: https://github.com/rust-lang/rust.git
+
+- name: git-spearow-juice
+  type: git
+  source:
+    branch: master
+    uri: https://github.com/spearow/juice.git
+
+- name: binary-releases
+  type: s3
+  source:
+    endpoint: https://minio.spearow.io
+    bucket: cargo-spellcheck-releases
+    regexp: cargo-spellcheck-(.*)
+    access_key_id: ((minio-access-key))
+    secret_access_key: ((minio-secret-key))
+
 - name: github-release
   type: github-release
   source:
@@ -38,17 +59,25 @@ resources:
     repository: quay.io/drahnr/rust-glibc-builder
 
 jobs:
+####################################################################################
+#                              P U L L - R E Q U E S T
+####################################################################################
   - name: pr-validate
     build_logs_to_retain: 10
     public: true
-    serial: true
     plan:
-    - get: git-pull-request-resource
-      resource: git-pull-request-resource
-      version: every
-      trigger: true
+    - in_parallel:
+      - get: git-pull-request-resource
+        resource: git-pull-request-resource
+        version: every
+        trigger: true
 
-    - get: env-glibc
+      - get: env-glibc
+
+      - get: git-rustlang-rust
+
+      - get: git-spearow-juice
+        params: {depth: 3}
 
     - in_parallel:
       - put: git-pull-request-resource
@@ -178,55 +207,162 @@ jobs:
             context: meta-check
             status: failure
 
-      - task: run-check
-        timeout: 15m
-        image: env-glibc
-        config:
-          platform: linux
-          inputs:
-          - name: git-pull-request-resource
-          run:
-            # user: root
-            path: sh
-            args:
-            - -exc
-            - |
-              export CARGO_HOME="$(pwd)/../cargo"
-              sudo chown $(whoami): -Rf ${CARGO_HOME} .
-              cargo +stable run -- --version
-              cargo +stable run -- spellcheck demo/Cargo.toml || echo "$? - Found some errors"
-              cargo +stable run -- spellcheck demo/src/main.rs || echo "$? - Found some errors"
-              cargo +stable run -- spellcheck demo/ || echo "$? - Found some errors"
-              # assure pipes work
-              cargo +stable run -- spellcheck | grep -C 10 "F"
-              cargo +stable run -- spellcheck > dump
-            dir: git-pull-request-resource
-          caches:
-          - path: cargo
+      - do:
+        - task: run-check
+          timeout: 15m
+          image: env-glibc
+          config:
+            platform: linux
+            inputs:
+            - name: git-pull-request-resource
+            outputs:
+            - name: binary
+            run:
+              # user: root
+              path: sh
+              args:
+              - -exc
+              - |
+                export CARGO_HOME="$(pwd)/../cargo"
+                sudo chown $(whoami): -Rf ${CARGO_HOME} .
+                cargo +stable run --release -- --version
+                cargo +stable run --release -- spellcheck demo/Cargo.toml || echo "$? - Found some errors"
+                cargo +stable run --release -- spellcheck demo/src/main.rs || echo "$? - Found some errors"
+                cargo +stable run --release -- spellcheck demo/ || echo "$? - Found some errors"
+                # assure pipes work
+                cargo +stable run --release -- spellcheck | grep -C 10 "F"
+                cargo +stable run --release -- spellcheck > dump
 
-        on_success:
-          put: git-pull-request-resource
-          params:
-            path: git-pull-request-resource
-            context: run-check
-            status: success
+                sudo cp -vf target/release/cargo-spellcheck ../binary/cargo-spellcheck-$(git rev-parse HEAD)
+              dir: git-pull-request-resource
+            caches:
+            - path: cargo
 
-        on_failure:
-          put: git-pull-request-resource
-          params:
-            path: git-pull-request-resource
-            context: run-check
-            status: failure
+          on_success:
+            put: git-pull-request-resource
+            params:
+              path: git-pull-request-resource
+              context: run-check
+              status: success
 
+          on_failure:
+            put: git-pull-request-resource
+            params:
+              path: git-pull-request-resource
+              context: run-check
+              status: failure
+        - in_parallel:
+          - put: git-pull-request-resource
+            params:
+              path: git-pull-request-resource
+              context: test-spearow-juice
+              status: pending
+
+          - put: git-pull-request-resource
+            params:
+              path: git-pull-request-resource
+              context: test-rustlang-rust
+              status: pending
+
+        - in_parallel:
+          - task: pr-test-on-spearow-juice
+            timeout: 15m
+            image: env-glibc
+            config:
+              platform: linux
+              inputs:
+              - name: binary
+              - name: git-spearow-juice
+              run:
+                path: sh
+                args:
+                - -exc
+                - |
+                  export CARGO_HOME="$(pwd)/../cargo"
+                  sudo chown $(whoami): -Rf ${CARGO_HOME} .
+                  mkdir -p ${CARGO_HOME}/bin/
+                  sudo cp -vf ../binary/cargo-spellcheck-* ${CARGO_HOME}/bin/cargo-spellcheck
+                  sudo chmod +x ${CARGO_HOME}/bin/cargo-spellcheck
+
+                  ${CARGO_HOME}/bin/cargo-spellcheck spellcheck -vvv
+                dir: git-spearow-juice
+              caches:
+              - path: cargo
+
+            on_success:
+              put: git-pull-request-resource
+              params:
+                path: git-pull-request-resource
+                context: test-spearow-juice
+                status: success
+
+            on_failure:
+              put: git-pull-request-resource
+              params:
+                path: git-pull-request-resource
+                context: test-spearow-juice
+                status: failure
+      
+
+          - task: pr-test-on-rustlang-rust
+            timeout: 15m
+            image: env-glibc
+            config:
+              platform: linux
+              inputs:
+              - name: binary
+                resource: binary-pr
+                passed: [run-check]
+              - name: git-rustlang-rust
+              run:
+                path: sh
+                args:
+                - -exc
+                - |
+                  export CARGO_HOME="$(pwd)/../cargo"
+                  sudo chown $(whoami): -Rf ${CARGO_HOME} .
+                  mkdir -p ${CARGO_HOME}/bin/
+                  sudo cp -vf ../binary/cargo-spellcheck-* ${CARGO_HOME}/bin/cargo-spellcheck
+                  sudo chmod +x ${CARGO_HOME}/bin/cargo-spellcheck
+
+                  git submodule update --init
+                  ${CARGO_HOME}/bin/cargo-spellcheck spellcheck -vvv
+                dir: git-rustlang-rust
+              caches:
+              - path: cargo
+
+            on_success:
+              put: git-pull-request-resource
+              params:
+                path: git-pull-request-resource
+                context: test-rustlang-rust
+                status: success
+
+            on_failure:
+              put: git-pull-request-resource
+              params:
+                path: git-pull-request-resource
+                context: test-rustlang-rust
+                status: failure
+  
+  ####################################################################################
+  #                                 M A S T E R
+  ####################################################################################
   - name: master-validate
     build_logs_to_retain: 10
     public: true
     serial: true
     plan:
-    - get: env-glibc
-    - get: git-repo
-      resource: git-clone-resource
-      trigger: true
+    - in_parallel:
+      - get: env-glibc
+      - get: git-repo
+        resource: git-clone-resource
+        trigger: true
+
+      - get: git-rustlang-rust
+
+      - get: git-spearow-juice
+        params: {depth: 3}
 
     - in_parallel:
       - task: validate-compile
@@ -268,34 +404,92 @@ jobs:
               sudo chown $(whoami): -Rf ${CARGO_HOME} .
               rustc +stable --version --verbose
               cargo +stable fmt -- --check
-              cargo spellcheck check && echo "Actually no spelling mistakes found!" || echo "Well, just testdrive anyways"
             dir: git-repo
           caches:
           - path: cargo
 
-      - task: just-run
-        timeout: 15m
-        image: env-glibc
-        config:
-          platform: linux
-          inputs:
-          - name: git-repo
-          run:
-            # user: root
-            path: sh
-            args:
-            - -exc
-            - |
-              export CARGO_HOME="$(pwd)/../cargo"
-              sudo chown $(whoami): -Rf ${CARGO_HOME} .
-              cargo +stable run -- --version
-              cargo +stable run -- spellcheck demo/Cargo.toml
-              cargo +stable run -- spellcheck demo/src/main.rs
-              cargo +stable run -- spellcheck demo/
-            dir: git-repo
-          caches:
-          - path: cargo
+      - do:
+        - task: just-run
+          timeout: 15m
+          image: env-glibc
+          config:
+            platform: linux
+            inputs:
+            - name: git-repo
+            outputs:
+            - name: binary
+            run:
+              # user: root
+              path: sh
+              args:
+              - -exc
+              - |
+                export CARGO_HOME="$(pwd)/../cargo"
+                sudo chown $(whoami): -Rf ${CARGO_HOME} .
+                cargo +stable run --release -- --version
+                cargo +stable run --release -- spellcheck demo/Cargo.toml
+                cargo +stable run --release -- spellcheck -vvvv demo/src/main.rs
+                cargo +stable run --release -- spellcheck demo/
+                cargo +stable run --release
 
+                sudo cp -vf target/release/cargo-spellcheck ../binary/cargo-release-$(git rev-parse HEAD)
+              dir: git-repo
+            caches:
+            - path: cargo
+
+        - in_parallel:
+
+          - task: test-on-spearow-juice
+            timeout: 15m
+            image: env-glibc
+            config:
+              platform: linux
+              inputs:
+              - name: binary
+              - name: git-spearow-juice
+              run:
+                path: sh
+                args:
+                - -exc
+                - |
+                  export CARGO_HOME="$(pwd)/../cargo"
+                  sudo chown $(whoami): -Rf ${CARGO_HOME} .
+                  mkdir -p ${CARGO_HOME}/bin/
+                  sudo cp -vf ../binary/cargo-spellcheck-* ${CARGO_HOME}/bin/cargo-spellcheck
+                  sudo chmod +x ${CARGO_HOME}/bin/cargo-spellcheck
+
+                  ${CARGO_HOME}/bin/cargo-spellcheck spellcheck -vvv
+                dir: git-spearow-juice
+              caches:
+              - path: cargo
+
+
+          - task: test-on-rustlang-rust
+            timeout: 15m
+            image: env-glibc
+            config:
+              platform: linux
+              inputs:
+              - name: binary
+                resource: binary-master
+                passed: [just-run]
+              - name: git-rustlang-rust
+              run:
+                path: sh
+                args:
+                - -exc
+                - |
+                  export CARGO_HOME="$(pwd)/../cargo"
+                  sudo chown $(whoami): -Rf ${CARGO_HOME} .
+                  mkdir -p ${CARGO_HOME}/bin/
+                  sudo cp -vf ../binary/cargo-spellcheck-* ${CARGO_HOME}/bin/cargo-spellcheck
+                  sudo chmod +x ${CARGO_HOME}/bin/cargo-spellcheck
+
+                  git submodule update --init
+                  ${CARGO_HOME}/bin/cargo-spellcheck spellcheck -vvv
+                dir: git-rustlang-rust
+              caches:
+              - path: cargo
 
   - name: publish-github-release
     build_logs_to_retain: 5
@@ -325,7 +519,6 @@ jobs:
             - |
               export CARGO_HOME="$(pwd)/../cargo"
               sudo chown $(whoami): -Rf ${CARGO_HOME} .
-
 
               export RI_BASE_DIR="../release-info"
               export RI_ARTIFACTS_DIR="${RI_BASE_DIR}/artifacts"
@@ -358,7 +551,7 @@ jobs:
               for TARGET in x86_64-unknown-linux-gnu ; do
                 echo "Prepping ${TARGET} ..."
                 cargo build --release --target "${TARGET}" && \
-                cp -vf "target/${TARGET}/release/cargo-spellcheck" "${RI_ARTIFACTS_DIR}/cargo-spellcheck-${TARGET}"
+                cp -vf "target/${TARGET}/release/cargo-spellcheck" "${RI_ARTIFACTS_DIR}/${TARGET}/${RI_NAME_FILE}"
                 echo "Prepped ${TARGET} ."
                 echo ""
               done
@@ -371,3 +564,10 @@ jobs:
         commitish: release-info/COMMITISH
         globs:
         - release-info/artifacts/*
+
+    - put: binary-releases
+      params:
+        file: ./release-info/artifacts/x86_64-unknown-linux-gnu/cargo-release-(.*)
+        acl: public-read
+     
+     
