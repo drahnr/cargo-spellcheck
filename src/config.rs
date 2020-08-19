@@ -624,7 +624,7 @@ search_dirs = ["/search/1", "/search/2"]
         let search_dirs: Option<_> = search_dirs.as_ref().clone();
         let search_dirs = search_dirs.expect("Must be some search dirs");
         #[cfg(target_os = "linux")]
-        assert_eq!(search_dirs.len(), 4);
+        assert_eq!(search_dirs.len(), 5);
 
         #[cfg(target_os = "windows")]
         assert_eq!(search_dirs.len(), 2);
