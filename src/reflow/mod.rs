@@ -1,6 +1,7 @@
-//! Re-wrap documentation comments to a desired line width.
+//! Reflow documentation comments to a desired line width.
 //!
-//! Will handle hyphenation eventually if desired.
+//! Note that for commonmark this might not be possible with links.
+//! The reflow is done based on the comments no matter the content.
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -13,24 +14,24 @@ use crate::{Detector, Suggestion, SuggestionSet};
 
 /// Parameters for wrapping doc comments
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WrapConfig {
-    /// Hard limit for absolute length of lines
+pub struct ReflowConfig {
+    /// Hard limit for absolute length of lines.
     max_line_length: usize,
 }
 
-impl Default for WrapConfig {
+impl Default for ReflowConfig {
     fn default() -> Self {
-        WrapConfig {
+        Self {
             max_line_length: 70,
         }
     }
 }
 
 #[derive(Debug)]
-pub struct Wrapper;
+pub struct Reflow;
 
-impl Checker for Wrapper {
-    type Config = WrapConfig;
+impl Checker for Reflow {
+    type Config = ReflowConfig;
     fn check<'a, 's>(docu: &'a Documentation, config: &Self::Config) -> Result<SuggestionSet<'s>>
     where
         'a: 's,
@@ -87,7 +88,7 @@ impl Checker for Wrapper {
                     acc.add(
                         origin.clone(),
                         Suggestion {
-                            detector: Detector::Wrapper,
+                            detector: Detector::Reflow,
                             range,
                             span,
                             origin: origin.clone(),
@@ -125,13 +126,13 @@ mod tests {
             let chunks = docs.get(&ContentOrigin::TestEntityRust).expect("Must contain dummy path");
             assert_eq!(dbg!(chunks).len(), 1);
             let chunk = &chunks[0];
-            let _plain = chunk.erase_markdown();
+            let _plain = chunk.erase_cmark();
 
-            let cfg = WrapConfig {
+            let cfg = ReflowConfig {
                 max_line_length: $n,
                 .. Default::default()
             };
-        let suggestion_set = Wrapper::check(&docs, &cfg)
+        let suggestion_set = Reflow::check(&docs, &cfg)
             .expect("Must not fail to extract suggestions");
         let (_, suggestions) = suggestion_set
             .iter()

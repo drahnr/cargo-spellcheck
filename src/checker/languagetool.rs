@@ -23,7 +23,7 @@ impl Checker for LanguageToolChecker {
             SuggestionSet::new(),
             |mut acc, (origin, chunks)| {
                 for chunk in chunks {
-                    let plain = chunk.erase_markdown();
+                    let plain = chunk.erase_cmark();
                     log::trace!("markdown erasure: {:?}", &plain);
                     let req = Request::new(plain.to_string(), "en-US".to_owned());
                     let resp = lt.check(req)?;

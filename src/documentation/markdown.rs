@@ -1,4 +1,4 @@
-//! Erase markdown syntax
+//! Erase cmark syntax
 //!
 //! Resulting overlay is plain and can be fed into a grammar or spell checker.
 
@@ -12,7 +12,7 @@ use crate::documentation::{CheckableChunk, Range};
 use crate::util::sub_chars;
 use crate::Span;
 
-/// A plain representation of markdown riddled set of trimmed literals.
+/// A plain representation of cmark riddled set of a chunk.
 #[derive(Clone)]
 pub struct PlainOverlay<'a> {
     /// A reference to the underlying [`CheckableChunk`][super::chunk].
@@ -21,7 +21,7 @@ pub struct PlainOverlay<'a> {
     plain: String,
     // require a sorted map, so we have the chance of binary search
     // key: plain string range
-    // value: the corresponding areas in the full markdown
+    // value: the corresponding areas in the full cmark
     mapping: IndexMap<Range, Range>,
 }
 
@@ -49,6 +49,7 @@ impl<'a> PlainOverlay<'a> {
         plain_acc.push_str(&s);
     }
 
+    /// Append n newlines to the current state string `plain`.
     fn newlines(plain: &mut String, n: usize) {
         for _ in 0..n {
             plain.push('\n');
@@ -232,7 +233,7 @@ impl<'a> PlainOverlay<'a> {
     /// Create a common mark overlay based on the provided `CheckableChunk` reference.
     // TODO consider returning a Vec<PlainOverlay<'a>> to account for list items
     // or other non-linear information which might not pass a grammar check as a whole
-    pub fn erase_markdown(chunk: &'a CheckableChunk) -> Self {
+    pub fn erase_cmark(chunk: &'a CheckableChunk) -> Self {
         let (plain, mapping) = Self::extract_plain_with_mapping(chunk.as_str());
         Self {
             raw: chunk,
@@ -338,7 +339,7 @@ impl<'a> fmt::Debug for PlainOverlay<'a> {
 
         let color_cycle = styles.iter().cycle();
 
-        let markdown = self.raw.as_str().to_owned();
+        let commonmark = self.raw.as_str().to_owned();
 
         let mut coloured_plain = String::with_capacity(1024);
         let mut coloured_md = String::with_capacity(1024);
@@ -351,12 +352,12 @@ impl<'a> fmt::Debug for PlainOverlay<'a> {
             let delta = md_range.start.saturating_sub(previous_md_end);
             // take care of the markers and things that are not rendered
             if delta > 0 {
-                let s = sub_chars(markdown.as_str(), previous_md_end..md_range.start);
+                let s = sub_chars(commonmark.as_str(), previous_md_end..md_range.start);
                 coloured_md.push_str(uncovered.apply_to(s.as_str()).to_string().as_str());
             }
             previous_md_end = md_range.end;
 
-            let s = sub_chars(markdown.as_str(), md_range.clone());
+            let s = sub_chars(commonmark.as_str(), md_range.clone());
             coloured_md.push_str(style.apply_to(s.as_str()).to_string().as_str());
 
             let s = sub_chars(self.plain.as_str(), plain_range.clone());
@@ -364,7 +365,7 @@ impl<'a> fmt::Debug for PlainOverlay<'a> {
         }
         // write!(formatter, "{}", coloured_md)?;
 
-        writeln!(formatter, "Markdown:\n{}", coloured_md)?;
+        writeln!(formatter, "Commonmark:\n{}", coloured_md)?;
         writeln!(formatter, "Plain:\n{}", coloured_plain)?;
         Ok(())
     }
@@ -444,11 +445,11 @@ And a line, or a rule."##;
         let (reduced, mapping) = PlainOverlay::extract_plain_with_mapping(MARKDOWN);
 
         assert_eq!(dbg!(&reduced).as_str(), PLAIN);
-        assert_eq!(dbg!(&mapping).len(), 20);
-        for (reduced_range, markdown_range) in mapping.iter() {
+        assert_eq!(dbg!(&mapping).len(), 19);
+        for (reduced_range, cmark_range) in mapping.iter() {
             assert_eq!(
                 reduced[reduced_range.clone()],
-                MARKDOWN[markdown_range.clone()]
+                MARKDOWN[cmark_range.clone()]
             );
         }
     }
@@ -462,10 +463,10 @@ And a line, or a rule."##;
 
         assert_eq!(dbg!(&reduced).as_str(), PLAIN);
         assert_eq!(dbg!(&mapping).len(), 5);
-        for (reduced_range, markdown_range) in mapping.iter() {
+        for (reduced_range, cmark_range) in mapping.iter() {
             assert_eq!(
                 reduced[reduced_range.clone()].to_owned(),
-                MARKDOWN[markdown_range.clone()].to_owned()
+                MARKDOWN[cmark_range.clone()].to_owned()
             );
         }
     }
