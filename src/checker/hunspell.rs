@@ -17,7 +17,9 @@ use hunspell_rs::Hunspell;
 
 use anyhow::{anyhow, bail, Result};
 
-use super::quirks::{replacements_contain_dashless, transform, Transformed};
+use super::quirks::{
+    replacements_contain_dashed, replacements_contain_dashless, transform, Transformed,
+};
 
 pub struct HunspellChecker;
 
@@ -118,11 +120,16 @@ impl Checker for HunspellChecker {
     {
         let hunspell = Self::inner_init(config)?;
 
-        let (transform_regex, allow_concatenated) = if let Some(quirks) = &config.quirks {
-            (quirks.transform_regex(), quirks.allow_concatenated())
-        } else {
-            (&[][..], false)
-        };
+        let (transform_regex, allow_concatenated, allow_dashed) =
+            if let Some(quirks) = &config.quirks {
+                (
+                    quirks.transform_regex(),
+                    quirks.allow_concatenated(),
+                    quirks.allow_dashed(),
+                )
+            } else {
+                (&[][..], false, false)
+            };
 
         let suggestions = docu.iter().try_fold::<SuggestionSet, _, Result<_>>(
             SuggestionSet::new(),
@@ -144,6 +151,7 @@ impl Checker for HunspellChecker {
                                 word,
                                 range,
                                 allow_concatenated,
+                                allow_dashed,
                                 &mut acc,
                             )
                         } else {
@@ -158,6 +166,7 @@ impl Checker for HunspellChecker {
                                             word_fragment.to_owned(),
                                             range,
                                             allow_concatenated,
+                                            allow_dashed,
                                             &mut acc,
                                         );
                                     }
@@ -171,6 +180,7 @@ impl Checker for HunspellChecker {
                                         word.to_owned(),
                                         range,
                                         allow_concatenated,
+                                        allow_dashed,
                                         &mut acc,
                                     );
                                 }
@@ -196,6 +206,7 @@ fn obtain_suggestions<'s>(
     word: String,
     range: Range,
     allow_concatenated: bool,
+    allow_dashed: bool,
     acc: &mut SuggestionSet<'s>,
 ) {
     if !hunspell.check(&word) {
@@ -208,6 +219,10 @@ fn obtain_suggestions<'s>(
             .collect::<Vec<_>>();
 
         if allow_concatenated && replacements_contain_dashless(&word, replacements.as_slice()) {
+            trace!(target: "quirks", "Found dashless word in replacement suggestions, treating {} as ok", &word);
+            return;
+        }
+        if allow_dashed && replacements_contain_dashed(&word, replacements.as_slice()) {
             trace!(target: "quirks", "Found dashed word in replacement suggestions, treating {} as ok", &word);
             return;
         }

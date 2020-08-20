@@ -117,6 +117,9 @@ pub struct Quirks {
     /// Note that this only applies, if one of the suggested replacements has an item that is
     /// equivalent except for addition dashes (`-`).
     pub allow_concatenation: Option<bool>,
+    /// The counterpart of `allow_concatenation`. Accepts words which have repalcement suggestions
+    /// that contain additional dashes.
+    pub allow_dashes: Option<bool>,
 }
 
 impl Default for Quirks {
@@ -126,6 +129,7 @@ impl Default for Quirks {
         Self {
             transform_regex: Some(vec![]),
             allow_concatenation: Some(false),
+            allow_dashes: Some(false),
         }
     }
 }
@@ -133,6 +137,10 @@ impl Default for Quirks {
 impl Quirks {
     pub(crate) fn allow_concatenated(&self) -> bool {
         self.allow_concatenation.unwrap_or(false)
+    }
+
+    pub(crate) fn allow_dashed(&self) -> bool {
+        self.allow_dashes.unwrap_or(false)
     }
 
     pub(crate) fn transform_regex(&self) -> &[WrappedRegex] {
@@ -602,6 +610,7 @@ lang = "en_US"
             r#"
 [Hunspell.quirks]
 allow_concatenation = true
+allow_dashes = true
 transform_regex = ["^'([^\\s])'$", "^[0-9]+x$"]
 			"#,
         )

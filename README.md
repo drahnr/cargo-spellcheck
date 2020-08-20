@@ -113,6 +113,9 @@ transform_regex = ["^'([^\\s])'$", "^[0-9]+x$"]
 # accepts `alphabeta` variants if the checker provides a replacement suggestion
 # of `alpha-beta`.
 allow_concatenation = true
+# and the counterpart, which accepts words with dashes, when the suggestion has
+# recommendations without the dashes. This is less common.
+allow_dashed = false
 ```
 
 To increase verbosity use `CARGO_SPELLCHECK=cargo_spellcheck=trace` to see internal details or
