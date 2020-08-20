@@ -602,13 +602,19 @@ jobs:
               echo "cargo-spellcheck-$(cat ./.git/ref)" > "${RI_NAME_FILE}"
               cat "${RI_NAME_FILE}"
 
-              for TARGET in x86_64-unknown-linux-gnu x86_64-pc-windows-gnu ; do
-                echo "Prepping ${TARGET} ..."
-                cargo build --release --target "${TARGET}" && \
-                cp -vf "target/${TARGET}/release/"cargo-spellcheck* "${RI_ARTIFACTS_DIR}"/${TARGET}-$(cat "${RI_NAME_FILE}")
-                echo "Prepped ${TARGET} ."
-                echo ""
-              done
+              build() {
+                  TARGET=$1;
+                  EXT=$2;
+                  echo "Prepping ${TARGET} ..."
+                  rustup target add "${TARGET}"
+                  cargo build --release --target "${TARGET}" && \
+                    cp -vf "target/${TARGET}/release/cargo-spellcheck${EXT}" "${RI_ARTIFACTS_DIR}"/${TARGET}-$(cat "${RI_NAME_FILE}")"${EXT}"
+                  echo "Prepped ${TARGET} ."
+              }
+
+              build x86_64-unknown-linux-gnu
+              build x86_64-pc-windows-gnu .exe
+
           dir: git-repo
 
     - in_parallel:
