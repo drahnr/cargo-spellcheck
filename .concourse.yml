@@ -65,6 +65,7 @@ jobs:
   - name: pr-validate
     build_logs_to_retain: 10
     public: true
+    serial: true
     plan:
     - in_parallel:
       - get: git-pull-request-resource
@@ -432,7 +433,7 @@ jobs:
                 cargo +stable run --release -- spellcheck demo/
                 cargo +stable run --release
 
-                sudo cp -vf target/release/cargo-spellcheck ../binary/cargo-release-$(git rev-parse HEAD)
+                sudo cp -vf target/release/cargo-spellcheck ../binary/cargo-spellcheck-$(git rev-parse HEAD)
               dir: git-repo
             caches:
             - path: cargo
@@ -455,7 +456,7 @@ jobs:
                   export CARGO_HOME="$(pwd)/../cargo"
                   sudo chown $(whoami): -Rf ${CARGO_HOME} .
                   mkdir -p ${CARGO_HOME}/bin/
-                  sudo cp -vf ../binary/cargo-spellcheck-* ${CARGO_HOME}/bin/cargo-spellcheck
+                  sudo cp -vf ../binary/cargo-spellcheck* ${CARGO_HOME}/bin/cargo-spellcheck
                   sudo chmod +x ${CARGO_HOME}/bin/cargo-spellcheck
 
                   ${CARGO_HOME}/bin/cargo-spellcheck spellcheck -vvv
@@ -471,8 +472,6 @@ jobs:
               platform: linux
               inputs:
               - name: binary
-                resource: binary-master
-                passed: [just-run]
               - name: git-rustlang-rust
               run:
                 path: sh
@@ -501,7 +500,7 @@ jobs:
       resource: git-tag-resource
       trigger: true
 
-    - task: create-github-release
+    - task: github-release
       timeout: 15m
       image: env-glibc
       config:
@@ -551,23 +550,24 @@ jobs:
               for TARGET in x86_64-unknown-linux-gnu ; do
                 echo "Prepping ${TARGET} ..."
                 cargo build --release --target "${TARGET}" && \
-                cp -vf "target/${TARGET}/release/cargo-spellcheck" "${RI_ARTIFACTS_DIR}/${TARGET}/${RI_NAME_FILE}"
+                cp -vf "target/${TARGET}/release/cargo-spellcheck" "${RI_ARTIFACTS_DIR}"/${TARGET}-$(cat "${RI_NAME_FILE}")
                 echo "Prepped ${TARGET} ."
                 echo ""
               done
           dir: git-repo
 
-    - put: github-release
-      params:
-        name: release-info/NAME
-        tag: release-info/TAG
-        commitish: release-info/COMMITISH
-        globs:
-        - release-info/artifacts/*
+    - in_parallel:
+      - put: github-release
+        params:
+          name: release-info/NAME
+          tag: release-info/TAG
+          commitish: release-info/COMMITISH
+          globs:
+          - release-info/artifacts/*
 
-    - put: binary-releases
-      params:
-        file: ./release-info/artifacts/x86_64-unknown-linux-gnu/cargo-release-(.*)
-        acl: public-read
+      - put: binary-releases
+        params:
+          file: ./release-info/artifacts/x86_64-unknown-linux-gnu-cargo-spellcheck-*
+          acl: public-read
      
      
