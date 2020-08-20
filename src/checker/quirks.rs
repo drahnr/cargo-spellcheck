@@ -4,12 +4,34 @@ use crate::Range;
 use fancy_regex::Regex;
 use log::{trace, warn};
 
+/// Returns `true` iff the replacements contains a variant of `word` without dashes.
 pub(crate) fn replacements_contain_dashless<T: AsRef<str>>(word: &str, replacements: &[T]) -> bool {
     let dashless = word.chars().filter(|c| *c != '-').collect::<String>();
+    // if the word does not contain any dashes, skip the replacement iterations
+    if dashless == word {
+        return false;
+    }
     replacements
         .iter()
         .map(|s| s.as_ref())
         .find(|x| *x == &dashless)
+        .is_some()
+}
+
+/// Returns `true` iff the replacements contains a variant of `word` with additional dashes.
+pub(crate) fn replacements_contain_dashed<T: AsRef<str>>(word: &str, replacements: &[T]) -> bool {
+    // before doing lots of work, check if the word itself contains a dash, if so
+    // the below logic cannot yield and positive results
+    if word.chars().find(|c| *c == '-').is_some() {
+        return false;
+    }
+
+    replacements
+        .iter()
+        .map(|s| s.as_ref())
+        // avoid lots of string iterations in find
+        .filter(|s| s.as_bytes().get(0usize) == word.as_bytes().get(0usize))
+        .find(|s| itertools::equal(s.chars().filter(|c| *c != '-'), word.chars()))
         .is_some()
 }
 
@@ -124,6 +146,31 @@ mod tests {
     use super::*;
     use crate::config::WrappedRegex;
     use env_logger;
+
+    #[test]
+    fn dashed() {
+        let _ = env_logger::builder()
+            .is_test(true)
+            .filter(None, log::LevelFilter::Trace)
+            .try_init();
+
+        const REPLACEMENTS: &'static [&'static str] = &["fffff", "qqq", "z", "zeta-ray"];
+        const WORD: &'static str = "zetaray";
+        assert!(replacements_contain_dashed(WORD, REPLACEMENTS));
+    }
+
+    #[test]
+    fn dashless() {
+        let _ = env_logger::builder()
+            .is_test(true)
+            .filter(None, log::LevelFilter::Trace)
+            .try_init();
+
+        const WORD: &'static str = "zeta-ray";
+        const REPLACEMENTS: &'static [&'static str] = &["fffff", "qqq", "z", "zetaray"];
+        assert!(replacements_contain_dashless(WORD, REPLACEMENTS));
+    }
+
     #[test]
     fn transformer() {
         let _ = env_logger::builder()
