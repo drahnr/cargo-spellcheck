@@ -18,6 +18,8 @@ use docopt::Docopt;
 
 use log::{info, trace, warn};
 use serde::Deserialize;
+
+#[cfg(not(target_os = "windows"))]
 use signal_hook::{iterator, SIGINT, SIGQUIT, SIGTERM};
 
 use std::path::PathBuf;
@@ -91,6 +93,7 @@ struct Args {
     cmd_config: bool,
 }
 
+#[cfg(not(target_os = "windows"))]
 fn signal_handler() {
     let signals =
         iterator::Signals::new(vec![SIGTERM, SIGINT, SIGQUIT]).expect("Failed to create Signals");
@@ -168,6 +171,7 @@ fn run() -> anyhow::Result<ExitCode> {
         return Ok(ExitCode::Success);
     }
 
+    #[cfg(not(target_os = "windows"))]
     std::thread::spawn(move || signal_handler());
 
     let checkers = |config: &mut Config| {
