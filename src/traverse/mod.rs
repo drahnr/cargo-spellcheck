@@ -11,7 +11,7 @@ use std::convert::TryFrom;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-fn cwd() -> Result<PathBuf> {
+pub(crate) fn cwd() -> Result<PathBuf> {
     std::env::current_dir().map_err(|_e| anyhow::anyhow!("Missing cwd!"))
 }
 

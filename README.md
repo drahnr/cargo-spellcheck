@@ -85,6 +85,10 @@ mistakes are found instead of `0`.
 ## Configuration
 
 ```toml
+# Project settings where a Cargo.toml exists and is passed
+# ${CARGO_MANIFEST_DIR}/.config/spellcheck.toml
+
+# Fallback to per use configuration files:
 # Linux:   /home/alice/.config/cargo_spellcheck/config.toml
 # Windows: C:\Users\Alice\AppData\Roaming\cargo_spellcheck\config.toml
 # macOS:   /Users/Alice/Library/Preferences/cargo_spellcheck/config.toml
@@ -99,10 +103,12 @@ lang = "en_US"
 # Windows: []
 # macOS [ /home/alice/Libraries/hunspell, /Libraries/hunspell ]
 
-# overwrites the default os specific search dirs
+# additional search paths, which take presedence over the default os specific search dirs
 # search_dirs = []
 
-# adds additional dictionary lookup dirs
+# adds additional dictionaries
+# can be specified as absolute, relative to this confugiration file or as simple file to lookup
+# in the search dirs (in this order)
 extra_dictonaries = []
 
 [Hunspell.quirks]

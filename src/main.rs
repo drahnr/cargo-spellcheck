@@ -16,7 +16,7 @@ pub use self::util::*;
 
 use docopt::Docopt;
 
-use log::{info, trace, warn};
+use log::{debug, info, trace, warn};
 use serde::Deserialize;
 
 #[cfg(not(target_os = "windows"))]
@@ -227,19 +227,82 @@ fn run() -> anyhow::Result<ExitCode> {
     }
 
     let (explicit_cfg, config_path) = match args.flag_cfg.as_ref() {
-        Some(path) => (true, path.to_owned()),
-        _ => (false, Config::default_path()?),
+        Some(path) => {
+            let path = if path.is_absolute() {
+                path.to_owned()
+            } else {
+                traverse::cwd()?.join(path)
+            };
+            (true, path)
+        }
+        None => {
+            // @todo refactor needed
+
+            // the current work dir as fallback
+            let mut config_path: PathBuf = traverse::cwd()?.join("Cargo.toml");
+
+            // overwrite with the first found manifest
+            for path in args.arg_paths.iter() {
+                let path = if let Some(path) = if path.is_absolute() {
+                    path.to_owned()
+                } else {
+                    traverse::cwd()?.join(path)
+                }
+                .canonicalize()
+                .ok()
+                {
+                    path
+                } else {
+                    warn!(
+                        "Provided path could not be canonicalized {}",
+                        path.display()
+                    );
+                    // does not exist or access issues
+                    continue;
+                };
+
+                if path.is_dir() {
+                    let path = path.join("Cargo.toml");
+                    if path.is_file() {
+                        debug!("Using {} manifest as anchor file", path.display());
+                        config_path = path;
+                        break;
+                    }
+                } else if let Some(file_name) = path.file_name() {
+                    if file_name == "Cargo.toml" && path.is_file() {
+                        debug!("Using {} manifest as anchor file", path.display());
+                        config_path = path.to_owned();
+                        break;
+                    }
+                }
+                // otherwise it's a file and we do not care about it
+            }
+
+            let config_path = config_path.with_file_name(""); //.expect("Found file ends in Cargo.toml and is abs. qed");
+
+            let path = config::Config::project_config(&config_path)
+                .or_else(|e| {
+                    debug!("Fallback to user default lookup, failed to load project specific config {}: {}", config_path.display(), e);
+                    Config::default_path()
+                })?;
+            (false, path)
+        }
     };
+    info!("Using configuration file {}", config_path.display());
     let mut config = match Config::load_from(&config_path) {
         Ok(config) => config,
         Err(e) => {
             if explicit_cfg {
                 return Err(e);
             } else {
-                warn!(
-                    "Loading configuration from {}, due to: {}",
+                debug!(
+                    "Loading configuration from {} failed due to: {}",
                     config_path.display(),
                     e
+                );
+                warn!(
+                    "Loading configuration from {} failed, falling back to default values",
+                    config_path.display(),
                 );
                 Config::default()
             }
