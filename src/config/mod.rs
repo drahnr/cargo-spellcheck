@@ -8,7 +8,9 @@
 use crate::suggestion::Detector;
 use anyhow::{anyhow, bail, Error, Result};
 use fancy_regex::Regex;
+use log::info;
 use log::trace;
+use log::warn;
 use serde::{Deserialize, Serialize};
 use std::convert::AsRef;
 use std::fmt;
@@ -16,6 +18,7 @@ use std::fs::File;
 use std::io::Read;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
@@ -288,22 +291,59 @@ impl HunspellConfig {
 
     pub fn sanitize_paths(&mut self, base: &Path) -> Result<()> {
         if let Some(ref mut search_dirs) = self.search_dirs.0 {
-            for path in search_dirs.iter_mut() {
-                let abspath = if !path.is_absolute() {
-                    base.join(path.clone())
-                } else {
-                    path.to_owned()
-                };
-                let abspath = std::fs::canonicalize(abspath)?;
-                trace!(
-                    "Sanitized ({} + {}) -> {}",
-                    base.display(),
-                    path.display(),
-                    abspath.display()
-                );
-                *path = abspath;
+            *search_dirs = search_dirs
+                .iter_mut()
+                .filter_map(|search_dir| {
+                    let abspath = if !search_dir.is_absolute() {
+                        base.join(&search_dir)
+                    } else {
+                        search_dir.to_owned()
+                    };
+
+                    abspath.canonicalize().ok().map(|abspath| {
+                        trace!(
+                            "Sanitized ({} + {}) -> {}",
+                            base.display(),
+                            search_dir.display(),
+                            abspath.display()
+                        );
+                        abspath
+                    })
+                })
+                .collect();
+
+            // convert all extra dictionaries to absolute paths
+            if let Some(ref mut extra_dictionaries) = self.extra_dictonaries {
+                'o: for extra_dic in extra_dictionaries.iter_mut() {
+                    for search_dir in search_dirs.iter().filter_map(|search_dir| {
+                        if !extra_dic.is_absolute() {
+                            base.join(&search_dir).canonicalize().ok()
+                        } else {
+                            Some(search_dir.to_owned())
+                        }
+                    }) {
+                        let abspath = if !extra_dic.is_absolute() {
+                            search_dir.join(&extra_dic)
+                        } else {
+                            continue 'o;
+                        };
+                        if let Ok(abspath) = abspath.canonicalize() {
+                            if abspath.is_file() {
+                                *extra_dic = abspath;
+                                continue 'o;
+                            }
+                        } else {
+                            warn!("Failed to canonicalize {}", abspath.display());
+                        }
+                    }
+                    bail!(
+                        "Could not find extra dictionary {} in any of the search paths",
+                        extra_dic.display()
+                    );
+                }
             }
         }
+
         Ok(())
     }
 }
@@ -419,6 +459,23 @@ impl Config {
             Ok(base.config_dir().join("config.toml"))
         } else {
             bail!("No idea where your config directory is located. `$HOME` must be set.")
+        }
+    }
+
+    /// Obtain a project specific config file.
+    pub fn project_config(manifest_dir: impl AsRef<Path>) -> Result<PathBuf> {
+        let mut path = manifest_dir.as_ref().to_owned().join(".config");
+        path.set_file_name("spellcheck.toml");
+
+        let path = path.canonicalize()?;
+
+        if path.is_file() {
+            Ok(path)
+        } else {
+            bail!(
+                "Local project dir config {} does not exist or is not a file.",
+                path.display()
+            )
         }
     }
 
