@@ -110,6 +110,9 @@ lang = "en_US"
 # absolute paths or relative in the search dirs (in this order).
 # Relative paths are resolved relative to the configuration file
 # which is used.
+# Refer to `man 5 hunspell`
+# or https://www.systutorials.com/docs/linux/man/4-hunspell/#lbAE
+# on how to define a custom dictionary file.
 extra_dictonaries = []
 
 [Hunspell.quirks]
