@@ -360,9 +360,10 @@ impl UserPicked {
             // already contain the suggestions
             // @todo deal with error conversion
 
-            const ERASE: u16 = 5;
-            // space + question + space
-            const QUESTION: u16 = 3;
+            // erase this many lines of the regular print
+            const ERASE: u16 = 4;
+            // lines used by the question
+            const QUESTION: u16 = 4;
             let extra_rows_to_flush = (state.n_items - (ERASE - QUESTION) as usize) as u16;
             stdout()
                 .queue(cursor::Hide)
