@@ -78,7 +78,6 @@ mistakes are found instead of `0`.
 * [ ] Learn topic lingo and filter false-positive-suggestions [#41](https://github.com/drahnr/cargo-spellcheck/issues/41)
 * [x] Handle cargo workspaces [#38](https://github.com/drahnr/cargo-spellcheck/issues/38)
 * [ ] Re-wrap doc comments [#39](https://github.com/drahnr/cargo-spellcheck/issues/39)
-* [ ] Word split validation [#40](https://github.com/drahnr/cargo-spellcheck/issues/40)
 
 `hunspell` and `languagetool` are currently the two supported featuresets.
 
@@ -103,29 +102,31 @@ lang = "en_US"
 # Windows: []
 # macOS [ /home/alice/Libraries/hunspell, /Libraries/hunspell ]
 
-# additional search paths, which take presedence over the default os specific search dirs
+# Additional search paths, which take presedence over the default
+# os specific search dirs, searched in order, defaults last
 # search_dirs = []
 
-# adds additional dictionaries
-# can be specified as absolute, relative to this confugiration file or as simple file to lookup
-# in the search dirs (in this order)
+# Adds additional dictionaries, can be specified as 
+# absolute paths or relative in the search dirs (in this order).
+# Relative paths are resolved relative to the configuration file
+# which is used.
 extra_dictonaries = []
 
 [Hunspell.quirks]
-# transforms words that are provided by the tokenizer
-# into word fragments based on the capture groups which are to be checked.
+# Transforms words that are provided by the tokenizer
+# into word fragments based on the capture groups which are to
+# be checked.
 # If no capture groups are present, the matched word is whitelisted.
 transform_regex = ["^'([^\\s])'$", "^[0-9]+x$"]
-# accepts `alphabeta` variants if the checker provides a replacement suggestion
+# Accepts `alphabeta` variants if the checker provides a replacement suggestion
 # of `alpha-beta`.
 allow_concatenation = true
-# and the counterpart, which accepts words with dashes, when the suggestion has
+# And the counterpart, which accepts words with dashes, when the suggestion has
 # recommendations without the dashes. This is less common.
 allow_dashed = false
 ```
 
-To increase verbosity use `CARGO_SPELLCHECK=cargo_spellcheck=trace` to see internal details or
-add `-v` (multiple) to increase verbosity.
+To increase verbosity add `-v` (multiple) to increase verbosity.
 
 ## Installation
 
@@ -162,4 +163,4 @@ export LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config
 
 #### LanguageTool
 
-Run a instance of the [LanguageTool server i.e. as container](https://hub.docker.com/r/erikvl87/languagetool).
+Run an instance of the [LanguageTool server i.e. as container](https://hub.docker.com/r/erikvl87/languagetool).

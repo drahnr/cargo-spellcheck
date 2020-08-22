@@ -8,7 +8,7 @@
 use crate::suggestion::Detector;
 use anyhow::{anyhow, bail, Error, Result};
 use fancy_regex::Regex;
-use log::info;
+
 use log::trace;
 use log::warn;
 use serde::{Deserialize, Serialize};
