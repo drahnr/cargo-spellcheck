@@ -6,7 +6,7 @@ use super::*;
 
 use indexmap::IndexMap;
 use log::trace;
-use pulldown_cmark::{Event, LinkType, Options, Parser, Tag};
+use pulldown_cmark::{CowStr, Event, LinkType, Options, Parser, Tag};
 
 use crate::documentation::{CheckableChunk, Range};
 use crate::util::sub_chars;
@@ -63,7 +63,6 @@ impl<'a> PlainOverlay<'a> {
             trace!("Parsing event ({:?}): {:?}", &offset, &event);
             match event {
                 Event::Start(tag) => {
-                    // @todo check links
                     match tag {
                         Tag::CodeBlock(fenced) => {
                             code_block = true;
@@ -73,17 +72,17 @@ impl<'a> PlainOverlay<'a> {
                             }
                         }
                         Tag::Link(link_type, _url, title) => {
+                            // @todo check links
                             // for now, only dealing with some links types
                             match link_type {
                                 LinkType::Inline => {}
+                                LinkType::Autolink | LinkType::Email => skip_text = true,
                                 //Reference,
                                 //ReferenceUnknown,
                                 //Collapsed,
                                 //CollapsedUnknown,
                                 //Shortcut,
                                 //ShortcutUnknown,
-                                LinkType::Autolink => skip_text = true,
-                                LinkType::Email => {}
                                 _ => {}
                             }
                         }
@@ -96,9 +95,12 @@ impl<'a> PlainOverlay<'a> {
                         Tag::Link(link_type, _url, title) => {
                             // for now, only dealing with some links types
                             match link_type {
+                                // todo:
                                 LinkType::Inline => {
-                                    // @todo check links
-                                    Self::track(&title, offset, &mut plain, &mut mapping);
+                                    if title == CowStr::Borrowed("") {
+                                    } else {
+                                        Self::track(&title, offset, &mut plain, &mut mapping);
+                                    }
                                 }
                                 //Reference,
                                 //ReferenceUnknown,
@@ -415,6 +417,24 @@ And a line, or a rule."##;
     }
 
     #[test]
+    fn markdown_reduction_mapping_inline_link() {
+        const MARKDOWN: &str = r#" dyrck [I'm an inline-style link](https://www.google.com) artic"#;
+        const PLAIN: &str = r#"dyrck I'm an inline-style link artic"#;
+
+        let (plain, mapping) = PlainOverlay::extract_plain_with_mapping(MARKDOWN);
+
+        assert_eq!(dbg!(&plain).as_str(), PLAIN);
+        assert_eq!(dbg!(&mapping).len(), 3);
+        for (reduced_range, markdown_range) in mapping.iter() {
+            println!("{:?} {:?}", reduced_range, markdown_range);
+            assert_eq!(
+                plain[reduced_range.clone()].to_owned(),
+                MARKDOWN[markdown_range.clone()].to_owned()
+            );
+        }
+    }
+
+    #[test]
     fn markdown_reduction_mapping_auto_link() {
         const MARKDOWN: &str = r#" <http://foo.bar/baz>"#;
         const PLAIN: &str = r#""#;
@@ -429,9 +449,26 @@ And a line, or a rule."##;
     }
 
     #[test]
-    fn markdown_reduction_mapping_auto_link_with_mispelled_words() {
-        const MARKDOWN: &str = r#" anoth <http://foo.bar/baz> somethinggg"#;
-        const PLAIN: &str = r#"anoth  somethinggg"#;
+    fn markdown_reduction_mapping_auto_link_with_misspelled_words() {
+        const MARKDOWN: &str = r#" dyrck <http://foo.bar/baz> artic"#;
+        const PLAIN: &str = r#"dyrck  artic"#;
+
+        let (plain, mapping) = PlainOverlay::extract_plain_with_mapping(MARKDOWN);
+
+        assert_eq!(dbg!(&plain).as_str(), PLAIN);
+        assert_eq!(dbg!(&mapping).len(), 2);
+        for (reduced_range, markdown_range) in mapping.iter() {
+            assert_eq!(
+                plain[reduced_range.clone()].to_owned(),
+                MARKDOWN[markdown_range.clone()].to_owned()
+            );
+        }
+    }
+
+    #[test]
+    fn markdown_reduction_mapping_email_with_misspelled_words() {
+        const MARKDOWN: &str = r#" dyrck <joe@example.com> artic"#;
+        const PLAIN: &str = r#"dyrck  artic"#;
 
         let (plain, mapping) = PlainOverlay::extract_plain_with_mapping(MARKDOWN);
 
