@@ -144,7 +144,10 @@ impl<'a> PlainOverlay<'a> {
                 }
                 Event::Html(_s) => {}
                 Event::FootnoteReference(_s) => {
-                    // @todo handle footnotes
+                    if _s == CowStr::Borrowed("") {
+                    } else {
+                        Self::track(&_s, offset, &mut plain, &mut mapping);
+                    }
                 }
                 Event::SoftBreak => {
                     Self::newlines(&mut plain, 1);
@@ -474,6 +477,24 @@ And a line, or a rule."##;
 
         assert_eq!(dbg!(&plain).as_str(), PLAIN);
         assert_eq!(dbg!(&mapping).len(), 2);
+        for (reduced_range, markdown_range) in mapping.iter() {
+            assert_eq!(
+                plain[reduced_range.clone()].to_owned(),
+                MARKDOWN[markdown_range.clone()].to_owned()
+            );
+        }
+    }
+
+    #[test]
+    fn markdown_reduction_mapping_footnote() {
+        const MARKDOWN: &str = r#" This is a footnote artic [^reference]. Which one? [^reference] ../../reference/index.html"#;
+
+        const PLAIN: &str = r#"This is a footnote artic reference. Which one? reference ../../reference/index.html"#;
+
+        let (plain, mapping) = PlainOverlay::extract_plain_with_mapping(MARKDOWN);
+
+        assert_eq!(dbg!(&plain).as_str(), PLAIN);
+        assert_eq!(dbg!(&mapping).len(), 5);
         for (reduced_range, markdown_range) in mapping.iter() {
             assert_eq!(
                 plain[reduced_range.clone()].to_owned(),
