@@ -6,7 +6,7 @@ use super::*;
 
 use indexmap::IndexMap;
 use log::trace;
-use pulldown_cmark::{Event, Options, Parser, Tag};
+use pulldown_cmark::{Event, LinkType, Options, Parser, Tag};
 
 use crate::documentation::{CheckableChunk, Range};
 use crate::util::sub_chars;
@@ -57,6 +57,7 @@ impl<'a> PlainOverlay<'a> {
             pulldown_cmark::CodeBlockKind::Fenced(pulldown_cmark::CowStr::Borrowed("rust"));
 
         let mut code_block = false;
+        let mut skip_text = false;
 
         for (event, offset) in parser.into_offset_iter() {
             trace!("Parsing event ({:?}): {:?}", &offset, &event);
@@ -71,15 +72,44 @@ impl<'a> PlainOverlay<'a> {
                                 // @todo validate as if it was another document entity
                             }
                         }
+                        Tag::Link(link_type, _url, title) => {
+                            // for now, only dealing with some links types
+                            match link_type {
+                                LinkType::Inline => {}
+                                //Reference,
+                                //ReferenceUnknown,
+                                //Collapsed,
+                                //CollapsedUnknown,
+                                //Shortcut,
+                                //ShortcutUnknown,
+                                LinkType::Autolink => skip_text = true,
+                                LinkType::Email => {}
+                                _ => {}
+                            }
+                        }
 
                         _ => {}
                     }
                 }
                 Event::End(tag) => {
                     match tag {
-                        Tag::Link(_link_type, _url, title) => {
-                            // @todo check links
-                            Self::track(&title, offset, &mut plain, &mut mapping);
+                        Tag::Link(link_type, _url, title) => {
+                            // for now, only dealing with some links types
+                            match link_type {
+                                LinkType::Inline => {
+                                    // @todo check links
+                                    Self::track(&title, offset, &mut plain, &mut mapping);
+                                }
+                                //Reference,
+                                //ReferenceUnknown,
+                                //Collapsed,
+                                //CollapsedUnknown,
+                                //Shortcut,
+                                //ShortcutUnknown,
+                                LinkType::Autolink => {}
+                                LinkType::Email => {}
+                                _ => {}
+                            }
                         }
                         Tag::Image(_link_type, _url, title) => {
                             Self::track(&title, offset, &mut plain, &mut mapping);
@@ -99,7 +129,8 @@ impl<'a> PlainOverlay<'a> {
                     }
                 }
                 Event::Text(s) => {
-                    if code_block {
+                    if code_block || skip_text {
+                        skip_text = false
                     } else {
                         Self::track(&s, offset, &mut plain, &mut mapping);
                     }
@@ -381,5 +412,36 @@ And a line, or a rule."##;
                 acc
             });
         assert_eq!(v.first(), Some(&(12..14)));
+    }
+
+    #[test]
+    fn markdown_reduction_mapping_auto_link() {
+        const MARKDOWN: &str = r#" <http://foo.bar/baz>"#;
+        const PLAIN: &str = r#""#;
+
+        let (plain, mapping) = PlainOverlay::extract_plain_with_mapping(MARKDOWN);
+
+        assert_eq!(dbg!(&plain).as_str(), PLAIN);
+        assert_eq!(dbg!(&mapping).len(), 0);
+        for (reduced_range, markdown_range) in mapping.iter() {
+            assert_eq!(plain[reduced_range.clone()].to_owned(), String::from(""));
+        }
+    }
+
+    #[test]
+    fn markdown_reduction_mapping_auto_link_with_mispelled_words() {
+        const MARKDOWN: &str = r#" anoth <http://foo.bar/baz> somethinggg"#;
+        const PLAIN: &str = r#"anoth  somethinggg"#;
+
+        let (plain, mapping) = PlainOverlay::extract_plain_with_mapping(MARKDOWN);
+
+        assert_eq!(dbg!(&plain).as_str(), PLAIN);
+        assert_eq!(dbg!(&mapping).len(), 2);
+        for (reduced_range, markdown_range) in mapping.iter() {
+            assert_eq!(
+                plain[reduced_range.clone()].to_owned(),
+                MARKDOWN[markdown_range.clone()].to_owned()
+            );
+        }
     }
 }
