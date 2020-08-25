@@ -57,7 +57,7 @@ impl<'a> PlainOverlay<'a> {
             pulldown_cmark::CodeBlockKind::Fenced(pulldown_cmark::CowStr::Borrowed("rust"));
 
         let mut code_block = false;
-        let mut skip_text = false;
+        let mut skip_link_text = false;
 
         for (event, offset) in parser.into_offset_iter() {
             trace!("Parsing event ({:?}): {:?}", &offset, &event);
@@ -76,7 +76,7 @@ impl<'a> PlainOverlay<'a> {
                             // for now, only dealing with some links types
                             match link_type {
                                 LinkType::Inline => {}
-                                LinkType::Autolink | LinkType::Email => skip_text = true,
+                                LinkType::Autolink | LinkType::Email => skip_link_text = true,
                                 //Reference,
                                 //ReferenceUnknown,
                                 //Collapsed,
@@ -97,8 +97,7 @@ impl<'a> PlainOverlay<'a> {
                             match link_type {
                                 // todo:
                                 LinkType::Inline => {
-                                    if title == CowStr::Borrowed("") {
-                                    } else {
+                                    if !title.borrow().is_empty() {
                                         Self::track(&title, offset, &mut plain, &mut mapping);
                                     }
                                 }
@@ -131,8 +130,8 @@ impl<'a> PlainOverlay<'a> {
                     }
                 }
                 Event::Text(s) => {
-                    if code_block || skip_text {
-                        skip_text = false
+                    if code_block || skip_link_text {
+                        skip_link_text = false
                     } else {
                         Self::track(&s, offset, &mut plain, &mut mapping);
                     }
@@ -489,7 +488,9 @@ And a line, or a rule."##;
     fn markdown_reduction_mapping_footnote() {
         const MARKDOWN: &str = r#" This is a footnote artic [^reference]. Which one? [^reference] ../../reference/index.html"#;
 
-        const PLAIN: &str = r#"This is a footnote artic reference. Which one? reference ../../reference/index.html"#;
+        const PLAIN: &str = r#"footnote linktxt. Which one?
+
+linktxt"#;
 
         let (plain, mapping) = PlainOverlay::extract_plain_with_mapping(MARKDOWN);
 
