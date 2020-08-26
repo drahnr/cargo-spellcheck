@@ -15,12 +15,11 @@ use indexmap::IndexMap;
 use log::trace;
 use pulldown_cmark::{Event, Options, Parser, Tag};
 
-
 mod config;
 pub use config::ReflowConfig;
 
 mod iter;
-pub use iter::Warp;
+pub use iter::{Gluon, Tokeneer};
 
 #[derive(Debug)]
 pub struct Reflow;
@@ -286,5 +285,4 @@ r#" This module contains documentation thats
  are two consecutive newlines in one
  connected documentation span."#);
     }
-
 }
