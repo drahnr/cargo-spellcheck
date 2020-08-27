@@ -50,7 +50,6 @@ impl<'a> PlainOverlay<'a> {
     fn extract_plain_with_mapping(cmark: &str) -> (String, IndexMap<Range, Range>) {
         let mut plain = String::with_capacity(cmark.len());
         let mut mapping = indexmap::IndexMap::with_capacity(128);
-
         let parser = Parser::new_ext(cmark, Options::all());
 
         let rust_fence =
@@ -76,13 +75,13 @@ impl<'a> PlainOverlay<'a> {
                             // for now, only dealing with some links types
                             match link_type {
                                 LinkType::Inline => {}
-                                LinkType::Autolink | LinkType::Email => skip_link_text = true,
-                                //Reference,
-                                //ReferenceUnknown,
-                                //Collapsed,
-                                //CollapsedUnknown,
-                                //Shortcut,
-                                //ShortcutUnknown,
+                                LinkType::Autolink | LinkType::Email  => skip_link_text = true,
+                                //Reference, [foo][bar] -> Text / not supported as Reference
+                                //ReferenceUnknown, [foo][] -> Text / not supported as ReferenceUnknown
+                                //Collapsed, empty / no references in the documentation
+                                //CollapsedUnknown, ? no examples
+                                //Shortcut, [foo] -> Text / not supported as ReferenceUnknown
+                                //ShortcutUnknown, ? no examples
                                 _ => {}
                             }
                         }
@@ -485,6 +484,7 @@ And a line, or a rule."##;
     }
 
     #[test]
+    #[ignore]
     fn markdown_reduction_mapping_footnote() {
         const MARKDOWN: &str = r#" This is a footnote artic [^reference]. Which one? [^reference] ../../reference/index.html"#;
 
