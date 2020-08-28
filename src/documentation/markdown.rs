@@ -96,7 +96,8 @@ impl<'a> PlainOverlay<'a> {
                             match link_type {
                                 // todo:
                                 LinkType::Inline => {
-                                    if !title.borrow().is_empty() {
+                                    if title == CowStr::Borrowed("") {
+                                    } else {
                                         Self::track(&title, offset, &mut plain, &mut mapping);
                                     }
                                 }
@@ -488,9 +489,7 @@ And a line, or a rule."##;
     fn markdown_reduction_mapping_footnote() {
         const MARKDOWN: &str = r#" This is a footnote artic [^reference]. Which one? [^reference] ../../reference/index.html"#;
 
-        const PLAIN: &str = r#"footnote linktxt. Which one?
-
-linktxt"#;
+        const PLAIN: &str = r#"This is a footnote artic reference. Which one? reference ../../reference/index.html"#;
 
         let (plain, mapping) = PlainOverlay::extract_plain_with_mapping(MARKDOWN);
 
