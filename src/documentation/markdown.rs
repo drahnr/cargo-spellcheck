@@ -1,6 +1,6 @@
 //! Erase markdown syntax
 //!
-//! Resulting overlay is plain and can be fed into a grammer or spell checker.
+//! Resulting overlay is plain and can be fed into a grammar or spell checker.
 
 use super::*;
 
@@ -420,7 +420,7 @@ And a line, or a rule."##;
 
     #[test]
     fn markdown_reduction_mapping_inline_link() {
-        const MARKDOWN: &str = r#" dyrck [I'm an inline-style link](https://www.google.com) artic"#;
+        const MARKDOWN: &str = r#" dyrck [I'm an inline-style link](https://duckduckgo.com) artic"#;
         const PLAIN: &str = r#"dyrck I'm an inline-style link artic"#;
 
         let (plain, mapping) = PlainOverlay::extract_plain_with_mapping(MARKDOWN);
@@ -487,9 +487,12 @@ And a line, or a rule."##;
     #[test]
     #[ignore]
     fn markdown_reduction_mapping_footnote() {
-        const MARKDOWN: &str = r#" This is a footnote artic [^reference]. Which one? [^reference] ../../reference/index.html"#;
+        const MARKDOWN: &str = r#"footnote [^linktxt]. Which one?
 
-        const PLAIN: &str = r#"This is a footnote artic reference. Which one? reference ../../reference/index.html"#;
+        [^linktxt]: ../../reference/index.html"#;
+        const PLAIN: &str = r#"footnote linktxt. Which one?
+
+linktxt"#;
 
         let (plain, mapping) = PlainOverlay::extract_plain_with_mapping(MARKDOWN);
 
