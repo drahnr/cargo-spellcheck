@@ -75,7 +75,7 @@ impl<'a> PlainOverlay<'a> {
                             // for now, only dealing with some links types
                             match link_type {
                                 LinkType::Inline => {}
-                                LinkType::Autolink | LinkType::Email  => skip_link_text = true,
+                                LinkType::Autolink | LinkType::Email => skip_link_text = true,
                                 //Reference, [foo][bar] -> Text / not supported as Reference
                                 //ReferenceUnknown, [foo][] -> Text / not supported as ReferenceUnknown
                                 //Collapsed, empty / no references in the documentation
@@ -419,73 +419,6 @@ And a line, or a rule."##;
     }
 
     #[test]
-    fn markdown_reduction_mapping_inline_link() {
-        const MARKDOWN: &str = r#" dyrck [I'm an inline-style link](https://duckduckgo.com) artic"#;
-        const PLAIN: &str = r#"dyrck I'm an inline-style link artic"#;
-
-        let (plain, mapping) = PlainOverlay::extract_plain_with_mapping(MARKDOWN);
-
-        assert_eq!(dbg!(&plain).as_str(), PLAIN);
-        assert_eq!(dbg!(&mapping).len(), 3);
-        for (reduced_range, markdown_range) in mapping.iter() {
-            println!("{:?} {:?}", reduced_range, markdown_range);
-            assert_eq!(
-                plain[reduced_range.clone()].to_owned(),
-                MARKDOWN[markdown_range.clone()].to_owned()
-            );
-        }
-    }
-
-    #[test]
-    fn markdown_reduction_mapping_auto_link() {
-        const MARKDOWN: &str = r#" <http://foo.bar/baz>"#;
-        const PLAIN: &str = r#""#;
-
-        let (plain, mapping) = PlainOverlay::extract_plain_with_mapping(MARKDOWN);
-
-        assert_eq!(dbg!(&plain).as_str(), PLAIN);
-        assert_eq!(dbg!(&mapping).len(), 0);
-        for (reduced_range, markdown_range) in mapping.iter() {
-            assert_eq!(plain[reduced_range.clone()].to_owned(), String::from(""));
-        }
-    }
-
-    #[test]
-    fn markdown_reduction_mapping_auto_link_with_misspelled_words() {
-        const MARKDOWN: &str = r#" dyrck <http://foo.bar/baz> artic"#;
-        const PLAIN: &str = r#"dyrck  artic"#;
-
-        let (plain, mapping) = PlainOverlay::extract_plain_with_mapping(MARKDOWN);
-
-        assert_eq!(dbg!(&plain).as_str(), PLAIN);
-        assert_eq!(dbg!(&mapping).len(), 2);
-        for (reduced_range, markdown_range) in mapping.iter() {
-            assert_eq!(
-                plain[reduced_range.clone()].to_owned(),
-                MARKDOWN[markdown_range.clone()].to_owned()
-            );
-        }
-    }
-
-    #[test]
-    fn markdown_reduction_mapping_email_with_misspelled_words() {
-        const MARKDOWN: &str = r#" dyrck <joe@example.com> artic"#;
-        const PLAIN: &str = r#"dyrck  artic"#;
-
-        let (plain, mapping) = PlainOverlay::extract_plain_with_mapping(MARKDOWN);
-
-        assert_eq!(dbg!(&plain).as_str(), PLAIN);
-        assert_eq!(dbg!(&mapping).len(), 2);
-        for (reduced_range, markdown_range) in mapping.iter() {
-            assert_eq!(
-                plain[reduced_range.clone()].to_owned(),
-                MARKDOWN[markdown_range.clone()].to_owned()
-            );
-        }
-    }
-
-    #[test]
-    #[ignore]
     fn markdown_reduction_mapping_footnote() {
         const MARKDOWN: &str = r#"footnote [^linktxt]. Which one?
 
@@ -504,5 +437,66 @@ linktxt"#;
                 MARKDOWN[markdown_range.clone()].to_owned()
             );
         }
+    }
+    fn test_markdown_reduction_mapping_links_types(
+        input: &'static str,
+        expected: &'static str,
+        expected_mapping: usize,
+    ) {
+        let (plain, mapping) = PlainOverlay::extract_plain_with_mapping(input);
+        assert_eq!(dbg!(&plain).as_str(), expected);
+        assert_eq!(dbg!(&mapping).len(), expected_mapping);
+        for (reduced_range, markdown_range) in mapping.iter() {
+            assert_eq!(
+                plain[reduced_range.clone()].to_owned(),
+                input[markdown_range.clone()].to_owned()
+            );
+        }
+    }
+    #[test]
+    fn tests_link_types() {
+        // Inline
+        test_markdown_reduction_mapping_links_types(
+            r#" prefix [I'm an inline-style link](https://duckduckgo.com) postfix"#,
+            r#"prefix I'm an inline-style link postfix"#,
+            3,
+        );
+        // Autolink
+        test_markdown_reduction_mapping_links_types(
+            r#" prefix <http://foo.bar/baz> postfix"#,
+            r#"prefix  postfix"#,
+            2,
+        );
+        test_markdown_reduction_mapping_links_types(r#" <http://foo.bar/baz>"#, r#""#, 0);
+        // Email
+        test_markdown_reduction_mapping_links_types(
+            r#" prefix <loe@example.com> postfix"#,
+            r#"prefix  postfix"#,
+            2,
+        );
+        // Reference
+        #[ignore]
+        test_markdown_reduction_mapping_links_types(
+            r#"[I'm an reference link][http://foo.bar/baz]"#,
+            r#"I'm an reference link"#,
+            1,
+        );
+        // ReferenceUnknown
+        // Collapsed
+        #[ignore]
+        test_markdown_reduction_mapping_links_types(
+            r#"[I'm an reference link][]"#,
+            r#"I'm an reference link"#,
+            1,
+        );
+        // CollapsedUnknown
+        // Shortcut
+        #[ignore]
+        test_markdown_reduction_mapping_links_types(
+            r#"[I'm an reference link]"#,
+            r#"I'm an reference link"#,
+            1,
+        );
+        //ShortcutUnknown
     }
 }
