@@ -474,7 +474,7 @@ linktxt"#;
             r#"prefix  postfix"#,
             2,
         );
-        // Reference
+        // Reference style
         #[ignore]
         test_markdown_reduction_mapping_links_types(
             r#"[I'm an reference link][http://foo.bar/baz]"#,
