@@ -6,9 +6,20 @@ use fancy_regex::Regex;
 use std::convert::TryFrom;
 use std::fmt;
 
+/// Track what kind of comment the literal is
+#[derive(Debug, Clone, Copy, Hash)]
+#[non_exhaustive]
+pub enum CommentVariant {
+    /// `///`
+    TripleSlash,
+    /// `#[doc=`
+    MacroDocEq,
+}
+
 /// A literal with meta info where the first and list whitespace may be found.
 #[derive(Clone)]
 pub struct TrimmedLiteral {
+    variant: CommentVariant,
     /// The span of rendered content, minus pre and post already applied.
     span: Span,
     /// the complete rendered string including post and pre.
@@ -48,6 +59,7 @@ impl std::cmp::Eq for TrimmedLiteral {}
 
 impl std::hash::Hash for TrimmedLiteral {
     fn hash<H: std::hash::Hasher>(&self, hasher: &mut H) {
+        self.variant.hash(hasher);
         self.rendered.hash(hasher);
         self.span.hash(hasher);
         self.pre.hash(hasher);
@@ -60,17 +72,20 @@ impl std::hash::Hash for TrimmedLiteral {
 impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
     type Error = anyhow::Error;
     fn try_from((content, literal): (&str, proc_macro2::Literal)) -> Result<Self> {
-        // pretty unusable garabage, since it modifies the content of `///`
+        // let rendered = literal.to_string();
+        // produces pretty unusable garabage, since it modifies the content of `///`
         // comments which could contain " which will be escaped
         // and therefor cause the `span()` to yield something that does
         // not align with the rendered literal at all and there are too
-        // many pitfalls to sanitize all cases
-        // let rendered = literal.to_string();
+        // many pitfalls to sanitize all cases, so reading given span
+        // from the file again, and then determining its type is way safer.
 
-        // XXX no idea why we have to match against the trailing `]` character, should not be part of the range
-        // but the span we obtain from literal seems to be wrong, adding one trailing char
         let mut span = Span::from(literal.span());
-        span.end.column = span.end.column.saturating_sub(1); // either `]` or `\n` we don't need either
+        // itt's unclear why the trailing `]` character is part of the given span, it shout not be part
+        // of it, but the span we obtain from literal seems to be wrong, adding one trailing char.
+
+        // Either cut off `]` or `\n` - we don't need either.
+        span.end.column = span.end.column.saturating_sub(1);
 
         let rendered = util::load_span_from(content.as_bytes(), span.clone())?;
         // TODO cache the offsets for faster processing and avoiding repeated O(n) ops
@@ -79,7 +94,9 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
         let rendered_len = rendered.chars().count();
 
         log::trace!("extracted from source: >{}< @ {:?}", rendered, span);
-        let (span, pre, post) = if rendered.starts_with("///") || rendered.starts_with("//!") {
+        let (variant, span, pre, post) = if rendered.starts_with("///")
+            || rendered.starts_with("//!")
+        {
             let pre = 3; // `///`
             let post = 0; // trailing `\n` is already accounted for above
 
@@ -93,7 +110,7 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
             // Since we can not distinguish between orignally escaped, we simply
             // use the content read from source.
 
-            (span, pre, post)
+            (CommentVariant::TripleSlash, span, pre, post)
         } else {
             // pre and post are for the rendered content
             // not necessarily for the span
@@ -139,7 +156,7 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
             span.start.column += pre;
             span.end.column = span.end.column.saturating_sub(post);
 
-            (span, pre, post)
+            (CommentVariant::MacroDocEq, span, pre, post)
         };
 
         let len_in_chars = rendered_len.saturating_sub(post + pre);
@@ -152,6 +169,7 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
 
         let len_in_bytes = rendered.len().saturating_sub(post + pre);
         let literal = Self {
+            variant,
             len_in_chars,
             len_in_bytes,
             rendered,
