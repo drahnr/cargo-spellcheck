@@ -48,8 +48,8 @@ impl<'a> PlainOverlay<'a> {
         }
     }
 
-    fn broken_link_handler(x: &str, _y: &str) -> Option<(String, String)> {
-        Some((x.to_owned(), "<borked!>".to_owned()))
+    fn broken_link_handler(x: &str, y: &str) -> Option<(String, String)> {
+        Some((x.to_owned(), y.to_owned()))
     }
 
     /// Ranges are mapped `cmakr reduced/plain -> raw`.
@@ -85,15 +85,14 @@ impl<'a> PlainOverlay<'a> {
                             // for now, only dealing with some links types
                             skip_link_text = match link_type {
                                 // TODO verify this works with nested
-                                LinkType::Inline => false,
-                                LinkType::Reference
-                                | LinkType::ReferenceUnknown
+                                LinkType::ReferenceUnknown
+                                | LinkType::Reference
+                                | LinkType::Inline
                                 | LinkType::Collapsed
                                 | LinkType::CollapsedUnknown
                                 | LinkType::Shortcut
-                                | LinkType::ShortcutUnknown
-                                | LinkType::Autolink
-                                | LinkType::Email => true,
+                                | LinkType::ShortcutUnknown => false,
+                                LinkType::Autolink | LinkType::Email => true,
                             };
                         }
 
@@ -105,18 +104,16 @@ impl<'a> PlainOverlay<'a> {
                         Tag::Link(link_type, _url, title) => {
                             // for now, only dealing with some links types
                             match link_type {
-                                LinkType::Reference
-                                | LinkType::ReferenceUnknown
-                                | LinkType::Collapsed
+                                LinkType::Collapsed
                                 | LinkType::CollapsedUnknown
                                 | LinkType::Shortcut
                                 | LinkType::ShortcutUnknown
-                                | LinkType::Autolink
-                                | LinkType::Email
-                                | LinkType::Inline => {
-                                    if !title.is_empty() {
-                                        Self::track(&title, offset, &mut plain, &mut mapping);
-                                    }
+                                | LinkType::Reference
+                                | LinkType::ReferenceUnknown => {}
+                                LinkType::Autolink | LinkType::Email | LinkType::Inline => {
+                                    // if !title.is_empty() {
+                                    //     Self::track(&title, offset, &mut plain, &mut mapping);
+                                    // }
                                 }
                             }
                         }
@@ -154,7 +151,11 @@ impl<'a> PlainOverlay<'a> {
                 Event::Html(_s) => {}
                 Event::FootnoteReference(s) => {
                     if !s.is_empty() {
-                        Self::track(&s, offset, &mut plain, &mut mapping);
+                        let range = Range {
+                            start: offset.start + 2,
+                            end: offset.end - 1,
+                        };
+                        Self::track(&s, range, &mut plain, &mut mapping);
                     }
                 }
                 Event::SoftBreak => {
@@ -330,7 +331,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn markdown_reduction_mapping() {
+    fn reduction_complex() {
         // TODO add links
         const MARKDOWN: &str = r##"# Title number 1
 
@@ -383,7 +384,7 @@ And a line, or a rule."##;
     }
 
     #[test]
-    fn markdown_reduction_mapping_leading_space() {
+    fn reduction_leading_space() {
         const MARKDOWN: &str = r#"  Some __underlined__ **bold** text."#;
         const PLAIN: &str = r#"Some underlined bold text."#;
 
@@ -427,36 +428,30 @@ And a line, or a rule."##;
         assert_eq!(v.first(), Some(&(12..14)));
     }
 
-    #[test]
-    fn markdown_reduction_mapping_footnote() {
-        const MARKDOWN: &str = r#"footnote [^linktxt]. Which one?
-
-        [^linktxt]: ../../reference/index.html"#;
-        const PLAIN: &str = r#"footnote linktxt. Which one?
-
-linktxt"#;
-
-        let (plain, mapping) = PlainOverlay::extract_plain_with_mapping(MARKDOWN);
-
-        assert_eq!(dbg!(&plain).as_str(), PLAIN);
-        assert_eq!(dbg!(&mapping).len(), 5);
+    fn cmark_reduction_test(
+        input: &'static str,
+        expected: &'static str,
+        expected_mapping_len: usize,
+    ) {
+        let (plain, mapping) = PlainOverlay::extract_plain_with_mapping(input);
+        assert_eq!(dbg!(&plain).as_str(), expected);
+        assert_eq!(dbg!(&mapping).len(), expected_mapping_len);
         for (reduced_range, markdown_range) in mapping.iter() {
             assert_eq!(
-                plain[reduced_range.clone()].to_owned(),
-                MARKDOWN[markdown_range.clone()].to_owned()
+                dbg!(&plain[reduced_range.clone()]).to_owned(),
+                dbg!(&input[markdown_range.clone()]).to_owned()
             );
         }
     }
-    fn cmark_reduction_test(input: &'static str, expected: &'static str, expected_mapping: usize) {
-        let (plain, mapping) = PlainOverlay::extract_plain_with_mapping(input);
-        assert_eq!(dbg!(&plain).as_str(), expected);
-        assert_eq!(dbg!(&mapping).len(), expected_mapping);
-        for (reduced_range, markdown_range) in mapping.iter() {
-            assert_eq!(
-                plain[reduced_range.clone()].to_owned(),
-                input[markdown_range.clone()].to_owned()
-            );
-        }
+
+    #[test]
+    fn link_footnote() {
+        const CMARK: &str = r#"footnote [^linktxt]. Which one?
+
+        [linktxt]: ../../reference/index.html"#;
+        const PLAIN: &str = r#"footnote linktxt. Which one?"#;
+
+        cmark_reduction_test(CMARK, PLAIN, 3);
     }
 
     #[test]
@@ -503,14 +498,22 @@ linktxt"#;
     fn link_collapsed_ref() {
         // ReferenceUnknown
         // Collapsed
-        cmark_reduction_test(r#"[collapsed reference link][]"#, r#"collapsed reference link"#, 1);
+        cmark_reduction_test(
+            r#"[collapsed reference link][]"#,
+            r#"collapsed reference link"#,
+            1,
+        );
     }
 
     #[test]
     fn link_shortcut_ref() {
         // CollapsedUnknown
         // Shortcut
-        cmark_reduction_test(r#"[shortcut reference link]"#, r#"shortcut reference link"#, 1);
+        cmark_reduction_test(
+            r#"[shortcut reference link]"#,
+            r#"shortcut reference link"#,
+            1,
+        );
         //ShortcutUnknown
     }
 }
