@@ -15,7 +15,9 @@ use crate::Span;
 /// A plain representation of markdown riddled set of trimmed literals.
 #[derive(Clone)]
 pub struct PlainOverlay<'a> {
+    /// A reference to the underlying [`CheckableChunk`][super::chunk].
     raw: &'a CheckableChunk,
+    /// The rendered string with all common mark annotations removed.
     plain: String,
     // require a sorted map, so we have the chance of binary search
     // key: plain string range
@@ -46,7 +48,7 @@ impl<'a> PlainOverlay<'a> {
         }
     }
 
-    /// ranges are mapped `cmakr reduced/plain -> raw`
+    /// Ranges are mapped `cmakr reduced/plain -> raw`.
     fn extract_plain_with_mapping(cmark: &str) -> (String, IndexMap<Range, Range>) {
         let mut plain = String::with_capacity(cmark.len());
         let mut mapping = indexmap::IndexMap::with_capacity(128);
