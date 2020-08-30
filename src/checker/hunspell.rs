@@ -148,7 +148,7 @@ impl Checker for HunspellChecker {
                     debug!("Processing {}", origin.as_path().display());
 
                     for chunk in chunks {
-                        let plain = chunk.erase_markdown();
+                        let plain = chunk.erase_cmark();
                         trace!("{:?}", &plain);
                         let txt = plain.as_str();
                         let hunspell = &*hunspell.0;
