@@ -48,11 +48,19 @@ impl<'a> PlainOverlay<'a> {
         }
     }
 
+    fn broken_link_handler(x: &str, _y: &str) -> Option<(String, String)> {
+        Some((x.to_owned(), "<borked!>".to_owned()))
+    }
+
     /// Ranges are mapped `cmakr reduced/plain -> raw`.
     fn extract_plain_with_mapping(cmark: &str) -> (String, IndexMap<Range, Range>) {
         let mut plain = String::with_capacity(cmark.len());
         let mut mapping = indexmap::IndexMap::with_capacity(128);
-        let parser = Parser::new_ext(cmark, Options::all());
+        let parser = Parser::new_with_broken_link_callback(
+            cmark,
+            Options::all(),
+            Some(&Self::broken_link_handler),
+        );
 
         let rust_fence =
             pulldown_cmark::CodeBlockKind::Fenced(pulldown_cmark::CowStr::Borrowed("rust"));
@@ -485,8 +493,8 @@ linktxt"#;
     fn link_reference() {
         // Reference
         cmark_reduction_test(
-            r#"[I'm an reference link][http://foo.bar/baz]"#,
-            r#"I'm an reference link"#,
+            r#"[classy reference link][the reference str]"#,
+            r#"classy reference link"#,
             1,
         );
     }
@@ -495,18 +503,14 @@ linktxt"#;
     fn link_collapsed_ref() {
         // ReferenceUnknown
         // Collapsed
-        cmark_reduction_test(
-            r#"[I'm an reference link][]"#,
-            r#"I'm an reference link"#,
-            1,
-        );
+        cmark_reduction_test(r#"[collapsed reference link][]"#, r#"collapsed reference link"#, 1);
     }
 
     #[test]
     fn link_shortcut_ref() {
         // CollapsedUnknown
         // Shortcut
-        cmark_reduction_test(r#"[I'm an reference link]"#, r#"I'm an reference link"#, 1);
+        cmark_reduction_test(r#"[shortcut reference link]"#, r#"shortcut reference link"#, 1);
         //ShortcutUnknown
     }
 }
