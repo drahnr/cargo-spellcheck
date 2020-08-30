@@ -13,7 +13,6 @@ pub use search_dirs::*;
 
 use crate::suggestion::Detector;
 use crate::reflow::ReflowConfig;
-use crate::suggestion::Detector;
 use anyhow::{anyhow, bail, Error, Result};
 use fancy_regex::Regex;
 use log::trace;

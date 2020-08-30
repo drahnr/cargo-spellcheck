@@ -214,24 +214,35 @@ impl TrimmedLiteral {
         self.len_in_bytes
     }
 
-    /// Obtain `prefix` length.
+    /// Obtain the number of characters in `pre()`.
+    ///
+    /// Since all pre charcters are ascii, this is equivalent to the number of bytes in `pre()`.
     pub fn pre(&self) -> usize {
         self.pre
     }
 
-    /// Obtain `suffix` length.
+    /// Obtain the number of characters in `post()`.
+    ///
+    /// Since all pre charcters are ascii, this is equivalent to the number of bytes in `post()`.
     pub fn post(&self) -> usize {
         self.post
     }
 
-    /// Coverage span for the content, excluding `pre`/`prefix` and `post`/`suffix`.
+    /// The span that is covered by this literal.
+    ///
+    /// Covers only the content, no marker or helper chracters.
     pub fn span(&self) -> Span {
         self.span.clone()
     }
 
-    /// Iterate over all characters, excluding `pre`/`prefix` and `post`/`suffix`.
+    /// Access the characters via an iterator.
     pub fn chars<'a>(&'a self) -> impl Iterator<Item = char> + 'a {
         self.as_str().chars()
+    }
+
+    /// The string variant type, see [`CommentVariant`](self::CommentVariant) for details.
+    pub fn variant(&self) -> CommentVariant {
+        self.variant
     }
 
     /// Display helper, mostly used for debug investigations

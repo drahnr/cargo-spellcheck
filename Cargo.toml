@@ -34,8 +34,6 @@ crossterm = "0.18"
 fancy-regex = "0.4"
 signal-hook = "0.1"
 rayon = "1.5"
-textwrap = "0.12"
-
 
 # config parsing, must be independent of features
 
