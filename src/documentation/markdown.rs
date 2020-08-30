@@ -6,7 +6,7 @@ use super::*;
 
 use indexmap::IndexMap;
 use log::trace;
-use pulldown_cmark::{CowStr, Event, LinkType, Options, Parser, Tag};
+use pulldown_cmark::{Event, LinkType, Options, Parser, Tag};
 
 use crate::documentation::{CheckableChunk, Range};
 use crate::util::sub_chars;
@@ -70,7 +70,7 @@ impl<'a> PlainOverlay<'a> {
 
         for (event, offset) in parser.into_offset_iter() {
             trace!("Parsing event ({:?}): {:?}", &offset, &event);
-            match dbg!(event) {
+            match event {
                 Event::Start(tag) => {
                     match tag {
                         Tag::CodeBlock(fenced) => {
@@ -80,7 +80,7 @@ impl<'a> PlainOverlay<'a> {
                                 // TODO validate as if it was another document entity
                             }
                         }
-                        Tag::Link(link_type, _url, title) => {
+                        Tag::Link(link_type, _url, _title) => {
                             // TODO check links
                             // for now, only dealing with some links types
                             skip_link_text = match link_type {
@@ -101,7 +101,7 @@ impl<'a> PlainOverlay<'a> {
                 }
                 Event::End(tag) => {
                     match tag {
-                        Tag::Link(link_type, _url, title) => {
+                        Tag::Link(link_type, _url, _title) => {
                             // for now, only dealing with some links types
                             match link_type {
                                 LinkType::Collapsed
