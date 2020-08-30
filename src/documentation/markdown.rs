@@ -474,8 +474,11 @@ linktxt"#;
             r#"prefix  postfix"#,
             2,
         );
+    }
+    #[test]
+    #[ignore]
+    fn tests_extra_link_types() {
         // Reference style
-        #[ignore]
         test_markdown_reduction_mapping_links_types(
             r#"[I'm an reference link][http://foo.bar/baz]"#,
             r#"I'm an reference link"#,
@@ -483,7 +486,6 @@ linktxt"#;
         );
         // ReferenceUnknown
         // Collapsed
-        #[ignore]
         test_markdown_reduction_mapping_links_types(
             r#"[I'm an reference link][]"#,
             r#"I'm an reference link"#,
@@ -491,7 +493,6 @@ linktxt"#;
         );
         // CollapsedUnknown
         // Shortcut
-        #[ignore]
         test_markdown_reduction_mapping_links_types(
             r#"[I'm an reference link]"#,
             r#"I'm an reference link"#,
