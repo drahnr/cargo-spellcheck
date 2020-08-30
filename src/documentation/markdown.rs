@@ -176,7 +176,7 @@ impl<'a> PlainOverlay<'a> {
         (plain, mapping)
     }
 
-    // @todo consider returning a Vec<PlainOverlay<'a>> to account for list items
+    // TODO consider returning a Vec<PlainOverlay<'a>> to account for list items
     // or other non-linear information which might not pass a grammar check as a whole
     pub fn erase_markdown(chunk: &'a CheckableChunk) -> Self {
         let (plain, mapping) = Self::extract_plain_with_mapping(chunk.as_str());
@@ -226,7 +226,7 @@ impl<'a> PlainOverlay<'a> {
                         let raw = recombine(raw.clone(), offset, sub.end - start);
                         Some((start..sub.end, raw))
                     }
-                // @todo must be implemented properly
+                // TODO must be implemented properly
                 // } else if active {
                 //     let offset = sub.end - end;
                 //     if sub.contains(&(end - 1)) {
@@ -292,7 +292,7 @@ impl<'a> fmt::Debug for PlainOverlay<'a> {
         for (plain_range, md_range, style) in
             itertools::cons_tuples(itertools::zip(self.mapping.iter(), color_cycle))
         {
-            // @todo do this properly, `saturating sub` just prevents crashing
+            // TODO do this properly, `saturating sub` just prevents crashing
             let delta = md_range.start.saturating_sub(previous_md_end);
             // take care of the markers and things that are not rendered
             if delta > 0 {
@@ -321,7 +321,7 @@ mod tests {
 
     #[test]
     fn markdown_reduction_mapping() {
-        // @todo add links
+        // TODO add links
         const MARKDOWN: &str = r##"# Title number 1
 
 ## Title number 2
@@ -398,7 +398,7 @@ And a line, or a rule."##;
 
         let lookmeup = 6..8;
 
-        // @todo keep in sync with copy pasta source, extract a func for this
+        // TODO keep in sync with copy pasta source, extract a func for this
         let plain_range = lookmeup;
         let v: Vec<_> = x
             .iter()

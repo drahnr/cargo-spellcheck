@@ -116,7 +116,7 @@ impl Iterator for TraverseModulesIter {
         if let Some((path, level)) = self.queue.pop_front() {
             if level < self.max_depth {
                 // ignore the error here, there is nothing we can do really
-                // @todo potentially consider returning a result covering this
+                // TODO potentially consider returning a result covering this
                 let _ = self.collect_modules(path.as_path(), level + 1);
             }
             Some(path)

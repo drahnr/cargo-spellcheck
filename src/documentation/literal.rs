@@ -73,7 +73,7 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
         span.end.column = span.end.column.saturating_sub(1); // either `]` or `\n` we don't need either
 
         let rendered = util::load_span_from(content.as_bytes(), span.clone())?;
-        // @todo cache the offsets for faster processing and avoiding repeated O(n) ops
+        // TODO cache the offsets for faster processing and avoiding repeated O(n) ops
         // let byteoffset2char = rendered.char_indices().enumerate().collect::<indexmap::IndexMap<usize, (usize, char)>>();
         // let rendered_len = byteoffset2char.len();
         let rendered_len = rendered.chars().count();

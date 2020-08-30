@@ -48,7 +48,7 @@ fn tokenize(s: &str) -> Vec<Range> {
                 bananasplit.push(linear_start..linear_end);
             }
             started = false;
-        // @todo handle hyphenation
+        // TODO handle hyphenation
         // if c == '\n' {
         //     column = 0;
         //     line += 1;
@@ -61,7 +61,7 @@ fn tokenize(s: &str) -> Vec<Range> {
         }
     }
     // at the end of string, assume word complete
-    // @todo for hypenation, check if line ends with a dash
+    // TODO for hypenation, check if line ends with a dash
     if started {
         if let Some((idx, _)) = s.char_indices().next_back() {
             // increase by one, since the range's end goes one beyond, end bounds is _exclusive_ for ranges
@@ -143,7 +143,7 @@ pub mod tests {
         }
     }
 
-    // @todo looks pretty similiar to the one in bandaid doesn't it?
+    // TODO looks pretty similiar to the one in bandaid doesn't it?
     pub fn extraction_test_body(content: &str, expected_spans: &[Span]) {
         let _ = env_logger::builder()
             .filter(None, log::LevelFilter::Trace)
@@ -177,7 +177,7 @@ pub mod tests {
     }
 
     #[test]
-    #[ignore] // @todo FIXME
+    #[ignore] // TODO FIXME
     fn extract_suggestions_simple() {
         const SIMPLE: &'static str = "two literals";
 
@@ -199,7 +199,7 @@ pub mod tests {
     }
 
     #[test]
-    #[ignore] // @todo FIXME
+    #[ignore] // TODO FIXME
     fn extract_suggestions_left_aligned() {
         const SIMPLE: &'static str = "two  literals ";
 
@@ -221,7 +221,7 @@ pub mod tests {
     }
 
     #[test]
-    #[ignore] // @todo FIXME
+    #[ignore] // TODO FIXME
     fn extract_suggestions_3spaces() {
         const SIMPLE: &'static str = "   3rd  testcase ";
 
