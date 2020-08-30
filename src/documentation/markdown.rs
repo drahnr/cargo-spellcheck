@@ -60,30 +60,31 @@ impl<'a> PlainOverlay<'a> {
 
         for (event, offset) in parser.into_offset_iter() {
             trace!("Parsing event ({:?}): {:?}", &offset, &event);
-            match event {
+            match dbg!(event) {
                 Event::Start(tag) => {
                     match tag {
                         Tag::CodeBlock(fenced) => {
                             code_block = true;
 
                             if fenced == rust_fence {
-                                // @todo validate as if it was another document entity
+                                // TODO validate as if it was another document entity
                             }
                         }
                         Tag::Link(link_type, _url, title) => {
-                            // @todo check links
+                            // TODO check links
                             // for now, only dealing with some links types
-                            match link_type {
-                                LinkType::Inline => {}
-                                LinkType::Autolink | LinkType::Email => skip_link_text = true,
-                                //Reference, [foo][bar] -> Text / not supported as Reference
-                                //ReferenceUnknown, [foo][] -> Text / not supported as ReferenceUnknown
-                                //Collapsed, empty / no references in the documentation
-                                //CollapsedUnknown, ? no examples
-                                //Shortcut, [foo] -> Text / not supported as ReferenceUnknown
-                                //ShortcutUnknown, ? no examples
-                                _ => {}
-                            }
+                            skip_link_text = match link_type {
+                                // TODO verify this works with nested
+                                LinkType::Inline => false,
+                                LinkType::Reference
+                                | LinkType::ReferenceUnknown
+                                | LinkType::Collapsed
+                                | LinkType::CollapsedUnknown
+                                | LinkType::Shortcut
+                                | LinkType::ShortcutUnknown
+                                | LinkType::Autolink
+                                | LinkType::Email => true,
+                            };
                         }
 
                         _ => {}
@@ -94,22 +95,19 @@ impl<'a> PlainOverlay<'a> {
                         Tag::Link(link_type, _url, title) => {
                             // for now, only dealing with some links types
                             match link_type {
-                                // todo:
-                                LinkType::Inline => {
-                                    if title == CowStr::Borrowed("") {
-                                    } else {
+                                LinkType::Reference
+                                | LinkType::ReferenceUnknown
+                                | LinkType::Collapsed
+                                | LinkType::CollapsedUnknown
+                                | LinkType::Shortcut
+                                | LinkType::ShortcutUnknown
+                                | LinkType::Autolink
+                                | LinkType::Email
+                                | LinkType::Inline => {
+                                    if !title.is_empty() {
                                         Self::track(&title, offset, &mut plain, &mut mapping);
                                     }
                                 }
-                                //Reference,
-                                //ReferenceUnknown,
-                                //Collapsed,
-                                //CollapsedUnknown,
-                                //Shortcut,
-                                //ShortcutUnknown,
-                                LinkType::Autolink => {}
-                                LinkType::Email => {}
-                                _ => {}
                             }
                         }
                         Tag::Image(_link_type, _url, title) => {
@@ -122,7 +120,7 @@ impl<'a> PlainOverlay<'a> {
                             code_block = false;
 
                             if fenced == rust_fence {
-                                // @todo validate as if it was another document entity
+                                // TODO validate as if it was another document entity
                             }
                         }
                         Tag::Paragraph => Self::newlines(&mut plain, 2),
@@ -130,22 +128,23 @@ impl<'a> PlainOverlay<'a> {
                     }
                 }
                 Event::Text(s) => {
-                    if code_block || skip_link_text {
+                    if code_block {
+                        // TODO do smth
+                    } else if skip_link_text {
                         skip_link_text = false
                     } else {
                         Self::track(&s, offset, &mut plain, &mut mapping);
                     }
                 }
                 Event::Code(_s) => {
-                    // @todo extract comments from the doc comment and in the distant
+                    // TODO extract comments from the doc comment and in the distant
                     // future potentially also check var names with leviatan distance
                     // to wordbook entries, and only complain if there are sane suggestions
                 }
                 Event::Html(_s) => {}
-                Event::FootnoteReference(_s) => {
-                    if _s == CowStr::Borrowed("") {
-                    } else {
-                        Self::track(&_s, offset, &mut plain, &mut mapping);
+                Event::FootnoteReference(s) => {
+                    if !s.is_empty() {
+                        Self::track(&s, offset, &mut plain, &mut mapping);
                     }
                 }
                 Event::SoftBreak => {
@@ -438,11 +437,7 @@ linktxt"#;
             );
         }
     }
-    fn test_markdown_reduction_mapping_links_types(
-        input: &'static str,
-        expected: &'static str,
-        expected_mapping: usize,
-    ) {
+    fn cmark_reduction_test(input: &'static str, expected: &'static str, expected_mapping: usize) {
         let (plain, mapping) = PlainOverlay::extract_plain_with_mapping(input);
         assert_eq!(dbg!(&plain).as_str(), expected);
         assert_eq!(dbg!(&mapping).len(), expected_mapping);
@@ -453,50 +448,63 @@ linktxt"#;
             );
         }
     }
+
     #[test]
-    fn tests_link_types() {
+    fn link_inline() {
         // Inline
-        test_markdown_reduction_mapping_links_types(
+        cmark_reduction_test(
             r#" prefix [I'm an inline-style link](https://duckduckgo.com) postfix"#,
             r#"prefix I'm an inline-style link postfix"#,
             3,
         );
+    }
+    #[test]
+    fn link_auto() {
         // Autolink
-        test_markdown_reduction_mapping_links_types(
+        cmark_reduction_test(
             r#" prefix <http://foo.bar/baz> postfix"#,
             r#"prefix  postfix"#,
             2,
         );
-        test_markdown_reduction_mapping_links_types(r#" <http://foo.bar/baz>"#, r#""#, 0);
+        cmark_reduction_test(r#" <http://foo.bar/baz>"#, r#""#, 0);
+    }
+
+    #[test]
+    fn link_email() {
         // Email
-        test_markdown_reduction_mapping_links_types(
+        cmark_reduction_test(
             r#" prefix <loe@example.com> postfix"#,
             r#"prefix  postfix"#,
             2,
         );
+    }
+
+    #[test]
+    fn link_reference() {
         // Reference
-        #[ignore]
-        test_markdown_reduction_mapping_links_types(
+        cmark_reduction_test(
             r#"[I'm an reference link][http://foo.bar/baz]"#,
             r#"I'm an reference link"#,
             1,
         );
+    }
+
+    #[test]
+    fn link_collapsed_ref() {
         // ReferenceUnknown
         // Collapsed
-        #[ignore]
-        test_markdown_reduction_mapping_links_types(
+        cmark_reduction_test(
             r#"[I'm an reference link][]"#,
             r#"I'm an reference link"#,
             1,
         );
+    }
+
+    #[test]
+    fn link_shortcut_ref() {
         // CollapsedUnknown
         // Shortcut
-        #[ignore]
-        test_markdown_reduction_mapping_links_types(
-            r#"[I'm an reference link]"#,
-            r#"I'm an reference link"#,
-            1,
-        );
+        cmark_reduction_test(r#"[I'm an reference link]"#, r#"I'm an reference link"#, 1);
         //ShortcutUnknown
     }
 }
