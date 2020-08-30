@@ -41,7 +41,7 @@ impl LiteralSet {
         Err(literal)
     }
 
-    /// The set of trimmed literals this set covers.
+    /// The set of trimmed literals that is covered.
     pub fn literals<'x>(&'x self) -> Vec<&'x TrimmedLiteral> {
         self.literals.iter().by_ref().collect()
     }
@@ -324,7 +324,7 @@ struct Vikings;
         let literal_set = dbg!(gen_literal_set(RAW));
 
         let chunk = dbg!(literal_set.clone().into_chunk());
-        let it = dbg!(literal_set.literals()).into_iter();
+        let it = literal_set.literals();
 
         for (range, span, s) in itertools::cons_tuples(chunk.iter().zip(it)) {
             if range.len() == 0 {
