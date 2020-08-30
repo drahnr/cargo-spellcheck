@@ -301,7 +301,7 @@ impl UserPicked {
             .for_each(|(idx, replacement)| {
                 let idx = idx as u16;
                 if idx != active_idx as u16 {
-                    // @todo figure out a way to deal with those errors better
+                    // TODO figure out a way to deal with those errors better
                     stdout
                         .queue(cursor::MoveUp(1))
                         .unwrap()
@@ -358,7 +358,7 @@ impl UserPicked {
             // a new suggestion, so prepare for the number of items that are visible
             // and also overwrite the last lines of the regular print which would
             // already contain the suggestions
-            // @todo deal with error conversion
+            // TODO deal with error conversion
 
             // erase this many lines of the regular print
             const ERASE: u16 = 4;
@@ -447,7 +447,7 @@ impl UserPicked {
                 KeyCode::Down => state.select_previous(),
                 KeyCode::Enter | KeyCode::Char('y') => {
                     let bandaid: BandAid = state.to_bandaid();
-                    // @todo handle interactive intput for those where there are no suggestions
+                    // TODO handle interactive intput for those where there are no suggestions
                     return Ok(UserSelection::Replacement(bandaid));
                 }
                 KeyCode::Char('n') => return Ok(UserSelection::Skip),
@@ -482,14 +482,14 @@ impl UserPicked {
             let count = suggestions.len();
             trace!("Path is {} and has {}", origin, count);
 
-            // @todo juck, uggly
+            // TODO juck, uggly
             let mut suggestions_it = suggestions.clone().into_iter().enumerate();
 
             let mut direction = Direction::Forward;
             loop {
                 let opt: Option<(usize, Suggestion)> = match direction {
                     Direction::Forward => suggestions_it.next(),
-                    Direction::Backward => suggestions_it.next_back(), // FIXME @todo this is just plain wrong
+                    Direction::Backward => suggestions_it.next_back(), // FIXME TODO this is just plain wrong
                 };
 
                 trace!("next() ---> {:?}", &opt);

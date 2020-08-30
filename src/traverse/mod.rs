@@ -350,7 +350,7 @@ pub(crate) fn extract(
                 if cargo_toml.is_file() {
                     Extraction::Manifest(cargo_toml)
                 } else {
-                    // @todo should we just collect all .rs files here instead?
+                    // TODO should we just collect all .rs files here instead?
 
                     // we know it's a directory, and we limit the entries to 0 levels,
                     // will cause to yield all "^.*\.rs$" files in that dir
@@ -446,7 +446,7 @@ pub(crate) fn extract(
                     }
                     other => {
                         warn!("Did not impl handling of {:?} type files", other);
-                        // @todo generate Documentation structs from non-file sources
+                        // TODO generate Documentation structs from non-file sources
                     }
                 }
                 Ok(docs)

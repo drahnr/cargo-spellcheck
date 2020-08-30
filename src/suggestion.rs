@@ -183,7 +183,7 @@ pub fn condition_display_content(
     // left and right we would like to partition the remaining space equally
     let avail_space_half = avail_space / 2usize;
 
-    // @todo introduce a threshold, so the shortened version is not longer than than the original
+    // TODO introduce a threshold, so the shortened version is not longer than than the original
     let (left_context, right_context, left_dots, right_dots) = match (
         avail_space_half > left_context.len(),
         avail_space_half > right_context.len(),
@@ -336,7 +336,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
 
         // underline the relevant part with ^^^^^
 
-        // @todo this needs some more thought once multiline comments pop up
+        // TODO this needs some more thought once multiline comments pop up
         let marker_size = self.span.one_line_len().unwrap_or_else(|| {
             self.chunk
                 .len_in_chars()

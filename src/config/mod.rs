@@ -35,8 +35,8 @@ pub struct WrappedRegex(pub Regex);
 
 impl Clone for WrappedRegex {
     fn clone(&self) -> Self {
-        // @todo inefficient.. but right now this should almost never happen
-        // @todo implement a lazy static `Arc<Mutex<HashMap<&'static str,Regex>>`
+        // TODO inefficient.. but right now this should almost never happen
+        // TODO implement a lazy static `Arc<Mutex<HashMap<&'static str,Regex>>`
         Self(Regex::new(self.as_str()).unwrap())
     }
 }
@@ -541,7 +541,7 @@ impl Default for Config {
     }
 }
 
-// @todo figure out which ISO spec this actually is
+// TODO figure out which ISO spec this actually is
 pub struct CommonLang(String);
 
 impl std::str::FromStr for CommonLang {

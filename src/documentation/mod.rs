@@ -86,7 +86,7 @@ impl Documentation {
                 acc.append(&mut chunks);
             })
             .or_insert_with(|| chunks);
-        // Ok(()) @todo make this failable
+        // Ok(()) TODO make this failable
     }
 }
 
@@ -139,7 +139,7 @@ mod tests {
         let chunks = docs.index.get(&origin).expect("Must contain dummy path");
         assert_eq!(dbg!(chunks).len(), 1);
 
-        // @todo
+        // TODO
         let chunk = &chunks[0];
         assert_eq!(chunk.as_str(), TEST_RAW.to_owned());
         let plain = chunk.erase_markdown();
@@ -274,7 +274,7 @@ Erronbeous bold uetchkp"#;
         let origin = ContentOrigin::RustSourceFile(PathBuf::from("/tmp/virtual"));
         let docs = Documentation::from((origin.clone(), SOURCE));
 
-        // @todo contains utter garbage, should be individual tokens, but is multiple literal
+        // TODO contains utter garbage, should be individual tokens, but is multiple literal
         let suggestion_set = dbg!(DummyChecker::check(&docs, &())).expect("Must not error");
         let (origin2, chunks) = docs.iter().next().expect("Must contain exactly one origin");
         assert_eq!(&origin, origin2);
