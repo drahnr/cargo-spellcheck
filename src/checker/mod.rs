@@ -68,7 +68,7 @@ fn tokenize(s: &str) -> Vec<Range> {
             let linear_end = idx + 1;
             bananasplit.push(linear_start..linear_end)
         } else {
-            log::warn!("Most liekly lost a word when tokenizing! BUG");
+            log::error!("Most likely lost a word when tokenizing! BUG");
         }
     }
     bananasplit
@@ -124,6 +124,8 @@ pub mod tests {
 
     use std::path::PathBuf;
 
+    use crate::fluff_up;
+
     const TEXT: &'static str = "With markdown removed, for sure.";
     lazy_static::lazy_static! {
         static ref TOKENS: Vec<&'static str> = vec![
@@ -149,10 +151,7 @@ pub mod tests {
             .filter(None, log::LevelFilter::Trace)
             .is_test(true)
             .try_init();
-        let d = Documentation::from((
-            ContentOrigin::RustSourceFile(PathBuf::from("dummy/dummy.rs")),
-            content,
-        ));
+        let d = Documentation::from((ContentOrigin::TestEntity, content));
         let suggestion_set =
             dummy::DummyChecker::check(&d, &()).expect("Dummy extraction must never fail");
 
@@ -177,53 +176,29 @@ pub mod tests {
     }
 
     #[test]
-    #[ignore] // TODO FIXME
     fn extract_suggestions_simple() {
-        const SIMPLE: &'static str = "two literals";
+        const SIMPLE: &'static str = fluff_up!("two literals");
 
         /// keep in mind, `Span` bounds are inclusive, unlike Ranges, where range.end is _exclusive_
         const EXPECTED_SPANS: &[Span] = &[
             Span {
-                start: LineColumn { line: 1, column: 1 },
-                end: LineColumn { line: 1, column: 3 },
+                start: LineColumn { line: 1, column: 4 },
+                end: LineColumn { line: 1, column: 6 },
             },
             Span {
-                start: LineColumn { line: 1, column: 5 },
+                start: LineColumn { line: 1, column: 8 },
                 end: LineColumn {
                     line: 1,
-                    column: 12,
+                    column: 15,
                 },
             },
         ];
-        extraction_test_body(SIMPLE, EXPECTED_SPANS);
+        extraction_test_body(dbg!(SIMPLE), EXPECTED_SPANS);
     }
 
     #[test]
-    #[ignore] // TODO FIXME
     fn extract_suggestions_left_aligned() {
-        const SIMPLE: &'static str = "two  literals ";
-
-        /// keep in mind, `Span` bounds are inclusive, unlike Ranges, where range.end is _exclusive_
-        const EXPECTED_SPANS: &[Span] = &[
-            Span {
-                start: LineColumn { line: 1, column: 1 },
-                end: LineColumn { line: 1, column: 3 },
-            },
-            Span {
-                start: LineColumn { line: 1, column: 6 },
-                end: LineColumn {
-                    line: 1,
-                    column: 13,
-                },
-            },
-        ];
-        extraction_test_body(SIMPLE, EXPECTED_SPANS);
-    }
-
-    #[test]
-    #[ignore] // TODO FIXME
-    fn extract_suggestions_3spaces() {
-        const SIMPLE: &'static str = "   3rd  testcase ";
+        const SIMPLE: &'static str = fluff_up!("two  literals ");
 
         /// keep in mind, `Span` bounds are inclusive, unlike Ranges, where range.end is _exclusive_
         const EXPECTED_SPANS: &[Span] = &[
@@ -239,6 +214,33 @@ pub mod tests {
                 },
             },
         ];
-        extraction_test_body(SIMPLE, EXPECTED_SPANS);
+        extraction_test_body(dbg!(SIMPLE), EXPECTED_SPANS);
+    }
+
+    #[test]
+    fn extract_suggestions_3spaces() {
+        const SIMPLE: &'static str = fluff_up!("  third  testcase ");
+
+        /// keep in mind, `Span` bounds are inclusive, unlike Ranges, where range.end is _exclusive_
+        const EXPECTED_SPANS: &[Span] = &[
+            Span {
+                start: LineColumn { line: 1, column: 6 },
+                end: LineColumn {
+                    line: 1,
+                    column: 10,
+                },
+            },
+            Span {
+                start: LineColumn {
+                    line: 1,
+                    column: 13,
+                },
+                end: LineColumn {
+                    line: 1,
+                    column: 20,
+                },
+            },
+        ];
+        extraction_test_body(dbg!(SIMPLE), EXPECTED_SPANS);
     }
 }

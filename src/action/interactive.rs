@@ -9,7 +9,7 @@ use crossterm;
 use crossterm::{
     cursor,
     event::{Event, KeyCode, KeyEvent, KeyModifiers},
-    style::{style, Attribute, Color, ContentStyle, Print, PrintStyledContent, StyledContent},
+    style::{Attribute, Color, ContentStyle, PrintStyledContent, StyledContent},
     terminal, QueueableCommand,
 };
 

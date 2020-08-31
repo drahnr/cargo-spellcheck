@@ -1,5 +1,5 @@
 use crate::{LineColumn, Range, Span};
-use anyhow::{anyhow, bail, Error, Result};
+use anyhow::{bail, Result};
 use std::io::Read;
 
 /// Iterate over a str and annotate with line and column.
