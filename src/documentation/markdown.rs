@@ -48,6 +48,7 @@ impl<'a> PlainOverlay<'a> {
         }
     }
 
+    /// Handles broken references in commonmark.
     fn broken_link_handler(x: &str, y: &str) -> Option<(String, String)> {
         Some((x.to_owned(), y.to_owned()))
     }
@@ -66,56 +67,36 @@ impl<'a> PlainOverlay<'a> {
             pulldown_cmark::CodeBlockKind::Fenced(pulldown_cmark::CowStr::Borrowed("rust"));
 
         let mut code_block = false;
+        let mut inception = false;
         let mut skip_link_text = false;
 
         for (event, offset) in parser.into_offset_iter() {
             trace!("Parsing event ({:?}): {:?}", &offset, &event);
-            match event {
-                Event::Start(tag) => {
-                    match tag {
-                        Tag::CodeBlock(fenced) => {
-                            code_block = true;
-
-                            if fenced == rust_fence {
-                                // TODO validate as if it was another document entity
-                            }
-                        }
-                        Tag::Link(link_type, _url, _title) => {
-                            // TODO check links
-                            // for now, only dealing with some links types
-                            skip_link_text = match link_type {
-                                // TODO verify this works with nested
-                                LinkType::ReferenceUnknown
-                                | LinkType::Reference
-                                | LinkType::Inline
-                                | LinkType::Collapsed
-                                | LinkType::CollapsedUnknown
-                                | LinkType::Shortcut
-                                | LinkType::ShortcutUnknown => false,
-                                LinkType::Autolink | LinkType::Email => true,
-                            };
-                        }
-
-                        _ => {}
+            match dbg!(event) {
+                Event::Start(tag) => match tag {
+                    Tag::CodeBlock(fenced) => {
+                        code_block = true;
+                        inception = fenced == rust_fence;
                     }
-                }
+                    Tag::Link(link_type, _url, _title) => {
+                        skip_link_text = match link_type {
+                            LinkType::ReferenceUnknown
+                            | LinkType::Reference
+                            | LinkType::Inline
+                            | LinkType::Collapsed
+                            | LinkType::CollapsedUnknown
+                            | LinkType::Shortcut
+                            | LinkType::ShortcutUnknown => false,
+                            LinkType::Autolink | LinkType::Email => true,
+                        };
+                    }
+
+                    _ => {}
+                },
                 Event::End(tag) => {
                     match tag {
                         Tag::Link(link_type, _url, _title) => {
-                            // for now, only dealing with some links types
-                            match link_type {
-                                LinkType::Collapsed
-                                | LinkType::CollapsedUnknown
-                                | LinkType::Shortcut
-                                | LinkType::ShortcutUnknown
-                                | LinkType::Reference
-                                | LinkType::ReferenceUnknown => {}
-                                LinkType::Autolink | LinkType::Email | LinkType::Inline => {
-                                    // if !title.is_empty() {
-                                    //     Self::track(&title, offset, &mut plain, &mut mapping);
-                                    // }
-                                }
-                            }
+                            // the actual rendered content is in a text section
                         }
                         Tag::Image(_link_type, _url, title) => {
                             Self::track(&title, offset, &mut plain, &mut mapping);
@@ -136,7 +117,9 @@ impl<'a> PlainOverlay<'a> {
                 }
                 Event::Text(s) => {
                     if code_block {
-                        // TODO do smth
+                        if inception {
+                            // TODO validate as additional, virtual document
+                        }
                     } else if skip_link_text {
                         skip_link_text = false
                     } else {
@@ -144,9 +127,7 @@ impl<'a> PlainOverlay<'a> {
                     }
                 }
                 Event::Code(_s) => {
-                    // TODO extract comments from the doc comment and in the distant
-                    // future potentially also check var names with leviatan distance
-                    // to wordbook entries, and only complain if there are sane suggestions
+                    // inline code such as `YakShave` shall be ignored
                 }
                 Event::Html(_s) => {}
                 Event::FootnoteReference(s) => {
@@ -446,17 +427,17 @@ And a line, or a rule."##;
 
     #[test]
     fn link_footnote() {
-        const CMARK: &str = r#"footnote [^linktxt]. Which one?
+        cmark_reduction_test(
+            r#"footnote [^linktxt]. Which one?
 
-        [linktxt]: ../../reference/index.html"#;
-        const PLAIN: &str = r#"footnote linktxt. Which one?"#;
-
-        cmark_reduction_test(CMARK, PLAIN, 3);
+[linktxt]: ../../reference/index.html"#,
+            r#"footnote linktxt. Which one?"#,
+            3,
+        );
     }
 
     #[test]
     fn link_inline() {
-        // Inline
         cmark_reduction_test(
             r#" prefix [I'm an inline-style link](https://duckduckgo.com) postfix"#,
             r#"prefix I'm an inline-style link postfix"#,
@@ -465,7 +446,6 @@ And a line, or a rule."##;
     }
     #[test]
     fn link_auto() {
-        // Autolink
         cmark_reduction_test(
             r#" prefix <http://foo.bar/baz> postfix"#,
             r#"prefix  postfix"#,
@@ -476,7 +456,6 @@ And a line, or a rule."##;
 
     #[test]
     fn link_email() {
-        // Email
         cmark_reduction_test(
             r#" prefix <loe@example.com> postfix"#,
             r#"prefix  postfix"#,
@@ -486,7 +465,6 @@ And a line, or a rule."##;
 
     #[test]
     fn link_reference() {
-        // Reference
         cmark_reduction_test(
             r#"[classy reference link][the reference str]"#,
             r#"classy reference link"#,
@@ -496,8 +474,6 @@ And a line, or a rule."##;
 
     #[test]
     fn link_collapsed_ref() {
-        // ReferenceUnknown
-        // Collapsed
         cmark_reduction_test(
             r#"[collapsed reference link][]"#,
             r#"collapsed reference link"#,
@@ -507,13 +483,13 @@ And a line, or a rule."##;
 
     #[test]
     fn link_shortcut_ref() {
-        // CollapsedUnknown
-        // Shortcut
         cmark_reduction_test(
             r#"[shortcut reference link]"#,
             r#"shortcut reference link"#,
             1,
         );
-        //ShortcutUnknown
     }
+
+    // Nested links as well as nested code blocks are
+    // impossible according to the common mark spec.
 }
