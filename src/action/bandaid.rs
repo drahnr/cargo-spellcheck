@@ -73,11 +73,9 @@ impl From<(String, Span)> for BandAid {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use crate::span::Span;
+    use crate::{Span, LineColumn};
     use crate::util::load_span_from;
     use anyhow::anyhow;
-    use proc_macro2::LineColumn;
-    use std::io::Read;
     use std::path::Path;
 
     /// Extract span from file as String

@@ -115,6 +115,7 @@ pub(crate) mod tests {
     pub(crate) use super::super::literal::tests::annotated_literals;
     use super::*;
 
+    /// A debug helper to print concatenated length of all items.
     #[macro_export]
     macro_rules! chyrp_dbg {
         ($first:literal $(, $( $line:literal ),+ )? $(,)? $(@ $prefix:literal)? ) => {

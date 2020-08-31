@@ -122,8 +122,6 @@ pub mod tests {
     use crate::ContentOrigin;
     use crate::LineColumn;
 
-    use std::path::PathBuf;
-
     use crate::fluff_up;
 
     const TEXT: &'static str = "With markdown removed, for sure.";

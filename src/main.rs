@@ -1,6 +1,6 @@
 #![deny(dead_code)]
-#![warn(missing_docs)]
-#![warn(unused_crate_dependencies)]
+#![deny(missing_docs)]
+#![deny(unused_crate_dependencies)]
 #![warn(clippy::pedantic)]
 
 //! cargo-spellcheck
