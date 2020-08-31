@@ -72,7 +72,7 @@ impl<'a> PlainOverlay<'a> {
 
         for (event, offset) in parser.into_offset_iter() {
             trace!("Parsing event ({:?}): {:?}", &offset, &event);
-            match dbg!(event) {
+            match event {
                 Event::Start(tag) => match tag {
                     Tag::CodeBlock(fenced) => {
                         code_block = true;
