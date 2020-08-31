@@ -73,8 +73,8 @@ impl From<(String, Span)> for BandAid {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use crate::{Span, LineColumn};
     use crate::util::load_span_from;
+    use crate::{LineColumn, Span};
     use anyhow::anyhow;
     use std::path::Path;
 
