@@ -158,7 +158,6 @@ l
     }
 
     #[test]
-    #[ignore]
     fn try_from_string_works() {
         const TEST: &str = include_str!("../../demo/src/main.rs");
 
@@ -207,7 +206,6 @@ l
     }
 
     #[test]
-    #[ignore]
     fn try_from_raw_string_works() {
         const TEST: &str = include_str!("../../demo/src/lib.rs");
         let fn_with_doc = TEST

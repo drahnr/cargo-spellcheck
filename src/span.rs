@@ -412,8 +412,6 @@ AlphaOmega
 
     #[test]
     fn extraction_fluff() {
-        const SOURCE: &'static str = fluff_up!(["one", "two", "three"]);
-
         const CHUNK_S: &'static str = r#" one
  two
  three"#;
@@ -440,8 +438,6 @@ AlphaOmega
 
     #[test]
     fn extraction_chyrp() {
-        const SOURCE: &'static str = chyrp_up!(["one", "two", "three"]);
-
         const CHUNK_S: &'static str = r#"one
 two
 three"#;

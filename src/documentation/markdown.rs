@@ -95,7 +95,7 @@ impl<'a> PlainOverlay<'a> {
                 },
                 Event::End(tag) => {
                     match tag {
-                        Tag::Link(link_type, _url, _title) => {
+                        Tag::Link(_link_type, _url, _title) => {
                             // the actual rendered content is in a text section
                         }
                         Tag::Image(_link_type, _url, title) => {
@@ -313,7 +313,6 @@ mod tests {
 
     #[test]
     fn reduction_complex() {
-        // TODO add links
         const MARKDOWN: &str = r##"# Title number 1
 
 ## Title number 2
@@ -325,7 +324,7 @@ let z = x/y;
 assert_eq!(z,7);
 ```
 
-### Title number 3
+### Title [number 3][ff]
 
 Some **extra** _formatting_ if __anticipated__ or _*not*_ or
 maybe not at all.
@@ -337,6 +336,8 @@ Extra ~pagaph~ _paragraph_.
 
 And a line, or a **rule**.
 
+
+[ff]: https://docs.rs
 "##;
 
         const PLAIN: &str = r##"Title number 1
@@ -355,7 +356,7 @@ And a line, or a rule."##;
         let (reduced, mapping) = PlainOverlay::extract_plain_with_mapping(MARKDOWN);
 
         assert_eq!(dbg!(&reduced).as_str(), PLAIN);
-        assert_eq!(dbg!(&mapping).len(), 19);
+        assert_eq!(dbg!(&mapping).len(), 20);
         for (reduced_range, markdown_range) in mapping.iter() {
             assert_eq!(
                 reduced[reduced_range.clone()],
