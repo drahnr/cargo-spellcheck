@@ -57,6 +57,7 @@ impl Drop for ScopedRaw {
 #[derive(Debug, Clone, Copy)]
 enum Direction {
     Forward,
+    #[allow(unused)]
     Backward,
 }
 
@@ -385,7 +386,7 @@ impl UserPicked {
         }
 
         loop {
-            let mut guard = ScopedRaw::new();
+            let mut _guard = ScopedRaw::new();
 
             self.print_replacements_list(state)?;
 
@@ -408,7 +409,7 @@ impl UserPicked {
             {
                 Event::Key(event) => event,
                 Event::Resize(..) => {
-                    drop(guard);
+                    drop(_guard);
                     continue;
                 }
                 sth => {
@@ -418,9 +419,9 @@ impl UserPicked {
             };
 
             if state.is_custom_entry() {
-                drop(guard);
+                drop(_guard);
                 info!("Custom entry mode");
-                guard = ScopedRaw::new();
+                _guard = ScopedRaw::new();
 
                 let pick = self.enter_custom_replacement(state, event)?;
 
@@ -436,7 +437,7 @@ impl UserPicked {
                 }
             }
 
-            drop(guard);
+            drop(_guard);
             // print normally again
             trace!("registered event: {:?}", &event);
 

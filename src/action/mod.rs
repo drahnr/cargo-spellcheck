@@ -3,7 +3,7 @@ use anyhow::{anyhow, Result};
 use log::{debug, trace};
 use std::convert::TryInto;
 use std::fs::{self, OpenOptions};
-use std::io::{BufRead, Read, Write};
+use std::io::{BufRead, Write};
 
 use std::path::PathBuf;
 
