@@ -31,6 +31,9 @@ use serde::Deserialize;
 #[cfg(not(target_os = "windows"))]
 use signal_hook::{iterator, SIGINT, SIGQUIT, SIGTERM};
 
+#[cfg(target_os = "windows")]
+use signal_hook as _;
+
 use std::path::PathBuf;
 
 /// Docopt usage string.
