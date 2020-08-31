@@ -21,6 +21,7 @@ use proc_macro2::{Spacing, TokenTree};
 use std::convert::{TryFrom, TryInto};
 use std::path::PathBuf;
 
+/// Range based on `usize`, simplification.
 pub type Range = core::ops::Range<usize>;
 
 mod chunk;
@@ -42,24 +43,29 @@ pub struct Documentation {
 }
 
 impl Documentation {
+    /// Create a new and empty doc.
     pub fn new() -> Self {
         Self {
             index: IndexMap::with_capacity(64),
         }
     }
 
+    /// Check if the document contains any checkable items.
     pub fn is_empty(&self) -> bool {
         self.index.is_empty()
     }
 
+    /// Borrowing iterator across content origins and associated sets of chunks.
     pub fn iter(&self) -> impl Iterator<Item = (&ContentOrigin, &Vec<CheckableChunk>)> {
         self.index.iter()
     }
 
+    /// Consuming iterator across content origins and associated sets of chunks.
     pub fn into_iter(self) -> impl Iterator<Item = (ContentOrigin, Vec<CheckableChunk>)> {
         self.index.into_iter()
     }
 
+    /// Join `self` with another doc to form a new one.
     pub fn join(&mut self, other: Documentation) -> &mut Self {
         other
             .into_iter()
@@ -69,6 +75,7 @@ impl Documentation {
         self
     }
 
+    /// Extend `self` by joining in other `Documentation`s.
     pub fn extend<I, J>(&mut self, docs: I)
     where
         I: IntoIterator<Item = Documentation, IntoIter = J>,
@@ -79,6 +86,7 @@ impl Documentation {
         });
     }
 
+    /// Adds a set of `CheckableChunk`s to the documentation to be checked.
     pub fn add(&mut self, source: ContentOrigin, mut chunks: Vec<CheckableChunk>) {
         self.index
             .entry(source)

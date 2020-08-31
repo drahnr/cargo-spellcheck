@@ -168,6 +168,7 @@ impl<'a> PlainOverlay<'a> {
         (plain, mapping)
     }
 
+    /// Create a common mark overlay based on the provided `CheckableChunk` reference.
     // TODO consider returning a Vec<PlainOverlay<'a>> to account for list items
     // or other non-linear information which might not pass a grammar check as a whole
     pub fn erase_markdown(chunk: &'a CheckableChunk) -> Self {
@@ -246,6 +247,7 @@ impl<'a> PlainOverlay<'a> {
             })
     }
 
+    /// Obtains a reference to the plain, cmark erased representation.
     pub fn as_str(&self) -> &str {
         self.plain.as_str()
     }

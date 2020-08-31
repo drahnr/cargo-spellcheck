@@ -12,14 +12,21 @@ use crate::{util::sub_chars, Range, Span};
 /// Definition of the source of a checkable chunk
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub enum ContentOrigin {
+    /// A common mark file at given path.
     CommonMarkFile(PathBuf),
-    RustDocTest(PathBuf, Span), // span is just there to disambiguiate
+    /// A rustdoc comment, part of file reference by path in span.
+    RustDocTest(PathBuf, Span),
+    /// Full rust source file.
     RustSourceFile(PathBuf),
+    /// A test entity, with no meaning outside of test.
     #[cfg(test)]
     TestEntity,
 }
 
 impl ContentOrigin {
+    /// Represent the content origin as [path](std::path::PathBuf).
+    ///
+    /// `TestEntity` variant becomes `/tmp/test/entity`.
     pub fn as_path(&self) -> &Path {
         match self {
             Self::CommonMarkFile(path) => path.as_path(),
@@ -65,16 +72,17 @@ impl std::hash::Hash for CheckableChunk {
 }
 
 impl CheckableChunk {
-    /// Specific to rust source code, either as part of doc test comments or file scope
+    /// Specific to rust source code, either as part of doc test comments or file scope.
     pub fn from_literalset(set: LiteralSet) -> Self {
         set.into_chunk()
     }
 
-    /// Load content from string, may contain markdown content
+    /// Load content from string, may contain markdown content.
     pub fn from_str(content: &str, source_mapping: IndexMap<Range, Span>) -> Self {
         Self::from_string(content.to_string(), source_mapping)
     }
 
+    /// Load content from an owned string by taking ownership.
     pub fn from_string(content: String, source_mapping: IndexMap<Range, Span>) -> Self {
         Self {
             content,
@@ -187,7 +195,7 @@ impl CheckableChunk {
             .collect::<IndexMap<_, _>>()
     }
 
-    /// Yields a set of ranges covering all spanned lines (the full line)
+    /// Yields a set of ranges covering all spanned lines (the full line).
     pub fn find_covered_lines<'i>(&'i self, range: Range) -> Vec<Range> {
         // assumes the _mistake_ is within one line
         // if not we chop it down to the first line
@@ -227,18 +235,25 @@ impl CheckableChunk {
         acc
     }
 
+    /// Obtain the content as `str` representation.
     pub fn as_str(&self) -> &str {
         self.content.as_str()
     }
 
+    /// Get the display wrapper type to be used with i.e. `format!(..)`.
     pub fn display(&self, range: Range) -> ChunkDisplay {
         ChunkDisplay::from((self, range))
     }
 
+    /// Iterate over all ranges and the associated span.
     pub fn iter(&self) -> indexmap::map::Iter<Range, Span> {
         self.source_mapping.iter()
     }
 
+    /// Number of fragments.
+    ///
+    /// A fragment is a continuous sub-string which is not
+    /// split up any further.
     pub fn fragment_count(&self) -> usize {
         self.source_mapping.len()
     }

@@ -3,6 +3,10 @@
 #![warn(unused_crate_dependencies)]
 #![warn(clippy::pedantic)]
 
+//! cargo-spellcheck
+//!
+//! A syntax tree based doc comment and common mark spell checker.
+
 mod action;
 mod checker;
 mod config;
@@ -29,6 +33,7 @@ use signal_hook::{iterator, SIGINT, SIGQUIT, SIGTERM};
 
 use std::path::PathBuf;
 
+/// Docopt usage string.
 const USAGE: &str = r#"
 Spellcheck all your doc comments
 
@@ -59,10 +64,19 @@ Options:
   --skip-readme             Do not attempt to process README.md files listed in Cargo.toml manifests.
 "#;
 
+/// A simple exit code representation.
+///
+/// `Custom` can be specified by the user,
+/// others map to thei unix equivalents where
+/// available.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum ExitCode {
+    /// Regular termination and does not imply anything
+    /// in regards to spelling mistakes found or not.
     Success,
+    /// Terminate requested by a *nix signal.
     Signal,
+    /// A custom exit code, as specified with `--code=<code>`.
     Custom(u8),
     // Failure is already default for `Err(anyhow::Error)`
 }
@@ -98,6 +112,9 @@ struct Args {
     cmd_config: bool,
 }
 
+/// Handle incoming signals.
+///
+/// Only relevant for *-nix platforms.
 #[cfg(not(target_os = "windows"))]
 fn signal_handler() {
     let signals =
@@ -115,6 +132,10 @@ fn signal_handler() {
     }
 }
 
+/// Agjust the raw arguments for call variants.
+///
+/// The program could be called like `cargo-spellcheck`, `cargo spellcheck` or
+/// `cargo spellcheck check` and even ``cargo-spellcheck check`.
 fn parse_args(mut argv_iter: impl Iterator<Item = String>) -> Result<Args, docopt::Error> {
     Docopt::new(USAGE).and_then(|d| {
         // if ends with file name `cargo-spellcheck`, split
@@ -150,6 +171,7 @@ fn parse_args(mut argv_iter: impl Iterator<Item = String>) -> Result<Args, docop
     })
 }
 
+/// The inner main.
 fn run() -> anyhow::Result<ExitCode> {
     let args = parse_args(std::env::args()).unwrap_or_else(|e| e.exit());
 
@@ -344,6 +366,7 @@ fn run() -> anyhow::Result<ExitCode> {
     }
 }
 
+#[allow(missing_docs)]
 fn main() -> anyhow::Result<()> {
     std::process::exit(run()?.as_u8() as i32)
 }

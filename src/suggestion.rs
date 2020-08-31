@@ -24,12 +24,19 @@ use crate::{Range, Span};
 #[derive(Debug, Clone, Copy, BitFlags, Eq, PartialEq, Hash)]
 #[repr(u8)]
 pub enum Detector {
+    /// Hunspell lib based detector.
     Hunspell = 0b0001,
+    /// Language tool server based detection.
     LanguageTool = 0b0010,
+    /// Detection of nothing, a test helper.
     #[cfg(test)]
     Dummy = 0b1000,
 }
 
+/// Terminal size in characters.
+///
+/// Returns `80usize` for tests and in case the terminal size
+/// can not be retrieved.
 pub fn get_terminal_size() -> usize {
     const DEFAULT_TERMINAL_SIZE: usize = 80;
     #[cfg(not(test))]
@@ -69,8 +76,8 @@ impl fmt::Display for Detector {
     }
 }
 
-// For long lines, literal will be trimmed to display in one terminal line.
-// Misspelled words that are too long shall also be ellipsized.
+/// For long lines, literal will be trimmed to display in one terminal line.
+/// Misspelled words that are too long shall also be ellipsized.
 pub fn condition_display_content(
     terminal_size: usize,
     _indent: usize,
@@ -491,18 +498,22 @@ pub struct SuggestionSet<'s> {
 }
 
 impl<'s> SuggestionSet<'s> {
+    /// Create a new and empty suggestion set.
     pub fn new() -> Self {
         Self {
             per_file: indexmap::IndexMap::with_capacity(64),
         }
     }
 
+    /// Iterate over all suggestions tupled with the content origin of the file the
+    /// suggestion relates to.
     pub fn iter<'a>(
         &'a self,
     ) -> impl DoubleEndedIterator<Item = (&'a ContentOrigin, &'a Vec<Suggestion<'s>>)> {
         self.per_file.iter()
     }
 
+    /// Adds a new suggestion to the set.
     pub fn add(&mut self, origin: ContentOrigin, suggestion: Suggestion<'s>) {
         self.per_file
             .entry(origin)
@@ -510,6 +521,7 @@ impl<'s> SuggestionSet<'s> {
             .push(suggestion);
     }
 
+    /// Adds a slice of suggestions at once.
     pub fn append(&mut self, origin: ContentOrigin, suggestions: &[Suggestion<'s>]) {
         self.per_file
             .entry(origin)
@@ -517,6 +529,7 @@ impl<'s> SuggestionSet<'s> {
             .extend_from_slice(suggestions);
     }
 
+    /// Alternative form of [`Self::append`](Self::append).
     pub fn extend<I>(&mut self, origin: ContentOrigin, suggestions: I)
     where
         I: IntoIterator<Item = Suggestion<'s>>,

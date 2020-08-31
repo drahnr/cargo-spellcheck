@@ -1,3 +1,5 @@
+//! Covers all user triggered actions (except for signals).
+
 use super::*;
 use anyhow::{anyhow, Result};
 use log::{debug, trace};
@@ -13,13 +15,18 @@ pub mod interactive;
 pub(crate) use bandaid::*;
 use interactive::*;
 
+/// State of conclusion.
 #[derive(Debug, Clone, Copy)]
 pub enum Finish {
+    /// Abort is user requested, either by signal or key stroke.
     Abort,
+    /// Completion of the check run, with the resulting number of
+    /// mistakes accumulated.
     MistakeCount(usize),
 }
 
 impl Finish {
+    /// A helper to determine if any mistakes were found.
     pub fn found_any(&self) -> bool {
         match *self {
             Self::MistakeCount(n) if n > 0 => true,
@@ -125,6 +132,7 @@ pub enum Action {
 }
 
 impl Action {
+    /// Apply bandaids to the file represented by content origin.
     fn correction<'s>(
         &self,
         origin: ContentOrigin,
@@ -192,7 +200,10 @@ impl Action {
         Ok(())
     }
 
-    // consume self, doing the same thing again would cause garbage file content.
+    /// Consumingly apply the user picked changes to a file.
+    ///
+    /// **Attention**: Must be consuming, repeated usage causes shifts in spans and
+    /// would destroy the file structure!
     pub fn write_changes_to_disk(&self, userpicked: UserPicked, _config: &Config) -> Result<()> {
         if userpicked.total_count() > 0 {
             debug!("Writing changes back to disk");
@@ -205,7 +216,7 @@ impl Action {
         Ok(())
     }
 
-    /// Purpose was to check, check complete, so print the results.
+    /// Purpose was to check, checking complete, so print the results.
     fn check(&self, suggestions_per_path: SuggestionSet, _config: &Config) -> Result<Finish> {
         let mut count = 0usize;
         for (_path, suggestions) in suggestions_per_path {

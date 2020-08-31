@@ -164,16 +164,24 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
 }
 
 impl TrimmedLiteral {
+    /// Represent the rendered content as `str`.
+    ///
+    /// Does not contain `pre` and `post` characters.
     pub fn as_str(&self) -> &str {
         &self.rendered.as_str()[self.pre..(self.pre + self.len_in_bytes)]
     }
+
+    /// The prefix characters.
     pub fn prefix(&self) -> &str {
         &self.rendered.as_str()[..self.pre]
     }
+
+    /// The suffix characters.
     pub fn suffix(&self) -> &str {
         &self.rendered.as_str()[(self.pre + self.len_in_bytes)..]
     }
 
+    /// Full representation including `prefix` and `postfix` characters.
     pub fn as_untrimmed_str(&self) -> &str {
         &self.rendered.as_str()
     }
@@ -188,18 +196,22 @@ impl TrimmedLiteral {
         self.len_in_bytes
     }
 
+    /// Obtain `prefix` length.
     pub fn pre(&self) -> usize {
         self.pre
     }
 
+    /// Obtain `suffix` length.
     pub fn post(&self) -> usize {
         self.post
     }
 
+    /// Coverage span for the content, excluding `pre`/`prefix` and `post`/`suffix`.
     pub fn span(&self) -> Span {
         self.span.clone()
     }
 
+    /// Iterate over all characters, excluding `pre`/`prefix` and `post`/`suffix`.
     pub fn chars<'a>(&'a self) -> impl Iterator<Item = char> + 'a {
         self.as_str().chars()
     }

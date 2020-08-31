@@ -41,14 +41,19 @@ impl LiteralSet {
         Err(literal)
     }
 
+    /// The set of trimmed literals this set covers.
     pub fn literals<'x>(&'x self) -> Vec<&'x TrimmedLiteral> {
         self.literals.iter().by_ref().collect()
     }
 
+    /// The number of literals inside this set.
     pub fn len(&self) -> usize {
         self.literals.len()
     }
 
+    /// Convert to a checkable chunk.
+    ///
+    /// Creates the map from content ranges to source spans.
     pub fn into_chunk(self) -> crate::documentation::CheckableChunk {
         let n = self.len();
         let mut source_mapping = indexmap::IndexMap::with_capacity(n);
@@ -118,6 +123,19 @@ pub(crate) mod tests {
         }
     }
 
+    /// A helper macro creating valid doc string using
+    /// the macro syntax `#[doc=r#"..."#]`.
+    ///
+    /// Example:
+    ///
+    /// ```rust
+    /// let x = chryp_up!(["some", "thing"])
+    /// let y = r##"#[doc=r#"some
+    /// thing"#
+    /// struct ChyrpChyrp;"##;
+    ///
+    /// assert_eq!(x,y);
+    /// ```
     #[macro_export]
     macro_rules! chyrp_up {
         ([ $( $line:literal ),+ $(,)? ] $(@ $prefix:literal)? ) => {
@@ -128,6 +146,19 @@ pub(crate) mod tests {
         };
     }
 
+    /// A helper macro creating valid doc string using
+    /// the macro syntax `/// ...`.
+    ///
+    /// Example:
+    ///
+    /// ```rust
+    /// let x = fluff_up!(["some", "thing"])
+    /// let y = r#"/// some
+    /// /// thing
+    /// struct Fluff;"##;
+    ///
+    /// assert_eq!(x,y);
+    /// ```
     #[macro_export]
     macro_rules! fluff_up {
         ([ $( $line:literal ),+ $(,)?] $( @ $prefix:literal)?) => {
@@ -289,7 +320,6 @@ struct Vikings;
         let chunk = dbg!(literal_set.clone().into_chunk());
         let it = dbg!(literal_set.literals()).into_iter();
 
-        const THREE_SLASHES: usize = 3usize;
         for (range, span, s) in itertools::cons_tuples(chunk.iter().zip(it)) {
             if range.len() == 0 {
                 continue;

@@ -5,6 +5,9 @@
 //! A default configuration will be generated in the default
 //! location by default. Default. Default default default.
 
+// TODO pendeng refactor, avoid spending time on documenting the status quo.
+#![allow(missing_docs)]
+
 use crate::suggestion::Detector;
 use anyhow::{anyhow, bail, Error, Result};
 use fancy_regex::Regex;

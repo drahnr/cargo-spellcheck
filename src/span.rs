@@ -23,7 +23,9 @@ use super::CheckableChunk;
 /// Column values in UTF-8 characters in a line, 0-indexed and inclusive.
 #[derive(Clone, Debug, Copy, PartialEq, Eq)]
 pub struct Span {
+    /// Start of the span, inclusive, see [LineColumn](proc_macro2::LineColumn).
     pub start: LineColumn,
+    /// End of the span, inclusive, see [LineColumn](proc_macro2::LineColumn).
     pub end: LineColumn,
 }
 

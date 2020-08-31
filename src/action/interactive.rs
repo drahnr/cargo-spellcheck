@@ -35,11 +35,18 @@ e - manually edit the current hunk
 pub struct ScopedRaw;
 
 impl ScopedRaw {
+    /// Enter raw terminal mode.
+    ///
+    /// Must be left before using `log::info!(..)` or any
+    /// other printing macros or functions.
     fn new() -> Result<Self> {
         crossterm::terminal::enable_raw_mode()?;
         Ok(Self)
     }
 
+    /// Helper to restore the previous terminal state.
+    ///
+    /// Also called on `drop`.
     pub fn restore_terminal() -> Result<()> {
         stdout().queue(crossterm::cursor::Show)?;
         crossterm::terminal::disable_raw_mode()?;
@@ -53,10 +60,12 @@ impl Drop for ScopedRaw {
     }
 }
 
-/// In which direction we should progress
+/// In which direction we should progress.
 #[derive(Debug, Clone, Copy)]
 enum Direction {
+    /// In order.
     Forward,
+    /// Reverse order from the current position.
     #[allow(unused)]
     Backward,
 }
@@ -112,22 +121,28 @@ impl<'s, 't> State<'s, 't>
 where
     't: 's,
 {
+    /// Selects the next line.
     pub fn select_next(&mut self) {
         self.pick_idx = (self.pick_idx + 1).rem_euclid(self.n_items);
     }
 
+    /// Selects the previous line.
     pub fn select_previous(&mut self) {
         self.pick_idx = (self.pick_idx + self.n_items - 1).rem_euclid(self.n_items);
     }
 
+    /// Select the custom line, which is by definition the
+    /// last selectable.
     pub fn select_custom(&mut self) {
         self.pick_idx = self.n_items - 1;
     }
-    /// the last one is user input
+
+    /// Checks if the currently selected line is the custom entry.
     pub fn is_custom_entry(&self) -> bool {
         self.pick_idx + 1 == self.n_items
     }
 
+    /// Convert the replacment selection to a bandaid.
     pub fn to_bandaid(&self) -> BandAid {
         if self.is_custom_entry() {
             BandAid::from((
@@ -141,14 +156,15 @@ where
     }
 }
 
-/// The selection of used suggestion replacements
+/// The selection of used suggestion replacements.
 #[derive(Debug, Clone, Default)]
 pub struct UserPicked {
+    /// Associates the bandaids to a content origin, or path respectively.
     pub bandaids: indexmap::IndexMap<ContentOrigin, Vec<BandAid>>,
 }
 
 impl UserPicked {
-    /// Count the number of suggestions accross all files in total
+    /// Count the number of suggestions accross all files in total.
     pub fn total_count(&self) -> usize {
         self.bandaids.iter().map(|(_origin, vec)| vec.len()).sum()
     }
@@ -222,7 +238,7 @@ impl UserPicked {
         Ok(UserSelection::Nop)
     }
 
-    /// only print the list of replacements to the user
+    /// Only print the list of replacements to the user.
     // initial thougth was to show a horizontal list of replacements, navigate left/ right
     // by using the arrow keys
     // .. suggestion0 [suggestion1] suggestion2 suggestion3 ..
@@ -341,7 +357,7 @@ impl UserPicked {
         Ok(())
     }
 
-    /// Wait for user input and process it into a `Pick` enum
+    /// Wait for user input and process it into a `UserSelection` enum.
     fn user_input(&self, state: &mut State, running_idx: (usize, usize)) -> Result<UserSelection> {
         {
             let _guard = ScopedRaw::new();
