@@ -308,8 +308,8 @@ impl CheckableChunk {
     pub fn len_in_chars(&self) -> usize {
         self.content.chars().count()
     }
-    
-    /// Access the comment variant of this chunk.
+
+    /// The variant type of comment.
     pub fn variant(&self) -> CommentVariant {
         self.variant
     }
