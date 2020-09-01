@@ -38,15 +38,32 @@ fn reflow_inner<'s>(
     origin: ContentOrigin,
     s: &'s str,
     range: Range,
-    unbreakable_ranges: &[Range],
+    unbreakable_ranges: Vec<Range>,
+    indentations: Vec<usize>,
+    max_line_width: usize,
 ) -> Option<String> {
-    let mut warper = unimplemented!();
-    unimplemented!()
+    let mut gluon = Gluon::new(s, range, max_line_width, indentations);
+    gluon.add_unbreakables(unbreakable_ranges);
+
+    let replacement = gluon.fold(String::new(), |mut acc, (_, content, _)| {
+        acc.push_str(&content);
+        acc.push_str("\n");
+        acc
+    });
+
+    // iterations above add a newline add the end, we have to remove it
+    let replacement = replacement.trim_end_matches("\n").to_string();
+
+    Some(replacement)
 }
 
 /// Reflow the documenation such that a maximum colomn constraint is met.
 #[allow(unused)]
-fn reflow<'s>(origin: ContentOrigin, chunk: &'s CheckableChunk) -> Vec<Suggestion<'s>> {
+fn reflow<'s>(
+    origin: ContentOrigin,
+    chunk: &'s CheckableChunk,
+    cfg: ReflowConfig,
+) -> Vec<Suggestion<'s>> {
     let parser = Parser::new_ext(chunk.as_str(), Options::all());
 
     let mut paragraph = 0usize;
@@ -61,11 +78,25 @@ fn reflow<'s>(origin: ContentOrigin, chunk: &'s CheckableChunk) -> Vec<Suggestio
                 start: paragraph,
                 end,
             };
+
+            let spans = chunk.find_spans_inclusive(range.clone());
+            let span = Span {
+                start: spans.first().unwrap().start,
+                end: spans.last().unwrap().end,
+            };
+
+            // Get indentation per line as there is one span per line
+            let indentations: Vec<usize> = spans.iter().map(|s| {
+                s.start.column
+            }).collect();
+
             if let Some(replacement) = reflow_inner(
                 origin.clone(),
                 chunk.as_str(),
                 range.clone(),
-                unbreakables.as_slice(),
+                unbreakable_ranges.to_vec(),
+                indentations,
+                cfg.max_line_length,
             ) {
                 acc.push(Suggestion {
                     chunk,
@@ -74,7 +105,7 @@ fn reflow<'s>(origin: ContentOrigin, chunk: &'s CheckableChunk) -> Vec<Suggestio
                     description: None,
                     range: range.clone(),
                     replacements: vec![replacement],
-                    span: unimplemented!("Obtain the span"),
+                    span: span.clone(),
                 })
             }
 
@@ -119,7 +150,9 @@ fn reflow<'s>(origin: ContentOrigin, chunk: &'s CheckableChunk) -> Vec<Suggestio
                     }
                     Tag::Paragraph => {
                         // regular end of paragraph
-                        paragraph = store(cover.end, unbreakables.as_slice());
+                        // @todo the cover.end is exclusive and find_span() of CheckableChunk is inclusive, such that find_span()
+                        // does not find the corresponding span, hence we have to subtract 1 here.
+                        paragraph = store(cover.end - 1, unbreakables.as_slice());
                     }
                     _ => {
                         paragraph = cover.end;
@@ -156,11 +189,48 @@ fn reflow<'s>(origin: ContentOrigin, chunk: &'s CheckableChunk) -> Vec<Suggestio
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::end2end;
     use crate::fluff_up;
 
     use crate::documentation::*;
-    use std::path::PathBuf;
+
+    macro_rules! verify_reflow_inner {
+        ([ $( $line:literal ),+ $(,)?] => $expected:literal) => {
+            verify_reflow_inner!(80usize break [ $( $line ),+ ] => $expected );
+        };
+        ($n:literal break [ $( $line:literal ),+ $(,)?] => $expected:literal) => {
+            const CONTENT: &'static str = fluff_up!($( $line ),+);
+            let docs = Documentation::from((ContentOrigin::TestEntityRust, CONTENT));
+            assert_eq!(docs.entry_count(), 1);
+            let chunks = docs.get(&ContentOrigin::TestEntityRust).expect("Must contain dummy path");
+            assert_eq!(dbg!(chunks).len(), 1);
+            let chunk = &chunks[0];
+
+            // @todo add tests with indentation and unbreakables or is this sufficiently covered by Gluon tests?
+            let range = 0..CONTENT.len();
+            let indentation: Vec<usize> = [0; 6].to_vec();
+            let unbreakables = Vec::new();
+            let replacement = reflow_inner(ContentOrigin::TestEntityRust, chunk.as_str(), range, unbreakables, indentation, $n);
+
+            assert!(replacement.is_some());
+            assert_eq!(replacement.unwrap(), $expected);
+            };
+        ($line:literal => $expected:literal) => {
+            verify_reflow_inner!([$line] => $expected);
+        };
+    }
+
+    #[test]
+    fn get_replacement_from_chunk() {
+        verify_reflow_inner!(80 break ["This module contains documentation that \
+        is too long for one line and moreover, it \
+        spans over mulitple lines such that we can \
+        test our rewrapping algorithm.",
+        "Smart, isn't it? Lorem ipsum and some more \
+        blanket text without any meaning"] =>
+        r#"This module contains documentation that is too long for one line and moreover,
+it spans over mulitple lines such that we can test our rewrapping algorithm."#);
+        assert!(false);
+    }
 
     macro_rules! reflow {
         ([ $( $line:literal ),+ $(,)?] => $expected:literal) => {
@@ -179,15 +249,13 @@ mod tests {
                 max_line_length: $n,
                 .. Default::default()
             };
-        let suggestion_set = Reflow::check(&docs, &cfg)
-            .expect("Must not fail to extract suggestions");
-        let (_, suggestions) = suggestion_set
+        let suggestion_set = reflow(ContentOrigin::TestEntityRust, chunk, cfg);
+        let suggestions = suggestion_set
             .iter()
             .next()
             .expect("Must contain exactly one item");
 
-            let suggestion = suggestions.into_iter().next().expect("Missing");
-            let replacement = suggestion.replacements.iter().next().expect("Must have a replacement");
+            let replacement = suggestions.replacements.iter().next().expect("Must have a replacement");
             assert_eq!(replacement.as_str(), $expected);
         };
         ($line:literal => $expected:literal) => {
@@ -196,8 +264,8 @@ mod tests {
     }
 
     #[test]
-    fn rewrap_into_suggestion() {
-        reflow!(41 break ["This module contains documentation thats \
+    fn reflow_into_suggestion() {
+        reflow!(44 break ["This module contains documentation thats \
 is too long for one line and moreover, \
 it spans over mulitple lines such that \
 we can test our rewrapping algorithm. \
@@ -208,15 +276,65 @@ blanket text without any meaning",
 there are two consecutive newlines \
 in one connected documentation span."] =>
 
-r#" This module contains documentation thats
- is too long for one line and moreover,
- it spans over mulitple lines such that
- we can test our rewrapping algorithm.
- Smart, isn't it? Lorem ipsum and some
- more blanket text without any meaning
+r#"This module contains documentation thats
+is too long for one line and moreover, it
+spans over mulitple lines such that we
+can test our rewrapping algorithm. Smart,
+isn't it? Lorem ipsum and some more
+blanket text without any meaning
 
- But lets also see what happens if there
- are two consecutive newlines in one
- connected documentation span."#);
+But lets also see what happens if there
+are two consecutive newlines in one
+connected documentation span."#);
+    }
+
+    #[test]
+    fn reflow_shorter_than_limit() {
+        reflow!(80 break ["This module contains documentation that is ok for one line"] =>
+                r#" This module contains documentation that is ok for one line"#);
+    }
+
+    #[test]
+    fn reflow_multiple_lines() {
+        reflow!(43 break ["This module contains documentation that is broken",
+                          "into multiple short lines resulting in multiple spans."] =>
+                r#"This module contains documentation that
+is broken into multiple short lines"#);
+    }
+    #[test]
+    fn reflow_indentations() {
+        const CONTENT: &'static str = r#"
+    /// A comment with indentation that spans over
+    /// two lines and should be rewrapped.
+    struct Fluffy {};"#;
+
+        const EXPECTED: &'static str = r#"A comment with indentation
+that spans over two lines
+and should be rewrapped."#;
+
+        let docs = Documentation::from((ContentOrigin::TestEntityRust, CONTENT));
+        assert_eq!(docs.entry_count(), 1);
+        let chunks = docs
+            .get(&ContentOrigin::TestEntityRust)
+            .expect("Must contain dummy path");
+        assert_eq!(dbg!(chunks).len(), 1);
+        let chunk = &chunks[0];
+
+        let cfg = ReflowConfig {
+            max_line_length: 35,
+            ..Default::default()
+        };
+        let suggestion_set = reflow(ContentOrigin::TestEntityRust, chunk, cfg);
+        let suggestions = suggestion_set
+            .iter()
+            .next()
+            .expect("Must contain exactly one item");
+
+        let replacement = suggestions
+            .replacements
+            .iter()
+            .next()
+            .expect("Must have a replacement");
+        assert_eq!(replacement.as_str(), EXPECTED);
     }
 }
