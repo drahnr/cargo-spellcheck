@@ -304,6 +304,18 @@ a single line"#;
     }
 
     #[test]
+    fn wrap_too_short() {
+        const CONTENT: &'static str = r#"something too short for one line"#;
+        const EXPECTED: &'static str = r#"something too short for one line"#;
+        let mut gluon = Gluon::new(CONTENT, 0..CONTENT.len(), 40usize, vec![0; 1]);
+        gluon.add_unbreakables(vec![]);
+
+        let (line_no, content, _) = gluon.next().expect("Must contain exactly one line.");
+        assert_eq!(line_no, 1);
+        assert_eq!(content, EXPECTED);
+    }
+
+    #[test]
     fn wrap_too_long_unbreakable() {
         const CONTENT: &'static str = "something kinda too Xong for a singlX line";
         const EXPECTED: &'static str = r#"something kinda too
