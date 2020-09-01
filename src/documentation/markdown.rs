@@ -390,6 +390,7 @@ mod tests {
                     column: 14usize,
                 },
             }},
+            CommentVariant::CommonMark,
         );
 
         let plain = chunk.erase_cmark();
