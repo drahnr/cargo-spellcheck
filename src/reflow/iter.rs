@@ -3,6 +3,7 @@ use super::*;
 use std::borrow::Cow;
 use std::collections::VecDeque;
 
+#[derive(Debug, Clone)]
 /// Tokenizes a section which is delimited by untokenizable content.
 pub struct Tokeneer<'s> {
     /// Original source string of continuous lines which are to be wrapped.
@@ -94,12 +95,15 @@ impl<'s> Iterator for Tokeneer<'s> {
                 }
                 // if the next peek char is a whitespace, that means we reached the end of the word
                 self.previous_byte_offset..byte_offset_next
-            } else if self.previous_byte_offset < byte_offset {
+            } else if self.previous_byte_offset <= byte_offset {
                 // peek is None, so we might be at the end of the string
                 // so we return the last part
                 self.previous_byte_offset..byte_offset
             } else if cfg!(debug_assertions) {
-                unreachable!("Unreachable condition was reached");
+                unreachable!(
+                    "Unreachable condition was reached (byte_offset={}, previous={})",
+                    byte_offset, self.previous_byte_offset
+                );
             } else {
                 log::error!("Should be never be reachable, please file a bug with the corresponding input data");
                 break 'outer;
@@ -119,6 +123,7 @@ impl<'s> Iterator for Tokeneer<'s> {
 }
 
 /// Re-glue all tokenized items under the constrained of a maximum line width
+#[derive(Debug, Clone)]
 pub struct Gluon<'s> {
     /// Stores a sequence of undividable items as `(char range, cow str)`,
     /// which are eventually combined to a new line.
@@ -248,7 +253,11 @@ impl<'s> Iterator for Gluon<'s> {
             };
             return Some(ret);
         }
-        None
+        if self.queue.is_empty() {
+            None
+        } else {
+            Some(self.craft_line())
+        }
     }
 }
 
@@ -271,6 +280,8 @@ mod tests {
         let mut gluon = Gluon::new(content, 0..content.len(), max_line_width, indentations);
 
         gluon.add_unbreakables(unbreakables);
+
+        assert_eq!(dbg!(gluon.clone()).count(), expected.clone().count());
 
         for ((line_no, line_content, _), (expected_no, expected_content)) in gluon.zip(expected) {
             assert_eq!(line_no, expected_no);
@@ -304,15 +315,13 @@ a single line"#;
     }
 
     #[test]
-    fn wrap_too_short() {
-        const CONTENT: &'static str = r#"something too short for one line"#;
-        const EXPECTED: &'static str = r#"something too short for one line"#;
+    fn wrap_just_fine() {
+        const CONTENT: &'static str = r#"just fine, no action required 🐱"#;
+        const EXPECTED: &'static str = CONTENT;
         let mut gluon = Gluon::new(CONTENT, 0..CONTENT.len(), 40usize, vec![0; 1]);
         gluon.add_unbreakables(vec![]);
 
-        let (line_no, content, _) = gluon.next().expect("Must contain exactly one line.");
-        assert_eq!(line_no, 1);
-        assert_eq!(content, EXPECTED);
+        verify_reflow(CONTENT, EXPECTED, 40usize, vec![], vec![0]);
     }
 
     #[test]
