@@ -96,9 +96,11 @@ impl<'s> Iterator for Tokeneer<'s> {
                 // if the next peek char is a whitespace, that means we reached the end of the word
                 self.previous_byte_offset..byte_offset_next
             } else if self.previous_byte_offset <= byte_offset {
-                // peek is None, so we might be at the end of the string
-                // so we return the last part
-                self.previous_byte_offset..byte_offset
+                // Result `peek` is `None`, so we might be at the end of the string
+                // so just returning the last chunk to the end of the string is fine.
+                // Since the byte offset already denotes the last item, `+1` is ok in
+                // this context as well, we operate on bytes.
+                self.previous_byte_offset..byte_offset+1
             } else if cfg!(debug_assertions) {
                 unreachable!(
                     "Unreachable condition was reached (byte_offset={}, previous={})",
