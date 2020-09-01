@@ -627,7 +627,7 @@ impl<'s> IntoIterator for &'s SuggestionSet<'s> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::LineColumn;
+    use crate::{LineColumn, CommentVariant};
     use console;
     use std::fmt;
 
@@ -661,6 +661,7 @@ mod tests {
                     }
                 }
             },
+            CommentVariant::TripleSlash,
         );
 
         let suggestion = Suggestion {
@@ -710,6 +711,7 @@ mod tests {
                     }
                 }
             },
+            CommentVariant::TripleSlash,
         );
 
         let suggestion = Suggestion {
@@ -778,6 +780,7 @@ mod tests {
                     }
                 }
             },
+            CommentVariant::TripleSlash,
         );
 
         let suggestion = Suggestion {
@@ -845,6 +848,7 @@ mod tests {
                     }
                 }
             },
+            CommentVariant::TripleSlash,
         );
 
         let suggestion = Suggestion {
@@ -901,6 +905,7 @@ mod tests {
                     column: 4usize,
                 }
             } },
+            CommentVariant::TripleSlash,
         );
 
         let suggestion = Suggestion {
