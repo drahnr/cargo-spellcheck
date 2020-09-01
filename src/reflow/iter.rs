@@ -31,13 +31,13 @@ pub struct Tokeneer<'s> {
 
 impl<'s> Tokeneer<'s> {
     /// Initialize a new tokenizer
-    pub fn new(s: &'s str, range: Range) -> Self {
+    pub fn new(s: &'s str, range: Range, unbreakable_ranges: Vec<Range>) -> Self {
         let inner = s.char_indices().enumerate().peekable();
         Self {
             s,
             range,
             spans: Default::default(),
-            unbreakable_ranges: Vec::new(),
+            unbreakable_ranges,
             unbreakable_idx: 0usize,
             inner,
             previous_byte_offset: 0usize,
@@ -48,6 +48,40 @@ impl<'s> Tokeneer<'s> {
     #[inline(always)]
     pub fn add_unbreakables(&mut self, unbreakable_ranges: impl IntoIterator<Item = Range>) {
         self.unbreakable_ranges.extend(unbreakable_ranges);
+    }
+
+    pub fn craft_token(
+        &mut self,
+        char_idx: usize,
+        byte_offset: usize,
+    ) -> Option<(Range, Range, Cow<'s, str>)> {
+        let byte_range = if let Some(&(_char_idx, (byte_offset_next, c_next))) = self.inner.peek() {
+            // if the next peek char is a whitespace, that means we reached the end of the word
+            self.previous_byte_offset..byte_offset_next
+        } else if self.previous_byte_offset <= byte_offset {
+            // Result `peek` is `None`, so we might be at the end of the string
+            // so just returning the last chunk to the end of the string is fine.
+            self.previous_byte_offset..self.s.len()
+        } else if cfg!(debug_assertions) {
+            unreachable!(
+                "Unreachable condition was reached (byte_offset={}, previous={})",
+                byte_offset, self.previous_byte_offset
+            );
+        } else {
+            log::error!(
+                "Should be never be reachable, please file a bug with the corresponding input data"
+            );
+            return None;
+        };
+
+        let char_range = self.previous_char_offset..char_idx + 1;
+
+        let item = (
+            char_range.clone(),
+            byte_range.clone(),
+            std::borrow::Cow::Borrowed(&self.s[byte_range]),
+        );
+        Some(item)
     }
 }
 
@@ -60,11 +94,24 @@ impl<'s> Iterator for Tokeneer<'s> {
             'unbreakable: while let Some(unbreakable) =
                 self.unbreakable_ranges.get(self.unbreakable_idx)
             {
+                // ordered, so if the first is after the current position, all following are too
+                if char_idx < unbreakable.start {
+                    break 'unbreakable;
+                }
                 // are we within an unbreakable area
                 // iff so, just continue until we are out of the weeds
                 if unbreakable.contains(&char_idx) {
-                    continue 'outer;
+                    // watchout for the transition, so we do not overshoot by one!
+                    if !unbreakable.contains(&(char_idx + 1)) {
+                        break 'unbreakable;
+                    } else {
+                        continue 'outer;
+                    }
                 }
+                // the current unbreakable index associated range does not cover us
+                // and we are not before it, so we mus be beyond that.
+                // Let's see if there is another one and re-try if that covers us
+                // already.
                 let idx = self.unbreakable_idx + 1;
                 if let Some(unbreakable_next) = self.unbreakable_ranges.get(idx) {
                     // check if the next unbreakable is overlapping, should not, but hey
@@ -73,11 +120,9 @@ impl<'s> Iterator for Tokeneer<'s> {
                         self.unbreakable_idx = idx;
                         continue 'unbreakable;
                     }
-                } else {
-                    break 'unbreakable;
                 }
-                // we are out of the weeds, the next round needs the next index
-                self.unbreakable_idx = idx;
+                // There is no next index.
+                break 'unbreakable;
             }
 
             if c.is_whitespace() {
@@ -86,37 +131,19 @@ impl<'s> Iterator for Tokeneer<'s> {
                 self.previous_char_offset = char_idx + 1;
                 continue 'outer;
             }
-            let byte_range = if let Some(&(_char_idx, (byte_offset_next, c_next))) =
-                self.inner.peek()
-            {
+
+            // only relevent if we can peek, otherwise craft a token anyways, we are at the
+            // end of our data.
+            if let Some((_char_idx_next, (_byte_offset_next, c_next))) = self.inner.peek() {
+                // assure the next one is whitespace
                 if !c_next.is_whitespace() {
-                    // we have a non whitespace char ahead, so this is not a breaking position
                     continue 'outer;
                 }
-                // if the next peek char is a whitespace, that means we reached the end of the word
-                self.previous_byte_offset..byte_offset_next
-            } else if self.previous_byte_offset <= byte_offset {
-                // Result `peek` is `None`, so we might be at the end of the string
-                // so just returning the last chunk to the end of the string is fine.
-                self.previous_byte_offset..self.s.len()
-            } else if cfg!(debug_assertions) {
-                unreachable!(
-                    "Unreachable condition was reached (byte_offset={}, previous={})",
-                    byte_offset, self.previous_byte_offset
-                );
-            } else {
-                log::error!("Should be never be reachable, please file a bug with the corresponding input data");
-                break 'outer;
-            };
+            }
 
-            let char_range = self.previous_char_offset..char_idx + 1;
-
-            let item = (
-                char_range.clone(),
-                byte_range.clone(),
-                std::borrow::Cow::Borrowed(&self.s[byte_range]),
-            );
-            return Some(item);
+            if let Some(item) = self.craft_token(char_idx, byte_offset) {
+                return Some(item);
+            }
         }
         None
     }
@@ -147,7 +174,7 @@ impl<'s> Gluon<'s> {
             max_line_width,
             indentations,
             line_counter: 0usize,
-            inner: Tokeneer::<'s>::new(s, range),
+            inner: Tokeneer::<'s>::new(s, range, vec![]),
         }
     }
 
@@ -277,30 +304,71 @@ mod tests {
             .lines()
             .enumerate()
             .map(|(idx, line)| (idx + 1, line));
+
         let mut gluon = Gluon::new(content, 0..content.len(), max_line_width, indentations);
 
         gluon.add_unbreakables(unbreakables);
 
-        for ((line_no, line_content, _), (expected_no, expected_content)) in gluon.clone().zip(expected.clone()) {
+        for ((line_no, line_content, _), (expected_no, expected_content)) in
+            gluon.clone().zip(expected.clone())
+        {
             assert_eq!(line_no, expected_no);
             assert_eq!(dbg!(line_content), dbg!(expected_content));
         }
 
         assert_eq!(dbg!(gluon).count(), expected.count());
-
     }
 
-    #[test]
-    fn wrap_too_long_fluid() {
-        const CONTENT: &'static str = "something kinda too long for a single line";
-        const EXPECTED: &'static str = r#"something kinda too long for a
+    mod tokeneer {
+        use super::*;
+
+        fn verify(content: &'static str, expected: &[&'static str], unbreakables: Vec<Range>) {
+            let mut expected_iter = expected.into_iter();
+            let tokeneer = Tokeneer::new(content, 0..content.len(), unbreakables);
+            for (idx, (_char_range, _byte_range, s)) in tokeneer.enumerate() {
+                let expected = expected_iter
+                    .next()
+                    .expect("Must be of equal length at index");
+                println!("idx {} : {} <=> {}", idx, s, expected);
+                assert_eq!(s.to_owned(), expected.to_owned());
+            }
+        }
+
+        #[test]
+        fn smilies() {
+            const CONTENT: &'static str = "🍇🌡 🌤";
+            const EXPECTED: &[&'static str] = &["🍇🌡", "🌤"];
+            verify(CONTENT, EXPECTED, vec![0..2]);
+        }
+
+        #[test]
+        fn multi_char() {
+            const CONTENT: &'static str = "abc xyz qwert";
+            const EXPECTED: &[&'static str] = &["abc", "xyz", "qwert"];
+            verify(CONTENT, EXPECTED, vec![]);
+        }
+
+        #[test]
+        fn partial_covered_word_ubreakable() {
+            const CONTENT: &'static str = "abc xyz qwert";
+            const EXPECTED: &[&'static str] = &["abc xyz", "qwert"];
+            verify(CONTENT, EXPECTED, vec![2..5]);
+        }
+    }
+
+    mod gluon {
+        use super::*;
+        #[test]
+        fn wrap_too_long_fluid() {
+            const CONTENT: &'static str = "something kinda too long for a single line";
+            const EXPECTED: &'static str = r#"something kinda too long for a
 single line"#;
-        verify_reflow(CONTENT, EXPECTED, 30usize, vec![], vec![0]);
-    }
+            verify_reflow(CONTENT, EXPECTED, 30usize, vec![], vec![0]);
+        }
 
-    #[test]
-    fn wrap_too_short_fluid() {
-        const CONTENT: &'static str = r#"something
+        #[test]
+        fn wrap_too_short_fluid() {
+            const CONTENT: &'static str = r#"something
 kinda
 too
 short
@@ -309,55 +377,56 @@ a
 single
 line"#;
 
-        const EXPECTED: &'static str = r#"something kinda too short for
+            const EXPECTED: &'static str = r#"something kinda too short for
 a single line"#;
 
-        verify_reflow(CONTENT, EXPECTED, 30usize, vec![], vec![0; 8]);
-    }
+            verify_reflow(CONTENT, EXPECTED, 30usize, vec![], vec![0; 8]);
+        }
 
-    #[test]
-    fn wrap_just_fine() {
-        const CONTENT: &'static str = r#"just fine, no action required 🐱"#;
-        const EXPECTED: &'static str = CONTENT;
+        #[test]
+        fn wrap_just_fine() {
+            const CONTENT: &'static str = r#"just fine, no action required 🐱"#;
+            const EXPECTED: &'static str = CONTENT;
 
-        verify_reflow(CONTENT, EXPECTED, 40usize, vec![], vec![0]);
-    }
+            verify_reflow(CONTENT, EXPECTED, 40usize, vec![], vec![0]);
+        }
 
-    #[test]
-    fn wrap_too_long_unbreakable() {
-        const CONTENT: &'static str = "something kinda too Xong for a singlX line";
-        const EXPECTED: &'static str = r#"something kinda too
+        #[test]
+        fn wrap_too_long_unbreakable() {
+            const CONTENT: &'static str = "something kinda too Xong for a singlX line";
+            const EXPECTED: &'static str = r#"something kinda too
 Xong for a singlX line"#;
-        verify_reflow(CONTENT, EXPECTED, 30usize, vec![20..37], vec![0]);
-    }
+            verify_reflow(CONTENT, EXPECTED, 30usize, vec![20..37], vec![0]);
+        }
 
-    #[test]
-    fn spaces_and_tabs() {
-        const CONTENT: &'static str = "        something     kinda       ";
-        const EXPECTED: &'static str = r#"something kinda"#;
-        verify_reflow(CONTENT, EXPECTED, 20usize, vec![], vec![0]);
-    }
+        #[test]
+        fn spaces_and_tabs() {
+            const CONTENT: &'static str = "        something     kinda       ";
+            const EXPECTED: &'static str = r#"something kinda"#;
+            verify_reflow(CONTENT, EXPECTED, 20usize, vec![], vec![0]);
+        }
 
-    #[test]
-    fn deep_indentation_too_long() {
-        const CONTENT: &'static str = r#"deep indentation"#;
-        const EXPECTED: &'static str = r#"deep
+        #[test]
+        fn deep_indentation_too_long() {
+            const CONTENT: &'static str = r#"deep indentation"#;
+            const EXPECTED: &'static str = r#"deep
 indentation"#;
-        // 20 < 31 = 4 + 1 + 11 + 15
-        verify_reflow(CONTENT, EXPECTED, 20usize, vec![], vec![15]);
-    }
+            // 20 < 31 = 4 + 1 + 11 + 15
+            verify_reflow(CONTENT, EXPECTED, 20usize, vec![], vec![15]);
+        }
 
-    #[test]
-    fn deep_indentation_too_short() {
-        let _ = env_logger::builder()
-            .is_test(true)
-            .filter(None, log::LevelFilter::Trace)
-            .try_init();
+        #[test]
+        fn deep_indentation_too_short() {
+            let _ = env_logger::builder()
+                .is_test(true)
+                .filter(None, log::LevelFilter::Trace)
+                .try_init();
 
-        const CONTENT: &'static str = r#"deep
+            const CONTENT: &'static str = r#"deep
 indentation"#;
-        const EXPECTED: &'static str = r#"deep indentation"#;
-        // 22 > 21 = 4 + 1 + 11 + 5
-        verify_reflow(CONTENT, EXPECTED, 22usize, vec![], vec![5, 5]);
+            const EXPECTED: &'static str = r#"deep indentation"#;
+            // 22 > 21 = 4 + 1 + 11 + 5
+            verify_reflow(CONTENT, EXPECTED, 22usize, vec![], vec![5, 5]);
+        }
     }
 }
