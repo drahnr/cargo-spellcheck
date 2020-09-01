@@ -98,9 +98,7 @@ impl<'s> Iterator for Tokeneer<'s> {
             } else if self.previous_byte_offset <= byte_offset {
                 // Result `peek` is `None`, so we might be at the end of the string
                 // so just returning the last chunk to the end of the string is fine.
-                // Since the byte offset already denotes the last item, `+1` is ok in
-                // this context as well, we operate on bytes.
-                self.previous_byte_offset..byte_offset+1
+                self.previous_byte_offset..self.s.len()
             } else if cfg!(debug_assertions) {
                 unreachable!(
                     "Unreachable condition was reached (byte_offset={}, previous={})",
@@ -283,19 +281,20 @@ mod tests {
 
         gluon.add_unbreakables(unbreakables);
 
-        assert_eq!(dbg!(gluon.clone()).count(), expected.clone().count());
-
-        for ((line_no, line_content, _), (expected_no, expected_content)) in gluon.zip(expected) {
+        for ((line_no, line_content, _), (expected_no, expected_content)) in gluon.clone().zip(expected.clone()) {
             assert_eq!(line_no, expected_no);
             assert_eq!(dbg!(line_content), dbg!(expected_content));
         }
+
+        assert_eq!(dbg!(gluon).count(), expected.count());
+
     }
 
     #[test]
     fn wrap_too_long_fluid() {
         const CONTENT: &'static str = "something kinda too long for a single line";
         const EXPECTED: &'static str = r#"something kinda too long for a
- single line"#;
+single line"#;
         verify_reflow(CONTENT, EXPECTED, 30usize, vec![], vec![0]);
     }
 
@@ -320,8 +319,6 @@ a single line"#;
     fn wrap_just_fine() {
         const CONTENT: &'static str = r#"just fine, no action required 🐱"#;
         const EXPECTED: &'static str = CONTENT;
-        let mut gluon = Gluon::new(CONTENT, 0..CONTENT.len(), 40usize, vec![0; 1]);
-        gluon.add_unbreakables(vec![]);
 
         verify_reflow(CONTENT, EXPECTED, 40usize, vec![], vec![0]);
     }
@@ -337,8 +334,7 @@ Xong for a singlX line"#;
     #[test]
     fn spaces_and_tabs() {
         const CONTENT: &'static str = "        something     kinda       ";
-        const EXPECTED: &'static str = r#"something
-kinda"#;
+        const EXPECTED: &'static str = r#"something kinda"#;
         verify_reflow(CONTENT, EXPECTED, 20usize, vec![], vec![0]);
     }
 
