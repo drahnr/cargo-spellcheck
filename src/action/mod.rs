@@ -129,6 +129,8 @@ pub enum Action {
     Check,
     /// Interactively choose from checker provided suggestions.
     Fix,
+    /// Reflow all commants to a given maximum column width.
+    Reflow,
 }
 
 impl Action {
@@ -234,7 +236,7 @@ impl Action {
     pub fn run(self, suggestions: SuggestionSet, config: &Config) -> Result<Finish> {
         match self {
             Self::Check => self.check(suggestions, config),
-            Self::Fix => {
+            Self::Fix | Self::Reflow => {
                 let (picked, user_sel) =
                     interactive::UserPicked::select_interactive(suggestions, config)?;
                 if user_sel == UserSelection::Abort {
@@ -245,6 +247,7 @@ impl Action {
                     Ok(Finish::MistakeCount(n))
                 }
             }
+            _ => unimplemented!("Missing implementation for an action"),
         }
     }
 }

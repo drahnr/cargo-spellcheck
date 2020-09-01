@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use std::collections::VecDeque;
 
 #[derive(Debug, Clone)]
-/// Tokenizes a section which is delimited by untokenizable content.
+/// Tokenizes a section which is delimited by untokenizable content. XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXXvvvvv
 pub struct Tokeneer<'s> {
     /// Original source string of continuous lines which are to be wrapped.
     s: &'s str,

@@ -31,7 +31,9 @@ pub struct Config {
     #[serde(alias = "languageTool")]
     #[serde(alias = "Languagetool")]
     pub languagetool: Option<LanguageToolConfig>,
-    reflow: Option<ReflowConfig>,
+    #[serde(alias = "ReFlow")]
+    #[serde(alias = "Reflow")]
+    pub reflow: Option<ReflowConfig>,
 }
 
 #[derive(Debug)]

@@ -35,6 +35,7 @@ use signal_hook::{iterator, SIGINT, SIGQUIT, SIGTERM};
 #[cfg(target_os = "windows")]
 use signal_hook as _;
 
+use checker::Checker;
 use std::path::PathBuf;
 
 /// Docopt usage string.
@@ -44,6 +45,7 @@ Spellcheck all your doc comments
 Usage:
     cargo-spellcheck [(-v...|-q)] check [--cfg=<cfg>] [--code=<code>] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
     cargo-spellcheck [(-v...|-q)] fix [--cfg=<cfg>] [--code=<code>] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
+    cargo-spellcheck [(-v...|-q)] reflow [--cfg=<cfg>] [--code=<code>] [--skip-readme] [[--recursive] <paths>... ]
     cargo-spellcheck [(-v...|-q)] config (--user|--stdout|--cfg=<cfg>) [--force]
     cargo-spellcheck [(-v...|-q)] [--cfg=<cfg>] [--fix] [--code=<code>] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
     cargo-spellcheck --help
@@ -113,6 +115,7 @@ struct Args {
     flag_stdout: bool,
     cmd_fix: bool,
     cmd_check: bool,
+    cmd_reflow: bool,
     cmd_config: bool,
 }
 
@@ -221,6 +224,9 @@ fn run() -> anyhow::Result<ExitCode> {
                 if !config.languagetool.take().is_some() {
                     warn!("Languagetool was never configured.")
                 }
+            }
+            if !checkers.contains(&"reflow".to_owned()) {
+                warn!("Reflow is a separate sub command.")
             }
         }
     };
@@ -345,8 +351,9 @@ fn run() -> anyhow::Result<ExitCode> {
     // extract operation mode
     let action = if args.cmd_fix || args.flag_fix {
         Action::Fix
+    } else if args.cmd_reflow {
+        Action::Reflow
     } else {
-        // check
         Action::Check
     };
 
@@ -359,7 +366,12 @@ fn run() -> anyhow::Result<ExitCode> {
         &config,
     )?;
 
-    let suggestion_set = checker::check(&combined, &config)?;
+    let suggestion_set = match action {
+        Action::Reflow => {
+            reflow::Reflow::check(&combined, &config.reflow.clone().unwrap_or_default())?
+        }
+        Action::Check | Action::Fix => checker::check(&combined, &config)?,
+    };
 
     let finish = action.run(suggestion_set, &config)?;
 
@@ -398,6 +410,7 @@ mod tests {
             "cargo-spellcheck -q fix Cargo.toml",
             "cargo spellcheck -v fix Cargo.toml",
             "cargo spellcheck -m 11 check",
+            "cargo-spellcheck reflow",
         ];
         for command in commands {
             assert!(parse_args(commandline_to_iter(command)).is_ok());

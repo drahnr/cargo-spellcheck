@@ -32,7 +32,13 @@ impl Checker for Reflow {
     where
         'a: 's,
     {
-        unimplemented!("not yet")
+        let mut suggestions = SuggestionSet::new();
+        for (origin, chunks) in docu.iter() {
+            for chunk in chunks {
+                suggestions.extend(origin.clone(), reflow(origin.clone(), chunk, config)?);
+            }
+        }
+        Ok(suggestions)
     }
 }
 
@@ -72,8 +78,8 @@ fn reflow_inner<'s>(
 fn reflow<'s>(
     origin: ContentOrigin,
     chunk: &'s CheckableChunk,
-    cfg: ReflowConfig,
-) -> Vec<Suggestion<'s>> {
+    cfg: &ReflowConfig,
+) -> Result<Vec<Suggestion<'s>>> {
     let parser = Parser::new_ext(chunk.as_str(), Options::all());
 
     let mut paragraph = 0usize;
@@ -83,19 +89,36 @@ fn reflow<'s>(
     let mut acc = Vec::with_capacity(256);
 
     for (event, cover) in parser.into_offset_iter() {
-        let mut store = |end: usize, unbreakable_ranges: &[Range]| -> usize {
+        let mut store = |end: usize, unbreakable_ranges: &[Range]| -> Result<usize> {
             let range = Range {
                 start: paragraph,
                 end,
             };
 
             let spans = chunk.find_spans_inclusive(range.clone());
+
+            // debug_assert!(!spans.is_empty());
+
+            let span_start: LineColumn = if let Some(first) = spans.first() {
+                first.start
+            } else {
+                // anyhow::bail!("Missing spans");
+                return Ok(paragraph);
+            };
+            let span_end: LineColumn = if let Some(last) = spans.last() {
+                last.end
+            } else {
+                // anyhow::bail!("Missing spans");
+                return Ok(paragraph);
+            };
+
             let span = Span {
-                start: spans.first().unwrap().start,
-                end: spans.last().unwrap().end,
+                start: span_start,
+                end: span_end,
             };
 
             // Get indentation per line as there is one span per line
+            // FIXME assumption is not correct
             let indentations: Vec<usize> = spans.iter().map(|s| s.start.column).collect();
 
             if let Some(replacement) = reflow_inner(
@@ -118,7 +141,7 @@ fn reflow<'s>(
                 })
             }
 
-            end // a new beginning (maybe)
+            Ok(end) // a new beginning (maybe)
         };
 
         match event {
@@ -137,7 +160,7 @@ fn reflow<'s>(
                     }
                     _ => {
                         // all of these break a reflow-able chunk
-                        paragraph = store(paragraph, unbreakables.as_slice());
+                        paragraph = store(paragraph, unbreakables.as_slice())?;
                     }
                 }
             }
@@ -161,7 +184,7 @@ fn reflow<'s>(
                         // regular end of paragraph
                         // @todo the cover.end is exclusive and find_span() of CheckableChunk is inclusive, such that find_span()
                         // does not find the corresponding span, hence we have to subtract 1 here.
-                        paragraph = store(cover.end - 1, unbreakables.as_slice());
+                        paragraph = store(cover.end - 1, unbreakables.as_slice())?;
                     }
                     _ => {
                         paragraph = cover.end;
@@ -180,11 +203,11 @@ fn reflow<'s>(
                 // ignored
             }
             Event::HardBreak => {
-                paragraph = store(cover.end, unbreakables.as_slice());
+                paragraph = store(cover.end, unbreakables.as_slice())?;
             }
             Event::Rule => {
                 // @todo how to proceed to past this? do all paragraphs end before
-                paragraph = store(cover.end, unbreakables.as_slice());
+                paragraph = store(cover.end, unbreakables.as_slice())?;
             }
             Event::TaskListMarker(_b) => {
                 // ignored
@@ -192,7 +215,7 @@ fn reflow<'s>(
         }
     }
 
-    acc
+    Ok(acc)
 }
 
 #[cfg(test)]
@@ -264,11 +287,11 @@ test our rewrapping algorithm.",
             .next()
             .expect("Must contain exactly one item");
 
-            let replacement = suggestions.replacements.iter().next().expect("Must have a replacement");
+            let replacement = suggestions.replacements.iter().next().expect("There exists a replacement. qed");
             assert_eq!(replacement.as_str(), $expected);
         };
         ($line:literal => $expected:literal) => {
-            reflow!([$line] => $expected);
+            reflow!([$line] => $expected).expect("Reflow does not error. qed");
         };
     }
 
