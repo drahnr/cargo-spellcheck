@@ -131,7 +131,7 @@ impl Documentation {
         };
         self.add_inner(
             origin,
-            vec![CheckableChunk::from_str(content, source_mapping)],
+            vec![CheckableChunk::from_str(content, source_mapping, CommentVariant::CommonMark)],
         );
         Ok(())
     }

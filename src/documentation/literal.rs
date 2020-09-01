@@ -7,18 +7,29 @@ use std::convert::TryFrom;
 use std::fmt;
 
 /// Track what kind of comment the literal is
-#[derive(Debug, Clone, Copy, Hash)]
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CommentVariant {
     /// `///`
     TripleSlash,
     /// `#[doc=`
     MacroDocEq,
+    /// Commonmark File
+    CommonMark,
+    /// Unknown Variant
+    Unknown,
+}
+
+impl Default for CommentVariant {
+    fn default() -> Self {
+        CommentVariant::Unknown
+    }
 }
 
 /// A literal with meta info where the first and list whitespace may be found.
 #[derive(Clone)]
 pub struct TrimmedLiteral {
+    /// Track what kind of comment the literal is
     variant: CommentVariant,
     /// The span of rendered content, minus pre and post already applied.
     span: Span,

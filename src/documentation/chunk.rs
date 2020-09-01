@@ -73,6 +73,8 @@ pub struct CheckableChunk {
     /// `Span` referencing the location within the source file.
     /// For a markdown file i.e. this would become a single entry spanning from start to end.
     source_mapping: IndexMap<Range, Span>,
+    /// Track what kind of comment the chunk is
+    variant: CommentVariant,
 }
 
 impl std::hash::Hash for CheckableChunk {
@@ -82,6 +84,7 @@ impl std::hash::Hash for CheckableChunk {
         self.source_mapping.iter().for_each(|t| {
             t.hash(hasher);
         });
+        self.variant.hash(hasher);
     }
 }
 
@@ -91,16 +94,17 @@ impl CheckableChunk {
         set.into_chunk()
     }
 
-    /// Load content from string, may contain markdown content.
-    pub fn from_str(content: &str, source_mapping: IndexMap<Range, Span>) -> Self {
-        Self::from_string(content.to_string(), source_mapping)
+    /// Load content from string, may contain common mark content.
+    pub fn from_str(content: &str, source_mapping: IndexMap<Range, Span>, variant: CommentVariant) -> Self {
+        Self::from_string(content.to_string(), source_mapping, variant)
     }
 
-    /// Load content from an owned string by taking ownership.
-    pub fn from_string(content: String, source_mapping: IndexMap<Range, Span>) -> Self {
+    /// Load content from string, may contain common mark content.
+    pub fn from_string(content: String, source_mapping: IndexMap<Range, Span>, variant: CommentVariant) -> Self {
         Self {
             content,
             source_mapping,
+            variant
         }
     }
 
@@ -299,6 +303,11 @@ impl CheckableChunk {
     pub fn len_in_chars(&self) -> usize {
         self.content.chars().count()
     }
+    
+    /// Access the comment variant of this chunk
+    pub fn variant(&self) -> CommentVariant {
+        self.variant
+    }
 }
 
 /// Convert the clusters of one file into a source description as well
@@ -427,6 +436,7 @@ mod test {
                     column: 14usize,
                 },
             }},
+            CommentVariant::CommonMark
         );
 
         assert_eq!(chunk.find_spans(0..2).len(), 1);
