@@ -9,7 +9,9 @@ use serde::{Deserialize, Serialize};
 use crate::checker::Checker;
 use crate::documentation::{CheckableChunk, Documentation};
 use crate::util::sub_chars;
-use crate::{ContentOrigin, Detector, LineColumn, Range, Span, Suggestion, SuggestionSet, CommentVariant};
+use crate::{
+    CommentVariant, ContentOrigin, Detector, LineColumn, Range, Span, Suggestion, SuggestionSet,
+};
 
 use indexmap::IndexMap;
 use log::trace;
@@ -94,9 +96,7 @@ fn reflow<'s>(
             };
 
             // Get indentation per line as there is one span per line
-            let indentations: Vec<usize> = spans.iter().map(|s| {
-                s.start.column
-            }).collect();
+            let indentations: Vec<usize> = spans.iter().map(|s| s.start.column).collect();
 
             if let Some(replacement) = reflow_inner(
                 origin.clone(),

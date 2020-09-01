@@ -95,16 +95,24 @@ impl CheckableChunk {
     }
 
     /// Load content from string, may contain common mark content.
-    pub fn from_str(content: &str, source_mapping: IndexMap<Range, Span>, variant: CommentVariant) -> Self {
+    pub fn from_str(
+        content: &str,
+        source_mapping: IndexMap<Range, Span>,
+        variant: CommentVariant,
+    ) -> Self {
         Self::from_string(content.to_string(), source_mapping, variant)
     }
 
     /// Load content from string, may contain common mark content.
-    pub fn from_string(content: String, source_mapping: IndexMap<Range, Span>, variant: CommentVariant) -> Self {
+    pub fn from_string(
+        content: String,
+        source_mapping: IndexMap<Range, Span>,
+        variant: CommentVariant,
+    ) -> Self {
         Self {
             content,
             source_mapping,
-            variant
+            variant,
         }
     }
 
@@ -215,7 +223,6 @@ impl CheckableChunk {
 
     /// Yields a set of spans covering all spanned lines (the full line).
     pub fn find_spans_inclusive(&self, range: Range) -> Vec<Span> {
-
         let Range { start, end } = range;
         self.source_mapping
             .iter()
@@ -225,9 +232,7 @@ impl CheckableChunk {
                 // could possibly happen on empty documentation lines with `///`
                 fragment_range.len() > 0
             })
-            .map(|(_fragment_range, fragment_span)| {
-                fragment_span.clone()
-            })
+            .map(|(_fragment_range, fragment_span)| fragment_span.clone())
             .collect::<Vec<_>>()
     }
 
@@ -304,7 +309,7 @@ impl CheckableChunk {
         self.content.chars().count()
     }
     
-    /// Access the comment variant of this chunk
+    /// Access the comment variant of this chunk.
     pub fn variant(&self) -> CommentVariant {
         self.variant
     }
@@ -635,7 +640,10 @@ Buchfink"#];
 
         const EXPECTED_SPAN: Span = Span {
             start: LineColumn { line: 1, column: 3 },
-            end: LineColumn { line: 1, column: 20 },
+            end: LineColumn {
+                line: 1,
+                column: 20,
+            },
         };
 
         let range2span = chunk.find_spans_inclusive(CHUNK_RANGE.clone());
