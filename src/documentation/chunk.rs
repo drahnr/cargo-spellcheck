@@ -209,7 +209,25 @@ impl CheckableChunk {
             .collect::<IndexMap<_, _>>()
     }
 
-    /// Yields a set of ranges covering all spanned lines (the full line).
+    /// Yields a set of spans covering all spanned lines (the full line).
+    pub fn find_spans_inclusive(&self, range: Range) -> Vec<Span> {
+
+        let Range { start, end } = range;
+        self.source_mapping
+            .iter()
+            .skip_while(|(fragment_range, _)| fragment_range.end <= start)
+            .take_while(|(fragment_range, _)| fragment_range.start <= end)
+            .filter(|(fragment_range, _)| {
+                // could possibly happen on empty documentation lines with `///`
+                fragment_range.len() > 0
+            })
+            .map(|(_fragment_range, fragment_span)| {
+                fragment_span.clone()
+            })
+            .collect::<Vec<_>>()
+    }
+
+    /// Yields a set of ranges covering all spanned lines (the full line)
     pub fn find_covered_lines<'i>(&'i self, range: Range) -> Vec<Range> {
         // assumes the _mistake_ is within one line
         // if not we chop it down to the first line
@@ -592,6 +610,89 @@ Buchfink"#];
                 expected_str.to_owned()
             );
             assert_eq!(span, expected_span);
+        }
+    }
+
+    #[test]
+    fn find_spans_inclusive() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        const SOURCE: &'static str = fluff_up!(["Some random words"]);
+        let set = gen_literal_set(SOURCE);
+        let chunk = dbg!(CheckableChunk::from_literalset(set));
+        // a range inside the span
+        const CHUNK_RANGE: Range = 4..15;
+
+        const EXPECTED_SPAN: Span = Span {
+            start: LineColumn { line: 1, column: 3 },
+            end: LineColumn { line: 1, column: 20 },
+        };
+
+        let range2span = chunk.find_spans_inclusive(CHUNK_RANGE.clone());
+        // test deals only with a single line, so we know it only is a single entry
+        assert_eq!(range2span.len(), 1);
+
+        // assure the range is correct given the chunk
+        assert_eq!("e random wo", &chunk.as_str()[CHUNK_RANGE.clone()]);
+
+        let span = dbg!(range2span.iter().next().unwrap());
+        assert_eq!(
+            load_span_from(SOURCE.as_bytes(), dbg!(*span)).expect("Span extraction must work"),
+            " Some random words".to_owned()
+        );
+        assert_eq!(span, &EXPECTED_SPAN);
+    }
+
+    #[test]
+    fn find_spans_inclusive_multiline() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        const SOURCE: &'static str = fluff_up!(["xyz", "second", "third", "Converts a span to a range, where `self` is converted to a range reltive to the",
+             "passed span `scope`."] @ "       "
+        );
+        let set = gen_literal_set(SOURCE);
+        let chunk = dbg!(CheckableChunk::from_literalset(set));
+        const SPACES: usize = 7;
+        const TRIPLE_SLASH_SPACE: usize = 3;
+        const CHUNK_RANGE: Range = 7..22;
+        const EXPECTED_SPANS: &[Span] = &[
+            Span {
+                start: LineColumn {
+                    line: 2,
+                    column: SPACES + TRIPLE_SLASH_SPACE + 0,
+                },
+                end: LineColumn {
+                    line: 2,
+                    column: SPACES + TRIPLE_SLASH_SPACE + 6,
+                },
+            },
+            Span {
+                start: LineColumn {
+                    line: 3,
+                    column: SPACES + TRIPLE_SLASH_SPACE + 0,
+                },
+                end: LineColumn {
+                    line: 3,
+                    column: SPACES + TRIPLE_SLASH_SPACE + 5,
+                },
+            },
+            Span {
+                start: LineColumn {
+                    line: 4,
+                    column: SPACES + TRIPLE_SLASH_SPACE + 0,
+                },
+                end: LineColumn {
+                    line: 4,
+                    column: SPACES + TRIPLE_SLASH_SPACE + 79,
+                },
+            },
+        ];
+
+        let range2span = chunk.find_spans_inclusive(CHUNK_RANGE);
+
+        assert_eq!(range2span.len(), EXPECTED_SPANS.len());
+        for (spans, expected) in range2span.iter().zip(EXPECTED_SPANS) {
+            assert_eq!(spans, expected);
         }
     }
 }

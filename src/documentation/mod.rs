@@ -375,7 +375,7 @@ pub(crate) mod tests {
                 assert_eq!(chunks.len(), 1);
                 assert_eq!(RAW, chunk.as_str());
 
-                let plain = chunk.erase_markdown();
+                let plain = chunk.erase_cmark();
                 assert_eq!($plain, plain.as_str());
 
                 let mut it = suggestion_set.iter();
