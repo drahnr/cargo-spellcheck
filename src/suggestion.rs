@@ -627,7 +627,7 @@ impl<'s> IntoIterator for &'s SuggestionSet<'s> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{LineColumn, CommentVariant};
+    use crate::{CommentVariant, LineColumn};
     use console;
     use std::fmt;
 

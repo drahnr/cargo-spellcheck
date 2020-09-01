@@ -1,5 +1,5 @@
 pub use super::{TrimmedLiteral, TrimmedLiteralDisplay};
-use crate::{CheckableChunk, Range, CommentVariant};
+use crate::{CheckableChunk, CommentVariant, Range};
 /// A set of consecutive literals.
 ///
 /// Provides means to render them as a code block
@@ -28,7 +28,11 @@ impl LiteralSet {
     /// Returns literl within the Err variant if not adjacent
     pub fn add_adjacent(&mut self, literal: TrimmedLiteral) -> Result<(), TrimmedLiteral> {
         if literal.variant() != self.variant {
-            log::error!("Adjacent literal is not the same comment variant: {:?} vs {:?}", literal.variant(), self.variant);
+            log::error!(
+                "Adjacent literal is not the same comment variant: {:?} vs {:?}",
+                literal.variant(),
+                self.variant
+            );
             return Err(literal);
         }
         let previous_line = literal.span().end.line;
