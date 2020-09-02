@@ -95,7 +95,7 @@ fn reflow<'s>(
                 end,
             };
 
-            let spans = chunk.find_spans_inclusive(range.clone());
+            let spans = chunk.find_enclosing_spans(range.clone());
 
             // debug_assert!(!spans.is_empty());
 
