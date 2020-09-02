@@ -146,7 +146,7 @@ fn reflow<'s>(
 
         match event {
             Event::Start(tag) => {
-                // @todo check links
+                // TODO check links
                 match tag {
                     Tag::Image(_, _, _)
                     | Tag::Link(_, _, _)
@@ -194,7 +194,7 @@ fn reflow<'s>(
             Event::Text(_s) => {}
             Event::Code(_s) => {}
             Event::Html(_s) => {
-                // @todo verify this does not interfere with paragraphs
+                // TODO verify this does not interfere with paragraphs
             }
             Event::FootnoteReference(_s) => {
                 // boring
@@ -206,7 +206,7 @@ fn reflow<'s>(
                 paragraph = store(cover.end, unbreakables.as_slice())?;
             }
             Event::Rule => {
-                // @todo how to proceed to past this? do all paragraphs end before
+                // TODO how to proceed to past this? do all paragraphs end before
                 paragraph = store(cover.end, unbreakables.as_slice())?;
             }
             Event::TaskListMarker(_b) => {
@@ -237,15 +237,21 @@ mod tests {
             assert_eq!(dbg!(chunks).len(), 1);
             let chunk = &chunks[0];
 
-            // @todo add tests with indentation and unbreakables or is this sufficiently covered by Gluon tests?
+            // TODO add tests with indentation and unbreakables or is this sufficiently covered by Gluon tests?
             let range = 0..CONTENT.len();
             let indentation: Vec<usize> = [0; 6].to_vec();
             let unbreakables = Vec::new();
-            let replacement = reflow_inner(ContentOrigin::TestEntityRust, chunk.as_str(), range, unbreakables, indentation, $n, chunk.variant());
+            let replacement = reflow_inner(ContentOrigin::TestEntityRust,
+                chunk.as_str(),
+                range,
+                unbreakables,
+                indentation,
+                $n,
+                chunk.variant()
+            ).expect("Inner reflow works. qed");
 
-            assert!(replacement.is_some());
-            assert_eq!(replacement.unwrap(), $expected);
-            };
+            assert_eq!(replacement, $expected);
+        };
         ($line:literal => $expected:literal) => {
             verify_reflow_inner!([$line] => $expected);
         };
@@ -272,7 +278,7 @@ test our rewrapping algorithm.",
             const CONTENT:&'static str = fluff_up!($( $line ),+);
             let docs = Documentation::from((ContentOrigin::TestEntityRust, CONTENT));
             assert_eq!(docs.entry_count(), 1);
-            let chunks = docs.get(&ContentOrigin::TestEntityRust).expect("Must contain dummy path");
+            let chunks = docs.get(&ContentOrigin::TestEntityRust).expect("Contains test data. qed");
             assert_eq!(dbg!(chunks).len(), 1);
             let chunk = &chunks[0];
             let _plain = chunk.erase_cmark();
@@ -281,11 +287,11 @@ test our rewrapping algorithm.",
                 max_line_length: $n,
                 .. Default::default()
             };
-        let suggestion_set = reflow(ContentOrigin::TestEntityRust, chunk, cfg);
+        let suggestion_set = reflow(ContentOrigin::TestEntityRust, chunk, &cfg).expect("Reflow is working. qed");
         let suggestions = suggestion_set
             .iter()
             .next()
-            .expect("Must contain exactly one item");
+            .expect("Contains one suggestion. qed");
 
             let replacement = suggestions.replacements.iter().next().expect("There exists a replacement. qed");
             assert_eq!(replacement.as_str(), $expected);
@@ -349,7 +355,7 @@ r#" This module contains documentation thats
         assert_eq!(docs.entry_count(), 1);
         let chunks = docs
             .get(&ContentOrigin::TestEntityRust)
-            .expect("Must contain dummy path");
+            .expect("Contains test data. qed");
         assert_eq!(dbg!(chunks).len(), 1);
         let chunk = &chunks[0];
 
@@ -357,17 +363,19 @@ r#" This module contains documentation thats
             max_line_length: 35,
             ..Default::default()
         };
-        let suggestion_set = reflow(ContentOrigin::TestEntityRust, chunk, cfg);
+        let suggestion_set = reflow(ContentOrigin::TestEntityRust, chunk, &cfg)
+            .expect("Reflow is wokring. qed");
+
         let suggestions = suggestion_set
             .iter()
             .next()
-            .expect("Must contain exactly one item");
+            .expect("Contains one suggestion. qed");
 
         let replacement = suggestions
             .replacements
             .iter()
             .next()
-            .expect("Must have a replacement");
+            .expect("There is a replacement. qed");
         assert_eq!(replacement.as_str(), EXPECTED);
     }
 
@@ -375,7 +383,8 @@ r#" This module contains documentation thats
     fn reflow_chyrp() {
         const CONTENT: &'static str = r##"
     #[doc = r#"A comment with indentation that spans over
-                two lines and should be rewrapped."#]
+                two lines and should be rewrapped.
+            "#]
     struct Fluffy {};"##;
 
         const EXPECTED: &'static str = r#"A comment with indentation
@@ -386,7 +395,7 @@ should be rewrapped."#;
         assert_eq!(docs.entry_count(), 1);
         let chunks = docs
             .get(&ContentOrigin::TestEntityRust)
-            .expect("Must contain dummy path");
+            .expect("Contains test data. qed");
         assert_eq!(dbg!(chunks).len(), 1);
         let chunk = &chunks[0];
 
@@ -394,17 +403,19 @@ should be rewrapped."#;
             max_line_length: 45,
             ..Default::default()
         };
-        let suggestion_set = reflow(ContentOrigin::TestEntityRust, chunk, cfg);
+        let suggestion_set = reflow(ContentOrigin::TestEntityRust, chunk, &cfg)
+            .expect("Reflow is working. qed");
+
         let suggestions = suggestion_set
             .iter()
             .next()
-            .expect("Must contain exactly one item");
+            .expect("Contains one suggestion. qed");
 
         let replacement = suggestions
             .replacements
             .iter()
             .next()
-            .expect("Must have a replacement");
+            .expect("There is a replacement. qed");
         assert_eq!(replacement.as_str(), EXPECTED);
     }
 }
