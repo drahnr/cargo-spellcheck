@@ -182,9 +182,7 @@ fn reflow<'s>(
                     }
                     Tag::Paragraph => {
                         // regular end of paragraph
-                        // @todo the cover.end is exclusive and find_span() of CheckableChunk is inclusive, such that find_span()
-                        // does not find the corresponding span, hence we have to subtract 1 here.
-                        paragraph = store(cover.end - 1, unbreakables.as_slice())?;
+                        paragraph = store(cover.end, unbreakables.as_slice())?;
                     }
                     _ => {
                         paragraph = cover.end;
