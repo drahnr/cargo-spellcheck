@@ -331,7 +331,6 @@ impl Action {
                     Ok(Finish::MistakeCount(n))
                 }
             }
-            _ => unimplemented!("Missing implementation for an action"),
         }
     }
 }
