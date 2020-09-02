@@ -55,7 +55,8 @@ impl<'s> Tokeneer<'s> {
         char_idx: usize,
         byte_offset: usize,
     ) -> Option<(Range, Range, Cow<'s, str>)> {
-        let byte_range = if let Some(&(_char_idx, (byte_offset_next, c_next))) = self.inner.peek() {
+        let byte_range = if let Some(&(_char_idx, (byte_offset_next, _c_next))) = self.inner.peek()
+        {
             // if the next peek char is a whitespace, that means we reached the end of the word
             self.previous_byte_offset..byte_offset_next
         } else if self.previous_byte_offset <= byte_offset {

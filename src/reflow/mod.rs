@@ -4,17 +4,16 @@
 //! The reflow is done based on the comments no matter the content.
 
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
 
 use crate::checker::Checker;
 use crate::documentation::{CheckableChunk, Documentation};
-use crate::util::sub_chars;
+
 use crate::{
     CommentVariant, ContentOrigin, Detector, LineColumn, Range, Span, Suggestion, SuggestionSet,
 };
 
 use indexmap::IndexMap;
-use log::trace;
+
 use pulldown_cmark::{Event, Options, Parser, Tag};
 
 mod config;
@@ -43,7 +42,7 @@ impl Checker for Reflow {
 }
 
 fn reflow_inner<'s>(
-    origin: ContentOrigin,
+    _origin: ContentOrigin,
     s: &'s str,
     range: Range,
     unbreakable_ranges: Vec<Range>,
