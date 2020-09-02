@@ -221,8 +221,22 @@ impl CheckableChunk {
             .collect::<IndexMap<_, _>>()
     }
 
-    /// Yields a set of spans covering all spanned lines (the full line).
-    pub fn find_spans_inclusive(&self, range: Range) -> Vec<Span> {
+    /// Extract all spans which at least partially overlap with range,
+    /// i.e. report all spans that either
+    ///  - contain `range.start`
+    ///  - contain `range.end`
+    ///  - are totally enclosed in `range`
+    ///
+    /// Example:
+    ///
+    /// Below setup results in `[s2, s3, s4]`
+    ///
+    /// ```text,ignore
+    /// |-- s1 --|-- s2 --|-- s3 --|-- s4 --|
+    ///             |----- range -----|
+    /// ```
+    ///
+    pub fn find_enclosing_spans(&self, range: Range) -> Vec<Span> {
         let Range { start, end } = range;
         self.source_mapping
             .iter()
@@ -646,7 +660,7 @@ Buchfink"#];
             },
         };
 
-        let range2span = chunk.find_spans_inclusive(CHUNK_RANGE.clone());
+        let range2span = chunk.find_enclosing_spans(CHUNK_RANGE.clone());
         // test deals only with a single line, so we know it only is a single entry
         assert_eq!(range2span.len(), 1);
 
@@ -706,7 +720,7 @@ Buchfink"#];
             },
         ];
 
-        let range2span = chunk.find_spans_inclusive(CHUNK_RANGE);
+        let range2span = chunk.find_enclosing_spans(CHUNK_RANGE);
 
         assert_eq!(range2span.len(), EXPECTED_SPANS.len());
         for (spans, expected) in range2span.iter().zip(EXPECTED_SPANS) {
