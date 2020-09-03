@@ -235,19 +235,18 @@ impl CheckableChunk {
     /// |-- s1 --|-- s2 --|-- s3 --|-- s4 --|
     ///             |----- range -----|
     /// ```
-    ///
-    pub fn find_enclosing_spans(&self, range: Range) -> Vec<Span> {
+    pub fn find_covered_spans<'a>(&'a self, range: Range) -> impl Iterator<Item = &'a Span> {
         let Range { start, end } = range;
         self.source_mapping
             .iter()
-            .skip_while(|(fragment_range, _)| fragment_range.end <= start)
-            .take_while(|(fragment_range, _)| fragment_range.start <= end)
+            .skip_while(move |(fragment_range, _)| fragment_range.end <= start)
+            .take_while(move |(fragment_range, _)| fragment_range.start <= end)
             .filter(|(fragment_range, _)| {
                 // could possibly happen on empty documentation lines with `///`
                 fragment_range.len() > 0
             })
-            .map(|(_fragment_range, fragment_span)| fragment_span.clone())
-            .collect::<Vec<_>>()
+            .map(|(_fragment_range, fragment_span)| fragment_span)
+            // .collect::<Vec<_>>()
     }
 
     /// Yields a set of ranges covering all spanned lines (the full line)
@@ -660,19 +659,19 @@ Buchfink"#];
             },
         };
 
-        let range2span = chunk.find_enclosing_spans(CHUNK_RANGE.clone());
-        // test deals only with a single line, so we know it only is a single entry
-        assert_eq!(range2span.len(), 1);
+        let mut range2span = chunk.find_covered_spans(CHUNK_RANGE.clone());
 
         // assure the range is correct given the chunk
         assert_eq!("e random wo", &chunk.as_str()[CHUNK_RANGE.clone()]);
 
-        let span = dbg!(range2span.iter().next().unwrap());
+        let span = dbg!(range2span.next().unwrap());
         assert_eq!(
             load_span_from(SOURCE.as_bytes(), dbg!(*span)).expect("Span extraction must work"),
             " Some random words".to_owned()
         );
         assert_eq!(span, &EXPECTED_SPAN);
+        // test deals only with a single line, so we know it only is a single entry
+        assert_eq!(range2span.count(), 0);
     }
 
     #[test]
@@ -720,10 +719,9 @@ Buchfink"#];
             },
         ];
 
-        let range2span = chunk.find_enclosing_spans(CHUNK_RANGE);
+        let range2span = chunk.find_covered_spans(CHUNK_RANGE);
 
-        assert_eq!(range2span.len(), EXPECTED_SPANS.len());
-        for (spans, expected) in range2span.iter().zip(EXPECTED_SPANS) {
+        for (spans, expected) in range2span.zip(EXPECTED_SPANS) {
             assert_eq!(spans, expected);
         }
     }
