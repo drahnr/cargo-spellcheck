@@ -42,7 +42,6 @@ impl Checker for Reflow {
 }
 
 fn reflow_inner<'s>(
-    _origin: ContentOrigin,
     s: &'s str,
     range: Range,
     unbreakable_ranges: Vec<Range>,
@@ -127,7 +126,6 @@ fn reflow<'s>(
                 .collect::<Vec<usize>>();
 
             if let Some(replacement) = reflow_inner(
-                origin.clone(),
                 chunk.as_str(),
                 range.clone(),
                 unbreakable_ranges.to_vec(),
@@ -209,8 +207,7 @@ fn reflow<'s>(
                 paragraph = store(cover.end, unbreakables.as_slice())?;
             }
             Event::Rule => {
-                // TODO how to proceed to past this? do all paragraphs end before
-                paragraph = store(cover.end, unbreakables.as_slice())?;
+                // paragraphs end before rules
             }
             Event::TaskListMarker(_b) => {
                 // ignored
@@ -244,7 +241,7 @@ mod tests {
             let range = 0..CONTENT.len();
             let indentation: Vec<usize> = [0; 6].to_vec();
             let unbreakables = Vec::new();
-            let replacement = reflow_inner(ContentOrigin::TestEntityRust,
+            let replacement = reflow_inner(
                 chunk.as_str(),
                 range,
                 unbreakables,
@@ -451,5 +448,16 @@ should be rewrapped."#;
             r#" Possible **ways** to run __rustc__ and request various
  parts of LTO. `markdown` syntax which leads to
  __unbreakables__?"#, false);
+    }
+
+    #[test]
+    fn reflow_markdown_two_paragraphs() {
+        reflow!(60 break ["Possible **ways** to run __rustc__ and request various parts of LTO.",
+                          " ",
+                          "Some more text after the rule which represents a paragraph"] =>
+            r#" Possible **ways** to run __rustc__ and request various
+ parts of LTO.
+
+ Some more text after the rule which repsresents a pragraph"#, false);
     }
 }
