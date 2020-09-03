@@ -69,8 +69,11 @@ fn reflow_inner<'s>(
 
     // iterations above add a newline add the end, we have to remove it
     let replacement = replacement.trim_end_matches("\n").to_string();
-
-    Some(replacement)
+    if replacement == s {
+        None
+    } else {
+        Some(replacement)
+    }
 }
 
 /// Reflow the documenation such that a maximum colomn constraint is met.
@@ -228,7 +231,7 @@ mod tests {
 
     macro_rules! verify_reflow_inner {
         ([ $( $line:literal ),+ $(,)?] => $expected:literal) => {
-            verify_reflow_inner!(80usize break [ $( $line ),+ ] => $expected );
+            verify_reflow_inner!(80usize break [ $( $line ),+ ] => $expected);
         };
         ($n:literal break [ $( $line:literal ),+ $(,)?] => $expected:literal) => {
             const CONTENT: &'static str = fluff_up!($( $line ),+);
@@ -249,9 +252,15 @@ mod tests {
                 indentation,
                 $n,
                 chunk.variant()
-            ).expect("Inner reflow works. qed");
+            );
 
-            assert_eq!(replacement, $expected);
+            if let Some(repl) = replacement {
+                assert_eq!(repl, $expected);
+            } else {
+                for line in CONTENT.lines() {
+                    assert!(line.len() < $n);
+                }
+            }
         };
         ($line:literal => $expected:literal) => {
             verify_reflow_inner!([$line] => $expected);
@@ -269,6 +278,18 @@ test our rewrapping algorithm.",
         r#" This module contains documentation that is too long for one line and moreover,
  it spans over mulitple lines such that we can test our rewrapping algorithm.
  Smart, isn't it? Lorem ipsum and some more blanket text without any meaning"#);
+    }
+
+    #[test]
+    fn reflow_inner_not_required() {
+        verify_reflow_inner!(80 break ["This module contains documentation."] =>
+            r#" This module contains documentation."#);
+        {
+            verify_reflow_inner!(39 break ["This module contains documentation",
+                "which is split two lines"] =>
+                r#" This module contains documentation
+ which is split two lines"#);
+        }
     }
 
     macro_rules! reflow {
