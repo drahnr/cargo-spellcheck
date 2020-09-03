@@ -95,11 +95,11 @@ fn reflow<'s>(
                 end,
             };
 
-            let spans = chunk.find_enclosing_spans(range.clone());
+            let mut spans = chunk.find_covered_spans(range.clone());
 
             // debug_assert!(!spans.is_empty());
 
-            let span_start: LineColumn = if let Some(first) = spans.first() {
+            let span_start: LineColumn = if let Some(first) = spans.next() {
                 first.start
             } else {
                 // anyhow::bail!("Missing spans");
@@ -108,8 +108,7 @@ fn reflow<'s>(
             let span_end: LineColumn = if let Some(last) = spans.last() {
                 last.end
             } else {
-                // anyhow::bail!("Missing spans");
-                return Ok(paragraph);
+                span_start
             };
 
             let span = Span {
@@ -117,9 +116,13 @@ fn reflow<'s>(
                 end: span_end,
             };
 
-            // Get indentation per line as there is one span per line
-            // FIXME assumption is not correct
-            let indentations: Vec<usize> = spans.iter().map(|s| s.start.column).collect();
+            // Get indentation for each span, if a span covers multiple
+            // lines, use same indentation for all lines
+            let indentations = chunk
+                .find_covered_spans(range.clone())
+                .map(|s| vec![s.start.column; s.end.line - s.start.line + 1])
+                .flatten()
+                .collect::<Vec<usize>>();
 
             if let Some(replacement) = reflow_inner(
                 origin.clone(),
