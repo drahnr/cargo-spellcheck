@@ -292,10 +292,10 @@ test our rewrapping algorithm.",
     }
 
     macro_rules! reflow {
-        ([ $( $line:literal ),+ $(,)?] => $expected:literal) => {
-            reflow!(80usize break [ $( $line ),+ ] => $expected );
+        ([ $( $line:literal ),+ $(,)?] => $expected:literal, $no_reflow:expr) => {
+            reflow!(80usize break [ $( $line ),+ ] => $expected, $no_reflow:expr);
         };
-        ($n:literal break [ $( $line:literal ),+ $(,)?] => $expected:literal) => {
+        ($n:literal break [ $( $line:literal ),+ $(,)?] => $expected:literal, $no_reflow:expr) => {
             const CONTENT:&'static str = fluff_up!($( $line ),+);
             let docs = Documentation::from((ContentOrigin::TestEntityRust, CONTENT));
             assert_eq!(docs.entry_count(), 1);
@@ -308,17 +308,21 @@ test our rewrapping algorithm.",
                 max_line_length: $n,
                 .. Default::default()
             };
-        let suggestion_set = reflow(ContentOrigin::TestEntityRust, chunk, &cfg).expect("Reflow is working. qed");
-        let suggestions = suggestion_set
-            .iter()
-            .next()
-            .expect("Contains one suggestion. qed");
+            let suggestion_set = reflow(ContentOrigin::TestEntityRust, chunk, &cfg).expect("Reflow is working. qed");
+            if $no_reflow {
+                assert_eq!(suggestion_set.len(), 0);
+            } else {
+                let suggestions = suggestion_set
+                    .iter()
+                    .next()
+                    .expect("Contains one suggestion. qed");
 
-            let replacement = suggestions.replacements.iter().next().expect("There exists a replacement. qed");
-            assert_eq!(replacement.as_str(), $expected);
+                    let replacement = suggestions.replacements.iter().next().expect("There exists a replacement. qed");
+                    assert_eq!(replacement.as_str(), $expected);
+            }
         };
-        ($line:literal => $expected:literal) => {
-            reflow!([$line] => $expected).expect("Reflow does not error. qed");
+        ($line:literal => $expected:literal, $no_reflow:expr) => {
+            reflow!([$line] => $expected, $no_reflow:expr);
         };
     }
 
@@ -344,13 +348,13 @@ r#" This module contains documentation thats
 
  But lets also see what happens if there
  are two consecutive newlines in one
- connected documentation span."#);
+ connected documentation span."#, false);
     }
 
     #[test]
     fn reflow_shorter_than_limit() {
         reflow!(80 break ["This module contains documentation that is ok for one line"] =>
-                r#" This module contains documentation that is ok for one line"#);
+                r#" This module contains documentation that is ok for one line"#, true);
     }
 
     #[test]
@@ -359,7 +363,7 @@ r#" This module contains documentation thats
                           "into multiple short lines resulting in multiple spans."] =>
                 r#" This module contains documentation that
  is broken into multiple short lines
- resulting in multiple spans."#);
+ resulting in multiple spans."#, false);
     }
     #[test]
     fn reflow_indentations() {
@@ -446,6 +450,6 @@ should be rewrapped."#;
                           " `markdown` syntax which leads to __unbreakables__? "] =>
             r#" Possible **ways** to run __rustc__ and request various
  parts of LTO. `markdown` syntax which leads to
- __unbreakables__?"#);
+ __unbreakables__?"#, false);
     }
 }
