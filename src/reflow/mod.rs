@@ -178,7 +178,7 @@ fn reflow<'s>(
                         // so there
                         if unbreakable_stack.len() == 1 {
                             unbreakables.push(cover);
-                        } else if let Some(parent) = unbreakables.last() {
+                        } else if let Some(parent) = unbreakable_stack.last() {
                             debug_assert!(parent.contains(&cover.start));
                             debug_assert!(parent.contains(&(cover.end - 1)));
                         }
@@ -418,5 +418,14 @@ should be rewrapped."#;
             .next()
             .expect("There is a replacement. qed");
         assert_eq!(replacement.as_str(), EXPECTED);
+    }
+
+    #[test]
+    fn reflow_markdown() {
+        reflow!(60 break ["Possible **ways** to run __rustc__ and request various parts of LTO.",
+                          " `markdown` syntax which leads to __unbreakables__? "] =>
+            r#" Possible **ways** to run __rustc__ and request various
+ parts of LTO. `markdown` syntax which leads to
+ __unbreakables__?"#);
     }
 }
