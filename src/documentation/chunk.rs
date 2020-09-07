@@ -241,11 +241,14 @@ impl CheckableChunk {
             .iter()
             .skip_while(move |(fragment_range, _)| fragment_range.end <= start)
             .take_while(move |(fragment_range, _)| fragment_range.start <= end)
-            .filter(|(fragment_range, _)| {
+            .filter_map(|(fragment_range, fragment_span)| {
                 // could possibly happen on empty documentation lines with `///`
-                fragment_range.len() > 0
+                if fragment_range.len() > 0 {
+                    Some(fragment_span)
+                } else {
+                    None
+                }
             })
-            .map(|(_fragment_range, fragment_span)| fragment_span)
     }
 
     /// Yields a set of ranges covering all spanned lines (the full line)

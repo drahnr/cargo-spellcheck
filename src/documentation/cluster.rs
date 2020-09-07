@@ -1,6 +1,6 @@
 //! Cluster `proc_macro2::Literal`s into `LiteralSets`
 
-use super::*;
+use super::{LiteralSet, TokenTree, TrimmedLiteral, trace, Spacing, TryInto};
 use crate::documentation::Range;
 use crate::Span;
 use anyhow::{anyhow, Error, Result};
