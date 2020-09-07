@@ -122,9 +122,12 @@ struct Vikings;
     #[test]
     fn process_clusters_triple() {
         let mut cluster = Clusters { set: Vec::new() };
-        let stream = syn::parse_str::<proc_macro2::TokenStream>(TEST).expect("Parsing source works. qed");
+        let stream =
+            syn::parse_str::<proc_macro2::TokenStream>(TEST).expect("Parsing source works. qed");
 
-        cluster.parse_token_tree(TEST, stream).expect("Parsing token tree works. qed");
+        cluster
+            .parse_token_tree(TEST, stream)
+            .expect("Parsing token tree works. qed");
 
         assert_eq!(cluster.set.len(), 2);
 

@@ -450,13 +450,17 @@ should be rewrapped."#;
 
     #[test]
     fn reflow_markdown_two_paragraphs() {
-        const CONTENT: &'static str = " /// Possible **ways** to run __rustc__ and request various parts of LTO.
+        const CONTENT: &'static str =
+            " /// Possible **ways** to run __rustc__ and request various parts of LTO.
 ///
 /// Some more text after the rule which represents a paragraph";
 
-        let expected = vec![r#" Possible **ways** to run __rustc__ and request various
- parts of LTO."#, r#" Some more text after the rule which represents a
- paragraph"#];
+        let expected = vec![
+            r#" Possible **ways** to run __rustc__ and request various
+ parts of LTO."#,
+            r#" Some more text after the rule which represents a
+ paragraph"#,
+        ];
 
         let docs = Documentation::from((ContentOrigin::TestEntityRust, CONTENT));
         assert_eq!(docs.entry_count(), 1);
@@ -465,7 +469,7 @@ should be rewrapped."#;
 
         let cfg = ReflowConfig {
             max_line_length: 60,
-            .. Default::default()
+            ..Default::default()
         };
 
         for (chunk, expect) in chunks.iter().zip(expected) {
@@ -484,10 +488,13 @@ should be rewrapped."#;
                with a second part that is fine"#]
     struct Fluffy {};"##;
 
-        let expected = vec![r#"A comment with indentation
-that spans over two lines"#, r#"
+        let expected = vec![
+            r#"A comment with indentation
+that spans over two lines"#,
+            r#"
 with a second part that is
-fine"#];
+fine"#,
+        ];
 
         let docs = Documentation::from((ContentOrigin::TestEntityRust, CONTENT));
         assert_eq!(docs.entry_count(), 1);
@@ -495,9 +502,8 @@ fine"#];
 
         let cfg = ReflowConfig {
             max_line_length: 45,
-            .. Default::default()
+            ..Default::default()
         };
-
 
         for (chunk, expect) in chunks.iter().zip(expected) {
             let suggestion_set = reflow(ContentOrigin::TestEntityRust, chunk, &cfg).expect("Reflow is working. qed");
