@@ -107,3 +107,29 @@ impl TryFrom<&str> for Clusters {
         Ok(chunk)
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    const TEST: &str = r#"/// Another exmalibu verification pass.
+///
+/// Boats float, don't they?
+/// Even in two lines
+struct Vikings;
+"#;
+
+    #[test]
+    fn process_clusters_triple() {
+        let mut cluster = Clusters { set: Vec::new() };
+        let stream = syn::parse_str::<proc_macro2::TokenStream>(TEST).expect("Parsing source works. qed");
+
+        cluster.parse_token_tree(TEST, stream).expect("Parsing token tree works. qed");
+
+        assert_eq!(cluster.set.len(), 2);
+
+        for set in cluster.set {
+            assert_eq!(set.len(), 2);
+        }
+    }
+}

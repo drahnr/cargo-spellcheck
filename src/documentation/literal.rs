@@ -679,6 +679,50 @@ fn unicode(&self) -> bool {
                 },
             },
         },
+        // 8
+        Triplet {
+                    source: r###"
+        #[doc = r##"Four
+        has
+
+        multiple
+        lines
+        "##]
+        struct Four;
+        "###,
+                    extracted: r###"r##"Four
+        has
+
+        multiple
+        lines
+        "##"###,
+                    trimmed: r#"Four
+        has
+
+        multiple
+        lines
+        "#,
+                    extracted_span: Span {
+                        start: LineColumn {
+                            line: 2usize,
+                            column: 12usize - 4,
+                        },
+                        end: LineColumn {
+                            line: 6usize,
+                            column: 0usize + 3,
+                        },
+                    },
+                    trimmed_span: Span {
+                        start: LineColumn {
+                            line: 2usize,
+                            column: 12usize,
+                        },
+                        end: LineColumn {
+                            line: 6usize,
+                            column: 0usize,
+                        },
+                    },
+                },
     ];
 
     fn comment_variant_span_range_validation(index: usize) {
