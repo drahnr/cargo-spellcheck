@@ -45,13 +45,13 @@ impl LiteralSet {
         let previous_line = literal.span().end.line;
         if previous_line == self.coverage.1 + 1 {
             self.coverage.1 += 1;
-            let _ = self.literals.push(literal);
+            self.literals.push(literal);
             return Ok(());
         }
 
         let next_line = literal.span().start.line;
         if next_line + 1 == self.coverage.0 {
-            let _ = self.literals.push(literal);
+            self.literals.push(literal);
             self.coverage.1 -= 1;
             return Ok(());
         }
