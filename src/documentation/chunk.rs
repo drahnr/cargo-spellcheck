@@ -246,7 +246,6 @@ impl CheckableChunk {
                 fragment_range.len() > 0
             })
             .map(|(_fragment_range, fragment_span)| fragment_span)
-            // .collect::<Vec<_>>()
     }
 
     /// Yields a set of ranges covering all spanned lines (the full line)
