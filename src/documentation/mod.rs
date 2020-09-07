@@ -249,6 +249,7 @@ pub(crate) mod tests {
     /// Declare an end to end test case, ranging from input content
     /// down to the number expected issues given a checker type.
     #[macro_export]
+    /// End to end tests for different Checkers
     macro_rules! end2end {
         ($test:expr, $n:expr) => {{
             end2end!($test, ContentOrigin::TestEntityRust, $n, DummyChecker);

@@ -9,6 +9,8 @@ pub struct LiteralSet {
     literals: Vec<TrimmedLiteral>,
     /// lines spanned (start, end) inclusive
     pub coverage: (usize, usize),
+    /// Track what kind of comment the literals are
+    variant: CommentVariant,
 }
 
 impl LiteralSet {
@@ -16,6 +18,7 @@ impl LiteralSet {
     pub fn from(literal: TrimmedLiteral) -> Self {
         Self {
             coverage: (literal.span().start.line, literal.span().end.line),
+            variant: literal.variant(),
             literals: vec![literal],
         }
     }
@@ -24,6 +27,21 @@ impl LiteralSet {
     ///
     /// Returns literl within the Err variant if not adjacent
     pub fn add_adjacent(&mut self, literal: TrimmedLiteral) -> Result<(), TrimmedLiteral> {
+        if literal.variant() != self.variant {
+            log::error!(
+                "Adjacent literal is not the same comment variant: {:?} vs {:?}",
+                literal.variant(),
+                self.variant
+            );
+            return Err(literal);
+        }
+        if let Some(last) = self.literals.last() {
+            // if the last literal is an empty line, the current one is not adjacent since
+            // it should be handled on its own
+            if last.len_in_chars() < 1 && last.variant() == CommentVariant::TripleSlash  {
+                return Err(literal);
+            }
+        }
         let previous_line = literal.span().end.line;
         if previous_line == self.coverage.1 + 1 {
             self.coverage.1 += 1;

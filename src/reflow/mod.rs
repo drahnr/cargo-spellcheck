@@ -330,8 +330,7 @@ is too long for one line and moreover, \
 it spans over mulitple lines such that \
 we can test our rewrapping algorithm. \
 Smart, isn't it? Lorem ipsum and some more \
-blanket text without any meaning",
-        "",
+blanket text without any meaning.",
         "But lets also see what happens if \
 there are two consecutive newlines \
 in one connected documentation span."] =>
@@ -341,11 +340,10 @@ r#" This module contains documentation thats
  spans over mulitple lines such that we
  can test our rewrapping algorithm. Smart,
  isn't it? Lorem ipsum and some more
- blanket text without any meaning
-
- But lets also see what happens if there
- are two consecutive newlines in one
- connected documentation span."#, false);
+ blanket text without any meaning. But
+ lets also see what happens if there are
+ two consecutive newlines in one connected
+ documentation span."#, false);
     }
 
     #[test]
@@ -452,12 +450,60 @@ should be rewrapped."#;
 
     #[test]
     fn reflow_markdown_two_paragraphs() {
-        reflow!(60 break ["Possible **ways** to run __rustc__ and request various parts of LTO.",
-                          " ",
-                          "Some more text after the rule which represents a paragraph"] =>
-            r#" Possible **ways** to run __rustc__ and request various
- parts of LTO.
+        const CONTENT: &'static str = " /// Possible **ways** to run __rustc__ and request various parts of LTO.
+///
+/// Some more text after the rule which represents a paragraph";
 
- Some more text after the rule which repsresents a pragraph"#, false);
+        let expected = vec![r#" Possible **ways** to run __rustc__ and request various
+ parts of LTO."#, r#" Some more text after the rule which represents a
+ paragraph"#];
+
+        let docs = Documentation::from((ContentOrigin::TestEntityRust, CONTENT));
+        assert_eq!(docs.entry_count(), 1);
+        let chunks = docs.get(&ContentOrigin::TestEntityRust).expect("Contains test data. qed");
+        assert_eq!(dbg!(chunks).len(), 2);
+
+        let cfg = ReflowConfig {
+            max_line_length: 60,
+            .. Default::default()
+        };
+
+        for (chunk, expect) in chunks.iter().zip(expected) {
+            let suggestion_set = reflow(ContentOrigin::TestEntityRust, chunk, &cfg).expect("Reflow is working. qed");
+            let sug = suggestion_set.iter().next().expect("Contains a suggestion. qed");
+            let replacement = sug.replacements.iter().next().expect("An replacement exists. qed");
+            assert_eq!(replacement.as_str(), expect);
+        }
+    }
+
+    #[test]
+    fn reflow_markdown_two_paragraphs_doc() {
+        const CONTENT: &'static str = r##"
+    #[doc = r#"A comment with indentation that spans over two lines.
+
+               with a second part that is fine"#]
+    struct Fluffy {};"##;
+
+        let expected = vec![r#"A comment with indentation
+that spans over two lines"#, r#"
+with a second part that is
+fine"#];
+
+        let docs = Documentation::from((ContentOrigin::TestEntityRust, CONTENT));
+        assert_eq!(docs.entry_count(), 1);
+        let chunks = docs.get(&ContentOrigin::TestEntityRust).expect("Contains test data. qed");
+
+        let cfg = ReflowConfig {
+            max_line_length: 45,
+            .. Default::default()
+        };
+
+
+        for (chunk, expect) in chunks.iter().zip(expected) {
+            let suggestion_set = reflow(ContentOrigin::TestEntityRust, chunk, &cfg).expect("Reflow is working. qed");
+            let sug = suggestion_set.iter().next().expect("Contains a suggestion. qed");
+            let replacement = sug.replacements.iter().next().expect("An replacement exists. qed");
+            assert_eq!(replacement.as_str(), expect);
+        }
     }
 }

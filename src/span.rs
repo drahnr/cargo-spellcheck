@@ -264,7 +264,7 @@ mod tests {
             .filter(None, log::LevelFilter::Trace)
             .try_init();
 
-        const CONTENT: &'static str = fluff_up!("Itsyou!!", "", "Game-Over!!", "");
+        const CONTENT: &'static str = fluff_up!("Itsyou!!", " ", "Game-Over!!", " ");
         let set = gen_literal_set(CONTENT);
         let chunk = dbg!(CheckableChunk::from_literalset(set));
 
@@ -298,7 +298,7 @@ mod tests {
         // ranges to be used with `chunk.as_str()`
         // remember that ///<space> counts towards the range!
         // and that newlines are also one char
-        const EXPECTED_RANGE: &[Range] = &[4..9, 13..22];
+        const EXPECTED_RANGE: &[Range] = &[4..9, 14..23];
 
         // note that this may only be single lines, since `///` implies separate literals
         // and as such multiple spans
