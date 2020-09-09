@@ -403,12 +403,9 @@ pub(crate) fn extract(
                             let content: String = fs::read_to_string(&path).map_err(|e| {
                                 anyhow!("Failed to read {}", path.display()).context(e)
                             })?;
-                            if let Ok(cluster) = Clusters::try_from(content.as_str()) {
-                                let chunks = Vec::<CheckableChunk>::from(cluster);
-                                docs.add(ContentOrigin::RustSourceFile(path.to_owned()), chunks);
-                            } else {
-                                log::error!("BUG: Failed to create cluster for {}", path.display());
-                            }
+                            docs.add_rust(ContentOrigin::RustSourceFile(path.to_owned()), content.as_str()).unwrap_or_else(|e| {
+                                log::error!("BUG: Failed to create cluster for {}", path.display())
+                            });
                         }
                     }
                     CheckEntity::Markdown(path) => {
@@ -418,31 +415,10 @@ pub(crate) fn extract(
                         if content.len() < 1 {
                             bail!("Common mark / markdown file is empty")
                         }
-                        // extract the full content span and range
-                        let start = LineColumn { line: 1, column: 0 };
-                        let end = content
-                            .lines()
-                            .enumerate()
-                            .last()
-                            .map(|(idx, line)| (idx + 1, line))
-                            .map(|(lineno, line)| LineColumn {
-                                line: lineno,
-                                column: line.chars().count(),
-                            })
-                            .ok_or_else(|| {
-                                anyhow!(
-                                    "Common mark / markdown file does not contain a single line"
-                                )
-                            })?;
-
-                        let span = Span { start, end };
-                        let source_mapping = indexmap::indexmap! {
-                           0..content.chars().count() => span
-                        };
-                        docs.add(
+                        docs.add_commonmark(
                             ContentOrigin::CommonMarkFile(path.to_owned()),
-                            vec![CheckableChunk::from_string(content, source_mapping)],
-                        );
+                            content.as_str(),
+                        )?;
                     }
                     other => {
                         warn!("Did not impl handling of {:?} type files", other);

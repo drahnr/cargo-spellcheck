@@ -18,26 +18,39 @@ pub enum ContentOrigin {
     RustDocTest(PathBuf, Span),
     /// Full rust source file.
     RustSourceFile(PathBuf),
-    /// A test entity, with no meaning outside of test.
+    /// A test entity for a rust file, with no meaning outside of test.
     #[cfg(test)]
-    TestEntity,
+    TestEntityRust,
+    /// A test entity for a cmark file, with no meaning outside of test.
+    #[cfg(test)]
+    TestEntityCommonMark,
 }
 
 impl ContentOrigin {
     /// Represent the content origin as [path](std::path::PathBuf).
     ///
-    /// `TestEntity` variant becomes `/tmp/test/entity`.
+    /// For unit and integration tests, two additional hardcoded variants
+    /// are available, which resolve to static paths:
+    /// `TestEntityRust` variant becomes `/tmp/test/entity.rs`,
+    /// `TestEntityCommonMark` variant becomes `/tmp/test/entity.md`.
     pub fn as_path(&self) -> &Path {
         match self {
             Self::CommonMarkFile(path) => path.as_path(),
             Self::RustDocTest(path, _) => path.as_path(),
             Self::RustSourceFile(path) => path.as_path(),
             #[cfg(test)]
-            Self::TestEntity => {
+            Self::TestEntityCommonMark => {
                 lazy_static::lazy_static! {
-                    static ref TEST_ENTITY: PathBuf = PathBuf::from("/tmp/test/entity");
+                    static ref TEST_ENTITY_CMARK: PathBuf = PathBuf::from("/tmp/test/entity.md");
                 };
-                TEST_ENTITY.as_path()
+                TEST_ENTITY_CMARK.as_path()
+            }
+            #[cfg(test)]
+            Self::TestEntityRust => {
+                lazy_static::lazy_static! {
+                    static ref TEST_ENTITY_RUST: PathBuf = PathBuf::from("/tmp/test/entity.rs");
+                };
+                TEST_ENTITY_RUST.as_path()
             }
         }
     }

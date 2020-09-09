@@ -144,7 +144,9 @@ impl Action {
             //TODO bandaids are relative to the doc-test, so fix the span with the one provided
             ContentOrigin::RustDocTest(path, _span) => self.correct_file(path, bandaids),
             #[cfg(test)]
-            ContentOrigin::TestEntity => unreachable!("Use a proper file"),
+            ContentOrigin::TestEntityRust => unreachable!("Use a proper file"),
+            #[cfg(test)]
+            ContentOrigin::TestEntityCommonMark => unreachable!("Use a proper file"),
         }
     }
 

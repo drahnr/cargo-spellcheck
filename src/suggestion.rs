@@ -662,7 +662,7 @@ mod tests {
 
         let suggestion = Suggestion {
             detector: Detector::Dummy,
-            origin: ContentOrigin::TestEntity,
+            origin: ContentOrigin::TestEntityRust,
             chunk: &chunk,
             range: 7..12,
             span: Span {
@@ -680,7 +680,7 @@ mod tests {
         };
 
         const EXPECTED: &'static str = r#"error: spellcheck(Dummy)
-  --> /tmp/test/entity:1
+  --> /tmp/test/entity.rs:1
    |
  1 |  Is it dyrck again?
    |        ^^^^^
@@ -711,7 +711,7 @@ mod tests {
 
         let suggestion = Suggestion {
             detector: Detector::Dummy,
-            origin: ContentOrigin::TestEntity,
+            origin: ContentOrigin::TestEntityRust,
             chunk: &chunk,
             range: 7..12,
             span: Span {
@@ -726,7 +726,7 @@ mod tests {
         };
 
         const EXPECTED: &'static str = r#"error: spellcheck(Dummy)
-  --> /tmp/test/entity:1
+  --> /tmp/test/entity.rs:1
    |
  1 |  Is it dyrck again?
    |        ^^^^^
@@ -779,7 +779,7 @@ mod tests {
 
         let suggestion = Suggestion {
             detector: Detector::Dummy,
-            origin: ContentOrigin::TestEntity,
+            origin: ContentOrigin::TestEntityRust,
             chunk: &chunk,
             range: 6..12,
             span: Span {
@@ -800,7 +800,7 @@ mod tests {
         };
 
         const EXPECTED: &'static str = r#"error: spellcheck(Dummy)
-  --> /tmp/test/entity:1
+  --> /tmp/test/entity.rs:1
    |
  1 |  Line mitake 1
    |       ^^^^^^
@@ -846,7 +846,7 @@ mod tests {
 
         let suggestion = Suggestion {
             detector: Detector::Dummy,
-            origin: ContentOrigin::TestEntity,
+            origin: ContentOrigin::TestEntityRust,
             chunk: &chunk,
             range: 66..94,
             span: Span {
@@ -864,7 +864,7 @@ mod tests {
         };
 
         const EXPECTED: &'static str = r#"error: spellcheck(Dummy)
-  --> /tmp/test/entity:2
+  --> /tmp/test/entity.rs:2
    |
  2 | ..uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuper duuu...uper too long
    |                                                 ^^^^^^^^^^^
@@ -902,7 +902,7 @@ mod tests {
 
         let suggestion = Suggestion {
             detector: Detector::Dummy,
-            origin: ContentOrigin::TestEntity,
+            origin: ContentOrigin::TestEntityRust,
             chunk: &chunk,
             span: Span {
                 start: LineColumn {
