@@ -259,7 +259,10 @@ mod tests {
 
     #[test]
     fn span_to_range_singleline() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        let _ = env_logger::builder()
+            .is_test(true)
+            .filter(None, log::LevelFilter::Trace)
+            .try_init();
 
         const CONTENT: &'static str = fluff_up!("Itsyou!!", "", "Game-Over!!", "");
         let set = gen_literal_set(CONTENT);
@@ -328,7 +331,10 @@ mod tests {
 
     #[test]
     fn span_to_range_multiline() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        let _ = env_logger::builder()
+            .is_test(true)
+            .filter(None, log::LevelFilter::Trace)
+            .try_init();
 
         chyrp_dbg!("Xy fff?? Not.., you again!", "", "AlphaOmega", "");
         const CONTENT: &'static str = chyrp_up!("Xy fff?? Not.., you again!", "", "AlphaOmega", "");

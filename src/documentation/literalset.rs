@@ -223,7 +223,10 @@ struct Vikings;
 
     #[test]
     fn combine_literals() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        let _ = env_logger::builder()
+            .is_test(true)
+            .filter(None, log::LevelFilter::Trace)
+            .try_init();
 
         let cls = gen_literal_set(TEST);
 
@@ -233,7 +236,10 @@ struct Vikings;
 
     #[test]
     fn coverage() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        let _ = env_logger::builder()
+            .is_test(true)
+            .filter(None, log::LevelFilter::Trace)
+            .try_init();
 
         let literal_set = gen_literal_set(TEST);
         let chunk: CheckableChunk = literal_set.into_chunk();
