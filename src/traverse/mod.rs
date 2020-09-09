@@ -7,7 +7,7 @@ use crate::Documentation;
 
 use anyhow::{anyhow, bail, Error, Result};
 use log::{debug, trace, warn};
-use std::convert::TryFrom;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -403,7 +403,11 @@ pub(crate) fn extract(
                             let content: String = fs::read_to_string(&path).map_err(|e| {
                                 anyhow!("Failed to read {}", path.display()).context(e)
                             })?;
-                            docs.add_rust(ContentOrigin::RustSourceFile(path.to_owned()), content.as_str()).unwrap_or_else(|e| {
+                            docs.add_rust(
+                                ContentOrigin::RustSourceFile(path.to_owned()),
+                                content.as_str(),
+                            )
+                            .unwrap_or_else(|_e| {
                                 log::error!("BUG: Failed to create cluster for {}", path.display())
                             });
                         }
