@@ -381,7 +381,10 @@ mod test {
 
     #[test]
     fn find_spans_simple() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        let _ = env_logger::builder()
+            .is_test(true)
+            .filter(None, log::LevelFilter::Trace)
+            .try_init();
 
         // generate  `///<space>...`
         const SOURCE: &'static str = fluff_up!(["xyz"]);
@@ -418,7 +421,10 @@ mod test {
 
     #[test]
     fn find_spans_multiline() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        let _ = env_logger::builder()
+            .is_test(true)
+            .filter(None, log::LevelFilter::Trace)
+            .try_init();
 
         const SOURCE: &'static str = fluff_up!(["xyz", "second", "third", "Converts a span to a range, where `self` is converted to a range reltive to the",
              "passed span `scope`."] @ "       "
@@ -500,7 +506,10 @@ mod test {
 
     #[test]
     fn find_spans_chyrp() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        let _ = env_logger::builder()
+            .is_test(true)
+            .filter(None, log::LevelFilter::Trace)
+            .try_init();
 
         const SOURCE: &'static str = chyrp_up!(["Amsel", "Wacholderdrossel", "Buchfink"]);
         let set = gen_literal_set(SOURCE);

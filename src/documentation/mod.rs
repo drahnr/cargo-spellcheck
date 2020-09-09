@@ -120,18 +120,17 @@ impl From<(ContentOrigin, &str)> for Documentation {
 mod tests {
     use super::*;
     use crate::checker::Checker;
-    use crate::fluff_up;
     use crate::util::load_span_from;
+    use crate::{chyrp_up, fluff_up};
 
     use std::convert::From;
 
     #[test]
     fn parse_and_construct() {
-        let _ = env_logger::from_env(
-            env_logger::Env::new().filter_or("CARGO_SPELLCHECK", "cargo_spellcheck=trace"),
-        )
-        .is_test(true)
-        .try_init();
+        let _ = env_logger::builder()
+            .is_test(true)
+            .filter(None, log::LevelFilter::Trace)
+            .try_init();
 
         const TEST_SOURCE: &str = r#"/// **A** _very_ good test.
         struct Vikings;
@@ -193,13 +192,12 @@ mod tests {
         };
 
         ($test:expr, $n:expr, $origin:expr) => {{
-            let _ = env_logger::from_env(
-                env_logger::Env::new().filter_or("CARGO_SPELLCHECK", "cargo_spellcheck=trace"),
-            )
-            .is_test(true)
-            .try_init();
+            let _ = env_logger::builder()
+                .is_test(true)
+                .filter(None, log::LevelFilter::Trace)
+                .try_init();
 
-            let origin = $origin;
+            let origin: ContentOrigin = $origin;
             let docs = Documentation::from((origin.clone(), $test));
             assert_eq!(docs.index.len(), 1);
             let chunks = docs.index.get(&origin).expect("Must contain dummy path");
@@ -218,7 +216,7 @@ mod tests {
         }};
     }
 
-    macro_rules! end2end_file {
+    macro_rules! end2end_rustfile {
         ($path: literal, $n: expr) => {{
             let path2 = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/", $path));
             let origin = ContentOrigin::RustSourceFile(path2);
@@ -230,24 +228,38 @@ mod tests {
         }};
     }
 
-    #[test]
-    fn one_line() {
-        end2end!(fluff_up!(["Uni"]), 1);
-    }
+    mod e2e {
+        use super::*;
 
-    #[test]
-    fn two_lines() {
-        end2end!(fluff_up!(["Alphy", "Beto"]), 2);
-    }
+        #[test]
+        fn tripleslash_one_line() {
+            end2end!(fluff_up!(["Uni"]), 1);
+        }
 
-    #[test]
-    fn one() {
-        end2end_file!("demo/src/nested/justone.rs", 1);
-    }
+        #[test]
+        fn tripleslash_two_lines() {
+            end2end!(fluff_up!(["Alphy", "Beto"]), 2);
+        }
 
-    #[test]
-    fn two() {
-        end2end_file!("demo/src/nested/justtwo.rs", 2);
+        #[test]
+        fn macro_doc_one_line() {
+            end2end!(chyrp_up!(["Uni"]), 1);
+        }
+
+        #[test]
+        fn macro_doc_two_lines() {
+            end2end!(chyrp_up!(["Alphy", "Beto"]), 2);
+        }
+
+        #[test]
+        fn file_justone() {
+            end2end_rustfile!("demo/src/nested/justone.rs", 1);
+        }
+
+        #[test]
+        fn file_justtwo() {
+            end2end_rustfile!("demo/src/nested/justtwo.rs", 2);
+        }
     }
 
     // use crate::literalset::tests::{annotated_literals,gen_literal_set};
@@ -257,11 +269,10 @@ mod tests {
     #[cfg(feature = "hunspell")]
     #[test]
     fn end2end_chunk() {
-        let _ = env_logger::from_env(
-            env_logger::Env::new().filter_or("CARGO_SPELLCHECK", "cargo_spellcheck=trace"),
-        )
-        .is_test(true)
-        .try_init();
+        let _ = env_logger::builder()
+            .is_test(true)
+            .filter(None, log::LevelFilter::Trace)
+            .try_init();
 
         // raw source
         const SOURCE: &'static str = r#"/// A headline.

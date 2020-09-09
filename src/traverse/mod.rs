@@ -547,7 +547,10 @@ mod tests {
         };
 
         ([ $( $path:literal ),* $(,)?] + $recurse: expr => [ $( $file:literal ),* $(,)?] ) => {
-            let _ = env_logger::builder().is_test(true).try_init();
+                    let _ = env_logger::builder()
+            .is_test(true)
+            .filter(None, log::LevelFilter::Trace)
+            .try_init();
 
             let docs = extract(
                 vec![

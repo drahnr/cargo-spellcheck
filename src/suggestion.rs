@@ -878,7 +878,10 @@ mod tests {
 
     #[test]
     fn multiline_is_dbg_printable() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        let _ = env_logger::builder()
+            .is_test(true)
+            .filter(None, log::LevelFilter::Trace)
+            .try_init();
 
         use crate::documentation::CheckableChunk;
         let chunk = CheckableChunk::from_str(
