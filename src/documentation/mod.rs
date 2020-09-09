@@ -14,13 +14,13 @@
 
 use super::*;
 
+use anyhow::{anyhow, Result};
 use indexmap::IndexMap;
 use log::trace;
 pub use proc_macro2::LineColumn;
 use proc_macro2::{Spacing, TokenTree};
 use std::convert::{TryFrom, TryInto};
 use std::path::PathBuf;
-use anyhow::{anyhow,Result};
 
 /// Range based on `usize`, simplification.
 pub type Range = core::ops::Range<usize>;
@@ -120,11 +120,7 @@ impl Documentation {
                 line: linenumber,
                 column: linecontent.chars().count().saturating_sub(1),
             })
-            .ok_or_else(|| {
-                anyhow!(
-                    "Common mark / markdown file does not contain a single line"
-                )
-            })?;
+            .ok_or_else(|| anyhow!("Common mark / markdown file does not contain a single line"))?;
 
         let span = Span { start, end };
         let source_mapping = indexmap::indexmap! {
@@ -144,8 +140,10 @@ impl From<(ContentOrigin, &str)> for Documentation {
         let mut docs = Documentation::new();
 
         match &origin {
-            ContentOrigin::RustDocTest(path, span) => {
-                if let Ok(excerpt) = crate::util::load_span_from(&mut content.as_bytes(), span.clone()) {
+            ContentOrigin::RustDocTest(_path, span) => {
+                if let Ok(excerpt) =
+                    crate::util::load_span_from(&mut content.as_bytes(), span.clone())
+                {
                     docs.add_rust(origin.clone(), excerpt.as_str())
                 } else {
                     // TODO
@@ -158,7 +156,8 @@ impl From<(ContentOrigin, &str)> for Documentation {
             ContentOrigin::TestEntityRust => docs.add_rust(origin, content),
             #[cfg(test)]
             ContentOrigin::TestEntityCommonMark => docs.add_commonmark(origin, content),
-        }.unwrap_or_else(|e| warn!("BUG! << failed to load yada >> {}", e));
+        }
+        .unwrap_or_else(|e| warn!("BUG! << failed to load yada >> {}", e));
         docs
     }
 }
@@ -381,7 +380,6 @@ Erronbeous bold uetchkp"#;
 
                 assert_eq!(word, crate::util::sub_chars(chunk.as_str(), range));
                 log::info!("Found word >> {} <<", word);
-
 
                 assert_eq!(word, alternative);
             };

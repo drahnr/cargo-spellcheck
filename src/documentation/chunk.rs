@@ -9,6 +9,7 @@ use std::path::Path;
 
 use crate::documentation::PlainOverlay;
 use crate::{util::sub_chars, Range, Span};
+
 /// Definition of the source of a checkable chunk
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub enum ContentOrigin {
