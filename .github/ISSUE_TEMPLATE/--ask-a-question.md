@@ -7,4 +7,6 @@ assignees: drahnr
 
 ---
 
-** Describe concisely what is unclear, include the context and use-case**
+** Q: **
+
+<!-- Describe concisely what is unclear, include the context and use-case -->
