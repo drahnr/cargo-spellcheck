@@ -376,11 +376,14 @@ Erronbeous bold uetchkp"#;
                     suggestion.chunk.display(range.clone())
                 );
 
-                let _alternative = load_span_from(SOURCE.as_bytes(), suggestion.span.clone())
+                let alternative = load_span_from(SOURCE.as_bytes(), suggestion.span.clone())
                     .expect("Span loading must succeed");
 
                 assert_eq!(word, crate::util::sub_chars(chunk.as_str(), range));
                 log::info!("Found word >> {} <<", word);
+
+
+                assert_eq!(word, alternative);
             };
 
             expected("A");
@@ -389,7 +392,7 @@ Erronbeous bold uetchkp"#;
         }
 
         #[test]
-        fn fff() {
+        fn fffx() {
             let _ = env_logger::builder()
                 .is_test(true)
                 .filter(None, log::LevelFilter::Trace)
@@ -452,7 +455,7 @@ The end.🐢"#;
             let mut it = suggestions.into_iter();
 
             let mut expected = |word: &'static str| {
-                let suggestion = it.next().expect("Must contain another mis-spelled word");
+                let suggestion = dbg!(it.next()).expect("Must contain another mis-spelled word");
                 let _s = dbg!(suggestion.chunk.as_str());
 
                 // range for chunk
@@ -466,11 +469,13 @@ The end.🐢"#;
                     suggestion.chunk.display(range.clone())
                 );
 
-                let _alternative = load_span_from(SOURCE.as_bytes(), suggestion.span.clone())
+                let alternative = load_span_from(SOURCE.as_bytes(), suggestion.span.clone())
                     .expect("Span loading must succeed");
 
                 assert_eq!(word, crate::util::sub_chars(chunk.as_str(), range));
                 log::info!("Found word >> {} <<", word);
+
+                assert_eq!(word, alternative);
             };
 
             expected("cmark");
