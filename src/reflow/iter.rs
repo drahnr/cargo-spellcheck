@@ -166,8 +166,7 @@ pub struct Gluon<'s> {
 }
 
 impl<'s> Gluon<'s> {
-    pub fn new(s: &'s str, range: Range, max_line_width: usize, indentations: Vec<usize>) -> Self {
-        let s = &s[range];
+    pub fn new(s: &'s str, max_line_width: usize, indentations: Vec<usize>) -> Self {
         Self {
             queue: VecDeque::new(),
             max_line_width,
@@ -304,7 +303,7 @@ mod tests {
             .enumerate()
             .map(|(idx, line)| (idx + 1, line));
 
-        let mut gluon = Gluon::new(content, 0..content.len(), max_line_width, indentations);
+        let mut gluon = Gluon::new(content, max_line_width, indentations);
 
         gluon.add_unbreakables(unbreakables);
 
@@ -348,7 +347,7 @@ mod tests {
         }
 
         #[test]
-        fn partial_covered_word_ubreakable() {
+        fn partial_covered_word_unbreakable() {
             const CONTENT: &'static str = "abc xyz qwert";
             const EXPECTED: &[&'static str] = &["abc xyz", "qwert"];
             verify(CONTENT, EXPECTED, vec![2..5]);
