@@ -26,20 +26,25 @@ pub struct PlainOverlay<'a> {
 }
 
 impl<'a> PlainOverlay<'a> {
-    fn track(s: &str, markdown: Range, plain: &mut String, mapping: &mut IndexMap<Range, Range>) {
+    /// Track the origin of the annotation free content string fragments in the common mark
+    /// formatted text, to the fragments in the plain string.
+    fn track(s: &str, cmark_range: Range, plain_acc: &mut String, mapping: &mut IndexMap<Range, Range>) {
         // map the range within the plain data,
         // which is fed to the checker,
         // back to the repr with markdown modifiers
-        let x = plain.chars().count();
+
+        // TODO avoid doing this repeatedly, use a cursor
+        let x = plain_acc.chars().count();
         let d = s.chars().count();
+        let plain_range = Range {
+            start: x,
+            end: x + d,
+        };
         let _ = mapping.insert(
-            Range {
-                start: x,
-                end: x + d,
-            },
-            markdown,
+            plain_range,
+            cmark_range,
         );
-        plain.push_str(&s);
+        plain_acc.push_str(&s);
     }
 
     fn newlines(plain: &mut String, n: usize) {
@@ -70,8 +75,26 @@ impl<'a> PlainOverlay<'a> {
         let mut inception = false;
         let mut skip_link_text = false;
 
-        for (event, offset) in parser.into_offset_iter() {
-            trace!("Parsing event ({:?}): {:?}", &offset, &event);
+        for (event, byte_range) in parser.into_offset_iter() {
+            trace!("Parsing event (bytes: {:?}): {:?}", &byte_range, &event);
+
+            let mut cursor = cmark.char_indices().enumerate().peekable();
+            let mut char_cursor = 0usize;
+
+            // let the cursor catch up to the current byte position
+            while let Some((char_idx, (byte_offset, c))) = cursor.next() {
+                char_cursor = char_idx;
+                if byte_offset >= byte_range.start {
+                    log::trace!("cought up at char index {}  / {}", char_idx, c);
+                    break;
+                }
+            }
+            // convert to a character range given the char_cursor
+            // TODO defer the length calculation into the tags, where the string is already extracted.
+            let char_range = char_cursor..(dbg!(char_cursor) + dbg!(&cmark[byte_range]).chars().count());
+
+            log::info!("Sub chars: {}", crate::util::sub_chars(cmark, char_range.clone()));
+
             match event {
                 Event::Start(tag) => match tag {
                     Tag::CodeBlock(fenced) => {
@@ -99,7 +122,7 @@ impl<'a> PlainOverlay<'a> {
                             // the actual rendered content is in a text section
                         }
                         Tag::Image(_link_type, _url, title) => {
-                            Self::track(&title, offset, &mut plain, &mut mapping);
+                            Self::track(&title, char_range, &mut plain, &mut mapping);
                         }
                         Tag::Heading(_n) => {
                             Self::newlines(&mut plain, 2);
@@ -123,7 +146,7 @@ impl<'a> PlainOverlay<'a> {
                     } else if skip_link_text {
                         skip_link_text = false
                     } else {
-                        Self::track(&s, offset, &mut plain, &mut mapping);
+                        Self::track(&s, char_range, &mut plain, &mut mapping);
                     }
                 }
                 Event::Code(_s) => {
@@ -132,11 +155,11 @@ impl<'a> PlainOverlay<'a> {
                 Event::Html(_s) => {}
                 Event::FootnoteReference(s) => {
                     if !s.is_empty() {
-                        let range = Range {
-                            start: offset.start + 2,
-                            end: offset.end - 1,
+                        let char_range = Range {
+                            start: char_range.start + 2,
+                            end: char_range.end - 1,
                         };
-                        Self::track(&s, range, &mut plain, &mut mapping);
+                        Self::track(&s, char_range, &mut plain, &mut mapping);
                     }
                 }
                 Event::SoftBreak => {
@@ -422,11 +445,34 @@ And a line, or a rule."##;
         assert_eq!(dbg!(&mapping).len(), expected_mapping_len);
         for (reduced_range, markdown_range) in mapping.iter() {
             assert_eq!(
-                dbg!(&plain[reduced_range.clone()]).to_owned(),
-                dbg!(&input[markdown_range.clone()]).to_owned()
+                dbg!(crate::util::sub_chars(&plain, reduced_range.clone())),
+                dbg!(crate::util::sub_chars(&input, markdown_range.clone()))
             );
         }
     }
+
+    #[test]
+    fn emoji() {
+        cmark_reduction_test(r#"
+Abcd
+
+---
+
+e🌡🍁
+
+---
+
+fgh"#,
+        r#"Abcd
+
+
+e🌡🍁
+
+
+fgh"#,
+        3);
+    }
+
 
     #[test]
     fn link_footnote() {
