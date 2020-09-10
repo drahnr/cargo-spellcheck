@@ -87,7 +87,65 @@ fn reflow_inner<'s>(
     }
 }
 
-/// Parses a `CheckableChunk` and performs the re-wrapping on its content.
+/// Collect reflowed Paragraphs in a Vector of suggestions
+fn store_suggestion<'s>(
+    acc: &mut Vec<Suggestion<'s>>,
+    chunk: &'s CheckableChunk,
+    origin: &ContentOrigin,
+    paragraph: usize,
+    end: usize,
+    unbreakable_ranges: &[Range],
+    max_line_width: usize,
+) -> Result<usize> {
+    let range = Range {
+        start: paragraph,
+        end,
+    };
+    let mut spans = chunk.find_covered_spans(range.clone());
+    let span_start = if let Some(first) = spans.next() {
+        first
+    } else {
+        return Ok(paragraph);
+    };
+    let span_end = if let Some(last) = spans.last() {
+        last
+    } else {
+        span_start
+    };
+    let span = Span {
+        start: span_start.start,
+        end: span_end.end,
+    };
+    // Get indentation for each span, if a span covers multiple
+    // lines, use same indentation for all lines
+    let indentations = chunk
+        .find_covered_spans(range.clone())
+        .flat_map(|s| vec![s.start.column; s.end.line - s.start.line + 1])
+        .collect::<Vec<usize>>();
+
+    if let Some(replacement) = reflow_inner(
+        chunk.as_str(),
+        range.clone(),
+        unbreakable_ranges,
+        indentations,
+        max_line_width,
+        chunk.variant(),
+    ) {
+        acc.push(Suggestion {
+            chunk,
+            detector: Detector::Reflow,
+            origin: origin.clone(),
+            description: None,
+            range: range,
+            replacements: vec![replacement],
+            span: span,
+        })
+    }
+
+    Ok(end) // a new beginning (maybe)
+}
+
+/// Parses a `CheckableChunk` and performs the rewrapping on contained paragraphs
 fn reflow<'s>(
     origin: &ContentOrigin,
     chunk: &'s CheckableChunk,
@@ -102,60 +160,6 @@ fn reflow<'s>(
     let mut acc = Vec::with_capacity(256);
 
     for (event, cover) in parser.into_offset_iter() {
-        let mut store = |end: usize, unbreakable_ranges: &[Range]| -> Result<usize> {
-            let range = Range {
-                start: paragraph,
-                end,
-            };
-
-            let mut spans = chunk.find_covered_spans(range.clone());
-
-            let span_start = if let Some(first) = spans.next() {
-                first
-            } else {
-                return Ok(paragraph);
-            };
-            let span_end = if let Some(last) = spans.last() {
-                last
-            } else {
-                span_start
-            };
-
-            let span = Span {
-                start: span_start.start,
-                end: span_end.end,
-            };
-
-            // Get indentation for each span, if a span covers multiple
-            // lines, use same indentation for all lines
-            let indentations = chunk
-                .find_covered_spans(range.clone())
-                .map(|s| vec![s.start.column; s.end.line - s.start.line + 1])
-                .flatten()
-                .collect::<Vec<usize>>();
-
-            if let Some(replacement) = reflow_inner(
-                chunk.as_str(),
-                range.clone(),
-                unbreakable_ranges,
-                indentations,
-                cfg.max_line_length,
-                chunk.variant(),
-            ) {
-                acc.push(Suggestion {
-                    chunk,
-                    detector: Detector::Reflow,
-                    origin: origin.clone(),
-                    description: None,
-                    range: range.clone(),
-                    replacements: vec![replacement],
-                    span: span.clone(),
-                })
-            }
-
-            Ok(end) // a new beginning (maybe)
-        };
-
         match event {
             Event::Start(tag) => {
                 // TODO check links
@@ -172,7 +176,15 @@ fn reflow<'s>(
                     }
                     _ => {
                         // all of these break a reflow-able chunk
-                        paragraph = store(paragraph, unbreakable_stack.as_slice())?;
+                        paragraph = store_suggestion(
+                            &mut acc,
+                            chunk,
+                            origin,
+                            paragraph,
+                            paragraph,
+                            unbreakable_stack.as_slice(),
+                            cfg.max_line_length,
+                        )?;
                         unbreakable_stack.clear();
                     }
                 }
@@ -195,7 +207,15 @@ fn reflow<'s>(
                     }
                     Tag::Paragraph => {
                         // regular end of paragraph
-                        paragraph = store(cover.end, unbreakable_stack.as_slice())?;
+                        paragraph = store_suggestion(
+                            &mut acc,
+                            chunk,
+                            origin,
+                            paragraph,
+                            cover.end,
+                            unbreakable_stack.as_slice(),
+                            cfg.max_line_length,
+                        )?;
                         unbreakable_stack.clear();
                     }
                     _ => {
@@ -215,7 +235,15 @@ fn reflow<'s>(
                 // ignored
             }
             Event::HardBreak => {
-                paragraph = store(cover.end, unbreakables.as_slice())?;
+                paragraph = store_suggestion(
+                    &mut acc,
+                    chunk,
+                    origin,
+                    paragraph,
+                    cover.end,
+                    unbreakable_stack.as_slice(),
+                    cfg.max_line_length,
+                )?;
             }
             Event::Rule => {
                 // paragraphs end before rules
@@ -276,12 +304,13 @@ mod tests {
         verify_reflow_inner!(80 break ["This module contains documentation that \
 is too long for one line and moreover, it \
 spans over mulitple lines such that we can \
-test our rewrapping algorithm.",
+test our rewrapping algorithm. With emojis: 🚤w🌴x🌋y🍈z🍉0",
         "Smart, isn't it? Lorem ipsum and some more \
         blanket text without any meaning"] =>
         r#" This module contains documentation that is too long for one line and moreover,
  it spans over mulitple lines such that we can test our rewrapping algorithm.
- Smart, isn't it? Lorem ipsum and some more blanket text without any meaning"#);
+ With emojis: 🚤w🌴x🌋y🍈z🍉0 Smart, isn't it? Lorem ipsum and some more blanket text
+ without any meaning"#);
     }
 
     #[test]
@@ -312,11 +341,7 @@ test our rewrapping algorithm.",
             let cfg = ReflowConfig {
                 max_line_length: $n,
             };
-<<<<<<< HEAD
-            let suggestion_set = reflow(ContentOrigin::TestEntityRust, chunk, &cfg).expect("Reflow is working. qed");
-=======
-            let suggestion_set = reflow(&ContentOrigin::TestEntity, chunk, &cfg).expect("Reflow is working. qed");
->>>>>>> 92cb991... chore/reflow: some clippy warnings
+            let suggestion_set = reflow(&ContentOrigin::TestEntityRust, chunk, &cfg).expect("Reflow is working. qed");
             if $no_reflow {
                 assert_eq!(suggestion_set.len(), 0);
             } else {
@@ -394,12 +419,8 @@ r#" This module contains documentation thats
             max_line_length: 35,
         };
         let suggestion_set =
-<<<<<<< HEAD
-            reflow(ContentOrigin::TestEntityRust, chunk, &cfg).expect("Reflow is wokring. qed");
+            reflow(&ContentOrigin::TestEntityRust, chunk, &cfg).expect("Reflow is wokring. qed");
 
-=======
-            reflow(&ContentOrigin::TestEntity, chunk, &cfg).expect("Reflow is wokring. qed");
->>>>>>> 92cb991... chore/reflow: some clippy warnings
         let suggestions = suggestion_set
             .iter()
             .next()
@@ -437,12 +458,8 @@ should be rewrapped."#;
             max_line_length: 45,
         };
         let suggestion_set =
-<<<<<<< HEAD
-            reflow(ContentOrigin::TestEntityRust, chunk, &cfg).expect("Reflow is working. qed");
+            reflow(&ContentOrigin::TestEntityRust, chunk, &cfg).expect("Reflow is working. qed");
 
-=======
-            reflow(&ContentOrigin::TestEntity, chunk, &cfg).expect("Reflow is working. qed");
->>>>>>> 92cb991... chore/reflow: some clippy warnings
         let suggestions = suggestion_set
             .iter()
             .next()
@@ -459,10 +476,10 @@ should be rewrapped."#;
     #[test]
     fn reflow_markdown() {
         reflow!(60 break ["Possible **ways** to run __rustc__ and request various parts of LTO.",
-                          " `markdown` syntax which leads to __unbreakables__? "] =>
+                          " `markdown` syntax which leads to __unbreakables__?  With emojis: 🚤w🌴x🌋y🍈z🍉0."] =>
             r#" Possible **ways** to run __rustc__ and request various
  parts of LTO. `markdown` syntax which leads to
- __unbreakables__?"#, false);
+ __unbreakables__? With emojis: 🚤w🌴x🌋y🍈z🍉0."#, false);
     }
 
     #[test]
@@ -497,11 +514,7 @@ should be rewrapped."#;
         };
 
         let suggestion_set =
-<<<<<<< HEAD
-            reflow(ContentOrigin::TestEntityRust, &chunk, &cfg).expect("Reflow is working. qed");
-=======
-            reflow(&ContentOrigin::TestEntity, &chunk, &cfg).expect("Reflow is working. qed");
->>>>>>> 92cb991... chore/reflow: some clippy warnings
+            reflow(&ContentOrigin::TestEntityRust, &chunk, &cfg).expect("Reflow is working. qed");
 
         for (sug, expected) in suggestion_set.iter().zip(expected) {
             assert_eq!(sug.replacements.len(), 1);
@@ -520,7 +533,7 @@ should be rewrapped."#;
         let chyrped = chyrp_up!(
             r#"A long comment that spans over two lines.
 
-        With a second part that is fine"#
+With a second part that is fine"#
         );
 
         let expected = vec![
@@ -541,11 +554,7 @@ lines."#,
 
         for (chunk, expect) in chunks.iter().zip(expected) {
             let suggestion_set =
-<<<<<<< HEAD
-                reflow(ContentOrigin::TestEntityRust, chunk, &cfg).expect("Reflow is working. qed");
-=======
-                reflow(&ContentOrigin::TestEntity, chunk, &cfg).expect("Reflow is working. qed");
->>>>>>> 92cb991... chore/reflow: some clippy warnings
+                reflow(&ContentOrigin::TestEntityRust, chunk, &cfg).expect("Reflow is working. qed");
             let sug = suggestion_set
                 .iter()
                 .next()
