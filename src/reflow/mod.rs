@@ -8,9 +8,7 @@ use anyhow::Result;
 use crate::checker::Checker;
 use crate::documentation::{CheckableChunk, Documentation};
 
-use crate::{
-    CommentVariant, ContentOrigin, Detector, Range, Span, Suggestion, SuggestionSet,
-};
+use crate::{CommentVariant, ContentOrigin, Detector, Range, Span, Suggestion, SuggestionSet};
 
 use indexmap::IndexMap;
 
@@ -51,9 +49,9 @@ fn reflow_inner<'s>(
 ) -> Option<String> {
     // make string and unbreakable ranges absolute
     let s_absolute = &s[range.clone()];
-    let unbreakables = unbreakable_ranges.iter().map(|r| {
-        (r.start - range.clone().start)..(r.end - range.clone().start)
-    });
+    let unbreakables = unbreakable_ranges
+        .iter()
+        .map(|r| (r.start - range.clone().start)..(r.end - range.clone().start));
     let mut gluon = Gluon::new(s_absolute, max_line_width, indentations);
     gluon.add_unbreakables(unbreakables);
     let prefix = match variant {
@@ -460,10 +458,12 @@ should be rewrapped."#;
 ///
 /// Some more text after the newline which **represents** a paragraph";
 
-        let expected = vec![r#" Possible __ways__ to run __rustc__ and request various
+        let expected = vec![
+            r#" Possible __ways__ to run __rustc__ and request various
  parts of LTO."#,
- r#" Some more text after the newline which **represents** a
- paragraph"#];
+            r#" Some more text after the newline which **represents** a
+ paragraph"#,
+        ];
 
         let _ = env_logger::Builder::new()
             .filter(None, log::LevelFilter::Debug)
