@@ -43,7 +43,7 @@ fn tokenize(s: &str) -> Vec<Range> {
     let blacklist = "\";:,.?!#(){}[]-\n\r/`".to_owned();
     let is_ignore_char = |c: char| c.is_whitespace() || blacklist.contains(c);
 
-    for (c_idx, (byte_offset, c)) in s.char_indices().enumerate() {
+    for (c_idx, (_byte_offset, c)) in s.char_indices().enumerate() {
         if is_ignore_char(c) {
             linear_end = c_idx;
             if started {
