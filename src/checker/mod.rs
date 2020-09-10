@@ -31,6 +31,8 @@ pub(crate) trait Checker {
 ///
 /// Does not handle hyphenation yet or partial words at boundaries.
 /// Returns the a vector of ranges for the input str.
+///
+/// All ranges are in characters.
 fn tokenize(s: &str) -> Vec<Range> {
     let mut started = false;
     let mut linear_start = 0usize;
@@ -41,7 +43,7 @@ fn tokenize(s: &str) -> Vec<Range> {
     let blacklist = "\";:,.?!#(){}[]-\n\r/`".to_owned();
     let is_ignore_char = |c: char| c.is_whitespace() || blacklist.contains(c);
 
-    for (c_idx, c) in s.char_indices() {
+    for (c_idx, (byte_offset, c)) in s.char_indices().enumerate() {
         if is_ignore_char(c) {
             linear_end = c_idx;
             if started {

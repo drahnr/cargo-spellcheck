@@ -465,43 +465,39 @@ The end.🐢"#;
             );
         }
 
-
         #[test]
         fn word_extraction_emoji() {
             // TODO FIXME remove the 🍁, and observe early termination
 
             // raw source
-            const SOURCE: &'static str = r#"
-Abcd
+            const SOURCE: &'static str = r#"A
+x🌡  in 🍁
 
 ---
 
-x🌡🍁
-
----
-
-Efgh"#;
+Ef gh"#;
 
             // extracted content as present as provided by `chunk.as_str()`
             const RAW: &'static str = SOURCE;
 
             // markdown erased residue
-            const PLAIN: &'static str = r#"Abcd
+            const PLAIN: &'static str = r#"A
+x🌡  in 🍁
 
 
-x🌡🍁
-
-
-Efgh"#;
+Ef gh"#;
 
             bananasplit!(
                 ContentOrigin::TestEntityCommonMark;
                 SOURCE -> RAW -> PLAIN
                 expect
                 [
-                    "Abcd",
-                    "x🌡🍁",
-                    "Efgh",
+                    "A",
+                    "x🌡",
+                    "in",
+                    "🍁",
+                    "Ef",
+                    "gh",
                 ]
             );
         }
