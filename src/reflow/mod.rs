@@ -9,7 +9,7 @@ use crate::checker::Checker;
 use crate::documentation::{CheckableChunk, Documentation};
 
 use crate::{
-    CommentVariant, ContentOrigin, Detector, LineColumn, Range, Span, Suggestion, SuggestionSet,
+    CommentVariant, ContentOrigin, Detector, Range, Span, Suggestion, SuggestionSet,
 };
 
 use indexmap::IndexMap;
@@ -49,8 +49,13 @@ fn reflow_inner<'s>(
     max_line_width: usize,
     variant: CommentVariant,
 ) -> Option<String> {
-    let mut gluon = Gluon::new(s, range, max_line_width, indentations);
-    gluon.add_unbreakables(unbreakable_ranges);
+    // make string and unbreakable ranges absolute
+    let s = &s[range.clone()];
+    let unbreakables = unbreakable_ranges.iter().map(|r| {
+        (r.start - range.clone().start)..(r.end - range.clone().start)
+    });
+    let mut gluon = Gluon::new(s, max_line_width, indentations);
+    gluon.add_unbreakables(unbreakables);
     let prefix = match variant {
         CommentVariant::CommonMark | CommentVariant::MacroDocEq => "",
         CommentVariant::TripleSlash => " ",
@@ -162,7 +167,8 @@ fn reflow<'s>(
                     }
                     _ => {
                         // all of these break a reflow-able chunk
-                        paragraph = store(paragraph, unbreakables.as_slice())?;
+                        paragraph = store(paragraph, unbreakable_stack.as_slice())?;
+                        unbreakable_stack.clear();
                     }
                 }
             }
@@ -184,7 +190,8 @@ fn reflow<'s>(
                     }
                     Tag::Paragraph => {
                         // regular end of paragraph
-                        paragraph = store(cover.end, unbreakables.as_slice())?;
+                        paragraph = store(cover.end, unbreakable_stack.as_slice())?;
+                        unbreakable_stack.clear();
                     }
                     _ => {
                         paragraph = cover.end;
@@ -450,43 +457,45 @@ should be rewrapped."#;
     #[test]
     fn reflow_markdown_two_paragraphs() {
         const CONTENT: &'static str =
-            "/// Possible **ways** to run __rustc__ and request various parts of LTO.
+            "/// Possible __ways__ to run __rustc__ and request various parts of LTO.
 ///
-/// Some more text after the rule which represents a paragraph";
+/// Some more text after the newline which **represents** a paragraph";
 
-        let expected = vec![
-            r#" Possible **ways** to run __rustc__ and request various
- parts of LTO.
- "#,
-            r#" Some more text after the rule which represents a
- paragraph"#,
-        ];
+        let expected = vec![r#" Possible __ways__ to run __rustc__ and request various
+ parts of LTO."#,
+ r#" Some more text after the newline which **represents** a
+ paragraph"#];
+
+        let _ = env_logger::Builder::new()
+            .filter(None, log::LevelFilter::Debug)
+            .is_test(true)
+            .try_init();
 
         let docs = Documentation::from((ContentOrigin::TestEntityRust, CONTENT));
         assert_eq!(docs.entry_count(), 1);
         let chunks = docs
             .get(&ContentOrigin::TestEntityRust)
             .expect("Contains test data. qed");
-        assert_eq!(dbg!(chunks).len(), 2);
+        assert_eq!(dbg!(chunks).len(), 1);
+        let chunk = &chunks[0];
 
         let cfg = ReflowConfig {
             max_line_length: 60,
             ..Default::default()
         };
 
-        for (chunk, expect) in chunks.iter().zip(expected) {
-            let suggestion_set =
-                reflow(ContentOrigin::TestEntityRust, chunk, &cfg).expect("Reflow is working. qed");
-            let sug = suggestion_set
-                .iter()
-                .next()
-                .expect("Contains a suggestion. qed");
+        let suggestion_set =
+            reflow(ContentOrigin::TestEntityRust, &chunk, &cfg).expect("Reflow is working. qed");
+
+        for (sug, expected) in suggestion_set.iter().zip(expected) {
+            assert_eq!(sug.replacements.len(), 1);
             let replacement = sug
                 .replacements
                 .iter()
                 .next()
                 .expect("An replacement exists. qed");
-            assert_eq!(replacement.as_str(), expect);
+
+            assert_eq!(replacement.as_str(), expected);
         }
     }
 
