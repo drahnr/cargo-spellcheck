@@ -79,7 +79,10 @@ impl<'a> PlainOverlay<'a> {
 
         for (event, byte_range) in parser.into_offset_iter() {
             if byte_range.start > byte_range.end {
-                warn!("Dropping event {:?} due to negative byte range {:?}, see {}", event, byte_range, "https://github.com/raphlinus/pulldown-cmark/issues/478");
+                warn!(
+                    "Dropping event {:?} due to negative byte range {:?}, see {}",
+                    event, byte_range, "https://github.com/raphlinus/pulldown-cmark/issues/478"
+                );
                 continue;
             }
 
@@ -89,7 +92,7 @@ impl<'a> PlainOverlay<'a> {
             let mut char_cursor = 0usize;
 
             // let the cursor catch up to the current byte position
-            while let Some((char_idx, (byte_offset, c))) = cursor.next() {
+            while let Some((char_idx, (byte_offset, _c))) = cursor.next() {
                 char_cursor = char_idx;
                 if byte_offset >= byte_range.start {
                     break;
@@ -97,8 +100,7 @@ impl<'a> PlainOverlay<'a> {
             }
             // convert to a character range given the char_cursor
             // TODO defer the length calculation into the tags, where the string is already extracted.
-            let char_range =
-            {
+            let char_range = {
                 let bytes_start = std::cmp::min(byte_range.start, cmark.len());
                 let bytes_end = std::cmp::min(byte_range.end, cmark.len());
                 assert!(bytes_start <= bytes_end);
