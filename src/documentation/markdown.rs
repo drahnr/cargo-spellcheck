@@ -87,7 +87,6 @@ impl<'a> PlainOverlay<'a> {
             while let Some((char_idx, (byte_offset, c))) = cursor.next() {
                 char_cursor = char_idx;
                 if byte_offset >= byte_range.start {
-                    log::trace!("cought up at char index {}  / {}", char_idx, c);
                     break;
                 }
             }

@@ -119,7 +119,7 @@ impl CheckableChunk {
     /// ]
     /// ```
     pub(super) fn find_spans(&self, range: Range) -> IndexMap<Range, Span> {
-        trace!(
+        trace!(target: "find_spans",
             "############################################ chunk find_span {:?}",
             &range
         );
@@ -130,7 +130,7 @@ impl CheckableChunk {
             .skip_while(|(fragment_range, _span)| fragment_range.end <= start)
             .take_while(|(fragment_range, _span)| fragment_range.start < end)
             .inspect(|x| {
-                trace!(">>> item {:?} ∈ {:?}", &range, x.0);
+                trace!(target: "find_spans", ">>> item {:?} ∈ {:?}", &range, x.0);
             })
             .filter(|(fragment_range, _)| {
                 // could possibly happen on empty documentation lines with `///`
@@ -141,7 +141,7 @@ impl CheckableChunk {
                 let sub_fragment_range = std::cmp::max(fragment_range.start, range.start)
                     ..std::cmp::min(fragment_range.end, range.end);
 
-                trace!(
+                trace!(target: "find_spans",
                     ">> fragment: span: {:?} => range: {:?} | sub: {:?} -> sub_fragment: {:?}",
                     &fragment_span,
                     &fragment_range,
@@ -149,18 +149,18 @@ impl CheckableChunk {
                     &sub_fragment_range,
                 );
 
-                log::trace!(
+                log::trace!(target: "find_spans",
                     "[f]display;\n>{}<",
                     ChunkDisplay::try_from((self, fragment_range.clone()))
                         .expect("must be convertable")
                 );
-                log::trace!(
+                log::trace!(target: "find_spans",
                     "[f]content;\n>{}<",
                     crate::util::sub_chars(self.as_str(), fragment_range.clone())
                 );
 
                 if sub_fragment_range.len() == 0 {
-                    log::trace!("sub fragment is zero, dropping!");
+                    log::trace!(target: "find_spans","sub fragment is zero, dropping!");
                     return None;
                 }
 
@@ -184,7 +184,7 @@ impl CheckableChunk {
                     }
                     Some(x)
                 }) {
-                    trace!("char[{}]: {}", idx, c);
+                    trace!(target: "find_spans", "char[{}]: {}", idx, c);
                     if idx == shift {
                         sub_fragment_span.start = cursor;
                     }
