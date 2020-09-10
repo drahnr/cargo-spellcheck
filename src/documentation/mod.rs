@@ -310,13 +310,78 @@ mod tests {
         use crate::checker::dummy::DummyChecker;
         use crate::documentation::Documentation;
 
-        #[test]
-        fn end2end_rustfile() {
-            let _ = env_logger::builder()
-                .is_test(true)
-                .filter(None, log::LevelFilter::Trace)
-                .try_init();
+        /// Verifies the extracted spans and ranges are covering the expected words.
+        macro_rules! bananasplit {
+            ($origin:expr; $source:ident -> $raw:ident -> $plain:ident expect [ $( $x:literal ),* $(,)? ]) => {
+                let _ = env_logger::builder()
+                    .is_test(true)
+                    .filter(None, log::LevelFilter::Trace)
+                    .try_init();
 
+                let _source = $source;
+
+                let origin: ContentOrigin = $origin;
+
+                let docs = Documentation::from((origin.clone(), $source));
+
+                let suggestion_set =
+                    dbg!(DummyChecker::check(&docs, &())).expect("Dummy checker never fails. qed");
+
+                let (origin2, chunks) = docs
+                    .iter()
+                    .next()
+                    .expect("Introduced exactly one source. qed");
+                assert_eq!(&origin, origin2);
+
+                let chunk = chunks
+                    .iter()
+                    .next()
+                    .expect("Commonmark files always contain a chunk. qed");
+
+                assert_eq!(chunks.len(), 1);
+                assert_eq!(RAW, chunk.as_str());
+
+                let plain = chunk.erase_markdown();
+                assert_eq!($plain, plain.as_str());
+
+                let mut it = suggestion_set.iter();
+                let (_, suggestions) = it.next().expect("Dummy checker produces one error per tokenized word. qed");
+
+                let mut it = suggestions.into_iter();
+
+                let mut expected = |word: &'static str| {
+                    log::info!("Working on expected token >{}<", word);
+                    let suggestion = dbg!(it.next()).expect("Number of words is by test design equal to the number of expects. qed");
+                    let _s = dbg!(suggestion.chunk.as_str());
+
+                    // range for chunk
+                    let range: Range = suggestion
+                        .span
+                        .to_content_range(&suggestion.chunk)
+                        .expect("Must work to derive content range from chunk and span");
+
+                    log::info!(
+                        "Current assumed word based on `Range`: {}",
+                        suggestion.chunk.display(range.clone())
+                    );
+
+                    log::info!("Checking word boundaries of >{}< against the chunk/range", word);
+                    assert_eq!(word, crate::util::sub_chars(chunk.as_str(), range));
+
+                    log::info!("Checking word boundaries of >{}< against the source/span", word);
+                    let alternative = load_span_from($source.as_bytes(), suggestion.span.clone())
+                        .expect("Span loading must succeed");
+
+                    assert_eq!(word, alternative);
+                };
+
+                $(expected($x);
+                )*
+            };
+        }
+
+        #[test]
+        fn word_extraction_rust() {
             // raw source
             const SOURCE: &'static str = r#"/// A headline.
 ///
@@ -333,73 +398,24 @@ struct X"#;
 
 Erronbeous bold uetchkp"#;
 
-            let origin = ContentOrigin::RustSourceFile(PathBuf::from("/tmp/virtual"));
-            let docs = Documentation::from((origin.clone(), SOURCE));
-
-            // TODO contains utter garbage, should be individual tokens, but is multiple literal
-            let suggestion_set =
-                dbg!(DummyChecker::check(&docs, &())).expect("Dummy checker never fails. qed");
-            let (origin2, chunks) = docs
-                .iter()
-                .next()
-                .expect("Introduced exactly one source. qed");
-            assert_eq!(&origin, origin2);
-
-            let chunk = chunks
-                .iter()
-                .next()
-                .expect("Must contain exactly one chunk");
-
-            assert_eq!(chunks.len(), 1);
-            assert_eq!(RAW, chunk.as_str());
-
-            let plain = chunk.erase_markdown();
-            assert_eq!(PLAIN, plain.as_str());
-
-            let mut it = suggestion_set.iter();
-            let (_, suggestions) = it.next().expect("Must contain at least one file entry");
-
-            let mut it = suggestions.into_iter();
-            let mut expected = |word: &'static str| {
-                let suggestion = it.next().expect("Must contain another mis-spelled word");
-                let _s = dbg!(suggestion.chunk.as_str());
-
-                // range for chunk
-                let range: Range = suggestion
-                    .span
-                    .to_content_range(&suggestion.chunk)
-                    .expect("Must work to derive content range from chunk and span");
-
-                log::info!(
-                    "Foxxy funkster: {}",
-                    suggestion.chunk.display(range.clone())
-                );
-
-                let alternative = load_span_from(SOURCE.as_bytes(), suggestion.span.clone())
-                    .expect("Span loading must succeed");
-
-                assert_eq!(word, crate::util::sub_chars(chunk.as_str(), range));
-                log::info!("Found word >> {} <<", word);
-
-                assert_eq!(word, alternative);
-            };
-
-            expected("A");
-            // expected(" A headline.\n///\n/// Erronbeous ");
-            expected("headline");
+            bananasplit!(ContentOrigin::TestEntityRust;
+                SOURCE -> RAW -> PLAIN
+                expect
+                [
+                    "A",
+                    "headline"
+                ]
+            );
         }
 
         #[test]
-        fn fffx() {
-            let _ = env_logger::builder()
-                .is_test(true)
-                .filter(None, log::LevelFilter::Trace)
-                .try_init();
-
+        fn word_extraction_commonmark() {
             // raw source
             const SOURCE: &'static str = r#"# cmark test
 
-A raelly boring test.
+<pre>🌡</pre>
+
+A relly boring test.
 
 ## Engineering
 
@@ -409,6 +425,8 @@ I am so code!
 
 ---
 
+**Breakage** ` ```rust` anticipated?
+
 The end.🐢"#;
 
             // extracted content as present as provided by `chunk.as_str()`
@@ -417,78 +435,84 @@ The end.🐢"#;
             // markdown erased residue
             const PLAIN: &'static str = r#"cmark test
 
-A raelly boring test.
+A relly boring test.
 
 Engineering
 
 
+Breakage  anticipated?
+
 The end.🐢"#;
 
-            let origin = ContentOrigin::CommonMarkFile(PathBuf::from("/tmp/virtual"));
-            let docs = Documentation::from((origin.clone(), SOURCE));
+            bananasplit!(
+                ContentOrigin::TestEntityCommonMark;
+                SOURCE -> RAW -> PLAIN
+                expect
+                [
+                    "cmark",
+                    "test",
+                    "A",
+                    "relly",
+                    "boring",
+                    "Engineering",
+                    "Breakage",
+                    "anticipated",
+                    "The",
+                    "end",
+                    "🐢"
+                ]
+            );
+        }
 
-            let suggestion_set =
-                dbg!(DummyChecker::check(&docs, &())).expect("Dummy checker never fails. qed");
+        #[test]
+        fn word_extraction_issue_104_thermostat() {
+            // TODO FIXME remove the 🍁, and observe early termination
 
-            let (origin2, chunks) = docs
-                .iter()
-                .next()
-                .expect("Introduced exactly one source. qed");
-            assert_eq!(&origin, origin2);
+            // raw source
+            const SOURCE: &'static str = r#"
+Ref1
 
-            let chunk = chunks
-                .iter()
-                .next()
-                .expect("Cmark files are always `1+k` chunks, wher `k` is the number of rust(!) code blocks. qed");
+🌡🍁
 
-            assert_eq!(chunks.len(), 1);
-            assert_eq!(RAW, chunk.as_str());
+Ref2
 
-            let plain = chunk.erase_markdown();
-            assert_eq!(PLAIN, plain.as_str());
+<pre>🌡</pre>
 
-            let mut it = suggestion_set.iter();
-            let (_, suggestions) = it.next().expect("Must contain at least one file entry");
+Ref3
 
-            let mut it = suggestions.into_iter();
+`🌡`
 
-            let mut expected = |word: &'static str| {
-                let suggestion = dbg!(it.next()).expect("Must contain another mis-spelled word");
-                let _s = dbg!(suggestion.chunk.as_str());
+Ref4
+"#;
 
-                // range for chunk
-                let range: Range = suggestion
-                    .span
-                    .to_content_range(&suggestion.chunk)
-                    .expect("Must work to derive content range from chunk and span");
+            // extracted content as present as provided by `chunk.as_str()`
+            const RAW: &'static str = SOURCE;
 
-                log::info!(
-                    "Foxxy funkster: {}",
-                    suggestion.chunk.display(range.clone())
-                );
+            // markdown erased residue
+            const PLAIN: &'static str = r#"Ref1
 
-                let alternative = load_span_from(SOURCE.as_bytes(), suggestion.span.clone())
-                    .expect("Span loading must succeed");
+🌡🍁
 
-                assert_eq!(word, crate::util::sub_chars(chunk.as_str(), range));
-                log::info!("Found word >> {} <<", word);
+Ref2
 
-                assert_eq!(word, alternative);
-            };
+Ref3
 
-            expected("cmark");
-            expected("test");
 
-            expected("A");
-            expected("raelly");
-            expected("boring");
-            expected("test");
 
-            expected("Engineering");
+Ref4"#;
 
-            expected("The");
-            expected("end");
-            expected("🐢");
+            bananasplit!(
+                ContentOrigin::TestEntityCommonMark;
+                SOURCE -> RAW -> PLAIN
+                expect
+                [
+                    "Ref1",
+                    // "🌡🍁", we ignore non ascii chars for now TODO this is bad
+                    "Ref2",
+                    "Ref3",
+                    "Ref4",
+                ]
+            );
         }
     }
 }
