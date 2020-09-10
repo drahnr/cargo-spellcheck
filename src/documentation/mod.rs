@@ -454,12 +454,54 @@ The end.🐢"#;
                     "A",
                     "relly",
                     "boring",
+                    "test",
                     "Engineering",
                     "Breakage",
                     "anticipated",
                     "The",
                     "end",
-                    "🐢"
+                    "🐢",
+                ]
+            );
+        }
+
+
+        #[test]
+        fn word_extraction_emoji() {
+            // TODO FIXME remove the 🍁, and observe early termination
+
+            // raw source
+            const SOURCE: &'static str = r#"
+Abcd
+
+---
+
+x🌡🍁
+
+---
+
+Efgh"#;
+
+            // extracted content as present as provided by `chunk.as_str()`
+            const RAW: &'static str = SOURCE;
+
+            // markdown erased residue
+            const PLAIN: &'static str = r#"Abcd
+
+
+x🌡🍁
+
+
+Efgh"#;
+
+            bananasplit!(
+                ContentOrigin::TestEntityCommonMark;
+                SOURCE -> RAW -> PLAIN
+                expect
+                [
+                    "Abcd",
+                    "x🌡🍁",
+                    "Efgh",
                 ]
             );
         }
@@ -507,7 +549,7 @@ Ref4"#;
                 expect
                 [
                     "Ref1",
-                    // "🌡🍁", we ignore non ascii chars for now TODO this is bad
+                    "🌡🍁",
                     "Ref2",
                     "Ref3",
                     "Ref4",

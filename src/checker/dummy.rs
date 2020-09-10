@@ -29,7 +29,7 @@ impl Checker for DummyChecker {
                     .expect("DummyChecker expects at least one chunk");
                 let plain = chunk.erase_markdown();
                 for (index, range) in dbg!(tokenize(plain.as_str())).into_iter().enumerate() {
-                    trace!("Token: >{}<", sub_chars(plain.as_str(), range.clone()));
+                    trace!("****Token: >{}<", sub_chars(plain.as_str(), range.clone()));
                     let detector = Detector::Dummy;
                     let range2span = plain.find_spans(range.clone());
                     for (range, span) in range2span {
