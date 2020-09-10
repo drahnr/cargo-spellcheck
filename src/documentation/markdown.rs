@@ -78,6 +78,11 @@ impl<'a> PlainOverlay<'a> {
         let mut skip_link_text = false;
 
         for (event, byte_range) in parser.into_offset_iter() {
+            if byte_range.start > byte_range.end {
+                warn!("Dropping event {:?} due to negative byte range {:?}, see {}", event, byte_range, "https://github.com/raphlinus/pulldown-cmark/issues/478");
+                continue;
+            }
+
             trace!("Parsing event (bytes: {:?}): {:?}", &byte_range, &event);
 
             let mut cursor = cmark.char_indices().enumerate().peekable();
@@ -92,7 +97,14 @@ impl<'a> PlainOverlay<'a> {
             }
             // convert to a character range given the char_cursor
             // TODO defer the length calculation into the tags, where the string is already extracted.
-            let char_range = char_cursor..(char_cursor + &cmark[byte_range].chars().count());
+            let char_range =
+            {
+                let bytes_start = std::cmp::min(byte_range.start, cmark.len());
+                let bytes_end = std::cmp::min(byte_range.end, cmark.len());
+                assert!(bytes_start <= bytes_end);
+                let char_count = cmark[bytes_start..bytes_end].chars().count();
+                char_cursor..(char_cursor + char_count)
+            };
 
             match event {
                 Event::Start(tag) => match tag {
