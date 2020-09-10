@@ -44,17 +44,17 @@ impl Checker for Reflow {
 fn reflow_inner<'s>(
     s: &'s str,
     range: Range,
-    unbreakable_ranges: Vec<Range>,
+    unbreakable_ranges: &[Range],
     indentations: Vec<usize>,
     max_line_width: usize,
     variant: CommentVariant,
 ) -> Option<String> {
     // make string and unbreakable ranges absolute
-    let s = &s[range.clone()];
+    let s_absolute = &s[range.clone()];
     let unbreakables = unbreakable_ranges.iter().map(|r| {
         (r.start - range.clone().start)..(r.end - range.clone().start)
     });
-    let mut gluon = Gluon::new(s, max_line_width, indentations);
+    let mut gluon = Gluon::new(s_absolute, max_line_width, indentations);
     gluon.add_unbreakables(unbreakables);
     let prefix = match variant {
         CommentVariant::CommonMark | CommentVariant::MacroDocEq => "",
@@ -132,7 +132,7 @@ fn reflow<'s>(
             if let Some(replacement) = reflow_inner(
                 chunk.as_str(),
                 range.clone(),
-                unbreakable_ranges.to_vec(),
+                unbreakable_ranges,
                 indentations,
                 cfg.max_line_length,
                 chunk.variant(),
@@ -243,14 +243,13 @@ mod tests {
             assert_eq!(dbg!(chunks).len(), 1);
             let chunk = &chunks[0];
 
-            // TODO add tests with indentation and unbreakables or is this sufficiently covered by Gluon tests?
-            let range = 0..CONTENT.len();
+            let range = 0..chunk.as_str().len();
             let indentation: Vec<usize> = [0; 6].to_vec();
             let unbreakables = Vec::new();
             let replacement = reflow_inner(
                 chunk.as_str(),
                 range,
-                unbreakables,
+                &unbreakables,
                 indentation,
                 $n,
                 chunk.variant()
