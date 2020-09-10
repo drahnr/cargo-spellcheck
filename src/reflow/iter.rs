@@ -9,8 +9,6 @@ pub struct Tokeneer<'s> {
     /// Original source string of continuous lines which are to be wrapped.
     s: &'s str,
 
-    /// The sub-range of the string to reflow.
-    range: Range,
     /// A set of matching spans to sub ranges.
     spans: IndexMap<Range, Span>,
 
@@ -31,11 +29,10 @@ pub struct Tokeneer<'s> {
 
 impl<'s> Tokeneer<'s> {
     /// Initialize a new tokenizer
-    pub fn new(s: &'s str, range: Range, unbreakable_ranges: Vec<Range>) -> Self {
+    pub fn new(s: &'s str, unbreakable_ranges: Vec<Range>) -> Self {
         let inner = s.char_indices().enumerate().peekable();
         Self {
             s,
-            range,
             spans: Default::default(),
             unbreakable_ranges,
             unbreakable_idx: 0usize,
@@ -170,12 +167,13 @@ pub struct Gluon<'s> {
 
 impl<'s> Gluon<'s> {
     pub fn new(s: &'s str, range: Range, max_line_width: usize, indentations: Vec<usize>) -> Self {
+        let s = &s[range];
         Self {
             queue: VecDeque::new(),
             max_line_width,
             indentations,
             line_counter: 0usize,
-            inner: Tokeneer::<'s>::new(s, range, vec![]),
+            inner: Tokeneer::<'s>::new(s, vec![]),
         }
     }
 
@@ -325,7 +323,7 @@ mod tests {
 
         fn verify(content: &'static str, expected: &[&'static str], unbreakables: Vec<Range>) {
             let mut expected_iter = expected.into_iter();
-            let tokeneer = Tokeneer::new(content, 0..content.len(), unbreakables);
+            let tokeneer = Tokeneer::new(content, unbreakables);
             for (idx, (_char_range, _byte_range, s)) in tokeneer.enumerate() {
                 let expected = expected_iter
                     .next()
