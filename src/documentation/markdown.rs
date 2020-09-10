@@ -94,12 +94,7 @@ impl<'a> PlainOverlay<'a> {
             // convert to a character range given the char_cursor
             // TODO defer the length calculation into the tags, where the string is already extracted.
             let char_range =
-                char_cursor..(dbg!(char_cursor) + dbg!(&cmark[byte_range]).chars().count());
-
-            log::info!(
-                "Sub chars: {}",
-                crate::util::sub_chars(cmark, char_range.clone())
-            );
+                char_cursor..(char_cursor + &cmark[byte_range].chars().count());
 
             match event {
                 Event::Start(tag) => match tag {
