@@ -13,7 +13,7 @@ use anyhow::{anyhow, bail, Error, Result};
 use fancy_regex::Regex;
 
 use log::trace;
-use log::warn;
+
 use serde::{Deserialize, Serialize};
 use std::convert::AsRef;
 use std::fmt;
