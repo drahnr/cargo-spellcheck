@@ -353,15 +353,11 @@ mod tests {
             }},
         );
 
-        assert_eq!(chunk.find_spans(0..2).len(), 1);
-        assert_eq!(chunk.find_spans(5..6).len(), 1);
-        assert_eq!(chunk.find_spans(9..11).len(), 1);
-        assert_eq!(chunk.find_spans(9..20).len(), 1);
-
         let plain = chunk.erase_markdown();
         assert_eq!(plain.find_spans(0..2).len(), 1);
         assert_eq!(plain.find_spans(3..4).len(), 1);
         assert_eq!(plain.find_spans(5..7).len(), 1);
+        assert_eq!(plain.find_spans(5..12).len(), 1);
         assert_eq!(plain.find_spans(9..20).len(), 0);
     }
 
