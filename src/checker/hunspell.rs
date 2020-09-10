@@ -89,7 +89,7 @@ impl HunspellChecker {
 
         // suggestion must contain the word itself if it is valid extra dictionary
         // be more strict about the extra dictionaries, they have to exist
-        for extra_dic in config.extra_dictonaries().iter() {
+        for extra_dic in config.extra_dictionaries().iter() {
             trace!("Adding extra dictionary {}", extra_dic.display());
             if !extra_dic.is_file() {
                 bail!("Extra dictionary {} is not a file", extra_dic.display())

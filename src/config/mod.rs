@@ -262,7 +262,7 @@ pub struct HunspellConfig {
     // must be option so it can be omitted in the config
     pub search_dirs: SearchDirs,
     /// Additional dictionaries for topic specific lingo.
-    pub extra_dictonaries: Option<Vec<PathBuf>>,
+    pub extra_dictionaries: Option<Vec<PathBuf>>,
     /// Additional quirks besides dictionary lookups.
     pub quirks: Option<Quirks>,
 }
@@ -284,9 +284,9 @@ impl HunspellConfig {
         }
     }
 
-    pub fn extra_dictonaries(&self) -> &[PathBuf] {
-        if let Some(ref extra_dictonaries) = self.extra_dictonaries {
-            extra_dictonaries.as_slice()
+    pub fn extra_dictionaries(&self) -> &[PathBuf] {
+        if let Some(ref extra_dictionaries) = self.extra_dictionaries {
+            extra_dictionaries.as_slice()
         } else {
             &[]
         }
@@ -316,7 +316,7 @@ impl HunspellConfig {
                 .collect();
 
             // convert all extra dictionaries to absolute paths
-            if let Some(ref mut extra_dictionaries) = self.extra_dictonaries {
+            if let Some(ref mut extra_dictionaries) = self.extra_dictionaries {
                 'o: for extra_dic in extra_dictionaries.iter_mut() {
                     for search_dir in search_dirs.iter().filter_map(|search_dir| {
                         if !extra_dic.is_absolute() {
@@ -336,7 +336,7 @@ impl HunspellConfig {
                                 continue 'o;
                             }
                         } else {
-                            warn!("Failed to canonicalize {}", abspath.display());
+                            log::debug!("Failed to canonicalize {}", abspath.display());
                         }
                     }
                     bail!(
@@ -467,8 +467,11 @@ impl Config {
 
     /// Obtain a project specific config file.
     pub fn project_config(manifest_dir: impl AsRef<Path>) -> Result<PathBuf> {
-        let mut path = manifest_dir.as_ref().to_owned().join(".config");
-        path.set_file_name("spellcheck.toml");
+        let path = manifest_dir
+            .as_ref()
+            .to_owned()
+            .join(".config")
+            .join("spellcheck.toml");
 
         let path = path.canonicalize()?;
 
@@ -536,7 +539,7 @@ impl Default for Config {
             hunspell: Some(HunspellConfig {
                 lang: Some("en_US".to_owned()),
                 search_dirs: Some(os_specific_search_dirs().to_vec()).into(),
-                extra_dictonaries: Some(Vec::new()),
+                extra_dictionaries: Some(Vec::new()),
                 quirks: Some(Quirks::default()),
             }),
             languagetool: None,
@@ -569,7 +572,7 @@ url = "http://127.0.0.1:8010/"
 [Hunspell]
 lang = "en_US"
 search_dirs = ["/usr/lib64/hunspell"]
-extra_dictonaries = ["/home/bernhard/test.dic"]
+extra_dictionaries = ["/home/bernhard/test.dic"]
 			"#,
         )
         .unwrap();
@@ -590,7 +593,7 @@ extra_dictonaries = ["/home/bernhard/test.dic"]
 [hunspell]
 lang = "en_US"
 search_dirs = ["/usr/lib64/hunspell"]
-extra_dictonaries = ["/home/bernhard/test.dic"]
+extra_dictionaries = ["/home/bernhard/test.dic"]
 			"#,
         )
         .unwrap();
@@ -606,7 +609,7 @@ extra_dictonaries = ["/home/bernhard/test.dic"]
 [Hunspell]
 lang = "en_US"
 search_dirs = ["/usr/lib64/hunspell"]
-extra_dictonaries = ["/home/bernhard/test.dic"]
+extra_dictionaries = ["/home/bernhard/test.dic"]
 			"#,
         )
         .is_err());
@@ -619,7 +622,7 @@ extra_dictonaries = ["/home/bernhard/test.dic"]
 [Hunspell]
 lang = "en_US"
 search_dirs = ["/usr/lib64/hunspell"]
-extra_dictonaries = ["/home/bernhard/test.dic"]
+extra_dictionaries = ["/home/bernhard/test.dic"]
 			"#,
         )
         .unwrap();

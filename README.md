@@ -113,7 +113,7 @@ lang = "en_US"
 # Refer to `man 5 hunspell`
 # or https://www.systutorials.com/docs/linux/man/4-hunspell/#lbAE
 # on how to define a custom dictionary file.
-extra_dictonaries = []
+extra_dictionaries = []
 
 [Hunspell.quirks]
 # Transforms words that are provided by the tokenizer
