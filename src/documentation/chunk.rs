@@ -243,10 +243,11 @@ impl CheckableChunk {
             .take_while(move |(fragment_range, _)| fragment_range.start <= end)
             .filter_map(|(fragment_range, fragment_span)| {
                 // could possibly happen on empty documentation lines with `///`
-                if fragment_range.is_empty() {
-                    Some(fragment_span)
-                } else {
+                // TODO: is_empty() throws disambiguity error
+                if fragment_range.len() == 0 {
                     None
+                } else {
+                    Some(fragment_span)
                 }
             })
     }

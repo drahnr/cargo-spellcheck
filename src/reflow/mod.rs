@@ -99,21 +99,21 @@ fn reflow<'s>(
 
             // debug_assert!(!spans.is_empty());
 
-            let span_start: LineColumn = if let Some(first) = spans.next() {
-                first.start
+            let span_start = if let Some(first) = spans.next() {
+                first
             } else {
                 // anyhow::bail!("Missing spans");
                 return Ok(paragraph);
             };
-            let span_end: LineColumn = if let Some(last) = spans.last() {
-                last.end
+            let span_end = if let Some(last) = spans.last() {
+                last
             } else {
                 span_start
             };
 
             let span = Span {
-                start: span_start,
-                end: span_end,
+                start: span_start.start,
+                end: span_end.end,
             };
 
             // Get indentation for each span, if a span covers multiple
