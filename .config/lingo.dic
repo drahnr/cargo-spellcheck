@@ -1,6 +1,12 @@
-Hunspell/Library
-LanguageTool/Service
+15
+Hunspell
+LanguageTool
 CXX
 C++
 clang
-
+API
+cargo-spellcheck
+spellcheck
+Roadmap
+multiline
+featuresets
