@@ -93,8 +93,7 @@ impl<'a> PlainOverlay<'a> {
             }
             // convert to a character range given the char_cursor
             // TODO defer the length calculation into the tags, where the string is already extracted.
-            let char_range =
-                char_cursor..(char_cursor + &cmark[byte_range].chars().count());
+            let char_range = char_cursor..(char_cursor + &cmark[byte_range].chars().count());
 
             match event {
                 Event::Start(tag) => match tag {
@@ -340,8 +339,6 @@ mod tests {
     #[test]
     fn drill_span() {
         const TEST: &str = r##"ab **🐡** xy"##;
-        let (reduced, mapping) = PlainOverlay::extract_plain_with_mapping(TEST);
-        dbg!(mapping);
         let chunk = CheckableChunk::from_str(
             TEST,
             indexmap::indexmap! { 0..11 => Span {

@@ -70,7 +70,7 @@ fn tokenize(s: &str) -> Vec<Range> {
             let linear_end = idx + 1;
             bananasplit.push(linear_start..linear_end)
         } else {
-            log::error!("Most likely lost a word when tokenizing! BUG");
+            log::error!("BUG: Most likely lost a word when tokenizing!");
         }
     }
     bananasplit
