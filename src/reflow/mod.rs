@@ -32,13 +32,21 @@ impl Checker for Reflow {
         let mut suggestions = SuggestionSet::new();
         for (origin, chunks) in docu.iter() {
             for chunk in chunks {
-                suggestions.extend(origin.clone(), reflow(origin.clone(), chunk, config)?);
+                suggestions.extend(origin.clone(), reflow(origin, chunk, config)?);
             }
         }
         Ok(suggestions)
     }
 }
 
+/// Reflows a parsed commonmark paragraph contained in `s`
+///
+/// Returns the `Some(replacement)` string if a reflow has been performed and `None` otherwise.
+///
+/// `range` denotes the range of the paragraph of interest in the top-level `CheckableChunk`.
+/// `unbreakable_ranges` contains all ranges of words/sequences which must not be split during
+/// the reflow. They are relative to the top-level `CheckableChunk` similar to `range`. The indentation
+/// vec contains the indentation for each line in `s`.
 fn reflow_inner<'s>(
     s: &'s str,
     range: Range,
@@ -51,9 +59,11 @@ fn reflow_inner<'s>(
     let s_absolute = &s[range.clone()];
     let unbreakables = unbreakable_ranges
         .iter()
-        .map(|r| (r.start - range.clone().start)..(r.end - range.clone().start));
+        .map(|r| (r.start - range.start)..(r.end - range.start));
+
     let mut gluon = Gluon::new(s_absolute, max_line_width, indentations);
     gluon.add_unbreakables(unbreakables);
+
     let prefix = match variant {
         CommentVariant::CommonMark | CommentVariant::MacroDocEq => "",
         CommentVariant::TripleSlash => " ",
@@ -69,6 +79,7 @@ fn reflow_inner<'s>(
 
     // iterations above add a newline add the end, we have to remove it
     let replacement = replacement.trim_end_matches("\n").to_string();
+
     if replacement == s {
         None
     } else {
@@ -76,16 +87,15 @@ fn reflow_inner<'s>(
     }
 }
 
-/// Reflow the documenation such that a maximum colomn constraint is met.
-#[allow(unused)]
+/// Parses a `CheckableChunk` and performs the re-wrapping on its content.
 fn reflow<'s>(
-    origin: ContentOrigin,
+    origin: &ContentOrigin,
     chunk: &'s CheckableChunk,
     cfg: &ReflowConfig,
 ) -> Result<Vec<Suggestion<'s>>> {
     let parser = Parser::new_ext(chunk.as_str(), Options::all());
 
-    let mut paragraph = 0usize;
+    let mut paragraph = 0_usize;
     let mut unbreakable_stack: Vec<Range> = Vec::with_capacity(16); // no more than 16 items will be nested, commonly it's 2 or 3
     let mut unbreakables = Vec::with_capacity(1024);
 
@@ -100,12 +110,9 @@ fn reflow<'s>(
 
             let mut spans = chunk.find_covered_spans(range.clone());
 
-            // debug_assert!(!spans.is_empty());
-
             let span_start = if let Some(first) = spans.next() {
                 first
             } else {
-                // anyhow::bail!("Missing spans");
                 return Ok(paragraph);
             };
             let span_end = if let Some(last) = spans.last() {
@@ -227,8 +234,6 @@ mod tests {
     use super::*;
     use crate::{chyrp_up, fluff_up};
 
-    use crate::documentation::*;
-
     macro_rules! verify_reflow_inner {
         ([ $( $line:literal ),+ $(,)?] => $expected:literal) => {
             verify_reflow_inner!(80usize break [ $( $line ),+ ] => $expected);
@@ -306,9 +311,12 @@ test our rewrapping algorithm.",
 
             let cfg = ReflowConfig {
                 max_line_length: $n,
-                .. Default::default()
             };
+<<<<<<< HEAD
             let suggestion_set = reflow(ContentOrigin::TestEntityRust, chunk, &cfg).expect("Reflow is working. qed");
+=======
+            let suggestion_set = reflow(&ContentOrigin::TestEntity, chunk, &cfg).expect("Reflow is working. qed");
+>>>>>>> 92cb991... chore/reflow: some clippy warnings
             if $no_reflow {
                 assert_eq!(suggestion_set.len(), 0);
             } else {
@@ -384,11 +392,14 @@ r#" This module contains documentation thats
 
         let cfg = ReflowConfig {
             max_line_length: 35,
-            ..Default::default()
         };
         let suggestion_set =
+<<<<<<< HEAD
             reflow(ContentOrigin::TestEntityRust, chunk, &cfg).expect("Reflow is wokring. qed");
 
+=======
+            reflow(&ContentOrigin::TestEntity, chunk, &cfg).expect("Reflow is wokring. qed");
+>>>>>>> 92cb991... chore/reflow: some clippy warnings
         let suggestions = suggestion_set
             .iter()
             .next()
@@ -424,11 +435,14 @@ should be rewrapped."#;
 
         let cfg = ReflowConfig {
             max_line_length: 45,
-            ..Default::default()
         };
         let suggestion_set =
+<<<<<<< HEAD
             reflow(ContentOrigin::TestEntityRust, chunk, &cfg).expect("Reflow is working. qed");
 
+=======
+            reflow(&ContentOrigin::TestEntity, chunk, &cfg).expect("Reflow is working. qed");
+>>>>>>> 92cb991... chore/reflow: some clippy warnings
         let suggestions = suggestion_set
             .iter()
             .next()
@@ -480,11 +494,14 @@ should be rewrapped."#;
 
         let cfg = ReflowConfig {
             max_line_length: 60,
-            ..Default::default()
         };
 
         let suggestion_set =
+<<<<<<< HEAD
             reflow(ContentOrigin::TestEntityRust, &chunk, &cfg).expect("Reflow is working. qed");
+=======
+            reflow(&ContentOrigin::TestEntity, &chunk, &cfg).expect("Reflow is working. qed");
+>>>>>>> 92cb991... chore/reflow: some clippy warnings
 
         for (sug, expected) in suggestion_set.iter().zip(expected) {
             assert_eq!(sug.replacements.len(), 1);
@@ -520,12 +537,15 @@ lines."#,
 
         let cfg = ReflowConfig {
             max_line_length: 45,
-            ..Default::default()
         };
 
         for (chunk, expect) in chunks.iter().zip(expected) {
             let suggestion_set =
+<<<<<<< HEAD
                 reflow(ContentOrigin::TestEntityRust, chunk, &cfg).expect("Reflow is working. qed");
+=======
+                reflow(&ContentOrigin::TestEntity, chunk, &cfg).expect("Reflow is working. qed");
+>>>>>>> 92cb991... chore/reflow: some clippy warnings
             let sug = suggestion_set
                 .iter()
                 .next()
