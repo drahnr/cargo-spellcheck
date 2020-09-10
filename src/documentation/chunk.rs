@@ -128,7 +128,7 @@ impl CheckableChunk {
         self.source_mapping
             .iter()
             .skip_while(|(fragment_range, _span)| fragment_range.end <= start)
-            .take_while(|(fragment_range, _span)| end <= fragment_range.end)
+            .take_while(|(fragment_range, _span)| fragment_range.start < end)
             .inspect(|x| {
                 trace!(">>> item {:?} ∈ {:?}", &range, x.0);
             })
@@ -392,6 +392,30 @@ mod test {
     use super::literalset::tests::gen_literal_set;
     use super::util::load_span_from;
     use super::*;
+
+    #[test]
+    fn find_spans_emoji() {
+        const TEST: &str = r##"ab **🐡** xy"##;
+
+        let chunk = CheckableChunk::from_str(
+            TEST,
+            indexmap::indexmap! { 0..11 => Span {
+                start: LineColumn {
+                    line: 1usize,
+                    column: 4usize,
+                },
+                end: LineColumn {
+                    line: 1usize,
+                    column: 14usize,
+                },
+            }},
+        );
+
+        assert_eq!(chunk.find_spans(0..2).len(), 1);
+        assert_eq!(chunk.find_spans(5..6).len(), 1);
+        assert_eq!(chunk.find_spans(9..11).len(), 1);
+        assert_eq!(chunk.find_spans(9..20).len(), 1);
+    }
 
     #[test]
     fn find_spans_simple() {
