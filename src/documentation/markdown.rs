@@ -141,6 +141,7 @@ impl<'a> PlainOverlay<'a> {
                     match tag {
                         Tag::Table(_) => {
                             skip_table_text = false;
+                            Self::newlines(&mut plain, 1);
                         }
                         Tag::Link(_link_type, _url, _title) => {
                             // the actual rendered content is in a text section
@@ -623,12 +624,19 @@ d"#,
         // or handle a list of mute tags to simply ignore.
         cmark_reduction_test(
             r#"
+00
+
 |a|b|c
 |-|-|-
 |p|q|r
+
+ff
 "#,
-            r#""#,
-            0,
+            r#"00
+
+
+ff"#,
+            2,
         );
     }
 }
