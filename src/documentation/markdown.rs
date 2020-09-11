@@ -76,6 +76,7 @@ impl<'a> PlainOverlay<'a> {
         let mut code_block = false;
         let mut inception = false;
         let mut skip_link_text = false;
+        let mut skip_table_text = false;
 
         for (event, byte_range) in parser.into_offset_iter() {
             if byte_range.start > byte_range.end {
@@ -110,6 +111,10 @@ impl<'a> PlainOverlay<'a> {
 
             match event {
                 Event::Start(tag) => match tag {
+                    Tag::Table(_alignments) => {
+                        skip_table_text = true;
+                    }
+                    Tag::TableCell | Tag::TableHead | Tag::TableRow => {}
                     Tag::CodeBlock(fenced) => {
                         code_block = true;
                         inception = fenced == rust_fence;
@@ -134,6 +139,9 @@ impl<'a> PlainOverlay<'a> {
                 },
                 Event::End(tag) => {
                     match tag {
+                        Tag::Table(_) => {
+                            skip_table_text = false;
+                        }
                         Tag::Link(_link_type, _url, _title) => {
                             // the actual rendered content is in a text section
                         }
@@ -166,7 +174,7 @@ impl<'a> PlainOverlay<'a> {
                         }
                     } else if skip_link_text {
                         skip_link_text = false
-                    } else {
+                    } else if !skip_table_text {
                         Self::track(&s, char_range, &mut plain, &mut mapping);
                     }
                 }
@@ -585,6 +593,8 @@ fgh"#,
             1,
         );
     }
+    // Nested links as well as nested code blocks are
+    // impossible according to the common mark spec.
 
     #[test]
     fn list_nested() {
@@ -604,6 +614,21 @@ d"#,
         );
     }
 
-    // Nested links as well as nested code blocks are
-    // impossible according to the common mark spec.
+    #[test]
+    fn table_ignore() {
+        // TODO FIXME it would be better to transform this into
+        // one line per cell and test each cell.
+        // TODO very most likely will cause issues with grammar checks
+        // so eventually this will have to become checker specific code
+        // or handle a list of mute tags to simply ignore.
+        cmark_reduction_test(
+            r#"
+|a|b|c
+|-|-|-
+|p|q|r
+"#,
+            r#""#,
+            0,
+        );
+    }
 }
