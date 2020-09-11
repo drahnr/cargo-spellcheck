@@ -126,7 +126,10 @@ impl<'a> PlainOverlay<'a> {
                             LinkType::Autolink | LinkType::Email => true,
                         };
                     }
-
+                    Tag::List(_) => {
+                        // make sure nested lists are not clumped together
+                        Self::newlines(&mut plain, 1);
+                    }
                     _ => {}
                 },
                 Event::End(tag) => {
@@ -148,6 +151,11 @@ impl<'a> PlainOverlay<'a> {
                             }
                         }
                         Tag::Paragraph => Self::newlines(&mut plain, 2),
+
+                        Tag::Item => {
+                            // assure individual list items are not clumped together
+                            Self::newlines(&mut plain, 1);
+                        }
                         _ => {}
                     }
                 }
@@ -184,7 +192,7 @@ impl<'a> PlainOverlay<'a> {
                 Event::Rule => {
                     Self::newlines(&mut plain, 1);
                 }
-                Event::TaskListMarker(_b) => {}
+                Event::TaskListMarker(_checked) => {}
             }
         }
 
@@ -575,6 +583,24 @@ fgh"#,
             r#"[shortcut reference link]"#,
             r#"shortcut reference link"#,
             1,
+        );
+    }
+
+    #[test]
+    fn list_nested() {
+        cmark_reduction_test(
+            r#"
+* [x] a
+* [ ] b
+  * [ ] c
+  * [x] d
+"#,
+            r#"
+a
+b
+c
+d"#,
+            4,
         );
     }
 
