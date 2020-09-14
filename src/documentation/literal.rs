@@ -12,6 +12,8 @@ use std::fmt;
 pub enum CommentVariant {
     /// `///`
     TripleSlash,
+    /// `//!`
+    DoubleSlashEM,
     /// `#[doc=`
     MacroDocEq,
     /// Commonmark File
@@ -59,6 +61,9 @@ impl std::cmp::PartialEq for TrimmedLiteral {
             return false;
         }
         if self.span != other.span {
+            return false;
+        }
+        if self.variant != other.variant {
             return false;
         }
 
@@ -121,7 +126,13 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
             // Since we can not distinguish between orignally escaped, we simply
             // use the content read from source.
 
-            (CommentVariant::TripleSlash, span, pre, post)
+            let variant = if rendered.starts_with("///") {
+                CommentVariant::TripleSlash
+            } else {
+                CommentVariant::DoubleSlashEM
+            };
+
+            (variant, span, pre, post)
         } else {
             // pre and post are for the rendered content
             // not necessarily for the span
