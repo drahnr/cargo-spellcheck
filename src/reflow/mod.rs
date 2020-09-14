@@ -258,6 +258,7 @@ fn reflow<'s>(
                     unbreakable_stack.as_slice(),
                     cfg.max_line_length,
                 )?;
+                unbreakable_stack.clear();
             }
             Event::Rule => {
                 // paragraphs end before rules
