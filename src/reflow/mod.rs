@@ -64,26 +64,40 @@ fn reflow_inner<'s>(
     let mut gluon = Gluon::new(s_absolute, max_line_width, indentations);
     gluon.add_unbreakables(unbreakables);
 
-    let prefix = match variant {
-        CommentVariant::CommonMark | CommentVariant::MacroDocEq => "",
-        CommentVariant::TripleSlash => " ",
+    let (prefix, comment) = match variant {
+        CommentVariant::CommonMark | CommentVariant::MacroDocEq => ("", ""),
+        CommentVariant::TripleSlash => (" ", "///"),
+        CommentVariant::DoubleSlashEM => (" ", "//!"),
         CommentVariant::Unknown => return None,
     };
+    let mut reflow_applied = false;
+    let mut lines = s.lines();
+    let mut acc: String = if let Some((_, content, _)) = gluon.next() {
+        if lines.next() != Some(&(prefix.to_string() + &content)) {
+            reflow_applied = true;
+        }
+        String::from(prefix.to_string() + &content + "\n")
+    } else {
+        return None;
+    };
 
-    let replacement = gluon.fold(String::new(), |mut acc, (_, content, _)| {
+    while let Some((_, content, _)) = gluon.next() {
+        if lines.next() != Some(&(prefix.to_string() + &content)) {
+            reflow_applied = true;
+        }
+        acc.push_str(comment);
         acc.push_str(prefix);
         acc.push_str(&content);
         acc.push_str("\n");
-        acc
-    });
+    }
 
     // iterations above add a newline add the end, we have to remove it
-    let replacement = replacement.trim_end_matches("\n").to_string();
+    let replacement = acc.trim_end_matches("\n").to_string();
 
-    if replacement == s {
-        None
-    } else {
+    if reflow_applied {
         Some(replacement)
+    } else {
+        None
     }
 }
 
@@ -308,9 +322,9 @@ test our rewrapping algorithm. With emojis: 🚤w🌴x🌋y🍈z🍉0",
         "Smart, isn't it? Lorem ipsum and some more \
         blanket text without any meaning"] =>
         r#" This module contains documentation that is too long for one line and moreover,
- it spans over mulitple lines such that we can test our rewrapping algorithm.
- With emojis: 🚤w🌴x🌋y🍈z🍉0 Smart, isn't it? Lorem ipsum and some more blanket text
- without any meaning"#);
+/// it spans over mulitple lines such that we can test our rewrapping algorithm.
+/// With emojis: 🚤w🌴x🌋y🍈z🍉0 Smart, isn't it? Lorem ipsum and some more blanket text
+/// without any meaning"#);
     }
 
     #[test]
@@ -319,9 +333,9 @@ test our rewrapping algorithm. With emojis: 🚤w🌴x🌋y🍈z🍉0",
             r#" This module contains documentation."#);
         {
             verify_reflow_inner!(39 break ["This module contains documentation",
-                "which is split two lines"] =>
+                "which is split in two lines"] =>
                 r#" This module contains documentation
- which is split two lines"#);
+ which is split in two lines"#);
         }
     }
 
@@ -372,14 +386,14 @@ there are two consecutive newlines \
 in one connected documentation span."] =>
 
 r#" This module contains documentation thats
- is too long for one line and moreover, it
- spans over mulitple lines such that we
- can test our rewrapping algorithm. Smart,
- isn't it? Lorem ipsum and some more
- blanket text without any meaning. But
- lets also see what happens if there are
- two consecutive newlines in one connected
- documentation span."#, false);
+/// is too long for one line and moreover, it
+/// spans over mulitple lines such that we
+/// can test our rewrapping algorithm. Smart,
+/// isn't it? Lorem ipsum and some more
+/// blanket text without any meaning. But
+/// lets also see what happens if there are
+/// two consecutive newlines in one connected
+/// documentation span."#, false);
     }
 
     #[test]
@@ -393,8 +407,8 @@ r#" This module contains documentation thats
         reflow!(43 break ["This module contains documentation that is broken",
                           "into multiple short lines resulting in multiple spans."] =>
                 r#" This module contains documentation that
- is broken into multiple short lines
- resulting in multiple spans."#, false);
+/// is broken into multiple short lines
+/// resulting in multiple spans."#, false);
     }
     #[test]
     fn reflow_indentations() {
@@ -404,8 +418,8 @@ r#" This module contains documentation thats
     struct Fluffy {};"#;
 
         const EXPECTED: &'static str = r#" A comment with indentation
- that spans over two lines
- and should be rewrapped."#;
+/// that spans over two lines
+/// and should be rewrapped."#;
 
         let docs = Documentation::from((ContentOrigin::TestEntityRust, CONTENT));
         assert_eq!(docs.entry_count(), 1);
@@ -478,8 +492,8 @@ should be rewrapped."#;
         reflow!(60 break ["Possible **ways** to run __rustc__ and request various parts of LTO.",
                           " `markdown` syntax which leads to __unbreakables__?  With emojis: 🚤w🌴x🌋y🍈z🍉0."] =>
             r#" Possible **ways** to run __rustc__ and request various
- parts of LTO. `markdown` syntax which leads to
- __unbreakables__? With emojis: 🚤w🌴x🌋y🍈z🍉0."#, false);
+/// parts of LTO. `markdown` syntax which leads to
+/// __unbreakables__? With emojis: 🚤w🌴x🌋y🍈z🍉0."#, false);
     }
 
     #[test]
@@ -491,9 +505,9 @@ should be rewrapped."#;
 
         let expected = vec![
             r#" Possible __ways__ to run __rustc__ and request various
- parts of LTO."#,
+/// parts of LTO."#,
             r#" Some more text after the newline which **represents** a
- paragraph"#,
+/// paragraph"#,
         ];
 
         let _ = env_logger::Builder::new()
