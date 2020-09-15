@@ -377,6 +377,40 @@ test our rewrapping algorithm. With emojis: 🚤w🌴x🌋y🍈z🍉0",
         };
     }
 
+    macro_rules! reflow_chyrp {
+        ([ $( $line:literal ),+ $(,)?] => $expected:literal, $no_reflow:expr) => {
+            reflow_chyrp!(80usize break [ $( $line ),+ ] => $expected, $no_reflow:expr);
+        };
+        ($n:literal break [ $( $line:literal ),+ $(,)?] => $expected:literal, $no_reflow:expr) => {
+            const CONTENT:&'static str = chyrp_up!($( $line ),+);
+            let docs = Documentation::from((ContentOrigin::TestEntity, dbg!(CONTENT)));
+            assert_eq!(docs.entry_count(), 1);
+            let chunks = docs.get(&ContentOrigin::TestEntity).expect("Contains test data. qed");
+            assert_eq!(dbg!(chunks).len(), 1);
+            let chunk = &chunks[0];
+            let _plain = chunk.erase_cmark();
+
+            let cfg = ReflowConfig {
+                max_line_length: $n,
+            };
+            let suggestion_set = reflow(&ContentOrigin::TestEntity, chunk, &cfg).expect("Reflow is working. qed");
+            if $no_reflow {
+                assert_eq!(suggestion_set.len(), 0);
+            } else {
+                let suggestions = suggestion_set
+                    .iter()
+                    .next()
+                    .expect("Contains one suggestion. qed");
+
+                    let replacement = suggestions.replacements.iter().next().expect("There exists a replacement. qed");
+                    assert_eq!(replacement.as_str(), $expected);
+            }
+        };
+        ($line:literal => $expected:literal, $no_reflow:expr) => {
+            reflow_chyrp!([$line] => $expected, $no_reflow:expr);
+        };
+    }
+
     #[test]
     fn reflow_into_suggestion() {
         reflow!(44 break ["This module contains documentation thats \
@@ -453,7 +487,7 @@ r#" This module contains documentation thats
     }
 
     #[test]
-    fn reflow_chyrp() {
+    fn reflow_doc_indentation() {
         const CONTENT: &'static str = r##"
     #[doc = r#"A comment with indentation that spans over
                 two lines and should be rewrapped.
@@ -597,5 +631,17 @@ lines."#,
                 .expect("An replacement exists. qed");
             assert_eq!(replacement.as_str(), expect);
         }
+    }
+
+    #[test]
+    fn reflow_doc_short() {
+        reflow_chyrp!(40 break ["a", "b", "c"] => r#"a b c"#, false);
+    }
+
+    #[test]
+    fn reflow_doc_indent_middle() {
+        reflow_chyrp!(28 break ["First line", "     Second line", "         third line"]
+            => r#"First line Second line
+         third line"#, false);
     }
 }
