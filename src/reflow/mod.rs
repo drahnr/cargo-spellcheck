@@ -64,6 +64,7 @@ fn reflow_inner<'s>(
     let mut gluon = Gluon::new(s_absolute, max_line_width, indentations);
     gluon.add_unbreakables(unbreakables);
 
+    // prefix is whitespace for alle lines, comment is only applied to newly added lines
     let (prefix, comment) = match variant {
         CommentVariant::CommonMark | CommentVariant::MacroDocEq => ("", ""),
         CommentVariant::TripleSlash => (" ", "///"),
@@ -71,9 +72,10 @@ fn reflow_inner<'s>(
         CommentVariant::Unknown => return None,
     };
     let mut reflow_applied = false;
-    let mut lines = s.lines();
+    let mut lines = s_absolute.lines();
+    // first line, don't add `comment` prefix
     let mut acc: String = if let Some((_, content, _)) = gluon.next() {
-        if lines.next() != Some(&(prefix.to_string() + &content)) {
+        if lines.next() != Some(&content) {
             reflow_applied = true;
         }
         String::from(prefix.to_string() + &content + "\n")
@@ -81,8 +83,9 @@ fn reflow_inner<'s>(
         return None;
     };
 
+    // remaining lines, add prefix and comment variant prefix
     while let Some((_, content, _)) = gluon.next() {
-        if lines.next() != Some(&(prefix.to_string() + &content)) {
+        if lines.next() != Some(&content) {
             reflow_applied = true;
         }
         acc.push_str(comment);
@@ -336,7 +339,7 @@ test our rewrapping algorithm. With emojis: 🚤w🌴x🌋y🍈z🍉0",
             verify_reflow_inner!(39 break ["This module contains documentation",
                 "which is split in two lines"] =>
                 r#" This module contains documentation
- which is split in two lines"#);
+/// which is split in two lines"#);
         }
     }
 
@@ -400,7 +403,7 @@ r#" This module contains documentation thats
     #[test]
     fn reflow_shorter_than_limit() {
         reflow!(80 break ["This module contains documentation that is ok for one line"] =>
-                r#" This module contains documentation that is ok for one line"#, true);
+                "", true);
     }
 
     #[test]
@@ -495,6 +498,19 @@ should be rewrapped."#;
             r#" Possible **ways** to run __rustc__ and request various
 /// parts of LTO. `markdown` syntax which leads to
 /// __unbreakables__? With emojis: 🚤w🌴x🌋y🍈z🍉0."#, false);
+    }
+
+    #[test]
+    fn reflow_two_paragraphs_not_required() {
+        reflow!(80 break ["A short paragraph followed by another one.", "", "Surprise, we have another parapgrah."]
+                => "", true);
+    }
+
+    #[test]
+    fn reflow_two_short_lines() {
+        reflow!(70 break ["A short paragraph followed by two lines.", "Surprise, we have more lines here."]
+                => " A short paragraph followed by two lines. Surprise, we have more
+/// lines here.", false);
     }
 
     #[test]
