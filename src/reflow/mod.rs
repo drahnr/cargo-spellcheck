@@ -104,28 +104,26 @@ fn reflow_inner<'s>(
     };
 
     let mut reflow_applied = false;
-
+    let mut lines = s_absolute.lines();
     let mut pre = prefix.iter();
 
     // construct replacement string from prefix and Gluon iterations
-    let acc =
-        gluon
-            .zip(s_absolute.lines())
-            .fold(String::new(), |mut acc, ((_, content, _), line)| {
-                if line != &content {
-                    reflow_applied = true;
-                }
-                // the current indentation, if there are more lines than before, we use the indent from the last one
-                let pref = if let Some(p) = pre.next() {
-                    p
-                } else {
-                    prefix.last().unwrap()
-                };
-                acc.push_str(pref);
-                acc.push_str(&content);
-                acc.push_str("\n");
-                acc
-            });
+    let acc = gluon.fold(String::new(), |mut acc, (_, content, _)| {
+        if lines.next() != Some(&content) {
+            reflow_applied = true;
+        }
+        // the current indentation, if there are more lines than before, we use the indent from the last one
+        let pref = if let Some(p) = pre.next() {
+            p
+        } else {
+            prefix.last().unwrap()
+        };
+        acc.push_str(pref);
+        acc.push_str(&content);
+        acc.push_str("\n");
+        dbg!(&acc);
+        acc
+    });
 
     // iterations above add a newline at the end, we have to remove it
     let replacement = acc.trim_end_matches("\n").to_string();
