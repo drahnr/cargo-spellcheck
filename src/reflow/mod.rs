@@ -121,7 +121,6 @@ fn reflow_inner<'s>(
         acc.push_str(pref);
         acc.push_str(&content);
         acc.push_str("\n");
-        dbg!(&acc);
         acc
     });
 
