@@ -160,13 +160,13 @@ pub struct Gluon<'s> {
     /// A set of indentations for considering indentations
     /// if there are more lines than there are lines, the last
     /// values in this vector willl bre reused.
-    indentations: Vec<usize>,
+    indentations: &'s [usize],
     /// The inner iterator which first tokenizes the string into undividable items.
     inner: Tokeneer<'s>,
 }
 
 impl<'s> Gluon<'s> {
-    pub fn new(s: &'s str, max_line_width: usize, indentations: Vec<usize>) -> Self {
+    pub fn new(s: &'s str, max_line_width: usize, indentations: &'s [usize]) -> Self {
         Self {
             queue: VecDeque::new(),
             max_line_width,
@@ -303,7 +303,7 @@ mod tests {
             .enumerate()
             .map(|(idx, line)| (idx + 1, line));
 
-        let mut gluon = Gluon::new(content, max_line_width, indentations);
+        let mut gluon = Gluon::new(content, max_line_width, &indentations);
 
         gluon.add_unbreakables(unbreakables);
 
