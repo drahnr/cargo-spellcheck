@@ -74,10 +74,17 @@ fn correct_lines<'s>(
         while let Some(bandaid) = nxt.take() {
             trace!("Applying next bandaid {:?}", bandaid);
             trace!("where line {} is: >{}<", line_number, content);
-            let range: Range = bandaid
-                .span
-                .try_into()
-                .expect("There should be no multiline strings as of today");
+            let range: Range = if let Ok(r) = bandaid.span.try_into() {
+                r
+            } else {
+                // the span covers more lines: let's take the start of the span and see how long
+                // the covered content is. This length is then the length of the range
+                let len = util::load_span_from(content.as_bytes(), bandaid.span)
+                    .expect("b")
+                    .len();
+                bandaid.span.start.column..bandaid.span.start.column + len
+            };
+
             // write prelude for this line between start or previous replacement
             if range.start > remainder_column {
                 sink.write(util::sub_chars(&content, remainder_column..range.start).as_bytes())?;
