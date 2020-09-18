@@ -20,6 +20,13 @@ pub use config::ReflowConfig;
 mod iter;
 pub use iter::{Gluon, Tokeneer};
 
+/// Generate a string of whitespaces with length $n
+macro_rules! whites {
+    ($n:expr) => {{
+        vec![" "; $n].join("")
+    }};
+}
+
 #[derive(Debug)]
 pub struct Reflow;
 
@@ -51,7 +58,7 @@ fn reflow_inner<'s>(
     s: &'s str,
     range: Range,
     unbreakable_ranges: &[Range],
-    indentations: Vec<usize>,
+    indentations: &[usize],
     max_line_width: usize,
     variant: CommentVariant,
 ) -> Option<String> {
@@ -64,37 +71,63 @@ fn reflow_inner<'s>(
     let mut gluon = Gluon::new(s_absolute, max_line_width, indentations);
     gluon.add_unbreakables(unbreakables);
 
-    // prefix is whitespace for alle lines, comment is only applied to newly added lines
-    let (prefix, comment) = match variant {
-        CommentVariant::CommonMark | CommentVariant::MacroDocEq => ("", ""),
-        CommentVariant::TripleSlash => (" ", "///"),
-        CommentVariant::DoubleSlashEM => (" ", "//!"),
+    // vector of prefix for all lines
+    let prefix: Vec<String> = match variant {
+        CommentVariant::CommonMark | CommentVariant::MacroDocEq => {
+            // first indent is 0
+            let mut first: Vec<String> = vec!["".to_owned()];
+            let pre: Vec<String> = indentations.iter().map(|i| whites!(*i)).collect();
+            first.extend(pre);
+            first
+        }
+        CommentVariant::TripleSlash => {
+            // first indent is 1, afterwards we have origin indent + comment style
+            let mut first: Vec<String> = vec![" ".to_owned()];
+            let pre: Vec<String> = indentations
+                .iter()
+                .map(|i| whites!(i - 3) + "/// ")
+                .collect();
+            first.extend(pre);
+            first
+        }
+        CommentVariant::DoubleSlashEM => {
+            // first indent is 1, afterwards we have origin indent + comment style
+            let mut first: Vec<String> = vec![" ".to_owned()];
+            let pre: Vec<String> = indentations
+                .iter()
+                .map(|i| whites!(i - 3) + "//! ")
+                .collect();
+            first.extend(pre);
+            first
+        }
         CommentVariant::Unknown => return None,
     };
+
     let mut reflow_applied = false;
-    let mut lines = s_absolute.lines();
-    // first line, don't add `comment` prefix
-    let mut acc: String = if let Some((_, content, _)) = gluon.next() {
-        if lines.next() != Some(&content) {
-            reflow_applied = true;
-        }
-        String::from(prefix.to_string() + &content + "\n")
-    } else {
-        return None;
-    };
 
-    // remaining lines, add prefix and comment variant prefix
-    while let Some((_, content, _)) = gluon.next() {
-        if lines.next() != Some(&content) {
-            reflow_applied = true;
-        }
-        acc.push_str(comment);
-        acc.push_str(prefix);
-        acc.push_str(&content);
-        acc.push_str("\n");
-    }
+    let mut pre = prefix.iter();
 
-    // iterations above add a newline add the end, we have to remove it
+    // construct replacement string from prefix and Gluon iterations
+    let acc =
+        gluon
+            .zip(s_absolute.lines())
+            .fold(String::new(), |mut acc, ((_, content, _), line)| {
+                if line != &content {
+                    reflow_applied = true;
+                }
+                // the current indentation, if there are more lines than before, we use the indent from the last one
+                let pref = if let Some(p) = pre.next() {
+                    p
+                } else {
+                    prefix.last().unwrap()
+                };
+                acc.push_str(pref);
+                acc.push_str(&content);
+                acc.push_str("\n");
+                acc
+            });
+
+    // iterations above add a newline at the end, we have to remove it
     let replacement = acc.trim_end_matches("\n").to_string();
 
     if reflow_applied {
@@ -133,6 +166,7 @@ fn store_suggestion<'s>(
         start: span_start.start,
         end: span_end.end,
     };
+
     // Get indentation for each span, if a span covers multiple
     // lines, use same indentation for all lines
     let indentations = chunk
@@ -144,7 +178,7 @@ fn store_suggestion<'s>(
         chunk.as_str(),
         range.clone(),
         unbreakable_ranges,
-        indentations,
+        &indentations,
         max_line_width,
         chunk.variant(),
     ) {
@@ -293,13 +327,13 @@ mod tests {
             let chunk = &chunks[0];
 
             let range = 0..chunk.as_str().len();
-            let indentation: Vec<usize> = [0; 6].to_vec();
+            let indentation: Vec<usize> = [3; 6].to_vec();
             let unbreakables = Vec::new();
             let replacement = reflow_inner(
                 chunk.as_str(),
                 range,
                 &unbreakables,
-                indentation,
+                &indentation,
                 $n,
                 chunk.variant()
             );
@@ -325,10 +359,10 @@ spans over mulitple lines such that we can \
 test our rewrapping algorithm. With emojis: 🚤w🌴x🌋y🍈z🍉0",
         "Smart, isn't it? Lorem ipsum and some more \
         blanket text without any meaning"] =>
-        r#" This module contains documentation that is too long for one line and moreover,
-/// it spans over mulitple lines such that we can test our rewrapping algorithm.
-/// With emojis: 🚤w🌴x🌋y🍈z🍉0 Smart, isn't it? Lorem ipsum and some more blanket text
-/// without any meaning"#);
+        r#" This module contains documentation that is too long for one line and
+/// moreover, it spans over mulitple lines such that we can test our rewrapping
+/// algorithm. With emojis: 🚤w🌴x🌋y🍈z🍉0 Smart, isn't it? Lorem ipsum and some more
+/// blanket text without any meaning"#);
     }
 
     #[test]
@@ -383,9 +417,9 @@ test our rewrapping algorithm. With emojis: 🚤w🌴x🌋y🍈z🍉0",
         };
         ($n:literal break [ $( $line:literal ),+ $(,)?] => $expected:literal, $no_reflow:expr) => {
             const CONTENT:&'static str = chyrp_up!($( $line ),+);
-            let docs = Documentation::from((ContentOrigin::TestEntity, dbg!(CONTENT)));
+            let docs = Documentation::from((ContentOrigin::TestEntityRust, dbg!(CONTENT)));
             assert_eq!(docs.entry_count(), 1);
-            let chunks = docs.get(&ContentOrigin::TestEntity).expect("Contains test data. qed");
+            let chunks = docs.get(&ContentOrigin::TestEntityRust).expect("Contains test data. qed");
             assert_eq!(dbg!(chunks).len(), 1);
             let chunk = &chunks[0];
             let _plain = chunk.erase_cmark();
@@ -393,7 +427,7 @@ test our rewrapping algorithm. With emojis: 🚤w🌴x🌋y🍈z🍉0",
             let cfg = ReflowConfig {
                 max_line_length: $n,
             };
-            let suggestion_set = reflow(&ContentOrigin::TestEntity, chunk, &cfg).expect("Reflow is working. qed");
+            let suggestion_set = reflow(&ContentOrigin::TestEntityRust, chunk, &cfg).expect("Reflow is working. qed");
             if $no_reflow {
                 assert_eq!(suggestion_set.len(), 0);
             } else {
@@ -456,8 +490,8 @@ r#" This module contains documentation thats
     struct Fluffy {};"#;
 
         const EXPECTED: &'static str = r#" A comment with indentation
-/// that spans over two lines
-/// and should be rewrapped."#;
+    /// that spans over two lines
+    /// and should be rewrapped."#;
 
         let docs = Documentation::from((ContentOrigin::TestEntityRust, CONTENT));
         assert_eq!(docs.entry_count(), 1);
@@ -495,8 +529,8 @@ r#" This module contains documentation thats
     struct Fluffy {};"##;
 
         const EXPECTED: &'static str = r#"A comment with indentation
-that spans over two lines and
-should be rewrapped."#;
+               that spans over two lines and
+               should be rewrapped."#;
 
         let docs = Documentation::from((ContentOrigin::TestEntityRust, CONTENT));
         assert_eq!(docs.entry_count(), 1);
@@ -603,7 +637,7 @@ With a second part that is fine"#
 
         let expected = vec![
             r#"A long comment that spans over two
-lines."#,
+         lines."#,
             r#"With a second part that is fine"#,
         ];
 
@@ -641,7 +675,7 @@ lines."#,
     #[test]
     fn reflow_doc_indent_middle() {
         reflow_chyrp!(28 break ["First line", "     Second line", "         third line"]
-            => r#"First line Second line
-         third line"#, false);
+            => r#"First line Second
+         line third line"#, false);
     }
 }
