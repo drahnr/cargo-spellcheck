@@ -48,7 +48,13 @@ fn correct_lines<'s>(
     mut sink: impl Write,
 ) -> Result<()> {
     let mut nxt: Option<BandAid> = bandaids.next();
+    let mut multiline = None;
     for (line_number, content) in source {
+        if multiline.is_some() {
+            sink.write(util::sub_chars(&content, multiline.unwrap()..content.len()).as_bytes())?;
+            multiline = None;
+            continue;
+        }
         trace!("Processing line {}", line_number);
         let mut remainder_column = 0_usize;
         // let content: String = content.map_err(|e| {
@@ -92,6 +98,7 @@ fn correct_lines<'s>(
                 let len = util::load_span_from(content.as_bytes(), bandaid.span)
                     .expect("Bandaid span is illogical")
                     .len();
+                multiline = Some(bandaid.span.end.column);
 
                 bandaid.span.start.column..bandaid.span.start.column + len
             };
@@ -129,7 +136,9 @@ fn correct_lines<'s>(
                         line_number, content_len, remainder_column
                     );
                 }
-                sink.write("\n".as_bytes())?;
+                if multiline.is_none() {
+                    sink.write("\n".as_bytes())?;
+                }
                 // break the inner loop
                 break;
                 // } else {
@@ -321,7 +330,9 @@ I like banana icecream every third day.
     fn bandaid_multiline() {
         const TEST: &'static str = "
 /// Let's test bandaids on comments
-/// with multiple lines";
+/// with multiple lines
+
+";
 
         const RESULT: &'static str = "
 /// Let's test bandaids on comments with
@@ -333,8 +344,8 @@ I like banana icecream every third day.
             BandAid {
                 span: Span {
                     start: LineColumn {line: 1, column: 27 },
-                    end: LineColumn {line: 2, column: 28 }},
-                replacement: "comments with\n/// different multiple lines".to_owned(),
+                    end: LineColumn {line: 2, column: 17 }},
+                replacement: "comments with\n/// different multiple".to_owned(),
             },
             // BandAid {
             //     span: (2_usize, 22..28).try_into().unwrap(),
