@@ -47,7 +47,7 @@ pub fn iter_with_line_column<'a>(
 ///
 /// # Errors
 /// Returns an Error if `span` describes a impossible range
-pub(crate) fn load_span_from<R>(mut source: R, span: Span) -> Result<String>
+pub fn load_span_from<R>(mut source: R, span: Span) -> Result<String>
 where
     R: Read,
 {
