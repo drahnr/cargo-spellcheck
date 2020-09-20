@@ -316,4 +316,42 @@ I like banana icecream every third day.
 
         assert_eq!(String::from_utf8_lossy(sink.as_slice()), CORRECTED);
     }
+
+    #[test]
+    fn bandaid_multiline() {
+        const TEST: &'static str = "
+/// Let's test bandaids on comments
+/// with multiple lines";
+
+        const RESULT: &'static str = "
+/// Let's test bandaids on comments with
+/// different multiple lines
+";
+
+        let mut sink: Vec<u8> = Vec::with_capacity(1024);
+        let bandaids = vec![
+            BandAid {
+                span: Span {
+                    start: LineColumn {line: 1, column: 27 },
+                    end: LineColumn {line: 2, column: 28 }},
+                replacement: "comments with\n/// different multiple lines".to_owned(),
+            },
+            // BandAid {
+            //     span: (2_usize, 22..28).try_into().unwrap(),
+            //     replacement: "third".to_owned(),
+            // },
+            // BandAid {
+            //     span: (2_usize, 29..36).try_into().unwrap(),
+            //     replacement: "day".to_owned(),
+            // },
+        ];
+        let lines = TEST
+            .lines()
+            .map(std::borrow::ToOwned::to_owned)
+            .enumerate()
+            .map(|(lineno, content)| (lineno + 1, content));
+
+        correct_lines(bandaids.into_iter(), lines, &mut sink).expect("correction works. qed");
+        assert_eq!(String::from_utf8_lossy(sink.as_slice()), RESULT);
+    }
 }
