@@ -481,7 +481,9 @@ Icecream truck"#
     fn bandaid_multiline() {
         const TEST: &'static str = "
 /// Let's test bandaids on comments
-/// with multiple lines";
+/// with multiple lines
+
+";
 
         const RESULT: &'static str = "
 /// Let's test bandaids on comments with
@@ -493,8 +495,8 @@ Icecream truck"#
             BandAid {
                 span: Span {
                     start: LineColumn {line: 1, column: 27 },
-                    end: LineColumn {line: 2, column: 28 }},
-                replacement: "comments with\n/// different multiple lines".to_owned(),
+                    end: LineColumn {line: 2, column: 17 }},
+                replacement: "comments with\n/// different multiple".to_owned(),
             },
             // BandAid {
             //     span: (2_usize, 22..28).try_into().unwrap(),
