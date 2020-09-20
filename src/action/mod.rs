@@ -13,7 +13,7 @@ pub mod bandaid;
 pub mod interactive;
 
 pub(crate) use bandaid::*;
-use interactive::*;
+use interactive::{UserPicked, UserSelection};
 
 /// State of conclusion.
 #[derive(Debug, Clone, Copy)]
@@ -50,7 +50,7 @@ fn correct_lines<'s>(
     let mut nxt: Option<BandAid> = bandaids.next();
     for (line_number, content) in source {
         trace!("Processing line {}", line_number);
-        let mut remainder_column = 0usize;
+        let mut remainder_column = 0_usize;
         // let content: String = content.map_err(|e| {
         //     anyhow!("Line {} contains invalid utf8 characters", line_number).context(e)
         // })?;
@@ -75,13 +75,24 @@ fn correct_lines<'s>(
             trace!("Applying next bandaid {:?}", bandaid);
             trace!("where line {} is: >{}<", line_number, content);
             let range: Range = if let Ok(r) = bandaid.span.try_into() {
+                // Bandaid covers one line
                 r
             } else {
-                // the span covers more lines: let's take the start of the span and see how long
-                // the covered content is. This length is then the length of the range
+                // Bandaid covers more lines
+                // Visualization:
+                // |-content before-|=== bandaid.span =====
+                // Lorem ipsum lorem ipsum again which lies
+                // ==========|-- content after
+                // in another line followed by text
+
+                // `load_from_span() gets the String which is covered by `bandaid.span`.
+                // The length of this string is the length of the part in the original content
+                // which needs to be replaced by the bandaid. Thus, the resulting `range`
+                // indicates the start and end which the bandaid will replace
                 let len = util::load_span_from(content.as_bytes(), bandaid.span)
-                    .expect("b")
+                    .expect("Bandaid span is illogical")
                     .len();
+
                 bandaid.span.start.column..bandaid.span.start.column + len
             };
 
@@ -143,7 +154,7 @@ pub enum Action {
 impl Action {
     /// Apply bandaids to the file represented by content origin.
     fn correction<'s>(
-        &self,
+        self,
         origin: ContentOrigin,
         bandaids: impl IntoIterator<Item = BandAid>,
     ) -> Result<()> {
@@ -198,7 +209,7 @@ impl Action {
             bandaids.into_iter(),
             (&mut reader)
                 .lines()
-                .filter_map(|line| line.ok())
+                .filter_map(Result::ok)
                 .enumerate()
                 .map(|(lineno, content)| (lineno + 1, content)),
             &mut writer,
@@ -229,7 +240,7 @@ impl Action {
 
     /// Purpose was to check, checking complete, so print the results.
     fn check(&self, suggestions_per_path: SuggestionSet, _config: &Config) -> Result<Finish> {
-        let mut count = 0usize;
+        let mut count = 0_usize;
         for (_path, suggestions) in suggestions_per_path {
             count += suggestions.len();
             for suggestion in suggestions {
@@ -282,22 +293,22 @@ I like banana icecream every third day.
         let mut sink: Vec<u8> = Vec::with_capacity(1024);
         let bandaids = vec![
             BandAid {
-                span: (2usize, 7..15).try_into().unwrap(),
+                span: (2_usize, 7..15).try_into().unwrap(),
                 replacement: "banana icecream".to_owned(),
             },
             BandAid {
-                span: (2usize, 22..28).try_into().unwrap(),
+                span: (2_usize, 22..28).try_into().unwrap(),
                 replacement: "third".to_owned(),
             },
             BandAid {
-                span: (2usize, 29..36).try_into().unwrap(),
+                span: (2_usize, 29..36).try_into().unwrap(),
                 replacement: "day".to_owned(),
             },
         ];
 
         let lines = TEXT
             .lines()
-            .map(|line| line.to_owned())
+            .map(std::borrow::ToOwned::to_owned)
             .enumerate()
             .map(|(lineno, content)| (lineno + 1, content));
 
