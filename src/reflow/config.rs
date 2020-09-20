@@ -11,7 +11,7 @@ pub struct ReflowConfig {
 impl Default for ReflowConfig {
     fn default() -> Self {
         Self {
-            max_line_length: 70,
+            max_line_length: 80,
         }
     }
 }
