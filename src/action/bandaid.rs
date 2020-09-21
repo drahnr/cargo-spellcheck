@@ -18,55 +18,149 @@ pub struct BandAid {
     pub replacement: String,
 }
 
-impl BandAid {
-    /// Create a new bandaid from a span and the content to replace the
-    /// spans current content.
-    pub fn new(replacement: &str, span: &Span) -> Self {
-        trace!(
-            "span of doc comment: ({},{})..({},{})",
-            span.start.line,
-            span.start.column,
-            span.end.line,
-            span.end.column
-        );
+// impl BandAid {
+//     /// Create a new bandaid from a span and the content to replace the
+//     /// spans current content.
+//     pub fn new(replacement: &str, span: &Span) -> Result<Self> {
+//         trace!(
+//             "span of doc comment: ({},{})..({},{})",
+//             span.start.line,
+//             span.start.column,
+//             span.end.line,
+//             span.end.column
+//         );
+//         if span.is_multiline() {
+//             bail!("Cannot create single bandaid from multiline replacement");
+//         }
 
-        Self {
-            span: *span,
-            replacement: replacement.to_owned(),
-        }
-    }
-}
+//         Ok(Self {
+//             span: *span,
+//             replacement: replacement.to_owned(),
+//         })
+//     }
+// }
 
-impl<'s> TryFrom<(&Suggestion<'s>, usize)> for BandAid {
-    type Error = Error;
-    fn try_from((suggestion, pick_idx): (&Suggestion<'s>, usize)) -> Result<Self> {
-        let literal_file_span = suggestion.span;
-        trace!(
-            "proc_macro literal span of doc comment: ({},{})..({},{})",
-            literal_file_span.start.line,
-            literal_file_span.start.column,
-            literal_file_span.end.line,
-            literal_file_span.end.column
-        );
+// impl<'s> TryFrom<(&Suggestion<'s>, usize)> for BandAid {
+//     type Error = Error;
+//     fn try_from((suggestion, pick_idx): (&Suggestion<'s>, usize)) -> Result<Self> {
+//         let literal_file_span = suggestion.span;
+//         trace!(
+//             "proc_macro literal span of doc comment: ({},{})..({},{})",
+//             literal_file_span.start.line,
+//             literal_file_span.start.column,
+//             literal_file_span.end.line,
+//             literal_file_span.end.column
+//         );
 
-        if let Some(replacement) = suggestion.replacements.iter().nth(pick_idx) {
-            Ok(Self::new(replacement.as_str(), &suggestion.span))
-        } else {
-            bail!("Does not contain any replacements")
-        }
-    }
-}
+//         if let Some(replacement) = suggestion.replacements.iter().nth(pick_idx) {
+//             Ok(Self::new(replacement.as_str(), &suggestion.span)?)
+//         } else {
+//             bail!("Does not contain any replacements")
+//         }
+//     }
+// }
 
-impl<'s> TryFrom<(Suggestion<'s>, usize)> for BandAid {
-    type Error = Error;
-    fn try_from((suggestion, pick_idx): (Suggestion<'s>, usize)) -> Result<Self> {
-        Self::try_from((&suggestion, pick_idx))
-    }
-}
+// impl<'s> TryFrom<(Suggestion<'s>, usize)> for BandAid {
+//     type Error = Error;
+//     fn try_from((suggestion, pick_idx): (Suggestion<'s>, usize)) -> Result<Self> {
+//         Self::try_from((&suggestion, pick_idx))
+//     }
+// }
 
 impl From<(String, Span)> for BandAid {
     fn from((replacement, span): (String, Span)) -> Self {
         Self { span, replacement }
+    }
+}
+
+/// A set of `BandAids` for an accepted suggestion.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FirstAidKit {
+    /// All Bandaids in this kit constructed from the replacement of a suggestion,
+    /// each covers at most one line
+    pub bandaids: Vec<BandAid>,
+}
+
+impl FirstAidKit {
+    fn new(bandaids: Vec<BandAid>) -> Self {
+        Self { bandaids }
+    }
+}
+
+impl Default for FirstAidKit {
+    fn default() -> Self {
+        Self {
+            bandaids: Vec::new(),
+        }
+    }
+}
+
+impl From<BandAid> for FirstAidKit {
+    fn from(bandaid: BandAid) -> Self {
+        Self {
+            bandaids: vec![bandaid],
+        }
+    }
+}
+
+impl<'s> TryFrom<(&Suggestion<'s>, usize)> for FirstAidKit {
+    type Error = Error;
+    fn try_from((suggestion, pick_idx): (&Suggestion<'s>, usize)) -> Result<Self> {
+        let replacement = suggestion
+            .replacements
+            .get(pick_idx)
+            .ok_or(anyhow::anyhow!("Does not contain any replacements"))?;
+        FirstAidKit::try_from((replacement, &suggestion.span))
+    }
+}
+
+impl TryFrom<(&String, &Span)> for FirstAidKit {
+    type Error = Error;
+
+    fn try_from((replacement, span): (&String, &Span)) -> Result<Self> {
+        if span.is_multiline() {
+            let mut replacement_lines = replacement.lines();
+            let mut span_lines = (span.start.line..span.end.line).peekable();
+            let mut bandaids: Vec<BandAid> = Vec::new();
+            // TODO: how can we determine the line length?
+            let first_span = Span {
+                start: span.start,
+                end: crate::LineColumn {
+                    line: span.start.line,
+                    column: 0,
+                },
+            };
+            // bandaid for first line
+            bandaids.push(BandAid::try_from((
+                replacement_lines.next().unwrap().to_string(),
+                first_span,
+            ))?);
+            // process all subsequent lines
+            while let Some(line) = span_lines.next() {
+                let span = if span_lines.peek().is_some() {
+                    Span {
+                        start: crate::LineColumn { line, column: 0 },
+                        end: crate::LineColumn { line, column: 0 },
+                    }
+                } else {
+                    // span of last line does only cover until original end.column
+                    Span {
+                        start: crate::LineColumn { line, column: 0 },
+                        end: crate::LineColumn {
+                            line,
+                            column: span.end.column,
+                        },
+                    }
+                };
+                let bandaid =
+                    BandAid::try_from((replacement_lines.next().unwrap().to_string(), span))?;
+                bandaids.push(bandaid);
+            }
+            Ok(Self::new(bandaids))
+        } else {
+            let bandaid = BandAid::try_from((replacement.to_string(), *span))?;
+            Ok(Self::new(vec![bandaid]))
+        }
     }
 }
 
