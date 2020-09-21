@@ -48,13 +48,7 @@ fn correct_lines<'s>(
     mut sink: impl Write,
 ) -> Result<()> {
     let mut nxt: Option<BandAid> = bandaids.next();
-    let mut multiline = None;
     for (line_number, content) in source {
-        if multiline.is_some() {
-            sink.write(util::sub_chars(&content, multiline.unwrap()..content.len()).as_bytes())?;
-            multiline = None;
-            continue;
-        }
         trace!("Processing line {}", line_number);
         let mut remainder_column = 0_usize;
         // let content: String = content.map_err(|e| {
@@ -80,28 +74,10 @@ fn correct_lines<'s>(
         while let Some(bandaid) = nxt.take() {
             trace!("Applying next bandaid {:?}", bandaid);
             trace!("where line {} is: >{}<", line_number, content);
-            let range: Range = if let Ok(r) = bandaid.span.try_into() {
-                // Bandaid covers one line
-                r
-            } else {
-                // Bandaid covers more lines
-                // Visualization:
-                // |-content before-|=== bandaid.span =====
-                // Lorem ipsum lorem ipsum again which lies
-                // ==========|-- content after
-                // in another line followed by text
-
-                // `load_from_span() gets the String which is covered by `bandaid.span`.
-                // The length of this string is the length of the part in the original content
-                // which needs to be replaced by the bandaid. Thus, the resulting `range`
-                // indicates the start and end which the bandaid will replace
-                let len = util::load_span_from(content.as_bytes(), bandaid.span)
-                    .expect("Bandaid span is illogical")
-                    .len();
-                multiline = Some(bandaid.span.end.column);
-
-                bandaid.span.start.column..bandaid.span.start.column + len
-            };
+            let range: Range = bandaid
+                .span
+                .try_into()
+                .expect("Bandaids must be single-line");
 
             // write prelude for this line between start or previous replacement
             if range.start > remainder_column {
@@ -136,9 +112,7 @@ fn correct_lines<'s>(
                         line_number, content_len, remainder_column
                     );
                 }
-                if multiline.is_none() {
-                    sink.write("\n".as_bytes())?;
-                }
+                sink.write("\n".as_bytes())?;
                 // break the inner loop
                 break;
                 // } else {
