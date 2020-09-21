@@ -146,14 +146,11 @@ where
     /// Convert the replacement to a `FirstAidKit`
     pub fn to_first_aid_kit(&self) -> FirstAidKit {
         if self.is_custom_entry() {
-            FirstAidKit::try_from((
-                &self.custom_replacement,
-                &self.suggestion.span,
-            ))
+            FirstAidKit::try_from((&self.custom_replacement, &self.suggestion.span))
         } else {
             FirstAidKit::try_from((self.suggestion, self.pick_idx))
-
-        }.expect("Was constructed around this suggestion.")
+        }
+        .expect("Was constructed around this suggestion.")
     }
 }
 
@@ -221,7 +218,8 @@ impl UserPicked {
                 }
             }
             KeyCode::Enter => {
-                let kit = FirstAidKit::try_from((&state.custom_replacement, &state.suggestion.span))?;
+                let kit =
+                    FirstAidKit::try_from((&state.custom_replacement, &state.suggestion.span))?;
                 return Ok(UserSelection::Replacement(kit));
             }
             KeyCode::Esc => return Ok(UserSelection::Abort),
