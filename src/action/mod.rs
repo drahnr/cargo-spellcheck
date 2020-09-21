@@ -343,8 +343,15 @@ I like banana icecream every third day.
         let bandaids = vec![
             BandAid {
                 span: Span {
-                    start: LineColumn {line: 1, column: 27 },
-                    end: LineColumn {line: 2, column: 17 }},
+                    start: LineColumn {
+                        line: 1,
+                        column: 27,
+                    },
+                    end: LineColumn {
+                        line: 2,
+                        column: 17,
+                    },
+                },
                 replacement: "comments with\n/// different multiple".to_owned(),
             },
             // BandAid {
