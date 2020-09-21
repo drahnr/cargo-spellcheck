@@ -145,7 +145,6 @@ pub mod tests {
         }
     }
 
-    // TODO looks pretty similiar to the one in bandaid doesn't it?
     pub fn extraction_test_body(content: &str, expected_spans: &[Span]) {
         let _ = env_logger::builder()
             .filter(None, log::LevelFilter::Trace)
