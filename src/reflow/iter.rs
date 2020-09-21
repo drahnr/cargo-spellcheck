@@ -1,10 +1,19 @@
+//! Iterate over a documentation comments and
+//! extract reflowable content.
+//!
+//! Operates on strings and ranges referring to the
+//! original content. Parses the Commonmark syntax and
+//! tracks slices which must not be broken up. Result
+//! is a restructured string where the lines are smaller
+//! than the maximum allowed line length.
+
 use super::*;
 
 use std::borrow::Cow;
 use std::collections::VecDeque;
 
 #[derive(Debug, Clone)]
-/// Tokenizes a section which is delimited by untokenizable content. XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXXvvvvv
+/// Tokenizes a section which is delimited by untokenizable content.
 pub struct Tokeneer<'s> {
     /// Original source string of continuous lines which are to be wrapped.
     s: &'s str,
