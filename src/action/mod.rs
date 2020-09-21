@@ -388,6 +388,7 @@ mod tests {
     macro_rules! verify_correction {
         ($text:literal, $bandaids:expr, $expected:literal) => {
             let mut sink: Vec<u8> = Vec::with_capacity(1024);
+<<<<<<< HEAD
 
             correct_lines(
                 $bandaids.into_iter().map(|bandaid| Patch::from(bandaid)),
@@ -395,6 +396,14 @@ mod tests {
                 &mut sink,
             )
             .expect("Line correction must work in unit test!");
+=======
+            let lines = $text
+                .lines()
+                .map(std::borrow::ToOwned::to_owned)
+                .enumerate()
+                .map(|(lineno, content)| (lineno + 1, content));
+            correct_lines($bandaids.into_iter(), lines, &mut sink).expect("should be able to");
+>>>>>>> 5ea92c7... test/action: added macro for correction testing
 
             assert_eq!(String::from_utf8_lossy(sink.as_slice()), $expected);
         };
@@ -407,6 +416,7 @@ mod tests {
             .is_test(true)
             .try_init();
 
+<<<<<<< HEAD
         let patches = vec![
             Patch::Replace {
                 replace_span: Span {
@@ -417,6 +427,16 @@ mod tests {
                     },
                 },
                 replacement: "& Omega".to_owned(),
+=======
+        let bandaids = vec![
+            BandAid {
+                span: (2_usize, 7..15).try_into().unwrap(),
+                replacement: "banana icecream".to_owned(),
+            },
+            BandAid {
+                span: (2_usize, 22..28).try_into().unwrap(),
+                replacement: "third".to_owned(),
+>>>>>>> 5ea92c7... test/action: added macro for correction testing
             },
             Patch::Insert {
                 insert_at: LineColumn { line: 3, column: 0 },
@@ -424,6 +444,7 @@ mod tests {
             },
         ];
         verify_correction!(
+<<<<<<< HEAD
             r#"Alpha beta gamma
 zeta eta beta.
 "#,
@@ -520,52 +541,46 @@ Icecream truck"#
             content: "Q".to_owned(),
         }];
         verify_correction!("A🐢C", patches, "A🐢CQ");
+=======
+            r#"
+I like unicorns every second Mondays.
+
+"#,
+            bandaids,
+            r#"
+I like banana icecream every third day.
+
+"#
+        );
+>>>>>>> 5ea92c7... test/action: added macro for correction testing
     }
 
     #[test]
     fn bandaid_multiline() {
-        const TEST: &'static str = "
-/// Let's test bandaids on comments
-/// with multiple lines
-
-";
-
-        const RESULT: &'static str = "
-/// Let's test bandaids on comments with
-/// different multiple lines
-";
-
-        let mut sink: Vec<u8> = Vec::with_capacity(1024);
         let bandaids = vec![
             BandAid {
-                span: Span {
-                    start: LineColumn {
-                        line: 1,
-                        column: 27,
-                    },
-                    end: LineColumn {
-                        line: 2,
-                        column: 17,
-                    },
-                },
-                replacement: "comments with\n/// different multiple".to_owned(),
+                span: (2_usize, 27..36).try_into().unwrap(),
+                replacement: "comments with".to_owned(),
             },
-            // BandAid {
-            //     span: (2_usize, 22..28).try_into().unwrap(),
-            //     replacement: "third".to_owned(),
-            // },
-            // BandAid {
-            //     span: (2_usize, 29..36).try_into().unwrap(),
-            //     replacement: "day".to_owned(),
-            // },
+            BandAid {
+                span: (3_usize, 0..17).try_into().unwrap(),
+                replacement: "/// different multiple".to_owned(),
+            },
+            BandAid {
+                span: (3_usize, 18..23).try_into().unwrap(),
+                replacement: "words".to_owned(),
+            },
         ];
-        let lines = TEST
-            .lines()
-            .map(std::borrow::ToOwned::to_owned)
-            .enumerate()
-            .map(|(lineno, content)| (lineno + 1, content));
-
-        correct_lines(bandaids.into_iter(), lines, &mut sink).expect("correction works. qed");
-        assert_eq!(String::from_utf8_lossy(sink.as_slice()), RESULT);
+        verify_correction!(
+            "
+/// Let's test bandaids on comments
+/// with multiple lines afterwards
+",
+            bandaids,
+            "
+/// Let's test bandaids on comments with
+/// different multiple words afterwards
+"
+        );
     }
 }
