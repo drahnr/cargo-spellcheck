@@ -37,6 +37,7 @@ impl Finish {
 
 /// A patch to be stitched ontop of another string.
 ///
+<<<<<<< HEAD
 /// Has intentionally no awareness of any rust or cmark/markdown semantics.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub(crate) enum Patch {
@@ -52,6 +53,31 @@ pub(crate) enum Patch {
         content: String,
     },
 }
+=======
+/// Note that `Lines` as created by `(x as BufLines).lines()` does
+/// not preserve trailing newlines, so either the iterator
+/// needs to be modified to yield an extra (i.e. with `.chain("".to_owned())`)
+/// or a manual newlines has to be written to the `sink`.
+fn correct_lines<'s>(
+    mut bandaids: impl Iterator<Item = BandAid>,
+    source: impl Iterator<Item = (usize, String)>,
+    mut sink: impl Write,
+) -> Result<()> {
+    let mut nxt: Option<BandAid> = bandaids.next();
+    for (line_number, content) in source {
+        trace!("Processing line {}", line_number);
+        let mut remainder_column = 0_usize;
+        // let content: String = content.map_err(|e| {
+        //     anyhow!("Line {} contains invalid utf8 characters", line_number).context(e)
+        // })?;
+
+        if nxt.is_none() {
+            // no candidates remaining, just keep going
+            sink.write(content.as_bytes())?;
+            sink.write("\n".as_bytes())?;
+            continue;
+        }
+>>>>>>> 0f79962... fix/action: removed old multiline bandaid approach
 
 impl<'a> From<&'a BandAid> for Patch {
     fn from(bandaid: &'a BandAid) -> Self {
@@ -75,6 +101,7 @@ impl From<BandAid> for Patch {
     }
 }
 
+<<<<<<< HEAD
 /// Correct all lines by applying bandaids.
 ///
 /// Assumes all `BandAids` do not overlap when replacing.
@@ -114,6 +141,16 @@ where
                 } => (replace_span.end, replacement.as_str(), false),
                 Patch::Insert { insert_at, content } => (insert_at.clone(), content.as_str(), true),
             };
+=======
+        let content_len = content.chars().count();
+        while let Some(bandaid) = nxt.take() {
+            trace!("Applying next bandaid {:?}", bandaid);
+            trace!("where line {} is: >{}<", line_number, content);
+            let range: Range = bandaid
+                .span
+                .try_into()
+                .expect("Bandaids must be single-line");
+>>>>>>> 0f79962... fix/action: removed old multiline bandaid approach
 
             write_to_sink("new", data)?;
 
@@ -174,6 +211,7 @@ where
                     );
                     break 'cc;
                 }
+<<<<<<< HEAD
 
                 cc_end_byte_offset = byte_offset + c.len_utf8();
 
@@ -181,6 +219,13 @@ where
 
                 let _ = source_iter.next();
                 // we need to drag this one behind, since...
+=======
+                sink.write("\n".as_bytes())?;
+                // break the inner loop
+                break;
+                // } else {
+                // next suggestion covers same line
+>>>>>>> 0f79962... fix/action: removed old multiline bandaid approach
             }
             // in the case we reach EOF here the `cc_end_byte_offset` could never be updated correctly
             std::cmp::min(cc_end_byte_offset, source_buffer.len())
