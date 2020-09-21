@@ -93,6 +93,7 @@ impl TryFrom<(&String, &Span)> for FirstAidKit {
                     line: span_lines
                         .next()
                         .ok_or(anyhow!("Span must cover at least one line"))?,
+                    // TODO: extract the correct length in bytes, not chars
                     column: first_line.len(),
                 },
             };
@@ -111,6 +112,7 @@ impl TryFrom<(&String, &Span)> for FirstAidKit {
                         start: crate::LineColumn { line, column: 0 },
                         end: crate::LineColumn {
                             line,
+                            // TODO: extract the correct length in bytes, not chars
                             column: replacement.len(),
                         },
                     }
