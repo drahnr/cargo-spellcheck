@@ -77,6 +77,11 @@ impl Span {
         }
     }
 
+    ///  Check if `self` covers multiple lines
+    pub fn is_multiline(&self) -> bool {
+        self.start.line != self.end.line
+    }
+
     /// Convert a given span `self` into a `Range`
     ///
     /// The `Chunk` has a associated `Span` (or a set of `Range` -> `Span` mappings)

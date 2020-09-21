@@ -73,7 +73,8 @@ enum Direction {
 /// The user picked something. This is the pick representation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum UserSelection {
-    Replacement(BandAid),
+    /// This `FirstAidKit` is going to be applied.
+    Replacement(FirstAidKit),
     /// Skip this suggestion and move on to the next suggestion.
     Skip,
     /// Jump to the previous suggestion.
@@ -142,17 +143,17 @@ where
         self.pick_idx + 1 == self.n_items
     }
 
-    /// Convert the replacment selection to a bandaid.
-    pub fn to_bandaid(&self) -> BandAid {
+    /// Convert the replacement to a `FirstAidKit`
+    pub fn to_first_aid_kit(&self) -> FirstAidKit {
         if self.is_custom_entry() {
-            BandAid::from((
-                self.custom_replacement.clone(),
-                self.suggestion.span.clone(),
+            FirstAidKit::try_from((
+                &self.custom_replacement,
+                &self.suggestion.span,
             ))
         } else {
-            BandAid::try_from((self.suggestion, self.pick_idx))
-                .expect("Was constructed around this suggestion.")
-        }
+            FirstAidKit::try_from((self.suggestion, self.pick_idx))
+
+        }.expect("Was constructed around this suggestion.")
     }
 }
 
@@ -169,15 +170,16 @@ impl UserPicked {
         self.bandaids.iter().map(|(_origin, vec)| vec.len()).sum()
     }
 
-    /// Apply a single bandaid.
-    fn add_bandaid<'u>(&mut self, origin: &ContentOrigin, fix: BandAid) {
+    /// Apply a `FirstAidKit` consisting of multiple BandAids
+    pub fn add_first_aid_kit(&mut self, origin: &ContentOrigin, kit: FirstAidKit) {
         self.bandaids
             .entry(origin.clone())
             .or_insert_with(|| Vec::with_capacity(10))
-            .push(fix);
+            .extend(kit.bandaids);
     }
 
     /// Apply multiple bandaids.
+    /// TODO: Still needed? Re-implement for FirstAidKit?
     #[allow(unused)]
     fn add_bandaids<I>(&mut self, origin: &ContentOrigin, fixes: I)
     where
@@ -219,8 +221,8 @@ impl UserPicked {
                 }
             }
             KeyCode::Enter => {
-                let bandaid = BandAid::new(&state.custom_replacement, &state.suggestion.span);
-                return Ok(UserSelection::Replacement(bandaid));
+                let kit = FirstAidKit::try_from((&state.custom_replacement, &state.suggestion.span))?;
+                return Ok(UserSelection::Replacement(kit));
             }
             KeyCode::Esc => return Ok(UserSelection::Abort),
             KeyCode::Char('c') if modifiers == KeyModifiers::CONTROL => {
@@ -463,9 +465,9 @@ impl UserPicked {
                 KeyCode::Up => state.select_next(),
                 KeyCode::Down => state.select_previous(),
                 KeyCode::Enter | KeyCode::Char('y') => {
-                    let bandaid: BandAid = state.to_bandaid();
+                    let kit: FirstAidKit = state.to_first_aid_kit();
                     // TODO handle interactive intput for those where there are no suggestions
-                    return Ok(UserSelection::Replacement(bandaid));
+                    return Ok(UserSelection::Replacement(kit));
                 }
                 KeyCode::Char('n') => return Ok(UserSelection::Skip),
                 KeyCode::Char('j') => return Ok(UserSelection::Previous),
@@ -547,8 +549,8 @@ impl UserPicked {
                     UserSelection::Help => {
                         unreachable!("Help must not be reachable here, it is handled before")
                     }
-                    UserSelection::Replacement(bandaid) => {
-                        picked.add_bandaid(&origin, bandaid);
+                    UserSelection::Replacement(kit) => {
+                        picked.add_first_aid_kit(&origin, kit);
                     }
                     _ => continue,
                 };
