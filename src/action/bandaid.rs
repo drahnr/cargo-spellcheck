@@ -1,7 +1,9 @@
 //! A mistake bandaid.
 //!
-//! Covers the mistake with a suggested replacement, as
-//! picked by the user.
+//! A `BandAid` covers the mistake with a suggested
+//! replacement, as picked by the user. It only refers
+//! to suggestions on one line.
+//! Multi-line suggestions are collected in a `FirstAidKit`.
 
 use crate::span::Span;
 use crate::suggestion::Suggestion;
@@ -28,7 +30,7 @@ impl From<(String, Span)> for BandAid {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FirstAidKit {
     /// All Bandaids in this kit constructed from the replacement of a suggestion,
-    /// each bandaid covers at most a whole line
+    /// each bandaid covers at most one complete line
     pub bandaids: Vec<BandAid>,
 }
 
@@ -57,6 +59,14 @@ impl From<BandAid> for FirstAidKit {
 impl<'s> TryFrom<(&Suggestion<'s>, usize)> for FirstAidKit {
     type Error = Error;
     fn try_from((suggestion, pick_idx): (&Suggestion<'s>, usize)) -> Result<Self> {
+        let literal_file_span = suggestion.span;
+        trace!(
+            "proc_macro literal span of doc comment: ({},{})..({},{})",
+            literal_file_span.start.line,
+            literal_file_span.start.column,
+            literal_file_span.end.line,
+            literal_file_span.end.column
+        );
         let replacement = suggestion
             .replacements
             .get(pick_idx)

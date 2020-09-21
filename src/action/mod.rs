@@ -37,7 +37,6 @@ impl Finish {
 
 /// A patch to be stitched ontop of another string.
 ///
-<<<<<<< HEAD
 /// Has intentionally no awareness of any rust or cmark/markdown semantics.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub(crate) enum Patch {
@@ -53,31 +52,6 @@ pub(crate) enum Patch {
         content: String,
     },
 }
-=======
-/// Note that `Lines` as created by `(x as BufLines).lines()` does
-/// not preserve trailing newlines, so either the iterator
-/// needs to be modified to yield an extra (i.e. with `.chain("".to_owned())`)
-/// or a manual newlines has to be written to the `sink`.
-fn correct_lines<'s>(
-    mut bandaids: impl Iterator<Item = BandAid>,
-    source: impl Iterator<Item = (usize, String)>,
-    mut sink: impl Write,
-) -> Result<()> {
-    let mut nxt: Option<BandAid> = bandaids.next();
-    for (line_number, content) in source {
-        trace!("Processing line {}", line_number);
-        let mut remainder_column = 0_usize;
-        // let content: String = content.map_err(|e| {
-        //     anyhow!("Line {} contains invalid utf8 characters", line_number).context(e)
-        // })?;
-
-        if nxt.is_none() {
-            // no candidates remaining, just keep going
-            sink.write(content.as_bytes())?;
-            sink.write("\n".as_bytes())?;
-            continue;
-        }
->>>>>>> 0f79962... fix/action: removed old multiline bandaid approach
 
 impl<'a> From<&'a BandAid> for Patch {
     fn from(bandaid: &'a BandAid) -> Self {
@@ -101,7 +75,6 @@ impl From<BandAid> for Patch {
     }
 }
 
-<<<<<<< HEAD
 /// Correct all lines by applying bandaids.
 ///
 /// Assumes all `BandAids` do not overlap when replacing.
@@ -141,16 +114,6 @@ where
                 } => (replace_span.end, replacement.as_str(), false),
                 Patch::Insert { insert_at, content } => (insert_at.clone(), content.as_str(), true),
             };
-=======
-        let content_len = content.chars().count();
-        while let Some(bandaid) = nxt.take() {
-            trace!("Applying next bandaid {:?}", bandaid);
-            trace!("where line {} is: >{}<", line_number, content);
-            let range: Range = bandaid
-                .span
-                .try_into()
-                .expect("Bandaids must be single-line");
->>>>>>> 0f79962... fix/action: removed old multiline bandaid approach
 
             write_to_sink("new", data)?;
 
@@ -211,7 +174,6 @@ where
                     );
                     break 'cc;
                 }
-<<<<<<< HEAD
 
                 cc_end_byte_offset = byte_offset + c.len_utf8();
 
@@ -219,13 +181,6 @@ where
 
                 let _ = source_iter.next();
                 // we need to drag this one behind, since...
-=======
-                sink.write("\n".as_bytes())?;
-                // break the inner loop
-                break;
-                // } else {
-                // next suggestion covers same line
->>>>>>> 0f79962... fix/action: removed old multiline bandaid approach
             }
             // in the case we reach EOF here the `cc_end_byte_offset` could never be updated correctly
             std::cmp::min(cc_end_byte_offset, source_buffer.len())
@@ -388,7 +343,6 @@ mod tests {
     macro_rules! verify_correction {
         ($text:literal, $bandaids:expr, $expected:literal) => {
             let mut sink: Vec<u8> = Vec::with_capacity(1024);
-<<<<<<< HEAD
 
             correct_lines(
                 $bandaids.into_iter().map(|bandaid| Patch::from(bandaid)),
@@ -396,14 +350,6 @@ mod tests {
                 &mut sink,
             )
             .expect("Line correction must work in unit test!");
-=======
-            let lines = $text
-                .lines()
-                .map(std::borrow::ToOwned::to_owned)
-                .enumerate()
-                .map(|(lineno, content)| (lineno + 1, content));
-            correct_lines($bandaids.into_iter(), lines, &mut sink).expect("should be able to");
->>>>>>> 5ea92c7... test/action: added macro for correction testing
 
             assert_eq!(String::from_utf8_lossy(sink.as_slice()), $expected);
         };
@@ -416,7 +362,6 @@ mod tests {
             .is_test(true)
             .try_init();
 
-<<<<<<< HEAD
         let patches = vec![
             Patch::Replace {
                 replace_span: Span {
@@ -427,16 +372,6 @@ mod tests {
                     },
                 },
                 replacement: "& Omega".to_owned(),
-=======
-        let bandaids = vec![
-            BandAid {
-                span: (2_usize, 7..15).try_into().unwrap(),
-                replacement: "banana icecream".to_owned(),
-            },
-            BandAid {
-                span: (2_usize, 22..28).try_into().unwrap(),
-                replacement: "third".to_owned(),
->>>>>>> 5ea92c7... test/action: added macro for correction testing
             },
             Patch::Insert {
                 insert_at: LineColumn { line: 3, column: 0 },
@@ -444,7 +379,6 @@ mod tests {
             },
         ];
         verify_correction!(
-<<<<<<< HEAD
             r#"Alpha beta gamma
 zeta eta beta.
 "#,
@@ -541,18 +475,6 @@ Icecream truck"#
             content: "Q".to_owned(),
         }];
         verify_correction!("A🐢C", patches, "A🐢CQ");
-=======
-            r#"
-I like unicorns every second Mondays.
-
-"#,
-            bandaids,
-            r#"
-I like banana icecream every third day.
-
-"#
-        );
->>>>>>> 5ea92c7... test/action: added macro for correction testing
     }
 
     #[test]
