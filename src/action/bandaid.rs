@@ -5,7 +5,7 @@
 
 use crate::span::Span;
 use crate::suggestion::Suggestion;
-use anyhow::{bail, Error, Result};
+use anyhow::{anyhow, Error, Result};
 use log::trace;
 use std::convert::TryFrom;
 
@@ -18,55 +18,6 @@ pub struct BandAid {
     pub replacement: String,
 }
 
-// impl BandAid {
-//     /// Create a new bandaid from a span and the content to replace the
-//     /// spans current content.
-//     pub fn new(replacement: &str, span: &Span) -> Result<Self> {
-//         trace!(
-//             "span of doc comment: ({},{})..({},{})",
-//             span.start.line,
-//             span.start.column,
-//             span.end.line,
-//             span.end.column
-//         );
-//         if span.is_multiline() {
-//             bail!("Cannot create single bandaid from multiline replacement");
-//         }
-
-//         Ok(Self {
-//             span: *span,
-//             replacement: replacement.to_owned(),
-//         })
-//     }
-// }
-
-// impl<'s> TryFrom<(&Suggestion<'s>, usize)> for BandAid {
-//     type Error = Error;
-//     fn try_from((suggestion, pick_idx): (&Suggestion<'s>, usize)) -> Result<Self> {
-//         let literal_file_span = suggestion.span;
-//         trace!(
-//             "proc_macro literal span of doc comment: ({},{})..({},{})",
-//             literal_file_span.start.line,
-//             literal_file_span.start.column,
-//             literal_file_span.end.line,
-//             literal_file_span.end.column
-//         );
-
-//         if let Some(replacement) = suggestion.replacements.iter().nth(pick_idx) {
-//             Ok(Self::new(replacement.as_str(), &suggestion.span)?)
-//         } else {
-//             bail!("Does not contain any replacements")
-//         }
-//     }
-// }
-
-// impl<'s> TryFrom<(Suggestion<'s>, usize)> for BandAid {
-//     type Error = Error;
-//     fn try_from((suggestion, pick_idx): (Suggestion<'s>, usize)) -> Result<Self> {
-//         Self::try_from((&suggestion, pick_idx))
-//     }
-// }
-
 impl From<(String, Span)> for BandAid {
     fn from((replacement, span): (String, Span)) -> Self {
         Self { span, replacement }
@@ -77,7 +28,7 @@ impl From<(String, Span)> for BandAid {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FirstAidKit {
     /// All Bandaids in this kit constructed from the replacement of a suggestion,
-    /// each covers at most one line
+    /// each bandaid covers at most a whole line
     pub bandaids: Vec<BandAid>,
 }
 
@@ -120,30 +71,41 @@ impl TryFrom<(&String, &Span)> for FirstAidKit {
     fn try_from((replacement, span): (&String, &Span)) -> Result<Self> {
         if span.is_multiline() {
             let mut replacement_lines = replacement.lines();
-            let mut span_lines = (span.start.line..span.end.line).peekable();
+            let mut span_lines = (span.start.line..=span.end.line).peekable();
             let mut bandaids: Vec<BandAid> = Vec::new();
-            // TODO: how can we determine the line length?
+            let first_line = replacement_lines
+                .next()
+                .ok_or(anyhow!("Replacement must contain at least one line"))?
+                .to_string();
             let first_span = Span {
                 start: span.start,
                 end: crate::LineColumn {
-                    line: span.start.line,
-                    column: 0,
+                    line: span_lines
+                        .next()
+                        .ok_or(anyhow!("Span must cover at least one line"))?,
+                    column: first_line.len(),
                 },
             };
             // bandaid for first line
-            bandaids.push(BandAid::try_from((
-                replacement_lines.next().unwrap().to_string(),
-                first_span,
-            ))?);
+            bandaids.push(BandAid::try_from((first_line, first_span))?);
+
             // process all subsequent lines
             while let Some(line) = span_lines.next() {
-                let span = if span_lines.peek().is_some() {
+                let replacement = replacement_lines
+                    .next()
+                    // TODO: How can we get rid of lines? E.g., original content had 4 lines, replacement just 2
+                    // With this implementation, we end up with empty lines
+                    .unwrap_or("");
+                let span_line = if span_lines.peek().is_some() {
                     Span {
                         start: crate::LineColumn { line, column: 0 },
-                        end: crate::LineColumn { line, column: 0 },
+                        end: crate::LineColumn {
+                            line,
+                            column: replacement.len(),
+                        },
                     }
                 } else {
-                    // span of last line does only cover until original end.column
+                    // span of last line only covers first column until original end.column
                     Span {
                         start: crate::LineColumn { line, column: 0 },
                         end: crate::LineColumn {
@@ -152,8 +114,7 @@ impl TryFrom<(&String, &Span)> for FirstAidKit {
                         },
                     }
                 };
-                let bandaid =
-                    BandAid::try_from((replacement_lines.next().unwrap().to_string(), span))?;
+                let bandaid = BandAid::try_from((replacement.to_string(), span_line))?;
                 bandaids.push(bandaid);
             }
             Ok(Self::new(bandaids))
@@ -170,6 +131,7 @@ pub(crate) mod tests {
     use crate::util::load_span_from;
     use crate::{LineColumn, Span};
     use anyhow::anyhow;
+    use std::convert::TryInto;
     use std::path::Path;
 
     /// Extract span from file as String
@@ -426,5 +388,84 @@ l
         ];
 
         crate::checker::tests::extraction_test_body(fn_with_doc.as_str(), EXPECTED);
+    }
+
+    #[test]
+    fn firstaid_from_replacement() {
+        const REPLACEMENT: &'static str = "/// This is the one tousandth time I'm writing
+/// a test string. Maybe there is a way to automate
+/// this. Maybe not. But writing long texts";
+
+        let span = Span {
+            start: LineColumn {
+                line: 1,
+                column: 16,
+            },
+            end: LineColumn {
+                line: 3,
+                column: 44,
+            },
+        };
+
+        let expected: &[BandAid] = &[
+            BandAid {
+                span: (1_usize, 16..47).try_into().unwrap(),
+                replacement: "/// This is the one tousandth time I'm writing".to_owned(),
+            },
+            BandAid {
+                span: (2_usize, 0..52).try_into().unwrap(),
+                replacement: "/// a test string. Maybe there is a way to automate".to_owned(),
+            },
+            BandAid {
+                span: (3_usize, 0..45).try_into().unwrap(),
+                replacement: "/// this. Maybe not. But writing long texts".to_owned(),
+            },
+        ];
+
+        let kit = FirstAidKit::try_from((&REPLACEMENT.to_string(), &span))
+            .expect("(String, Span) into FirstAidKit works. qed");
+        assert_eq!(kit.bandaids.len(), 3);
+        dbg!(&kit);
+        for ((bandaid, expected), line) in
+            kit.bandaids.iter().zip(expected).zip(REPLACEMENT.lines())
+        {
+            assert_eq!(bandaid.replacement, line);
+            assert_eq!(bandaid, expected);
+        }
+    }
+
+    #[test]
+    fn firstaid_replacement_shorter_than_original() {
+        const REPLACEMENT: &'static str = "/// This is the one tousandth time I'm writing";
+
+        let span = Span {
+            start: LineColumn {
+                line: 1,
+                column: 16,
+            },
+            end: LineColumn {
+                line: 2,
+                column: 43,
+            },
+        };
+
+        let expected: &[BandAid] = &[
+            BandAid {
+                span: (1_usize, 16..47).try_into().unwrap(),
+                replacement: "/// This is the one tousandth time I'm writing".to_owned(),
+            },
+            BandAid {
+                span: (2_usize, 0..44).try_into().unwrap(),
+                replacement: "".to_owned(),
+            },
+        ];
+
+        let kit = FirstAidKit::try_from((&REPLACEMENT.to_string(), &span))
+            .expect("(String, Span) into FirstAidKit works. qed");
+        assert_eq!(kit.bandaids.len(), 2);
+        dbg!(&kit);
+        for (bandaid, expected) in kit.bandaids.iter().zip(expected) {
+            assert_eq!(bandaid, expected);
+        }
     }
 }
