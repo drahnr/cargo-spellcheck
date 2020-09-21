@@ -256,15 +256,19 @@ impl Action {
 mod tests {
     use super::*;
 
-    const TEXT: &'static str = r#"
-I like unicorns every second Mondays.
+    macro_rules! verify_correction {
+        ($text:literal, $bandaids:expr, $expected:literal) => {
+            let mut sink: Vec<u8> = Vec::with_capacity(1024);
+            let lines = $text
+                .lines()
+                .map(std::borrow::ToOwned::to_owned)
+                .enumerate()
+                .map(|(lineno, content)| (lineno + 1, content));
+            correct_lines($bandaids.into_iter(), lines, &mut sink).expect("should be able to");
 
-"#;
-
-    const CORRECTED: &'static str = r#"
-I like banana icecream every third day.
-
-"#;
+            assert_eq!(String::from_utf8_lossy(sink.as_slice()), $expected);
+        };
+    }
 
     #[test]
     fn replace_unicorns() {
@@ -273,7 +277,6 @@ I like banana icecream every third day.
             .is_test(true)
             .try_init();
 
-        let mut sink: Vec<u8> = Vec::with_capacity(1024);
         let bandaids = vec![
             BandAid {
                 span: (2_usize, 7..15).try_into().unwrap(),
@@ -288,62 +291,45 @@ I like banana icecream every third day.
                 replacement: "day".to_owned(),
             },
         ];
+        verify_correction!(
+            r#"
+I like unicorns every second Mondays.
 
-        let lines = TEXT
-            .lines()
-            .map(std::borrow::ToOwned::to_owned)
-            .enumerate()
-            .map(|(lineno, content)| (lineno + 1, content));
+"#,
+            bandaids,
+            r#"
+I like banana icecream every third day.
 
-        correct_lines(bandaids.into_iter(), lines, &mut sink).expect("should be able to");
-
-        assert_eq!(String::from_utf8_lossy(sink.as_slice()), CORRECTED);
+"#
+        );
     }
 
     #[test]
     fn bandaid_multiline() {
-        const TEST: &'static str = "
-/// Let's test bandaids on comments
-/// with multiple lines
-
-";
-
-        const RESULT: &'static str = "
-/// Let's test bandaids on comments with
-/// different multiple lines
-";
-
-        let mut sink: Vec<u8> = Vec::with_capacity(1024);
         let bandaids = vec![
             BandAid {
-                span: Span {
-                    start: LineColumn {
-                        line: 1,
-                        column: 27,
-                    },
-                    end: LineColumn {
-                        line: 2,
-                        column: 17,
-                    },
-                },
-                replacement: "comments with\n/// different multiple".to_owned(),
+                span: (2_usize, 27..36).try_into().unwrap(),
+                replacement: "comments with".to_owned(),
             },
-            // BandAid {
-            //     span: (2_usize, 22..28).try_into().unwrap(),
-            //     replacement: "third".to_owned(),
-            // },
-            // BandAid {
-            //     span: (2_usize, 29..36).try_into().unwrap(),
-            //     replacement: "day".to_owned(),
-            // },
+            BandAid {
+                span: (3_usize, 0..17).try_into().unwrap(),
+                replacement: "/// different multiple".to_owned(),
+            },
+            BandAid {
+                span: (3_usize, 18..23).try_into().unwrap(),
+                replacement: "words".to_owned(),
+            },
         ];
-        let lines = TEST
-            .lines()
-            .map(std::borrow::ToOwned::to_owned)
-            .enumerate()
-            .map(|(lineno, content)| (lineno + 1, content));
-
-        correct_lines(bandaids.into_iter(), lines, &mut sink).expect("correction works. qed");
-        assert_eq!(String::from_utf8_lossy(sink.as_slice()), RESULT);
+        verify_correction!(
+            "
+/// Let's test bandaids on comments
+/// with multiple lines afterwards
+",
+            bandaids,
+            "
+/// Let's test bandaids on comments with
+/// different multiple words afterwards
+"
+        );
     }
 }
