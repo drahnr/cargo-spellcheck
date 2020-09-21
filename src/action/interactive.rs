@@ -221,10 +221,6 @@ impl UserPicked {
                 }
             }
             KeyCode::Enter => {
-                // let bandaid = BandAid::try_from((
-                //     state.custom_replacement.clone(),
-                //     &state.suggestion.span,
-                // ))?;
                 let bandaid = state.to_bandaid();
                 return Ok(UserSelection::Replacement(bandaid));
             }
