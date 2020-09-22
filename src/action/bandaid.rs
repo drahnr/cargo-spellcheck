@@ -438,10 +438,7 @@ l
             .expect("(String, Span) into FirstAidKit works. qed");
         assert_eq!(kit.bandaids.len(), 3);
         dbg!(&kit);
-        for ((bandaid, expected), line) in
-            kit.bandaids.iter().zip(expected).zip(REPLACEMENT.lines())
-        {
-            assert_eq!(bandaid.replacement, line);
+        for (bandaid, expected) in kit.bandaids.iter().zip(expected) {
             assert_eq!(bandaid, expected);
         }
     }
@@ -517,10 +514,7 @@ l
             .expect("(String, Span) into FirstAidKit works. qed");
         assert_eq!(kit.bandaids.len(), 3);
         dbg!(&kit);
-        for ((bandaid, expected), line) in
-            kit.bandaids.iter().zip(expected).zip(REPLACEMENT.lines())
-        {
-            assert_eq!(bandaid.replacement, line);
+        for (bandaid, expected) in kit.bandaids.iter().zip(expected) {
             assert_eq!(bandaid, expected);
         }
     }
