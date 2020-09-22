@@ -94,7 +94,7 @@ impl TryFrom<(&String, &Span)> for FirstAidKit {
                         .next()
                         .ok_or(anyhow!("Span must cover at least one line"))?,
                     // TODO: extract the correct length in bytes, not chars
-                    column: first_line.len(),
+                    column: first_line.chars().count(),
                 },
             };
             // bandaid for first line
@@ -113,7 +113,7 @@ impl TryFrom<(&String, &Span)> for FirstAidKit {
                         end: crate::LineColumn {
                             line,
                             // TODO: extract the correct length in bytes, not chars
-                            column: replacement.len(),
+                            column: replacement.chars().count(),
                         },
                     }
                 } else {
@@ -477,6 +477,50 @@ l
         assert_eq!(kit.bandaids.len(), 2);
         dbg!(&kit);
         for (bandaid, expected) in kit.bandaids.iter().zip(expected) {
+            assert_eq!(bandaid, expected);
+        }
+    }
+
+    #[test]
+    fn firstaid_with_emojis() {
+        const REPLACEMENT: &'static str = "/// This is the one 💯🗤⛩ time I'm writing
+/// a test string. Emojis like these 😋😋⏪🦀 are
+/// important to test";
+
+        let span = Span {
+            start: LineColumn {
+                line: 1,
+                column: 16,
+            },
+            end: LineColumn {
+                line: 3,
+                column: 44,
+            },
+        };
+
+        let expected: &[BandAid] = &[
+            BandAid {
+                span: (1_usize, 16..41).try_into().unwrap(),
+                replacement: "/// This is the one 💯🗤⛩ time I'm writing".to_owned(),
+            },
+            BandAid {
+                span: (2_usize, 0..46).try_into().unwrap(),
+                replacement: "/// a test string. Emojis like these 😋😋⏪🦀 are".to_owned(),
+            },
+            BandAid {
+                span: (3_usize, 0..45).try_into().unwrap(),
+                replacement: "/// important to test".to_owned(),
+            },
+        ];
+
+        let kit = FirstAidKit::try_from((&REPLACEMENT.to_string(), &span))
+            .expect("(String, Span) into FirstAidKit works. qed");
+        assert_eq!(kit.bandaids.len(), 3);
+        dbg!(&kit);
+        for ((bandaid, expected), line) in
+            kit.bandaids.iter().zip(expected).zip(REPLACEMENT.lines())
+        {
+            assert_eq!(bandaid.replacement, line);
             assert_eq!(bandaid, expected);
         }
     }
