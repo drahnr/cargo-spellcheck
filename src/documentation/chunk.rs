@@ -130,7 +130,7 @@ impl CheckableChunk {
     ///           (13,17) => (4,0)->(4,3),
     /// ]
     /// ```
-    pub(super) fn find_spans(&self, range: Range) -> IndexMap<Range, Span> {
+    pub(crate) fn find_spans(&self, range: Range) -> IndexMap<Range, Span> {
         trace!(target: "find_spans",
             "############################################ chunk find_span {:?}",
             &range
