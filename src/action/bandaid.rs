@@ -71,14 +71,8 @@ impl<'s> TryFrom<(&Suggestion<'s>, usize)> for FirstAidKit {
             .replacements
             .get(pick_idx)
             .ok_or(anyhow::anyhow!("Does not contain any replacements"))?;
-        FirstAidKit::try_from((replacement, &suggestion.span))
-    }
-}
+        let span = suggestion.span;
 
-impl TryFrom<(&String, &Span)> for FirstAidKit {
-    type Error = Error;
-
-    fn try_from((replacement, span): (&String, &Span)) -> Result<Self> {
         if span.is_multiline() {
             let mut replacement_lines = replacement.lines().peekable();
             let mut span_lines = (span.start.line..=span.end.line).peekable();
@@ -87,6 +81,9 @@ impl TryFrom<(&String, &Span)> for FirstAidKit {
                 .next()
                 .ok_or(anyhow!("Replacement must contain at least one line"))?
                 .to_string();
+            let line_range = suggestion
+                .chunk
+                .find_covered_lines(suggestion.range.clone());
             let first_span = Span {
                 start: span.start,
                 end: crate::LineColumn {
@@ -94,7 +91,10 @@ impl TryFrom<(&String, &Span)> for FirstAidKit {
                         .next()
                         .ok_or(anyhow!("Span must cover at least one line"))?,
                     // TODO: this corresponds to the length of the replacement, not the original content
-                    column: span.start.column + first_line.chars().count(),
+                    column: line_range
+                        .first()
+                        .expect("Suggestion must cover one line")
+                        .end,
                 },
             };
             // bandaid for first line
@@ -108,11 +108,20 @@ impl TryFrom<(&String, &Span)> for FirstAidKit {
                     // With this implementation, we end up with empty lines
                     .unwrap_or(span.end.line);
                 let span_line = if replacement_lines.peek().is_some() {
+                    // let original_span: Vec<&Span> = suggestion.chunk.source_mapping.values().filter(|k| {
+                    //     k.start.line == line
+                    // }).collect();
+                    let line_range = suggestion
+                        .chunk
+                        .find_covered_lines(suggestion.range.clone());
                     Span {
                         start: crate::LineColumn { line, column: 0 },
                         end: crate::LineColumn {
                             line,
-                            column: replacement.chars().count(),
+                            column: line_range
+                                .get(line)
+                                .expect("Suggestion must cover its own lines")
+                                .end,
                         },
                     }
                 } else {
@@ -129,6 +138,18 @@ impl TryFrom<(&String, &Span)> for FirstAidKit {
                 bandaids.push(bandaid);
             }
             Ok(Self::new(bandaids))
+        } else {
+            FirstAidKit::try_from((replacement, &suggestion.span))
+        }
+    }
+}
+
+impl TryFrom<(&String, &Span)> for FirstAidKit {
+    type Error = Error;
+
+    fn try_from((replacement, span): (&String, &Span)) -> Result<Self> {
+        if span.is_multiline() {
+            anyhow::bail!("Can't construct FirstAidKit from multiline span only")
         } else {
             let bandaid = BandAid::try_from((replacement.to_string(), *span))?;
             Ok(Self::new(vec![bandaid]))
@@ -420,7 +441,7 @@ l
 
         let expected: &[BandAid] = &[
             BandAid {
-                span: (1_usize, 16..(16+35)).try_into().unwrap(),
+                span: (1_usize, 16..(16 + 35)).try_into().unwrap(),
                 replacement: "the one tousandth time I'm writing".to_owned(),
             },
             BandAid {
@@ -457,12 +478,10 @@ l
             },
         };
 
-        let expected: &[BandAid] = &[
-            BandAid {
-                span: (1_usize, 16..(16+31)).try_into().unwrap(),
-                replacement: "one tousandth time I'm writing".to_owned(),
-            },
-        ];
+        let expected: &[BandAid] = &[BandAid {
+            span: (1_usize, 16..(16 + 31)).try_into().unwrap(),
+            replacement: "one tousandth time I'm writing".to_owned(),
+        }];
 
         let kit = FirstAidKit::try_from((&REPLACEMENT.to_string(), &span))
             .expect("(String, Span) into FirstAidKit works. qed");
@@ -492,7 +511,7 @@ l
 
         let expected: &[BandAid] = &[
             BandAid {
-                span: (1_usize, 16..(16+31)).try_into().unwrap(),
+                span: (1_usize, 16..(16 + 31)).try_into().unwrap(),
                 replacement: "one tousandth time I'm writing".to_owned(),
             },
             BandAid {
