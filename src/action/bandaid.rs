@@ -80,7 +80,7 @@ impl TryFrom<(&String, &Span)> for FirstAidKit {
 
     fn try_from((replacement, span): (&String, &Span)) -> Result<Self> {
         if span.is_multiline() {
-            let mut replacement_lines = replacement.lines();
+            let mut replacement_lines = replacement.lines().peekable();
             let mut span_lines = (span.start.line..=span.end.line).peekable();
             let mut bandaids: Vec<BandAid> = Vec::new();
             let first_line = replacement_lines
@@ -93,26 +93,25 @@ impl TryFrom<(&String, &Span)> for FirstAidKit {
                     line: span_lines
                         .next()
                         .ok_or(anyhow!("Span must cover at least one line"))?,
-                    // TODO: extract the correct length in bytes, not chars
-                    column: first_line.chars().count(),
+                    // TODO: this corresponds to the length of the replacement, not the original content
+                    column: span.start.column + first_line.chars().count(),
                 },
             };
             // bandaid for first line
             bandaids.push(BandAid::try_from((first_line, first_span))?);
 
             // process all subsequent lines
-            while let Some(line) = span_lines.next() {
-                let replacement = replacement_lines
+            while let Some(replacement) = replacement_lines.next() {
+                let line = span_lines
                     .next()
                     // TODO: How can we get rid of lines? E.g., original content had 4 lines, replacement just 2
                     // With this implementation, we end up with empty lines
-                    .unwrap_or("");
-                let span_line = if span_lines.peek().is_some() {
+                    .unwrap_or(span.end.line);
+                let span_line = if replacement_lines.peek().is_some() {
                     Span {
                         start: crate::LineColumn { line, column: 0 },
                         end: crate::LineColumn {
                             line,
-                            // TODO: extract the correct length in bytes, not chars
                             column: replacement.chars().count(),
                         },
                     }
@@ -404,7 +403,7 @@ l
 
     #[test]
     fn firstaid_from_replacement() {
-        const REPLACEMENT: &'static str = "/// This is the one tousandth time I'm writing
+        const REPLACEMENT: &'static str = "the one tousandth time I'm writing
 /// a test string. Maybe there is a way to automate
 /// this. Maybe not. But writing long texts";
 
@@ -421,8 +420,8 @@ l
 
         let expected: &[BandAid] = &[
             BandAid {
-                span: (1_usize, 16..47).try_into().unwrap(),
-                replacement: "/// This is the one tousandth time I'm writing".to_owned(),
+                span: (1_usize, 16..(16+35)).try_into().unwrap(),
+                replacement: "the one tousandth time I'm writing".to_owned(),
             },
             BandAid {
                 span: (2_usize, 0..52).try_into().unwrap(),
@@ -445,7 +444,7 @@ l
 
     #[test]
     fn firstaid_replacement_shorter_than_original() {
-        const REPLACEMENT: &'static str = "/// This is the one tousandth time I'm writing";
+        const REPLACEMENT: &'static str = "one tousandth time I'm writing";
 
         let span = Span {
             start: LineColumn {
@@ -460,18 +459,55 @@ l
 
         let expected: &[BandAid] = &[
             BandAid {
-                span: (1_usize, 16..47).try_into().unwrap(),
-                replacement: "/// This is the one tousandth time I'm writing".to_owned(),
-            },
-            BandAid {
-                span: (2_usize, 0..44).try_into().unwrap(),
-                replacement: "".to_owned(),
+                span: (1_usize, 16..(16+31)).try_into().unwrap(),
+                replacement: "one tousandth time I'm writing".to_owned(),
             },
         ];
 
         let kit = FirstAidKit::try_from((&REPLACEMENT.to_string(), &span))
             .expect("(String, Span) into FirstAidKit works. qed");
-        assert_eq!(kit.bandaids.len(), 2);
+        assert_eq!(kit.bandaids.len(), 1);
+        dbg!(&kit);
+        for (bandaid, expected) in kit.bandaids.iter().zip(expected) {
+            assert_eq!(bandaid, expected);
+        }
+    }
+
+    #[test]
+    fn firstaid_replacement_longer_than_original() {
+        const REPLACEMENT: &'static str = "one tousandth time I'm writing
+/// a test string. Maybe one could automate that.
+/// Maybe not. But writing this is annoying";
+
+        let span = Span {
+            start: LineColumn {
+                line: 1,
+                column: 16,
+            },
+            end: LineColumn {
+                line: 2,
+                column: 43,
+            },
+        };
+
+        let expected: &[BandAid] = &[
+            BandAid {
+                span: (1_usize, 16..(16+31)).try_into().unwrap(),
+                replacement: "one tousandth time I'm writing".to_owned(),
+            },
+            BandAid {
+                span: (2_usize, 0..50).try_into().unwrap(),
+                replacement: "/// a test string. Maybe one could automate that.".to_owned(),
+            },
+            BandAid {
+                span: (2_usize, 0..44).try_into().unwrap(),
+                replacement: "/// Maybe not. But writing this is annoying".to_owned(),
+            },
+        ];
+
+        let kit = FirstAidKit::try_from((&REPLACEMENT.to_string(), &span))
+            .expect("(String, Span) into FirstAidKit works. qed");
+        assert_eq!(kit.bandaids.len(), 3);
         dbg!(&kit);
         for (bandaid, expected) in kit.bandaids.iter().zip(expected) {
             assert_eq!(bandaid, expected);
