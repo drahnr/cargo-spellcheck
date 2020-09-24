@@ -143,6 +143,8 @@ impl<'s> TryFrom<(&Suggestion<'s>, usize)> for FirstAidKit {
                 } else {
                     // span of last line only covers first column until original span.end
                     // TODO: still results in multiline bandaids if original content had more lines than replacment
+                    // If we don't use `line` for the `end.line`, we won't have multiline bandaids, but the inital lines
+                    // that were longer than the replacement will remain in the content
                     Span {
                         start: crate::LineColumn { line, column: 0 },
                         end: span.end,

@@ -22,7 +22,7 @@ struct SomeLong {
 /// but too long for one line.
 struct TooLong;
 
-/// And these lines are too short
-/// so they become just
-/// one line
+/// And these lines are too short so they become just two lines
+/// instead of three, as it was
+/// initially.
 struct TooShort;
