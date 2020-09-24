@@ -21,3 +21,8 @@ struct SomeLong {
 /// A long documentation which is short enough for two lines
 /// but too long for one line.
 struct TooLong;
+
+/// And these lines are too short
+/// so they become just
+/// one line
+struct TooShort;
