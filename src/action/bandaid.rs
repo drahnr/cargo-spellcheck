@@ -469,112 +469,251 @@ l
         }
     }
 
-    macro_rules! verify_firstaid {
-        ($content:literal, $bandaids:expr, $n:literal) => {
-            let docs = Documentation::from((ContentOrigin::TestEntity, $content));
-            let cfg = ReflowConfig {
-                max_line_length: $n,
+    mod kit {
+        use super::*;
+
+        /// Helper macro for spawning reflow based firstaid creations.
+        macro_rules! verify_reflow {
+            ($content:literal, $bandaids:expr, $n:literal) => {
+                let docs = Documentation::from((ContentOrigin::TestEntity, $content));
+                let cfg = ReflowConfig {
+                    max_line_length: $n,
+                };
+                // Run the reflow checker creating suggestions
+                let suggestion_set = Reflow::check(&docs, &cfg).expect("Reflow is working. qed");
+                let suggestions: Vec<&Suggestion> = suggestion_set
+                    .suggestions(&crate::ContentOrigin::TestEntity)
+                    .collect();
+                assert_eq!(suggestions.len(), 1);
+                let suggestion = suggestions.first().expect("Contains one suggestion. qed");
+
+                let kit = FirstAidKit::try_from((*suggestion, 0)).expect("Must work");
+                assert_eq!(kit.bandaids.len(), $bandaids.len());
+                for (bandaid, expected) in kit.bandaids.iter().zip($bandaids) {
+                    assert_eq!(bandaid, expected);
+                }
             };
-            let suggestion_set = Reflow::check(&docs, &cfg).expect("Reflow is working. qed");
-            let suggestions: Vec<&Suggestion> = suggestion_set
-                .suggestions(&crate::ContentOrigin::TestEntity)
-                .collect();
-            assert_eq!(suggestions.len(), 1);
-            let suggestion = suggestions.first().expect("Contains one suggestion. qed");
-            let kit = FirstAidKit::try_from((*suggestion, 0)).expect("Must work");
-            assert_eq!(kit.bandaids.len(), $bandaids.len());
-            for (bandaid, expected) in kit.bandaids.iter().zip($bandaids) {
-                assert_eq!(bandaid, expected);
-            }
-        };
-    }
+        }
 
-    #[test]
-    fn firstaid_2to2() {
-        let expected: &[BandAid] = &[
-            BandAid {
-                span: (1_usize, 3..80).try_into().unwrap(),
-                replacement: " one tousandth time I'm writing a test string. Maybe one could"
-                    .to_owned(),
-            },
-            BandAid {
-                span: (2_usize, 0..43).try_into().unwrap(),
-                replacement: "/// automate that. Maybe not. But writing this is annoying"
-                    .to_owned(),
-            },
-        ];
+        #[test]
+        fn reflow_tripple_slash_2to2() {
+            let expected: &[BandAid] = &[
+                BandAid {
+                    span: (1_usize, 3..80).try_into().unwrap(),
+                    replacement: " one tousandth time I'm writing a test string. Maybe one could"
+                        .to_owned(),
+                },
+                BandAid {
+                    span: (2_usize, 3..43).try_into().unwrap(),
+                    replacement: " automate that. Maybe not. But writing this is annoying"
+                        .to_owned(),
+                },
+            ];
 
-        verify_firstaid!(
-            "/// one tousandth time I'm writing a test string. Maybe one could automate that.
+            verify_reflow!(
+                "/// one tousandth time I'm writing a test string. Maybe one could automate that.
 /// Maybe not. But writing this is annoying",
-            expected,
-            65
-        );
-    }
+                expected,
+                65
+            );
+        }
 
-    #[test]
-    fn firstaid_3to3() {
-        let expected: &[BandAid] = &[
-            BandAid {
-                span: (1_usize, 3..80).try_into().unwrap(),
-                replacement: " one tousandth time I'm writing a test string. Maybe one could"
-                    .to_owned(),
-            },
-            BandAid {
-                span: (2_usize, 0..61).try_into().unwrap(),
-                replacement: "/// automate that. Maybe not. But writing this is annoying."
-                    .to_owned(),
-            },
-            BandAid {
-                span: (3_usize, 0..37).try_into().unwrap(),
-                replacement: "/// However, I don't have a choice now, do I? Come on!".to_owned(),
-            },
-        ];
+        #[test]
+        fn reflow_tripple_slash_3to3() {
+            let expected: &[BandAid] = &[
+                BandAid {
+                    span: (1_usize, 3..80).try_into().unwrap(),
+                    replacement: " one tousandth time I'm writing a test string. Maybe one could"
+                        .to_owned(),
+                },
+                BandAid {
+                    span: (2_usize, 3..61).try_into().unwrap(),
+                    replacement: " automate that. Maybe not. But writing this is annoying."
+                        .to_owned(),
+                },
+                BandAid {
+                    span: (3_usize, 3..37).try_into().unwrap(),
+                    replacement: " However, I don't have a choice now, do I? Come on!".to_owned(),
+                },
+            ];
 
-        verify_firstaid!(
-            "/// one tousandth time I'm writing a test string. Maybe one could automate that.
+            verify_reflow!(
+                "/// one tousandth time I'm writing a test string. Maybe one could automate that.
 /// Maybe not. But writing this is annoying. However, I don't
 /// have a choice now, do I? Come on!",
-            expected,
-            65
-        );
-    }
+                expected,
+                65
+            );
+        }
 
-    #[test]
-    fn firstaid_1to2() {
-        let expected: &[BandAid] = &[BandAid {
-            span: (1_usize, 3..77).try_into().unwrap(),
-            replacement: " This is the one 💯🗤⛩ time I'm writing
+        #[test]
+        fn reflow_tripple_slash_1to2() {
+            let expected: &[BandAid] = &[BandAid {
+                span: (1_usize, 3..77).try_into().unwrap(),
+                replacement: " This is the one 💯🗤⛩ time I'm writing
 /// a test string with emojis like 😋😋⏪🦀."
-                .to_owned(),
-        }];
+                    .to_owned(),
+            }];
 
-        verify_firstaid!(
-            "/// This is the one 💯🗤⛩ time I'm writing a test string with emojis like 😋😋⏪🦀.",
-            expected,
-            40
-        );
-    }
+            verify_reflow!(
+                "/// This is the one 💯🗤⛩ time I'm writing a test string with emojis like 😋😋⏪🦀.",
+                expected,
+                40
+            );
+        }
 
-    #[test]
-    fn firstaid_3to2() {
-        let expected: &[BandAid] = &[
-            BandAid {
-                span: (1_usize, 3..38).try_into().unwrap(),
-                replacement: " Possible __ways__ to run __rustc__ and request various".into(),
-            },
-            BandAid {
-                span: (2_usize, 0..37).try_into().unwrap(),
-                replacement: "/// parts of LTO described in 3 lines.".into(),
-            },
-        ];
+        #[test]
+        fn reflow_tripple_slash_3to2() {
+            let expected: &[BandAid] = &[
+                BandAid {
+                    span: Span {
+                        start: LineColumn {
+                            line: 1usize,
+                            column: 3usize,
+                        },
+                        end: LineColumn {
+                            line: 1usize,
+                            column: 38usize,
+                        },
+                    },
+                    replacement: " Possible __ways__ to run __rustc__ and request various".into(),
+                },
+                BandAid {
+                    span: Span {
+                        start: LineColumn {
+                            line: 2usize,
+                            column: 3usize,
+                        },
+                        end: LineColumn {
+                            line: 3usize,
+                            column: 25usize,
+                        },
+                    },
+                    replacement: " parts of LTO described in 3 lines.".into(),
+                },
+            ];
 
-        verify_firstaid!(
-            "/// Possible __ways__ to run __rustc__
+            verify_reflow!(
+                "/// Possible __ways__ to run __rustc__
 /// and request various parts of LTO
 /// described in 3 lines.",
-            expected,
-            60
-        );
+                expected,
+                60
+            );
+        }
+
+        #[test]
+        fn reflow_tripple_slash_2to1() {
+            let expected: &[BandAid] = &[BandAid {
+                span: Span {
+                    start: LineColumn {
+                        line: 1usize,
+                        column: 7usize,
+                    },
+                    end: LineColumn {
+                        line: 2usize,
+                        column: 21usize,
+                    },
+                },
+                replacement: "Possibilities are endless, described in 2 lines.".to_owned(),
+            }];
+
+            verify_reflow!(
+                r###"#[doc="Possibilities are endless,
+described in 2 lines."]"###,
+                expected,
+                80
+            );
+        }
+
+        #[test]
+        fn reflow_hash_doc_eq_1to2() {
+            let expected: &[BandAid] = &[BandAid {
+                span: Span {
+                    start: LineColumn {
+                        line: 1usize,
+                        column: 7usize,
+                    },
+                    end: LineColumn {
+                        line: 2usize,
+                        column: 25usize,
+                    },
+                },
+                replacement: "Possibilities are endless, needless to say.".to_owned(),
+            }];
+            // TODO design decision: do we want to merge these into one, or produce one per line?
+            // Imho we should start with implementing one, but ultimately support both approaches.
+            verify_reflow!(
+                r###"#[doc="Possibilities are
+       endless, needless to say."]"###,
+                expected,
+                30
+            );
+        }
+
+        #[test]
+        fn reflow_hash_doc_eq_2to2() {
+            let expected: &[BandAid] = &[BandAid {
+                span: Span {
+                    start: LineColumn {
+                        line: 1usize,
+                        column: 7usize,
+                    },
+                    end: LineColumn {
+                        line: 2usize,
+                        column: 32usize,
+                    },
+                },
+                replacement: r#"Possibilities are
+       endless, needless to say."#
+                    .to_owned(),
+            }];
+
+            // TODO design decision: do we want to merge these into one, or produce one per line?
+            // Imho we should start with implementing one, but ultimately support both approaches.
+            verify_reflow!(
+                r###"#[doc="Possibilities are
+       endless, needless to say."]"###,
+                expected,
+                30
+            );
+        }
+
+        #[test]
+        fn reflow_hash_doc_eq_2to1() {
+            let expected: &[BandAid] = &[BandAid {
+                span: Span {
+                    start: LineColumn {
+                        line: 1usize,
+                        column: 7usize,
+                    },
+                    end: LineColumn {
+                        line: 2usize,
+                        column: 25usize,
+                    },
+                },
+                replacement: "Possibilities are endless, described in 2 lines.".to_owned(),
+            }];
+
+            verify_reflow!(
+                r###"#[doc="Possibilities are endless,
+       described in 2 lines."]"###,
+                expected,
+                60
+            );
+        }
+
+        // TODO checks for all doc variants:
+        //
+        // * `#[doc="x"]`
+        // * `#[doc=r"x"]`
+        // * `#[doc=r#"x"#]`
+        // * `#[doc=r##"x"##]`
+        // * `#[doc=r###"x"###]`
+        // * `#[doc=r####"x"####]`
+        // * `#[doc=r#####"x"#####]` (more are very very uncommon)
+        // * `//! x`
+        // * `/*! x */`
+        // * `/// x`
     }
 }
