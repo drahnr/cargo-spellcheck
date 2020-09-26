@@ -55,6 +55,13 @@ impl<'a> PlainOverlay<'a> {
         }
     }
 
+    fn valid_url(url: &str) -> bool {
+        match url::Url::parse(url) {
+            Ok(_) => true,
+            Err(_) => false,
+        }
+    }
+
     /// Handles broken references in commonmark.
     fn broken_link_handler(x: &str, y: &str) -> Option<(String, String)> {
         Some((x.to_owned(), y.to_owned()))
@@ -77,6 +84,7 @@ impl<'a> PlainOverlay<'a> {
         let mut inception = false;
         let mut skip_link_text = false;
         let mut skip_table_text = false;
+        let mut previous_link_type: Option<LinkType> = None;
 
         for (event, byte_range) in parser.into_offset_iter() {
             if byte_range.start > byte_range.end {
@@ -120,16 +128,7 @@ impl<'a> PlainOverlay<'a> {
                         inception = fenced == rust_fence;
                     }
                     Tag::Link(link_type, _url, _title) => {
-                        skip_link_text = match link_type {
-                            LinkType::ReferenceUnknown
-                            | LinkType::Reference
-                            | LinkType::Inline
-                            | LinkType::Collapsed
-                            | LinkType::CollapsedUnknown
-                            | LinkType::Shortcut
-                            | LinkType::ShortcutUnknown => false,
-                            LinkType::Autolink | LinkType::Email => true,
-                        };
+                        previous_link_type = Some(link_type);
                     }
                     Tag::List(_) => {
                         // make sure nested lists are not clumped together
@@ -169,11 +168,29 @@ impl<'a> PlainOverlay<'a> {
                     }
                 }
                 Event::Text(s) => {
+                    match previous_link_type {
+                        Some(LinkType::ReferenceUnknown)
+                        | Some(LinkType::Reference)
+                        | Some(LinkType::Inline) => {
+                            if Self::valid_url(&s) {
+                                skip_link_text = true;
+                            } else {
+                                skip_link_text = false;
+                            }
+                        }
+                        Some(LinkType::Collapsed)
+                        | Some(LinkType::CollapsedUnknown)
+                        | Some(LinkType::Shortcut)
+                        | Some(LinkType::ShortcutUnknown) => skip_link_text = false,
+                        Some(LinkType::Autolink) | Some(LinkType::Email) => skip_link_text = true,
+                        None => {}
+                    }
                     if code_block {
                         if inception {
                             // TODO validate as additional, virtual document
                         }
                     } else if skip_link_text {
+                        previous_link_type = None;
                         skip_link_text = false
                     } else if !skip_table_text {
                         Self::track(&s, char_range, &mut plain, &mut mapping);
@@ -547,6 +564,14 @@ fgh"#,
             r#" prefix [I'm an inline-style link](https://duckduckgo.com) postfix"#,
             r#"prefix I'm an inline-style link postfix"#,
             3,
+        );
+    }
+    #[test]
+    fn link_inline_with_valid_url() {
+        cmark_reduction_test(
+            r#" prefix [https://duckduckgo.com](https://duckduckgo.com) postfix"#,
+            r#"prefix  postfix"#,
+            2,
         );
     }
     #[test]
