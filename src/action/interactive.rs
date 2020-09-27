@@ -143,14 +143,23 @@ where
         self.pick_idx + 1 == self.n_items
     }
 
-    /// Convert the replacement to a `FirstAidKit`
+    /// Convert the replacement to a `FirstAidKit`.
     pub fn to_first_aid_kit(&self) -> FirstAidKit {
         if self.is_custom_entry() {
-            FirstAidKit::try_from((&self.custom_replacement, &self.suggestion.span))
+            FirstAidKit::try_from((self.custom_replacement.clone(), &self.suggestion.span))
         } else {
-            FirstAidKit::try_from((self.suggestion, self.pick_idx))
+            let replacement = self
+                .suggestion
+                .replacements
+                .get(self.pick_idx)
+                .expect("User pick index is out of bounds");
+            FirstAidKit::load_from(
+                &self.suggestion.chunk,
+                self.suggestion.span,
+                replacement.to_owned(),
+            )
         }
-        .expect("Was constructed around this suggestion.")
+        .expect("Extracting `Bandaid`s from `State` must not fail. qed")
     }
 }
 
@@ -218,8 +227,10 @@ impl UserPicked {
                 }
             }
             KeyCode::Enter => {
-                let kit =
-                    FirstAidKit::try_from((&state.custom_replacement, &state.suggestion.span))?;
+                let kit = FirstAidKit::try_from((
+                    state.custom_replacement.clone(),
+                    &state.suggestion.span,
+                ))?;
                 return Ok(UserSelection::Replacement(kit));
             }
             KeyCode::Esc => return Ok(UserSelection::Abort),
