@@ -2,10 +2,11 @@
 
 use std::convert::TryFrom;
 
-use anyhow::{anyhow, Error, Result};
+use anyhow::{anyhow, bail, Error, Result};
 use log::trace;
 
 use crate::suggestion::Suggestion;
+use crate::CheckableChunk;
 use crate::{LineColumn, Span};
 
 use super::BandAid;
@@ -40,22 +41,29 @@ impl From<Vec<BandAid>> for FirstAidKit {
     }
 }
 
-impl<'s> TryFrom<(&Suggestion<'s>, usize)> for FirstAidKit {
+impl TryFrom<(String, &Span)> for FirstAidKit {
     type Error = Error;
-    fn try_from((suggestion, pick_idx): (&Suggestion<'s>, usize)) -> Result<Self> {
-        let literal_file_span = suggestion.span;
+
+    fn try_from((replacement, span): (String, &Span)) -> Result<Self> {
+        if span.is_multiline() {
+            bail!("Can't construct `FirstAidKit` from multiline span only")
+        } else {
+            let bandaid = BandAid::try_from((replacement, *span))?;
+            Ok(Self::from(bandaid))
+        }
+    }
+}
+
+impl FirstAidKit {
+    /// Extract a set of bandaids by means of parsing the chunk
+    pub fn load_from(chunk: &CheckableChunk, span: Span, replacement: String) -> Result<Self> {
         trace!(
             "proc_macro literal span of doc comment: ({},{})..({},{})",
-            literal_file_span.start.line,
-            literal_file_span.start.column,
-            literal_file_span.end.line,
-            literal_file_span.end.column
+            span.start.line,
+            span.start.column,
+            span.end.line,
+            span.end.column
         );
-        let replacement = suggestion
-            .replacements
-            .get(pick_idx)
-            .ok_or(anyhow::anyhow!("Does not contain any replacements"))?;
-        let span = suggestion.span;
 
         if span.is_multiline() {
             let mut replacement_lines = replacement.lines().peekable();
@@ -63,12 +71,11 @@ impl<'s> TryFrom<(&Suggestion<'s>, usize)> for FirstAidKit {
             let mut bandaids: Vec<BandAid> = Vec::new();
             let first_line = replacement_lines
                 .next()
-                .ok_or(anyhow!("Replacement must contain at least one line"))?
-                .to_string();
+                .ok_or_else(|| anyhow!("Replacement must contain at least one line"))?
+                .to_owned();
 
             // get the length of the line in the original content
-            let end_of_line: Vec<usize> = suggestion
-                .chunk
+            let end_of_line: Option<usize> = chunk
                 .iter()
                 .filter_map(|(_k, v)| {
                     if v.start.line == span.start.line {
@@ -77,19 +84,19 @@ impl<'s> TryFrom<(&Suggestion<'s>, usize)> for FirstAidKit {
                         None
                     }
                 })
-                .collect();
+                .next();
 
-            assert_eq!(end_of_line.len(), 1);
+            if end_of_line.is_none() {
+                bail!("BUG: Missing end of line terminator")
+            }
 
             let first_span = Span {
                 start: span.start,
                 end: LineColumn {
-                    line: span_lines
-                        .next()
-                        .ok_or_else(|| anyhow!("Span must cover at least one line"))?,
-                    column: *end_of_line
-                        .first()
-                        .expect("Suggestions have existential coverage. qed"),
+                    line: span_lines.next().ok_or_else(|| {
+                        anyhow!("Span used for a `Bandaid` has minimum existential size. qed")
+                    })?,
+                    column: end_of_line.expect("Suggestions have existential coverage. qed"),
                 },
             };
             // bandaid for first line
@@ -106,8 +113,7 @@ impl<'s> TryFrom<(&Suggestion<'s>, usize)> for FirstAidKit {
 
                 let span_line = if replacement_lines.peek().is_some() {
                     // get the length of the line in the original content
-                    let end_of_line: Vec<usize> = suggestion
-                        .chunk
+                    let end_of_line: Vec<usize> = chunk
                         .iter()
                         .filter_map(|(_, v)| {
                             if v.start.line == line {
@@ -141,26 +147,12 @@ impl<'s> TryFrom<(&Suggestion<'s>, usize)> for FirstAidKit {
                 let bandaid = BandAid::try_from((replacement.to_string(), span_line))?;
                 bandaids.push(bandaid);
             }
-            Ok(Self { bandaids })
+            Ok::<_, Error>(Self { bandaids })
         } else {
-            FirstAidKit::try_from((replacement, &suggestion.span))
+            FirstAidKit::try_from((replacement, &span))
         }
     }
 }
-
-impl TryFrom<(&String, &Span)> for FirstAidKit {
-    type Error = Error;
-
-    fn try_from((replacement, span): (&String, &Span)) -> Result<Self> {
-        if span.is_multiline() {
-            anyhow::bail!("Can't construct `FirstAidKit` from multiline span only")
-        } else {
-            let bandaid = BandAid::try_from((replacement.to_string(), *span))?;
-            Ok(Self::from(bandaid))
-        }
-    }
-}
-
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
@@ -191,7 +183,7 @@ pub(crate) mod tests {
             replacement: "the one tousandth time I'm writing".to_owned(),
         }];
 
-        let kit = FirstAidKit::try_from((&REPLACEMENT.to_string(), &span))
+        let kit = FirstAidKit::try_from((REPLACEMENT.to_owned(), &span))
             .expect("(String, Span) into FirstAidKit works. qed");
         assert_eq!(kit.bandaids.len(), expected.len());
         dbg!(&kit);
@@ -215,7 +207,14 @@ pub(crate) mod tests {
             assert_eq!(suggestions.len(), 1);
             let suggestion = suggestions.first().expect("Contains one suggestion. qed");
 
-            let kit = FirstAidKit::try_from((*suggestion, 0)).expect("Must work");
+            let replacement = suggestion
+                .replacements
+                .get(0usize)
+                .expect("Automated test pick is in range. qed");
+
+            let kit =
+                FirstAidKit::load_from(&suggestion.chunk, suggestion.span, replacement.to_owned())
+                    .expect("Obtaining bandaids from a suggestion succeeds. qed");
             assert_eq!(kit.bandaids.len(), $bandaids.len());
             for (bandaid, expected) in kit.bandaids.iter().zip($bandaids) {
                 assert_eq!(bandaid, expected);
