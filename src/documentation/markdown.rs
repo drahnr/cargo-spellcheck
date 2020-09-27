@@ -84,7 +84,7 @@ impl<'a> PlainOverlay<'a> {
         let mut inception = false;
         let mut skip_link_text = false;
         let mut skip_table_text = false;
-        let mut previous_link_type: Option<LinkType> = None;
+        let mut current_link_type: Option<LinkType> = None;
 
         for (event, byte_range) in parser.into_offset_iter() {
             if byte_range.start > byte_range.end {
@@ -128,7 +128,7 @@ impl<'a> PlainOverlay<'a> {
                         inception = fenced == rust_fence;
                     }
                     Tag::Link(link_type, _url, _title) => {
-                        previous_link_type = Some(link_type);
+                        current_link_type = Some(link_type);
                     }
                     Tag::List(_) => {
                         // make sure nested lists are not clumped together
@@ -168,7 +168,7 @@ impl<'a> PlainOverlay<'a> {
                     }
                 }
                 Event::Text(s) => {
-                    match previous_link_type {
+                    match current_link_type {
                         Some(LinkType::ReferenceUnknown)
                         | Some(LinkType::Reference)
                         | Some(LinkType::Inline) => {
@@ -190,7 +190,7 @@ impl<'a> PlainOverlay<'a> {
                             // TODO validate as additional, virtual document
                         }
                     } else if skip_link_text {
-                        previous_link_type = None;
+                        current_link_type = None;
                         skip_link_text = false
                     } else if !skip_table_text {
                         Self::track(&s, char_range, &mut plain, &mut mapping);
