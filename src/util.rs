@@ -1,6 +1,7 @@
 use crate::{LineColumn, Range, Span};
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
 use std::io::Read;
+use std::path::Path;
 
 /// Iterate over a str and annotate with line and column.
 ///
@@ -45,7 +46,7 @@ pub fn iter_with_line_column<'a>(
 ///
 /// # Errors
 /// Returns an Error if `span` describes a impossible range
-pub fn load_span_from<R>(mut source: R, span: Span) -> Result<String>
+pub(crate) fn load_span_from<R>(mut source: R, span: Span) -> Result<String>
 where
     R: Read,
 {
@@ -78,6 +79,26 @@ where
         .collect::<String>();
     // log::trace!("Loading {:?} from line >{}<", &range, &line);
     Ok(extraction)
+}
+
+/// Extract span from a file as `String`.
+///
+/// Helpful to validate bandaids against what's actually in the file.
+#[allow(unused)]
+pub(crate) fn load_span_from_file(path: impl AsRef<Path>, span: Span) -> Result<String> {
+    let path = path.as_ref();
+    let path = path
+        .canonicalize()
+        .map_err(|e| anyhow!("Failed to canonicalize {}", path.display()).context(e))?;
+
+    let ro = std::fs::OpenOptions::new()
+        .read(true)
+        .open(&path)
+        .map_err(|e| anyhow!("Failed to open {}", path.display()).context(e))?;
+
+    let mut reader = std::io::BufReader::new(ro);
+
+    load_span_from(reader, span)
 }
 
 /// Extract a subset of chars by iterating.

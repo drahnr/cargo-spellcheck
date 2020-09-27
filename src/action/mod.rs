@@ -10,9 +10,12 @@ use std::io::{BufRead, Write};
 use std::path::PathBuf;
 
 pub mod bandaid;
+pub mod bandaidset;
 pub mod interactive;
 
 pub(crate) use bandaid::*;
+pub(crate) use bandaidset::*;
+
 use interactive::{UserPicked, UserSelection};
 
 /// State of conclusion.
