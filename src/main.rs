@@ -41,10 +41,10 @@ const USAGE: &str = r#"
 Spellcheck all your doc comments
 
 Usage:
-    cargo-spellcheck [(-v...|-q)] check [--cfg=<cfg>] [--code=<code>] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
-    cargo-spellcheck [(-v...|-q)] fix [--cfg=<cfg>] [--code=<code>] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
+    cargo-spellcheck [(-v...|-q)] check [--cfg=<cfg>] [--code=<code>] [--skip-readme] [--reachable-link] [--checkers=<checkers>] [[--recursive] <paths>... ]
+    cargo-spellcheck [(-v...|-q)] fix [--cfg=<cfg>] [--code=<code>] [--skip-readme] [--reachable-link] [--checkers=<checkers>] [[--recursive] <paths>... ]
     cargo-spellcheck [(-v...|-q)] config (--user|--stdout|--cfg=<cfg>) [--force]
-    cargo-spellcheck [(-v...|-q)] [--cfg=<cfg>] [--fix] [--code=<code>] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
+    cargo-spellcheck [(-v...|-q)] [--cfg=<cfg>] [--fix] [--code=<code>] [--skip-readme] [--reachable-link] [--checkers=<checkers>] [[--recursive] <paths>... ]
     cargo-spellcheck --help
     cargo-spellcheck --version
 
@@ -52,10 +52,10 @@ Options:
   -h --help                 Show this screen.
   --version                 Print the version and exit.
 
-  --fix                     Interactively apply spelling and grammer fixes, synonym to `fix` sub-command.
+  --fix                     Interactively apply spelling and grammar fixes, synonym to `fix` sub-command.
   -r --recursive            If a path is provided, if recursion into subdirectories is desired.
   --checkers=<checkers>     Calculate the intersection between
-                            configured by config file and the ones provided on commandline.
+                            configured by config file and the ones provided on command line.
   -f --force                Overwrite any existing configuration file. [default=false]
   -c --cfg=<cfg>            Use a non default configuration file.
                             Passing a directory will attempt to open `cargo_spellcheck.toml` in that directory.
@@ -65,6 +65,7 @@ Options:
   -q --quiet                Silences all printed messages. Overrules `-v`.
   -m --code=<code>          Overwrite the exit value for a successful run with content mistakes found. [default=0]
   --skip-readme             Do not attempt to process README.md files listed in Cargo.toml manifests.
+  --reachable-link          Verify if the link destination exists.
 "#;
 
 /// A simple exit code representation.
@@ -110,6 +111,7 @@ struct Args {
     flag_skip_readme: bool,
     flag_code: u8,
     flag_stdout: bool,
+    flag_reachable_link: bool,
     cmd_fix: bool,
     cmd_check: bool,
     cmd_config: bool,
@@ -135,7 +137,7 @@ fn signal_handler() {
     }
 }
 
-/// Agjust the raw arguments for call variants.
+/// Adjust the raw arguments for call variants.
 ///
 /// The program could be called like `cargo-spellcheck`, `cargo spellcheck` or
 /// `cargo spellcheck check` and even ``cargo-spellcheck check`.
@@ -355,6 +357,7 @@ fn run() -> anyhow::Result<ExitCode> {
         args.arg_paths,
         args.flag_recursive,
         args.flag_skip_readme,
+        args.flag_reachable_link,
         &config,
     )?;
 

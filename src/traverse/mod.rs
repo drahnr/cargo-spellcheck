@@ -298,6 +298,7 @@ pub(crate) fn extract(
     mut paths: Vec<PathBuf>,
     mut recurse: bool,
     skip_readme: bool,
+    _reachable_link: bool,
     _config: &Config,
 ) -> Result<Documentation> {
     let cwd = cwd()?;
@@ -539,6 +540,7 @@ mod tests {
                     )*
                 ],
                 $recurse,
+                false,
                 false,
                 &Config::default(),
             )
