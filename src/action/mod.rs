@@ -10,10 +10,11 @@ use std::io::{Read, Write};
 use std::path::PathBuf;
 
 pub mod bandaid;
+pub mod bandaidset;
 pub mod interactive;
 
 pub(crate) use bandaid::*;
-use interactive::*;
+use interactive;
 
 /// State of conclusion.
 #[derive(Debug, Clone, Copy)]
@@ -292,7 +293,11 @@ impl Action {
     ///
     /// **Attention**: Must be consuming, repeated usage causes shifts in spans and
     /// would destroy the file structure!
-    pub fn write_changes_to_disk(&self, userpicked: UserPicked, _config: &Config) -> Result<()> {
+    pub fn write_changes_to_disk(
+        &self,
+        userpicked: interactive::UserPicked,
+        _config: &Config,
+    ) -> Result<()> {
         if userpicked.total_count() > 0 {
             debug!("Writing changes back to disk");
             for (path, bandaids) in userpicked.bandaids.into_iter() {
@@ -323,7 +328,7 @@ impl Action {
             Self::Fix | Self::Reflow => {
                 let (picked, user_sel) =
                     interactive::UserPicked::select_interactive(suggestions, config)?;
-                if user_sel == UserSelection::Abort {
+                if user_sel == interactiver::UserSelection::Abort {
                     Ok(Finish::Abort)
                 } else {
                     let n = picked.total_count();
