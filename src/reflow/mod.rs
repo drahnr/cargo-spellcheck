@@ -221,7 +221,7 @@ fn reflow<'s>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fluff_up;
+    use crate::{fluff_up, chyrp_up};
 
     use crate::documentation::*;
 
@@ -451,13 +451,14 @@ should be rewrapped."#;
     #[test]
     fn reflow_markdown_two_paragraphs() {
         const CONTENT: &'static str =
-            " /// Possible **ways** to run __rustc__ and request various parts of LTO.
+            "/// Possible **ways** to run __rustc__ and request various parts of LTO.
 ///
 /// Some more text after the rule which represents a paragraph";
 
         let expected = vec![
             r#" Possible **ways** to run __rustc__ and request various
- parts of LTO."#,
+ parts of LTO.
+ "#,
             r#" Some more text after the rule which represents a
  paragraph"#,
         ];
@@ -482,21 +483,17 @@ should be rewrapped."#;
 
     #[test]
     fn reflow_markdown_two_paragraphs_doc() {
-        const CONTENT: &'static str = r##"
-    #[doc = r#"A comment with indentation that spans over two lines.
+        let chyrped = chyrp_up!(r#"A long comment that spans over two lines.
 
-               with a second part that is fine"#]
-    struct Fluffy {};"##;
+        With a second part that is fine"#);
 
         let expected = vec![
-            r#"A comment with indentation
-that spans over two lines"#,
-            r#"
-with a second part that is
-fine"#,
+            r#"A long comment that spans over two
+lines."#,
+            r#"With a second part that is fine"#,
         ];
 
-        let docs = Documentation::from((ContentOrigin::TestEntityRust, CONTENT));
+        let docs = Documentation::from((ContentOrigin::TestEntityRust, chyrped));
         assert_eq!(docs.entry_count(), 1);
         let chunks = docs.get(&ContentOrigin::TestEntityRust).expect("Contains test data. qed");
 
