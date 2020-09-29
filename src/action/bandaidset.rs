@@ -231,8 +231,8 @@ pub(crate) mod tests {
                     .to_owned(),
             },
             BandAid {
-                span: (2_usize, 3..43).try_into().unwrap(),
-                replacement: " automate that. Maybe not. But writing this is annoying".to_owned(),
+                span: (2_usize, 0..43).try_into().unwrap(),
+                replacement: "/// automate that. Maybe not. But writing this is annoying".to_owned(),
             },
         ];
 
@@ -253,12 +253,12 @@ pub(crate) mod tests {
                     .to_owned(),
             },
             BandAid {
-                span: (2_usize, 3..61).try_into().unwrap(),
-                replacement: " automate that. Maybe not. But writing this is annoying.".to_owned(),
+                span: (2_usize, 0..61).try_into().unwrap(),
+                replacement: "/// automate that. Maybe not. But writing this is annoying.".to_owned(),
             },
             BandAid {
-                span: (3_usize, 3..37).try_into().unwrap(),
-                replacement: " However, I don't have a choice now, do I? Come on!".to_owned(),
+                span: (3_usize, 0..37).try_into().unwrap(),
+                replacement: "/// However, I don't have a choice now, do I? Come on!".to_owned(),
             },
         ];
 
@@ -298,7 +298,7 @@ pub(crate) mod tests {
                     },
                     end: LineColumn {
                         line: 1usize,
-                        column: 38usize,
+                        column: 37usize,
                     },
                 },
                 replacement: " Possible __ways__ to run __rustc__ and request various".into(),
@@ -307,14 +307,27 @@ pub(crate) mod tests {
                 span: Span {
                     start: LineColumn {
                         line: 2usize,
-                        column: 3usize,
+                        column: 0usize,
+                    },
+                    end: LineColumn {
+                        line: 2usize,
+                        column: 35usize,
+                    },
+                },
+                replacement: "/// parts of LTO described in 3 lines.".into(),
+            },
+            BandAid {
+                span: Span {
+                    start: LineColumn {
+                        line: 3usize,
+                        column: 0usize,
                     },
                     end: LineColumn {
                         line: 3usize,
-                        column: 25usize,
+                        column: 24usize,
                     },
                 },
-                replacement: " parts of LTO described in 3 lines.".into(),
+                replacement: "".into(),
             },
         ];
 
@@ -324,30 +337,6 @@ pub(crate) mod tests {
 /// described in 3 lines.",
             expected,
             60
-        );
-    }
-
-    #[test]
-    fn reflow_tripple_slash_2to1() {
-        let expected: &[BandAid] = &[BandAid {
-            span: Span {
-                start: LineColumn {
-                    line: 1usize,
-                    column: 7usize,
-                },
-                end: LineColumn {
-                    line: 2usize,
-                    column: 21usize,
-                },
-            },
-            replacement: "Possibilities are endless, described in 2 lines.".to_owned(),
-        }];
-
-        verify_reflow!(
-            r###"#[doc="Possibilities are endless,
-described in 2 lines."]"###,
-            expected,
-            80
         );
     }
 
