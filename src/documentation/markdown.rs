@@ -56,10 +56,7 @@ impl<'a> PlainOverlay<'a> {
     }
 
     fn valid_url(url: &str) -> bool {
-        match url::Url::parse(url) {
-            Ok(_) => true,
-            Err(_) => false,
-        }
+        url::Url::parse(url).is_ok()
     }
 
     /// Handles broken references in commonmark.
