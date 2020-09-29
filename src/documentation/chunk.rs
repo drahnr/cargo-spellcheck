@@ -456,7 +456,7 @@ mod test {
                     column: 14usize,
                 },
             }},
-            CommentVariant::CommonMark
+            CommentVariant::CommonMark,
         );
 
         assert_eq!(chunk.find_spans(0..2).len(), 1);

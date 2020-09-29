@@ -52,8 +52,7 @@ fn reflow_inner<'s>(
     let mut gluon = Gluon::new(s, range, max_line_width, indentations);
     gluon.add_unbreakables(unbreakable_ranges);
     let prefix = match variant {
-        CommentVariant::CommonMark |
-        CommentVariant::MacroDocEq => "",
+        CommentVariant::CommonMark | CommentVariant::MacroDocEq => "",
         CommentVariant::TripleSlash => " ",
         CommentVariant::Unknown => return None,
     };
@@ -221,7 +220,7 @@ fn reflow<'s>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{fluff_up, chyrp_up};
+    use crate::{chyrp_up, fluff_up};
 
     use crate::documentation::*;
 
@@ -383,8 +382,8 @@ r#" This module contains documentation thats
             max_line_length: 35,
             ..Default::default()
         };
-        let suggestion_set = reflow(ContentOrigin::TestEntityRust, chunk, &cfg)
-            .expect("Reflow is wokring. qed");
+        let suggestion_set =
+            reflow(ContentOrigin::TestEntityRust, chunk, &cfg).expect("Reflow is wokring. qed");
 
         let suggestions = suggestion_set
             .iter()
@@ -423,8 +422,8 @@ should be rewrapped."#;
             max_line_length: 45,
             ..Default::default()
         };
-        let suggestion_set = reflow(ContentOrigin::TestEntityRust, chunk, &cfg)
-            .expect("Reflow is working. qed");
+        let suggestion_set =
+            reflow(ContentOrigin::TestEntityRust, chunk, &cfg).expect("Reflow is working. qed");
 
         let suggestions = suggestion_set
             .iter()
@@ -465,7 +464,9 @@ should be rewrapped."#;
 
         let docs = Documentation::from((ContentOrigin::TestEntityRust, CONTENT));
         assert_eq!(docs.entry_count(), 1);
-        let chunks = docs.get(&ContentOrigin::TestEntityRust).expect("Contains test data. qed");
+        let chunks = docs
+            .get(&ContentOrigin::TestEntityRust)
+            .expect("Contains test data. qed");
         assert_eq!(dbg!(chunks).len(), 2);
 
         let cfg = ReflowConfig {
@@ -474,18 +475,28 @@ should be rewrapped."#;
         };
 
         for (chunk, expect) in chunks.iter().zip(expected) {
-            let suggestion_set = reflow(ContentOrigin::TestEntityRust, chunk, &cfg).expect("Reflow is working. qed");
-            let sug = suggestion_set.iter().next().expect("Contains a suggestion. qed");
-            let replacement = sug.replacements.iter().next().expect("An replacement exists. qed");
+            let suggestion_set =
+                reflow(ContentOrigin::TestEntityRust, chunk, &cfg).expect("Reflow is working. qed");
+            let sug = suggestion_set
+                .iter()
+                .next()
+                .expect("Contains a suggestion. qed");
+            let replacement = sug
+                .replacements
+                .iter()
+                .next()
+                .expect("An replacement exists. qed");
             assert_eq!(replacement.as_str(), expect);
         }
     }
 
     #[test]
     fn reflow_markdown_two_paragraphs_doc() {
-        let chyrped = chyrp_up!(r#"A long comment that spans over two lines.
+        let chyrped = chyrp_up!(
+            r#"A long comment that spans over two lines.
 
-        With a second part that is fine"#);
+        With a second part that is fine"#
+        );
 
         let expected = vec![
             r#"A long comment that spans over two
@@ -495,7 +506,9 @@ lines."#,
 
         let docs = Documentation::from((ContentOrigin::TestEntityRust, chyrped));
         assert_eq!(docs.entry_count(), 1);
-        let chunks = docs.get(&ContentOrigin::TestEntityRust).expect("Contains test data. qed");
+        let chunks = docs
+            .get(&ContentOrigin::TestEntityRust)
+            .expect("Contains test data. qed");
 
         let cfg = ReflowConfig {
             max_line_length: 45,
@@ -503,9 +516,17 @@ lines."#,
         };
 
         for (chunk, expect) in chunks.iter().zip(expected) {
-            let suggestion_set = reflow(ContentOrigin::TestEntityRust, chunk, &cfg).expect("Reflow is working. qed");
-            let sug = suggestion_set.iter().next().expect("Contains a suggestion. qed");
-            let replacement = sug.replacements.iter().next().expect("An replacement exists. qed");
+            let suggestion_set =
+                reflow(ContentOrigin::TestEntityRust, chunk, &cfg).expect("Reflow is working. qed");
+            let sug = suggestion_set
+                .iter()
+                .next()
+                .expect("Contains a suggestion. qed");
+            let replacement = sug
+                .replacements
+                .iter()
+                .next()
+                .expect("An replacement exists. qed");
             assert_eq!(replacement.as_str(), expect);
         }
     }

@@ -131,7 +131,11 @@ impl Documentation {
         };
         self.add_inner(
             origin,
-            vec![CheckableChunk::from_str(content, source_mapping, CommentVariant::CommonMark)],
+            vec![CheckableChunk::from_str(
+                content,
+                source_mapping,
+                CommentVariant::CommonMark,
+            )],
         );
         Ok(())
     }
@@ -270,8 +274,8 @@ pub(crate) mod tests {
             let _plain = chunk.erase_cmark();
 
             let cfg = Default::default();
-            let suggestion_set = <$checker>::check(&docs, &cfg)
-                .expect("Must not fail to extract suggestions");
+            let suggestion_set =
+                <$checker>::check(&docs, &cfg).expect("Must not fail to extract suggestions");
             let (_, suggestions) = suggestion_set
                 .iter()
                 .next()
