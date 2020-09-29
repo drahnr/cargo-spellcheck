@@ -28,10 +28,10 @@ toml = "0.5"
 cargo_toml = "0.8"
 directories = "3"
 lazy_static = "1"
-pulldown-cmark = "0.7"
+pulldown-cmark = "0.8"
 itertools = "0.9"
-crossterm = "0.17"
-fancy-regex = "0.3"
+crossterm = "0.18"
+fancy-regex = "0.4"
 signal-hook = "0.1"
 
 
