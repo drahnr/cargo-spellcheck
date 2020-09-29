@@ -195,14 +195,14 @@ pub(crate) mod tests {
     /// Helper macro for spawning reflow based firstaid creations.
     macro_rules! verify_reflow {
         ($content:literal, $bandaids:expr, $n:literal) => {
-            let docs = Documentation::from((ContentOrigin::TestEntity, $content));
+            let docs = Documentation::from((ContentOrigin::TestEntityRust, $content));
             let cfg = ReflowConfig {
                 max_line_length: $n,
             };
             // Run the reflow checker creating suggestions
             let suggestion_set = Reflow::check(&docs, &cfg).expect("Reflow is working. qed");
             let suggestions: Vec<&Suggestion> = suggestion_set
-                .suggestions(&crate::ContentOrigin::TestEntity)
+                .suggestions(&crate::ContentOrigin::TestEntityRust)
                 .collect();
             assert_eq!(suggestions.len(), 1);
             let suggestion = suggestions.first().expect("Contains one suggestion. qed");
