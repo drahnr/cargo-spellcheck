@@ -55,19 +55,27 @@ impl<'a> PlainOverlay<'a> {
         }
     }
 
-    /// Handles broken references in commonmark.
-    fn broken_link_handler(x: &str, y: &str) -> Option<(String, String)> {
-        Some((x.to_owned(), y.to_owned()))
-    }
-
-    /// Ranges are mapped `cmakr reduced/plain -> raw`.
+    /// Ranges are mapped `cmark reduced/plain -> raw`.
     fn extract_plain_with_mapping(cmark: &str) -> (String, IndexMap<Range, Range>) {
         let mut plain = String::with_capacity(cmark.len());
         let mut mapping = indexmap::IndexMap::with_capacity(128);
+
+        let broken_link_handler = &mut |_broken: pulldown_cmark::BrokenLink| -> Option<(
+            pulldown_cmark::CowStr,
+            pulldown_cmark::CowStr,
+        )> {
+            Some((
+                pulldown_cmark::CowStr::Borrowed(""),
+                pulldown_cmark::CowStr::Borrowed(""),
+            ))
+        };
         let parser = Parser::new_with_broken_link_callback(
             cmark,
-            Options::all(),
-            Some(&Self::broken_link_handler),
+            Options::ENABLE_TABLES
+                | Options::ENABLE_FOOTNOTES
+                | Options::ENABLE_STRIKETHROUGH
+                | Options::ENABLE_TASKLISTS,
+            Some(broken_link_handler),
         );
 
         let rust_fence =
