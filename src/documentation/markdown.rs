@@ -84,7 +84,7 @@ impl<'a> PlainOverlay<'a> {
         let mut inception = false;
         let mut skip_link_text = false;
         let mut skip_table_text = false;
-        let mut current_link_type: Option<LinkType> = None;
+        let mut start_link_type: Option<LinkType> = None;
 
         for (event, byte_range) in parser.into_offset_iter() {
             if byte_range.start > byte_range.end {
@@ -128,7 +128,17 @@ impl<'a> PlainOverlay<'a> {
                         inception = fenced == rust_fence;
                     }
                     Tag::Link(link_type, _url, _title) => {
-                        current_link_type = Some(link_type);
+                        start_link_type = Some(link_type);
+                        // from the pulldown-cmark = "0.8.0" crate, this text:
+                        // [crates.io](https://crates.io/)
+                        // is evaluated as:
+                        // Events: Start(Link(Inline, Borrowed("https://crates.io/"), Borrowed("")))
+                        // Events: Text(Borrowed("crates.io"))
+                        // Events: End(Link(Inline, Borrowed("https://crates.io/"), Borrowed("")))
+                        //
+                        // therefore, if we want to do omit Text event checks of the Link text event
+                        // inline text, we have to keep track of the start link type.
+
                     }
                     Tag::List(_) => {
                         // make sure nested lists are not clumped together
@@ -168,7 +178,7 @@ impl<'a> PlainOverlay<'a> {
                     }
                 }
                 Event::Text(s) => {
-                    match current_link_type {
+                    match start_link_type {
                         Some(LinkType::ReferenceUnknown)
                         | Some(LinkType::Reference)
                         | Some(LinkType::Inline) => {
@@ -190,7 +200,7 @@ impl<'a> PlainOverlay<'a> {
                             // TODO validate as additional, virtual document
                         }
                     } else if skip_link_text {
-                        current_link_type = None;
+                        start_link_type = None;
                         skip_link_text = false
                     } else if !skip_table_text {
                         Self::track(&s, char_range, &mut plain, &mut mapping);
