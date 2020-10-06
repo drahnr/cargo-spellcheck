@@ -649,8 +649,8 @@ With a second part that is fine"#
         };
 
         for (chunk, expect) in chunks.iter().zip(expected) {
-            let suggestion_set =
-                reflow(&ContentOrigin::TestEntityRust, chunk, &cfg).expect("Reflow is working. qed");
+            let suggestion_set = reflow(&ContentOrigin::TestEntityRust, chunk, &cfg)
+                .expect("Reflow is working. qed");
             let sug = suggestion_set
                 .iter()
                 .next()

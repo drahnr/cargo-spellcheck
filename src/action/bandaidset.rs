@@ -5,7 +5,6 @@ use std::convert::TryFrom;
 use anyhow::{anyhow, bail, Error, Result};
 use log::trace;
 
-use crate::suggestion::Suggestion;
 use crate::CheckableChunk;
 use crate::{LineColumn, Span};
 
@@ -65,7 +64,7 @@ impl FirstAidKit {
             span.end.column
         );
 
-        if span.is_multiline() {
+        if span.is_multiline() || replacement.lines().count() > 1 {
             let mut replacement_lines = replacement.lines().peekable();
             let mut span_lines = (span.start.line..=span.end.line).peekable();
             let mut bandaids: Vec<BandAid> = Vec::new();
@@ -104,15 +103,11 @@ impl FirstAidKit {
 
             // process all subsequent lines
             while let Some(replacement) = replacement_lines.next() {
-                dbg!(&replacement);
-                let line = span_lines
-                    .next()
-                    // TODO: How can we get rid of lines? E.g., original content had 4 lines, replacement just 2
-                    // With this implementation, the original content in the remaining lines are retained
-                    .unwrap_or(span.end.line);
 
-                let span_line = if replacement_lines.peek().is_some() {
-                    // get the length of the line in the original content
+                let bandaid = if let Some(line) = span_lines.next() {
+                    // Replacement covers a line in original content
+
+                    // get the length of the current line in the original content
                     let end_of_line: Vec<usize> = chunk
                         .iter()
                         .filter_map(|(_, v)| {
@@ -125,7 +120,7 @@ impl FirstAidKit {
                         .collect();
                     assert_eq!(end_of_line.len(), 1);
 
-                    Span {
+                    let span = Span {
                         start: crate::LineColumn { line, column: 0 },
                         end: crate::LineColumn {
                             line,
@@ -133,20 +128,37 @@ impl FirstAidKit {
                                 .first()
                                 .expect("Suggestion must cover its own lines"),
                         },
-                    }
+                    };
+                    BandAid::Replacement(span, replacement.to_string())
                 } else {
-                    // span of last line only covers first column until original span.end
-                    // TODO: still results in multiline bandaids if original content had more lines than replacment
-                    // If we don't use `line` for the `end.line`, we won't have multiline bandaids, but the inital lines
-                    // that were longer than the replacement will remain in the content
-                    Span {
-                        start: crate::LineColumn { line, column: 0 },
-                        end: span.end,
-                    }
+                    // Original content is shorter than replacement
+                    let insertion = LineColumn {
+                        line: span.end.line,
+                        column: 0,
+                    };
+                    BandAid::Injection(insertion, replacement.to_string())
                 };
-                let bandaid = BandAid::try_from((replacement.to_string(), span_line))?;
                 bandaids.push(bandaid);
             }
+
+            // for all remaining lines in the original content, add a deletion
+            while let Some(remaining) = span_lines.next() {
+                let span = Span {
+                    start: LineColumn {
+                        line: remaining,
+                        column: 0,
+                    },
+                    end: LineColumn {
+                        line: remaining,
+                        // TODO: get actual length of original line
+                        // column: unimplemented!("Get length of line!"),
+                        column: 1,
+                    },
+                };
+                let bandaid = BandAid::Deletion(span);
+                bandaids.push(bandaid);
+            }
+
             Ok::<_, Error>(Self { bandaids })
         } else {
             FirstAidKit::try_from((replacement, &span))
@@ -156,7 +168,9 @@ impl FirstAidKit {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+    use crate::chyrp_up;
     use crate::reflow::{Reflow, ReflowConfig};
+    use crate::Suggestion;
 
     use crate::{Checker, ContentOrigin, Documentation};
     use crate::{LineColumn, Span};
@@ -178,10 +192,10 @@ pub(crate) mod tests {
             },
         };
 
-        let expected: &[BandAid] = &[BandAid {
-            span: (1_usize, 16..45).try_into().unwrap(),
-            replacement: "the one tousandth time I'm writing".to_owned(),
-        }];
+        let expected: &[BandAid] = &[BandAid::Replacement(
+            (1_usize, 16..45).try_into().unwrap(),
+            "the one tousandth time I'm writing".to_owned(),
+        )];
 
         let kit = FirstAidKit::try_from((REPLACEMENT.to_owned(), &span))
             .expect("(String, Span) into FirstAidKit works. qed");
@@ -194,7 +208,11 @@ pub(crate) mod tests {
 
     /// Helper macro for spawning reflow based firstaid creations.
     macro_rules! verify_reflow {
-        ($content:literal, $bandaids:expr, $n:literal) => {
+        ($content:expr, $bandaids:expr, $n:literal) => {
+            let _ = env_logger::builder()
+                .is_test(true)
+                .filter(None, log::LevelFilter::Trace)
+                .try_init();
             let docs = Documentation::from((ContentOrigin::TestEntityRust, $content));
             let cfg = ReflowConfig {
                 max_line_length: $n,
@@ -225,15 +243,14 @@ pub(crate) mod tests {
     #[test]
     fn reflow_tripple_slash_2to2() {
         let expected: &[BandAid] = &[
-            BandAid {
-                span: (1_usize, 3..80).try_into().unwrap(),
-                replacement: " one tousandth time I'm writing a test string. Maybe one could"
-                    .to_owned(),
-            },
-            BandAid {
-                span: (2_usize, 0..43).try_into().unwrap(),
-                replacement: "/// automate that. Maybe not. But writing this is annoying".to_owned(),
-            },
+            BandAid::Replacement(
+                (1_usize, 3..80).try_into().unwrap(),
+                " one tousandth time I'm writing a test string. Maybe one could".to_owned(),
+            ),
+            BandAid::Replacement(
+                (2_usize, 0..43).try_into().unwrap(),
+                "/// automate that. Maybe not. But writing this is annoying".to_owned(),
+            ),
         ];
 
         verify_reflow!(
@@ -247,19 +264,18 @@ pub(crate) mod tests {
     #[test]
     fn reflow_tripple_slash_3to3() {
         let expected: &[BandAid] = &[
-            BandAid {
-                span: (1_usize, 3..80).try_into().unwrap(),
-                replacement: " one tousandth time I'm writing a test string. Maybe one could"
-                    .to_owned(),
-            },
-            BandAid {
-                span: (2_usize, 0..61).try_into().unwrap(),
-                replacement: "/// automate that. Maybe not. But writing this is annoying.".to_owned(),
-            },
-            BandAid {
-                span: (3_usize, 0..37).try_into().unwrap(),
-                replacement: "/// However, I don't have a choice now, do I? Come on!".to_owned(),
-            },
+            BandAid::Replacement(
+                (1_usize, 3..80).try_into().unwrap(),
+                " one tousandth time I'm writing a test string. Maybe one could".to_owned(),
+            ),
+            BandAid::Replacement(
+                (2_usize, 0..61).try_into().unwrap(),
+                "/// automate that. Maybe not. But writing this is annoying.".to_owned(),
+            ),
+            BandAid::Replacement(
+                (3_usize, 0..37).try_into().unwrap(),
+                "/// However, I don't have a choice now, do I? Come on!".to_owned(),
+            ),
         ];
 
         verify_reflow!(
@@ -273,12 +289,16 @@ pub(crate) mod tests {
 
     #[test]
     fn reflow_tripple_slash_1to2() {
-        let expected: &[BandAid] = &[BandAid {
-            span: (1_usize, 3..77).try_into().unwrap(),
-            replacement: " This is the one 💯🗤⛩ time I'm writing
-/// a test string with emojis like 😋😋⏪🦀."
-                .to_owned(),
-        }];
+        let expected: &[BandAid] = &[
+            BandAid::Replacement(
+                (1_usize, 3..77).try_into().unwrap(),
+                " This is the one 💯🗤⛩ time I'm writing".to_owned(),
+            ),
+            BandAid::Injection(
+                LineColumn { line: 1, column: 0 },
+                "/// a test string with emojis like 😋😋⏪🦀.".to_owned(),
+            ),
+        ];
 
         verify_reflow!(
             "/// This is the one 💯🗤⛩ time I'm writing a test string with emojis like 😋😋⏪🦀.",
@@ -290,45 +310,15 @@ pub(crate) mod tests {
     #[test]
     fn reflow_tripple_slash_3to2() {
         let expected: &[BandAid] = &[
-            BandAid {
-                span: Span {
-                    start: LineColumn {
-                        line: 1usize,
-                        column: 3usize,
-                    },
-                    end: LineColumn {
-                        line: 1usize,
-                        column: 37usize,
-                    },
-                },
-                replacement: " Possible __ways__ to run __rustc__ and request various".into(),
-            },
-            BandAid {
-                span: Span {
-                    start: LineColumn {
-                        line: 2usize,
-                        column: 0usize,
-                    },
-                    end: LineColumn {
-                        line: 2usize,
-                        column: 35usize,
-                    },
-                },
-                replacement: "/// parts of LTO described in 3 lines.".into(),
-            },
-            BandAid {
-                span: Span {
-                    start: LineColumn {
-                        line: 3usize,
-                        column: 0usize,
-                    },
-                    end: LineColumn {
-                        line: 3usize,
-                        column: 24usize,
-                    },
-                },
-                replacement: "".into(),
-            },
+            BandAid::Replacement(
+                (1_usize, 3..38).try_into().unwrap(),
+                " Possible __ways__ to run __rustc__ and request various".into(),
+            ),
+            BandAid::Replacement(
+                (2_usize, 0..36).try_into().unwrap(),
+                "/// parts of LTO described in 3 lines.".into(),
+            ),
+            BandAid::Deletion((3_usize, 0..1).try_into().unwrap()),
         ];
 
         verify_reflow!(
@@ -342,86 +332,88 @@ pub(crate) mod tests {
 
     #[test]
     fn reflow_hash_doc_eq_1to2() {
-        let expected: &[BandAid] = &[BandAid {
-            span: Span {
-                start: LineColumn {
-                    line: 1usize,
-                    column: 7usize,
+        let expected: &[BandAid] = &[
+            BandAid::Replacement(
+                Span {
+                    start: LineColumn {
+                        line: 1_usize,
+                        column: 9_usize,
+                    },
+                    end: LineColumn {
+                        line: 1_usize,
+                        column: 9_usize + 42,
+                    },
                 },
-                end: LineColumn {
-                    line: 2usize,
-                    column: 25usize,
-                },
-            },
-            replacement: "Possibilities are endless, needless to say.".to_owned(),
-        }];
+                "Possibilities are".to_owned(),
+            ),
+            BandAid::Injection(
+                LineColumn { line: 1, column: 0 },
+                "         endless, needless to say.".into(),
+            ),
+        ];
         // TODO design decision: do we want to merge these into one, or produce one per line?
         // Imho we should start with implementing one, but ultimately support both approaches.
-        verify_reflow!(
-            r###"#[doc="Possibilities are
-       endless, needless to say."]"###,
-            expected,
-            30
-        );
+        let content = chyrp_up!(["Possibilities are endless, needless to say."]);
+        verify_reflow!(content, expected, 34);
     }
 
     #[test]
     fn reflow_hash_doc_eq_2to2() {
-        let expected: &[BandAid] = &[BandAid {
-            span: Span {
-                start: LineColumn {
-                    line: 1usize,
-                    column: 7usize,
+        let expected: &[BandAid] = &[
+            BandAid::Replacement(
+                Span {
+                    start: LineColumn {
+                        line: 1usize,
+                        column: 7usize,
+                    },
+                    end: LineColumn {
+                        line: 1usize,
+                        column: 32usize,
+                    },
                 },
-                end: LineColumn {
-                    line: 2usize,
-                    column: 32usize,
-                },
-            },
-            replacement: r#"Possibilities are
-       endless, needless to say."#
-                .to_owned(),
-        }];
+                r#"Possibilities are"#.to_owned(),
+            ),
+            BandAid::Replacement(
+                (2_usize, 0..33).try_into().unwrap(),
+                "       endless, needless to say".into(),
+            ),
+        ];
 
         // TODO design decision: do we want to merge these into one, or produce one per line?
         // Imho we should start with implementing one, but ultimately support both approaches.
-        verify_reflow!(
-            r###"#[doc="Possibilities are
-       endless, needless to say."]"###,
-            expected,
-            30
-        );
+        let content = chyrp_up!(["Possibilities are endless, needless", "       to say."]);
+        dbg!(&content);
+        verify_reflow!(content, expected, 30);
     }
 
     #[test]
     fn reflow_hash_doc_eq_2to1() {
-        let expected: &[BandAid] = &[BandAid {
-            span: Span {
-                start: LineColumn {
-                    line: 1usize,
-                    column: 7usize,
+        let expected: &[BandAid] = &[
+            BandAid::Replacement(
+                Span {
+                    start: LineColumn {
+                        line: 1usize,
+                        column: 9usize,
+                    },
+                    end: LineColumn {
+                        line: 1usize,
+                        column: 27usize,
+                    },
                 },
-                end: LineColumn {
-                    line: 2usize,
-                    column: 25usize,
-                },
-            },
-            replacement: "Possibilities are endless, described in 2 lines.".to_owned(),
-        }];
+                "Possibilities are endless, described in 2 lines.".to_owned(),
+            ),
+            BandAid::Deletion((2_usize, 0..1).try_into().unwrap()),
+        ];
 
-        verify_reflow!(
-            r###"#[doc="Possibilities are endless,
-       described in 2 lines."]"###,
-            expected,
-            60
-        );
+        let content = chyrp_up!(["Possibilities are endless,", "       described in 2 lines."]);
+        verify_reflow!(content, expected, 60);
     }
 
     // TODO checks for all doc variants:
     //
     // * `#[doc="x"]`
     // * `#[doc=r"x"]`
-    // * `#[doc=r#"x"#]`
+    // * `#[do;c=r#"x"#]`
     // * `#[doc=r##"x"##]`
     // * `#[doc=r###"x"###]`
     // * `#[doc=r####"x"####]`
