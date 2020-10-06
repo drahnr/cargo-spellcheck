@@ -292,6 +292,22 @@ impl CheckableChunk {
         acc
     }
 
+    /// Extract the overall length of all covered lines as they appear in the origin
+    pub fn extract_line_lengths(&self) -> Result<Vec<usize>> {
+        let line_ranges = self.find_covered_lines(0..self.content.as_bytes().len());
+        let lengths = line_ranges.iter().try_fold(Vec::new(), |mut acc, r| {
+            let spans = self.find_spans(r.clone());
+            if let Some(span) = spans.get(r) {
+                acc.push(r.len() + span.start.column);
+                Ok(acc)
+            } else {
+                anyhow::bail!("BUG: Found a range which does not cover its own chunk")
+            }
+        })?;
+
+        Ok(lengths)
+    }
+
     /// Obtain the content as `str` representation.
     pub fn as_str(&self) -> &str {
         self.content.as_str()
@@ -726,6 +742,48 @@ Buchfink"#];
 
         for (spans, expected) in range2span.zip(EXPECTED_SPANS) {
             assert_eq!(spans, expected);
+        }
+    }
+
+    #[test]
+    fn find_line_lengths_tripple_slash() {
+        const SOURCE: &'static str = fluff_up!(["xyz", "second", "third", "Converts a span to a range, where `self` is converted to a range reltive to the",
+             "passed span `scope`."] @ "       "
+        );
+
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        let set = gen_literal_set(SOURCE);
+        let chunk = dbg!(CheckableChunk::from_literalset(set));
+
+        let lens = chunk.extract_line_lengths().expect("Chunk has lines. qed");
+
+        assert_eq!(lens.len(), SOURCE.lines().count() - 1);
+
+        for (len, line) in lens.iter().zip(SOURCE.lines()) {
+            assert_eq!(len, &line.len());
+        }
+    }
+
+    #[test]
+    fn find_line_length_docmacro() {
+        const SOURCE: &'static str = chyrp_up!(["xyz", "second", "third", "Converts a span to a range, where `self` is converted to a range reltive to the",
+             "passed span `scope`."] @ "       "
+        );
+
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        println!("{}", SOURCE);
+        let set = gen_literal_set(SOURCE);
+        let chunk = dbg!(CheckableChunk::from_literalset(set));
+
+        let lens = chunk.extract_line_lengths().expect("Chunk has lines. qed");
+
+        assert_eq!(lens.len(), SOURCE.lines().count() - 1);
+
+        for (len, line) in lens.iter().zip(SOURCE.lines()) {
+            dbg!(len, &line);
+            assert_eq!(len, &line.len());
         }
     }
 }
