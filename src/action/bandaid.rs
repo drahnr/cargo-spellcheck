@@ -5,20 +5,44 @@
 //! to suggestions on one line.
 //! Multi-line suggestions are collected in a `FirstAidKit`.
 
-use crate::Span;
+use crate::{LineColumn, Span};
 
-/// A choosen sugestion for a certain span
+/// A chosen suggestion for a certain span
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BandAid {
-    /// a span, where the first line has index 1, columns are base 0
-    pub span: Span,
-    /// replacement text for the given span
-    pub replacement: String,
+pub enum BandAid {
+    /// `String` replaces the content covered by `Span`
+    Replacement(Span, String),
+    /// `String` is inserted before `LineColumn`
+    Injection(LineColumn, String),
+    /// Content covered by `Span` is deleted
+    Deletion(Span),
 }
 
 impl From<(String, Span)> for BandAid {
     fn from((replacement, span): (String, Span)) -> Self {
-        Self { span, replacement }
+        Self::Replacement(span, replacement)
+    }
+}
+
+impl From<Span> for BandAid {
+    fn from(span: Span) -> Self {
+        Self::Deletion(span)
+    }
+}
+
+impl From<(String, LineColumn)> for BandAid {
+    fn from((replacement, linecolumn): (String, LineColumn)) -> Self {
+        Self::Injection(linecolumn, replacement)
+    }
+}
+
+impl BandAid {
+    /// Check if the bandaid covers `line` which is 1 indexed.
+    pub fn covers_line(&self, line: usize) -> bool {
+        match self {
+            BandAid::Replacement(span, _) | BandAid::Deletion(span) => span.covers_line(line),
+            BandAid::Injection(linecolumn, _) => linecolumn.line == line,
+        }
     }
 }
 
