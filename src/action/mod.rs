@@ -485,18 +485,15 @@ Icecream truck"#
     #[test]
     fn bandaid_multiline() {
         let bandaids = vec![
-            BandAid {
-                span: (2_usize, 27..36).try_into().unwrap(),
-                replacement: "comments with".to_owned(),
-            },
-            BandAid {
-                span: (3_usize, 0..17).try_into().unwrap(),
-                replacement: "/// different multiple".to_owned(),
-            },
-            BandAid {
-                span: (3_usize, 18..23).try_into().unwrap(),
-                replacement: "words".to_owned(),
-            },
+            BandAid::Replacement(
+                (2_usize, 27..36).try_into().unwrap(),
+                "comments with".to_owned(),
+            ),
+            BandAid::Replacement(
+                (3_usize, 0..17).try_into().unwrap(),
+                "/// different multiple".to_owned(),
+            ),
+            BandAid::Replacement((3_usize, 18..23).try_into().unwrap(), "words".to_owned()),
         ];
         verify_correction!(
             "
@@ -507,6 +504,60 @@ Icecream truck"#
             "
 /// Let's test bandaids on comments with
 /// different multiple words afterwards
+"
+        );
+    }
+
+    #[test]
+    fn bandaid_deletion() {
+        let _ = env_logger::Builder::new()
+            .filter(None, log::LevelFilter::Trace)
+            .is_test(true)
+            .try_init();
+        let bandaids = vec![
+            BandAid::Replacement(
+                (2_usize, 27..36).try_into().unwrap(),
+                "comments with multiple words".to_owned(),
+            ),
+            BandAid::Deletion((3_usize, 0..17).try_into().unwrap()),
+        ];
+        verify_correction!(
+            "
+/// Let's test bandaids on comments
+/// with multiple lines afterwards
+",
+            bandaids,
+            "
+/// Let's test bandaids on comments with multiple words
+"
+        );
+    }
+
+    #[test]
+    fn bandaid_injection() {
+        let bandaids = vec![
+            BandAid::Replacement(
+                (2_usize, 27..36).try_into().unwrap(),
+                "comments with multiple words".to_owned(),
+            ),
+            BandAid::Injection(
+                LineColumn {
+                    line: 3_usize,
+                    column: 0,
+                },
+                "/// but still more content".to_owned(),
+            ),
+        ];
+        verify_correction!(
+            "
+/// Let's test bandaids on comments
+/// with multiple lines afterwards
+",
+            bandaids,
+            "
+/// Let's test bandaids on comments with multiple words
+/// but still more content
+/// with multiple lines afterwards
 "
         );
     }
