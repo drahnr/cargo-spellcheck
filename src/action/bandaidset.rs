@@ -45,9 +45,9 @@ impl TryFrom<(String, &Span)> for FirstAidKit {
 
     fn try_from((replacement, span): (String, &Span)) -> Result<Self> {
         if span.is_multiline() {
-            bail!("Can't construct `FirstAidKit` from multiline span only")
+            bail!("Can't construct `FirstAidKit` from single-line span only")
         } else {
-            let bandaid = BandAid::try_from((replacement, *span))?;
+            let bandaid = BandAid::Replacement(*span, replacement);
             Ok(Self::from(bandaid))
         }
     }
@@ -88,7 +88,7 @@ impl FirstAidKit {
                 },
             };
             // bandaid for first line
-            bandaids.push(BandAid::try_from((first_line, first_span))?);
+            bandaids.push(BandAid::Replacement(first_span, first_line));
 
             // process all subsequent lines
             while let Some(replacement) = replacement_lines.next() {
