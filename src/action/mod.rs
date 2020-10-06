@@ -65,8 +65,10 @@ fn correct_lines<'s>(
             continue;
         }
 
+        // If there is no bandaid for this line, write original content
+        // and keep going
         if let Some(ref bandaid) = nxt {
-            if !bandaid.span.covers_line(line_number) {
+            if !bandaid.covers_line(line_number) {
                 sink.write(content.as_bytes())?;
                 sink.write("\n".as_bytes())?;
                 continue;
@@ -77,23 +79,38 @@ fn correct_lines<'s>(
         while let Some(bandaid) = nxt.take() {
             trace!("Applying next bandaid {:?}", bandaid);
             trace!("where line {} is: >{}<", line_number, content);
-            let range: Range = bandaid
-                .span
-                .try_into()
-                .expect("Bandaids must be single-line");
+            let (range, replacement) = match &bandaid {
+                BandAid::Replacement(span, repl) => {
+                    let range = span
+                        .try_into()
+                        .expect("Bandaid::Replacement must be single-line");
+                    (range, repl.to_owned())
+                }
+                BandAid::Injection(location, repl) => {
+                    let range = location.column..location.column;
+                    (range, repl.to_owned() + "\n")
+                }
+                BandAid::Deletion(span) => {
+                    let range: Range = span
+                        .try_into()
+                        .expect("Bandaid::Deletion must be single-line");
+                    // TODO: maybe it's better to already have the correct range in the bandaid
+                    (range.start..content_len, "".to_owned())
+                }
+            };
 
             // write prelude for this line between start or previous replacement
             if range.start > remainder_column {
                 sink.write(util::sub_chars(&content, remainder_column..range.start).as_bytes())?;
             }
             // write the replacement chunk
-            sink.write(bandaid.replacement.as_bytes())?;
+            sink.write(replacement.as_bytes())?;
 
             remainder_column = range.end;
             nxt = bandaids.next();
             let complete_current_line = if let Some(ref bandaid) = nxt {
                 // if `nxt` is also targeting the current line, don't complete the line
-                !bandaid.span.covers_line(line_number)
+                !bandaid.covers_line(line_number)
             } else {
                 true
             };
@@ -115,7 +132,11 @@ fn correct_lines<'s>(
                         line_number, content_len, remainder_column
                     );
                 }
-                sink.write("\n".as_bytes())?;
+
+                if let BandAid::Deletion(_) = bandaid {
+                } else {
+                    sink.write("\n".as_bytes())?;
+                }
                 // break the inner loop
                 break;
                 // } else {
@@ -281,18 +302,12 @@ mod tests {
             .try_init();
 
         let bandaids = vec![
-            BandAid {
-                span: (2_usize, 7..15).try_into().unwrap(),
-                replacement: "banana icecream".to_owned(),
-            },
-            BandAid {
-                span: (2_usize, 22..28).try_into().unwrap(),
-                replacement: "third".to_owned(),
-            },
-            BandAid {
-                span: (2_usize, 29..36).try_into().unwrap(),
-                replacement: "day".to_owned(),
-            },
+            BandAid::Replacement(
+                (2_usize, 7..15).try_into().unwrap(),
+                "banana icecream".to_owned(),
+            ),
+            BandAid::Replacement((2_usize, 22..28).try_into().unwrap(), "third".to_owned()),
+            BandAid::Replacement((2_usize, 29..36).try_into().unwrap(), "day".to_owned()),
         ];
         verify_correction!(
             r#"
@@ -310,18 +325,15 @@ I like banana icecream every third day.
     #[test]
     fn bandaid_multiline() {
         let bandaids = vec![
-            BandAid {
-                span: (2_usize, 27..36).try_into().unwrap(),
-                replacement: "comments with".to_owned(),
-            },
-            BandAid {
-                span: (3_usize, 0..17).try_into().unwrap(),
-                replacement: "/// different multiple".to_owned(),
-            },
-            BandAid {
-                span: (3_usize, 18..23).try_into().unwrap(),
-                replacement: "words".to_owned(),
-            },
+            BandAid::Replacement(
+                (2_usize, 27..36).try_into().unwrap(),
+                "comments with".to_owned(),
+            ),
+            BandAid::Replacement(
+                (3_usize, 0..17).try_into().unwrap(),
+                "/// different multiple".to_owned(),
+            ),
+            BandAid::Replacement((3_usize, 18..23).try_into().unwrap(), "words".to_owned()),
         ];
         verify_correction!(
             "
@@ -332,6 +344,60 @@ I like banana icecream every third day.
             "
 /// Let's test bandaids on comments with
 /// different multiple words afterwards
+"
+        );
+    }
+
+    #[test]
+    fn bandaid_deletion() {
+        let _ = env_logger::Builder::new()
+            .filter(None, log::LevelFilter::Trace)
+            .is_test(true)
+            .try_init();
+        let bandaids = vec![
+            BandAid::Replacement(
+                (2_usize, 27..36).try_into().unwrap(),
+                "comments with multiple words".to_owned(),
+            ),
+            BandAid::Deletion((3_usize, 0..17).try_into().unwrap()),
+        ];
+        verify_correction!(
+            "
+/// Let's test bandaids on comments
+/// with multiple lines afterwards
+",
+            bandaids,
+            "
+/// Let's test bandaids on comments with multiple words
+"
+        );
+    }
+
+    #[test]
+    fn bandaid_injection() {
+        let bandaids = vec![
+            BandAid::Replacement(
+                (2_usize, 27..36).try_into().unwrap(),
+                "comments with multiple words".to_owned(),
+            ),
+            BandAid::Injection(
+                LineColumn {
+                    line: 3_usize,
+                    column: 0,
+                },
+                "/// but still more content".to_owned(),
+            ),
+        ];
+        verify_correction!(
+            "
+/// Let's test bandaids on comments
+/// with multiple lines afterwards
+",
+            bandaids,
+            "
+/// Let's test bandaids on comments with multiple words
+/// but still more content
+/// with multiple lines afterwards
 "
         );
     }
