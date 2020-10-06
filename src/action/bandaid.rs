@@ -18,24 +18,6 @@ pub enum BandAid {
     Deletion(Span),
 }
 
-impl From<(String, Span)> for BandAid {
-    fn from((replacement, span): (String, Span)) -> Self {
-        Self::Replacement(span, replacement)
-    }
-}
-
-impl From<Span> for BandAid {
-    fn from(span: Span) -> Self {
-        Self::Deletion(span)
-    }
-}
-
-impl From<(String, LineColumn)> for BandAid {
-    fn from((replacement, linecolumn): (String, LineColumn)) -> Self {
-        Self::Injection(linecolumn, replacement)
-    }
-}
-
 impl BandAid {
     /// Check if the bandaid covers `line` which is 1 indexed.
     pub fn covers_line(&self, line: usize) -> bool {
