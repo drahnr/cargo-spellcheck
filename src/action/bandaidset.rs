@@ -133,7 +133,7 @@ impl FirstAidKit {
                 } else {
                     // Original content is shorter than replacement
                     let insertion = LineColumn {
-                        line: span.end.line,
+                        line: span.end.line + 1,
                         column: 0,
                     };
                     BandAid::Injection(insertion, replacement.to_string())
@@ -295,7 +295,7 @@ pub(crate) mod tests {
                 " This is the one 💯🗤⛩ time I'm writing".to_owned(),
             ),
             BandAid::Injection(
-                LineColumn { line: 1, column: 0 },
+                LineColumn { line: 2, column: 0 },
                 "/// a test string with emojis like 😋😋⏪🦀.".to_owned(),
             ),
         ];
