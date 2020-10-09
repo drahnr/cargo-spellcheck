@@ -5,7 +5,7 @@
 //! to suggestions on one line.
 //! Multi-line suggestions are collected in a `FirstAidKit`.
 
-use crate::{LineColumn, Span};
+use crate::{LineColumn, Span, CommentVariant};
 
 /// A chosen suggestion for a certain span
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -13,7 +13,7 @@ pub enum BandAid {
     /// `String` replaces the content covered by `Span`
     Replacement(Span, String),
     /// `String` is inserted before `LineColumn`
-    Injection(LineColumn, String),
+    Injection(LineColumn, String, CommentVariant),
     /// Content covered by `Span` is deleted
     Deletion(Span),
 }
@@ -23,7 +23,7 @@ impl BandAid {
     pub fn covers_line(&self, line: usize) -> bool {
         match self {
             BandAid::Replacement(span, _) | BandAid::Deletion(span) => span.covers_line(line),
-            BandAid::Injection(linecolumn, _) => linecolumn.line == line,
+            BandAid::Injection(linecolumn, _, _) => linecolumn.line == line,
         }
     }
 }

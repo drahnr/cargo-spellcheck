@@ -300,6 +300,10 @@ impl CheckableChunk {
             if let Some(span) = spans.get(r) {
                 acc.push(r.len() + span.start.column);
                 Ok(acc)
+            } else if let Some(span) = self.source_mapping.get(r) {
+                // if the span was not found, it shoudl still be in the whole source mapping
+                acc.push(r.len() + span.start.column);
+                Ok(acc)
             } else {
                 anyhow::bail!("BUG: Found a range which does not cover its own chunk")
             }
