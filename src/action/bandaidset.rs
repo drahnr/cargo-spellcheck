@@ -101,7 +101,7 @@ impl<'s> TryFrom<(&Suggestion<'s>, usize)> for FirstAidKit {
                     // Replacement covers a line in original content
 
                     let span = Span {
-                        start: crate::LineColumn { line, column: chunk.variant().prefix() },
+                        start: crate::LineColumn { line, column: 0 },
                         end: crate::LineColumn {
                             line,
                             column: *end_of_line
@@ -254,6 +254,7 @@ pub(crate) mod tests {
 
     #[test]
     fn reflow_tripple_slash_1to2() {
+<<<<<<< HEAD
         let expected: &[BandAid] = &[BandAid {
             span: (1_usize, 3..77).try_into().unwrap(),
             replacement: " This is the one 💯🗤⛩ time I'm writing
@@ -328,7 +329,28 @@ pub(crate) mod tests {
             r###"#[doc="Possibilities are endless,
 described in 2 lines."]"###,
             expected,
-            80
+            80);
+    }
+
+    fn reflow_tripple_slash_11to22() {
+        let expected: &[BandAid] = &[
+            BandAid::Replacement(
+                (1_usize, 3..72).try_into().unwrap(),
+                " Possible __ways__ to run __rustc__".into(),
+            ),
+            BandAid::Injection(
+                LineColumn { line: 2, column: 0},
+                "/// and request various parts of LTO".into(),
+                CommentVariant::TripleSlash
+            )
+        ];
+
+        verify_reflow!(
+            "/// Possible __ways__ to run __rustc__ and request various parts of LTO
+///
+/// A third line which also is gonna be broken up.",
+            expected,
+            40
         );
     }
 
