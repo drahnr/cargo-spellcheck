@@ -86,9 +86,9 @@ fn correct_lines<'s>(
                         .expect("Bandaid::Replacement must be single-line");
                     (range, repl.to_owned())
                 }
-                BandAid::Injection(location, repl) => {
+                BandAid::Injection(location, repl, variant) => {
                     let range = location.column..location.column;
-                    (range, repl.to_owned() + "\n")
+                    (range, variant.to_string() + repl + "\n")
                 }
                 BandAid::Deletion(span) => {
                     let range: Range = span
@@ -385,7 +385,8 @@ I like banana icecream every third day.
                     line: 3_usize,
                     column: 0,
                 },
-                "/// but still more content".to_owned(),
+                "but still more content".to_owned(),
+                CommentVariant::TripleSlash
             ),
         ];
         verify_correction!(

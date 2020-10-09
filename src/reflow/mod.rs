@@ -85,7 +85,7 @@ fn reflow_inner<'s>(
             let mut first: Vec<String> = vec![" ".to_owned()];
             let pre: Vec<String> = indentations
                 .iter()
-                .map(|i| whites!(i - 3) + "/// ")
+                .map(|i| whites!(i - 3))
                 .collect();
             first.extend(pre);
             first
@@ -95,7 +95,7 @@ fn reflow_inner<'s>(
             let mut first: Vec<String> = vec![" ".to_owned()];
             let pre: Vec<String> = indentations
                 .iter()
-                .map(|i| whites!(i - 3) + "//! ")
+                .map(|i| whites!(i - 3))
                 .collect();
             first.extend(pre);
             first

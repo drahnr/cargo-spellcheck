@@ -28,6 +28,29 @@ impl Default for CommentVariant {
     }
 }
 
+impl ToString for CommentVariant {
+    fn to_string(&self) -> String {
+        match self {
+            CommentVariant::TripleSlash => "/// ".into(),
+            CommentVariant::DoubleSlashEM => "//! ".into(),
+            CommentVariant::MacroDocEq => "".into(),
+            _ => "".into(),
+        }
+    }
+}
+
+impl CommentVariant {
+    /// Return legnth of comment prefix for each variant
+    pub fn prefix(&self) -> usize {
+        match self {
+            CommentVariant::TripleSlash | CommentVariant::DoubleSlashEM => 4,
+            CommentVariant::MacroDocEq => 0,
+            _ => 0,
+        }
+    }
+}
+
+
 /// A literal with meta info where the first and list whitespace may be found.
 #[derive(Clone)]
 pub struct TrimmedLiteral {
