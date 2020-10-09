@@ -96,7 +96,7 @@ impl FirstAidKit {
                     // Replacement covers a line in original content
 
                     let span = Span {
-                        start: crate::LineColumn { line, column: chunk.variant().prefix() },
+                        start: crate::LineColumn { line, column: 0 },
                         end: crate::LineColumn {
                             line,
                             column: *line_lengths
@@ -273,6 +273,7 @@ pub(crate) mod tests {
             BandAid::Injection(
                 LineColumn { line: 2, column: 0 },
                 "/// a test string with emojis like 😋😋⏪🦀.".to_owned(),
+                CommentVariant::TripleSlash
             ),
         ];
 
@@ -307,6 +308,29 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn reflow_tripple_slash_11to22() {
+        let expected: &[BandAid] = &[
+            BandAid::Replacement(
+                (1_usize, 3..72).try_into().unwrap(),
+                " Possible __ways__ to run __rustc__".into(),
+            ),
+            BandAid::Injection(
+                LineColumn { line: 2, column: 0},
+                "/// and request various parts of LTO".into(),
+                CommentVariant::TripleSlash
+            )
+        ];
+
+        verify_reflow!(
+            "/// Possible __ways__ to run __rustc__ and request various parts of LTO
+///
+/// A third line which also is gonna be broken up.",
+            expected,
+            40
+        );
+    }
+
+    #[test]
     fn reflow_hash_doc_eq_1to2() {
         let expected: &[BandAid] = &[
             BandAid::Replacement(
@@ -325,6 +349,7 @@ pub(crate) mod tests {
             BandAid::Injection(
                 LineColumn { line: 2, column: 0 },
                 "         endless, needless to say.".into(),
+                CommentVariant::MacroDocEq
             ),
         ];
         // TODO design decision: do we want to merge these into one, or produce one per line?
