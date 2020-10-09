@@ -76,7 +76,7 @@ fn reflow_inner<'s>(
         CommentVariant::CommonMark | CommentVariant::MacroDocEq => {
             // first indent is 0
             let mut first: Vec<String> = vec!["".to_owned()];
-            let pre: Vec<String> = indentations.iter().map(|i| whites!(*i)).collect();
+            let pre: Vec<String> = indentations.iter().map(|i| whites!(*i) + &variant.to_string()).collect();
             first.extend(pre);
             first
         }
@@ -85,7 +85,7 @@ fn reflow_inner<'s>(
             let mut first: Vec<String> = vec![" ".to_owned()];
             let pre: Vec<String> = indentations
                 .iter()
-                .map(|i| whites!(i - 3))
+                .map(|i| whites!(i - 3) + &variant.to_string())
                 .collect();
             first.extend(pre);
             first
@@ -95,7 +95,7 @@ fn reflow_inner<'s>(
             let mut first: Vec<String> = vec![" ".to_owned()];
             let pre: Vec<String> = indentations
                 .iter()
-                .map(|i| whites!(i - 3))
+                .map(|i| whites!(i - 3) + &variant.to_string())
                 .collect();
             first.extend(pre);
             first

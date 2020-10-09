@@ -86,9 +86,9 @@ fn correct_lines<'s>(
                         .expect("Bandaid::Replacement must be single-line");
                     (range, repl.to_owned())
                 }
-                BandAid::Injection(location, repl, variant) => {
+                BandAid::Injection(location, repl, _) => {
                     let range = location.column..location.column;
-                    (range, variant.to_string() + repl + "\n")
+                    (range, repl.to_owned() + "\n")
                 }
                 BandAid::Deletion(span) => {
                     let range: Range = span
@@ -400,6 +400,37 @@ I like banana icecream every third day.
 /// but still more content
 /// with multiple lines afterwards
 "
+        );
+    }
+
+
+    #[test]
+    fn bandaid_macrodoceq_injection() {
+        let bandaids = vec![
+            BandAid::Replacement(
+                (2_usize, 33..42).try_into().unwrap(),
+                "comments with multiple words".to_owned(),
+            ),
+            BandAid::Injection(
+                LineColumn {
+                    line: 3_usize,
+                    column: 0,
+                },
+                "but still more content".to_owned(),
+                CommentVariant::MacroDocEq
+            ),
+        ];
+        verify_correction!(
+            r#"
+#[ doc = "Let's test bandaids on comments
+          with multiple lines afterwards"]
+"#,
+            bandaids,
+            r#"
+#[ doc = "Let's test bandaids on comments with multiple words
+          but still more content
+          with multiple lines afterwards"]
+"#
         );
     }
 }

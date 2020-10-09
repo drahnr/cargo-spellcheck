@@ -246,8 +246,6 @@ pub(crate) mod tests {
         assert_eq!(z, chunk.find_spans(expected_raw_range));
     }
 
-    // use crate::literalset::tests::{annotated_literals,gen_literal_set};
-    use crate::checker::dummy::DummyChecker;
     use crate::documentation::Documentation;
 
     /// Declare an end to end test case, ranging from input content
