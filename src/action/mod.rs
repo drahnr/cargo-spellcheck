@@ -545,7 +545,8 @@ Icecream truck"#
                     line: 3_usize,
                     column: 0,
                 },
-                "/// but still more content".to_owned(),
+                "but still more content".to_owned(),
+                CommentVariant::TripleSlash
             ),
         ];
         verify_correction!(
