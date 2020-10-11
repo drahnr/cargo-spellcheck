@@ -65,13 +65,13 @@ Options:
   -q --quiet                Silences all printed messages. Overrules `-v`.
   -m --code=<code>          Overwrite the exit value for a successful run with content mistakes found. [default=0]
   --skip-readme             Do not attempt to process README.md files listed in Cargo.toml manifests.
-  --reachable-link          Verify if the link destination exists.
+  --reachable-link          Verify if the link destination exists [default=false]
 "#;
 
 /// A simple exit code representation.
 ///
 /// `Custom` can be specified by the user,
-/// others map to thei unix equivalents where
+/// others map to their unix equivalents where
 /// available.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum ExitCode {

@@ -81,7 +81,7 @@ impl<'a> PlainOverlay<'a> {
         let mut inception = false;
         let mut skip_link_text = false;
         let mut skip_table_text = false;
-        let mut start_link_type: Option<LinkType> = None;
+        let mut followed_by_link_type: Option<LinkType> = None;
 
         for (event, byte_range) in parser.into_offset_iter() {
             if byte_range.start > byte_range.end {
@@ -125,7 +125,7 @@ impl<'a> PlainOverlay<'a> {
                         inception = fenced == rust_fence;
                     }
                     Tag::Link(link_type, _url, _title) => {
-                        start_link_type = Some(link_type);
+                        followed_by_link_type = Some(link_type);
                         // from the pulldown-cmark = "0.8.0" crate, this text:
                         // [crates.io](https://crates.io/)
                         // is evaluated as:
@@ -175,29 +175,26 @@ impl<'a> PlainOverlay<'a> {
                     }
                 }
                 Event::Text(s) => {
-                    match start_link_type {
-                        Some(LinkType::ReferenceUnknown)
-                        | Some(LinkType::Reference)
-                        | Some(LinkType::Inline) => {
-                            if Self::valid_url(&s) {
-                                skip_link_text = true;
-                            } else {
-                                skip_link_text = false;
-                            }
+                    if let Some(LinkType::Inline) = followed_by_link_type {
+                        if Self::valid_url(&s) {
+                            skip_link_text = true;
+                        } else {
+                            skip_link_text = false;
                         }
-                        Some(LinkType::Collapsed)
-                        | Some(LinkType::CollapsedUnknown)
-                        | Some(LinkType::Shortcut)
-                        | Some(LinkType::ShortcutUnknown) => skip_link_text = false,
-                        Some(LinkType::Autolink) | Some(LinkType::Email) => skip_link_text = true,
-                        None => {}
+                    }
+                    if let Some(LinkType::ShortcutUnknown) = followed_by_link_type {
+                        skip_link_text = false;
+                    }
+                    if let Some(LinkType::Autolink) | Some(LinkType::Email) = followed_by_link_type
+                    {
+                        skip_link_text = true
                     }
                     if code_block {
                         if inception {
                             // TODO validate as additional, virtual document
                         }
                     } else if skip_link_text {
-                        start_link_type = None;
+                        followed_by_link_type = None;
                         skip_link_text = false
                     } else if !skip_table_text {
                         Self::track(&s, char_range, &mut plain, &mut mapping);
