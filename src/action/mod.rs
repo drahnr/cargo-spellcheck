@@ -18,6 +18,13 @@ pub(crate) use bandaidset::*;
 
 use interactive::{UserPicked, UserSelection};
 
+/// Generate a string of whitespaces with length $n
+macro_rules! whites {
+    ($n:expr) => {{
+        vec![" "; $n.to_owned()].join("")
+    }};
+}
+
 /// State of conclusion.
 #[derive(Debug, Clone, Copy)]
 pub enum Finish {
@@ -80,15 +87,19 @@ fn correct_lines<'s>(
             trace!("Applying next bandaid {:?}", bandaid);
             trace!("where line {} is: >{}<", line_number, content);
             let (range, replacement) = match &bandaid {
-                BandAid::Replacement(span, repl) => {
-                    let range = span
+                BandAid::Replacement(span, repl, variant, indent) => {
+                    let range: Range = span
                         .try_into()
                         .expect("Bandaid::Replacement must be single-line");
-                    (range, repl.to_owned())
+                    if range.start == 0 {
+                        (range, whites!(indent) + &variant.to_string() + repl)
+                    } else {
+                        (range, repl.to_owned())
+                    }
                 }
-                BandAid::Injection(location, repl, _) => {
+                BandAid::Injection(location, repl, variant, indent) => {
                     let range = location.column..location.column;
-                    (range, repl.to_owned() + "\n")
+                    (range, whites!(indent) + &variant.to_string() + repl + "\n")
                 }
                 BandAid::Deletion(span) => {
                     let range: Range = span
@@ -305,9 +316,21 @@ mod tests {
             BandAid::Replacement(
                 (2_usize, 7..15).try_into().unwrap(),
                 "banana icecream".to_owned(),
+                CommentVariant::TripleSlash,
+                0_usize,
             ),
-            BandAid::Replacement((2_usize, 22..28).try_into().unwrap(), "third".to_owned()),
-            BandAid::Replacement((2_usize, 29..36).try_into().unwrap(), "day".to_owned()),
+            BandAid::Replacement(
+                (2_usize, 22..28).try_into().unwrap(),
+                "third".to_owned(),
+                CommentVariant::TripleSlash,
+                0_usize,
+            ),
+            BandAid::Replacement(
+                (2_usize, 29..36).try_into().unwrap(),
+                "day".to_owned(),
+                CommentVariant::TripleSlash,
+                0_usize,
+            ),
         ];
         verify_correction!(
             r#"
@@ -328,12 +351,21 @@ I like banana icecream every third day.
             BandAid::Replacement(
                 (2_usize, 27..36).try_into().unwrap(),
                 "comments with".to_owned(),
+                CommentVariant::TripleSlash,
+                0_usize,
             ),
             BandAid::Replacement(
                 (3_usize, 0..17).try_into().unwrap(),
-                "/// different multiple".to_owned(),
+                " different multiple".to_owned(),
+                CommentVariant::TripleSlash,
+                0_usize,
             ),
-            BandAid::Replacement((3_usize, 18..23).try_into().unwrap(), "words".to_owned()),
+            BandAid::Replacement(
+                (3_usize, 18..23).try_into().unwrap(),
+                "words".to_owned(),
+                CommentVariant::TripleSlash,
+                0_usize,
+            ),
         ];
         verify_correction!(
             "
@@ -358,6 +390,8 @@ I like banana icecream every third day.
             BandAid::Replacement(
                 (2_usize, 27..36).try_into().unwrap(),
                 "comments with multiple words".to_owned(),
+                CommentVariant::TripleSlash,
+                0,
             ),
             BandAid::Deletion((3_usize, 0..17).try_into().unwrap()),
         ];
@@ -379,14 +413,17 @@ I like banana icecream every third day.
             BandAid::Replacement(
                 (2_usize, 27..36).try_into().unwrap(),
                 "comments with multiple words".to_owned(),
+                CommentVariant::TripleSlash,
+                0,
             ),
             BandAid::Injection(
                 LineColumn {
                     line: 3_usize,
                     column: 0,
                 },
-                "but still more content".to_owned(),
-                CommentVariant::TripleSlash
+                " but still more content".to_owned(),
+                CommentVariant::TripleSlash,
+                0,
             ),
         ];
         verify_correction!(
@@ -403,13 +440,14 @@ I like banana icecream every third day.
         );
     }
 
-
     #[test]
     fn bandaid_macrodoceq_injection() {
         let bandaids = vec![
             BandAid::Replacement(
                 (2_usize, 33..42).try_into().unwrap(),
                 "comments with multiple words".to_owned(),
+                CommentVariant::MacroDocEq(2),
+                0,
             ),
             BandAid::Injection(
                 LineColumn {
@@ -417,7 +455,8 @@ I like banana icecream every third day.
                     column: 0,
                 },
                 "but still more content".to_owned(),
-                CommentVariant::MacroDocEq
+                CommentVariant::MacroDocEq(2),
+                0,
             ),
         ];
         verify_correction!(
