@@ -83,7 +83,7 @@ fn correct_lines<'s>(
                 BandAid::Replacement(span, repl, variant, indent) => {
                     let range: Range = span
                         .try_into()
-                        .expect("Bandaid::Replacement must be single-line");
+                        .expect("Bandaid::Replacement must be single-line. qed");
                     if range.start == 0 {
                         (range, " ".repeat(*indent) + &variant.to_string() + repl)
                     } else {
@@ -97,7 +97,7 @@ fn correct_lines<'s>(
                 BandAid::Deletion(span) => {
                     let range: Range = span
                         .try_into()
-                        .expect("Bandaid::Deletion must be single-line");
+                        .expect("Bandaid::Deletion must be single-line. qed");
                     // TODO: maybe it's better to already have the correct range in the bandaid
                     (range.start..content_len, "".to_owned())
                 }
@@ -289,10 +289,10 @@ mod tests {
             let mut sink: Vec<u8> = Vec::with_capacity(1024);
             let lines = $text
                 .lines()
-                .map(std::borrow::ToOwned::to_owned)
+                .map(::std::borrow::ToOwned::to_owned)
                 .enumerate()
                 .map(|(lineno, content)| (lineno + 1, content));
-            correct_lines($bandaids.into_iter(), lines, &mut sink).expect("should be able to");
+            correct_lines($bandaids.into_iter(), lines, &mut sink).expect("Line correction must work in unit test!");
 
             assert_eq!(String::from_utf8_lossy(sink.as_slice()), $expected);
         };
