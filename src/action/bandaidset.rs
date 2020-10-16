@@ -61,7 +61,7 @@ impl TryFrom<(&Span, Replacement, CommentVariant)> for FirstAidKit {
         (span, replacement, variant): (&Span, Replacement, CommentVariant),
     ) -> Result<Self> {
         if span.is_multiline() {
-            bail!("Construction of `FirstAidKit` from single-line span only")
+            bail!("Can't construct `FirstAidKit` from single-line span only")
         } else {
             let bandaid = BandAid::Replacement(
                 *span,
