@@ -7,6 +7,8 @@ use log::trace;
 
 use crate::suggestion::Suggestion;
 use crate::{LineColumn, Span};
+use crate::CheckableChunk;
+use crate::{CommentVariant, LineColumn, Replacement, Span};
 
 use super::BandAid;
 
@@ -42,8 +44,41 @@ impl From<Vec<BandAid>> for FirstAidKit {
 
 impl<'s> TryFrom<(&Suggestion<'s>, usize)> for FirstAidKit {
     type Error = Error;
-    fn try_from((suggestion, pick_idx): (&Suggestion<'s>, usize)) -> Result<Self> {
-        let literal_file_span = suggestion.span;
+
+    fn try_from((replacement, span): (String, &Span)) -> Result<Self> {
+        if span.is_multiline() {
+            bail!("Can't construct `FirstAidKit` from single-line span only")
+        } else {
+            // Is only used for custom replacement
+            let bandaid = BandAid::Replacement(*span, replacement, CommentVariant::Unknown, 0);
+            Ok(Self::from(bandaid))
+        }
+    }
+}
+
+impl TryFrom<(&Span, Replacement, CommentVariant)> for FirstAidKit {
+    type Error = Error;
+
+    fn try_from(
+        (span, replacement, variant): (&Span, Replacement, CommentVariant),
+    ) -> Result<Self> {
+        if span.is_multiline() {
+            bail!("Can't construct `FirstAidKit` from single-line span only")
+        } else {
+            let bandaid = BandAid::Replacement(
+                *span,
+                replacement.content,
+                variant,
+                *replacement.indentation.first().unwrap(),
+            );
+            Ok(Self::from(bandaid))
+        }
+    }
+}
+
+impl FirstAidKit {
+    /// Extract a set of bandaids by means of parsing the chunk
+    pub fn load_from(chunk: &CheckableChunk, span: Span, replacement: Replacement) -> Result<Self> {
         trace!(
             "proc_macro literal span of doc comment: ({},{})..({},{})",
             literal_file_span.start.line,
@@ -61,6 +96,7 @@ impl<'s> TryFrom<(&Suggestion<'s>, usize)> for FirstAidKit {
             let mut replacement_lines = replacement.lines().peekable();
             let mut span_lines = (span.start.line..=span.end.line).peekable();
             let mut bandaids: Vec<BandAid> = Vec::new();
+            let mut indentations = replacement.indentation.iter();
             let first_line = replacement_lines
                 .next()
                 .ok_or(anyhow!("Replacement must contain at least one line"))?
@@ -100,8 +136,13 @@ impl<'s> TryFrom<(&Suggestion<'s>, usize)> for FirstAidKit {
                 let bandaid = if let Some(line) = span_lines.next() {
                     // Replacement covers a line in original content
 
+                    let indent = *indentations.next().unwrap();
+
                     let span = Span {
-                        start: crate::LineColumn { line, column: 0 },
+                        start: crate::LineColumn {
+                            line,
+                            column: indent + chunk.variant().prefix(),
+                        },
                         end: crate::LineColumn {
                             line,
                             column: *end_of_line
@@ -116,7 +157,12 @@ impl<'s> TryFrom<(&Suggestion<'s>, usize)> for FirstAidKit {
                         line: span.end.line + 1,
                         column: 0,
                     };
-                    BandAid::Injection(insertion, replacement.to_string(), chunk.variant())
+                    BandAid::Injection(
+                        insertion,
+                        replacement.to_string(),
+                        chunk.variant(),
+                        *indentations.next().unwrap(),
+                    )
                 };
                 let bandaid = BandAid::try_from((replacement.to_string(), span_line))?;
                 bandaids.push(bandaid);
@@ -146,14 +192,14 @@ pub(crate) mod tests {
     use super::*;
     use crate::reflow::{Reflow, ReflowConfig};
 
-    use crate::{Checker, ContentOrigin, Documentation, CommentVariant};
+    use crate::{Checker, CommentVariant, ContentOrigin, Documentation};
     use crate::{LineColumn, Span};
 
     use std::convert::TryInto;
 
     #[test]
     fn firstaid_from_replacement() {
-        const REPLACEMENT: &'static str = "the one tousandth time I'm writing";
+        const REPLACEMENT: &'static str = "the one thousandth time I'm writing";
 
         let span = Span {
             start: LineColumn {
@@ -254,7 +300,6 @@ pub(crate) mod tests {
 
     #[test]
     fn reflow_tripple_slash_1to2() {
-<<<<<<< HEAD
         let expected: &[BandAid] = &[BandAid {
             span: (1_usize, 3..77).try_into().unwrap(),
             replacement: " This is the one 💯🗤⛩ time I'm writing
@@ -337,12 +382,15 @@ described in 2 lines."]"###,
             BandAid::Replacement(
                 (1_usize, 3..72).try_into().unwrap(),
                 " Possible __ways__ to run __rustc__".into(),
+                CommentVariant::TripleSlash,
+                0_usize,
             ),
             BandAid::Injection(
-                LineColumn { line: 2, column: 0},
-                "/// and request various parts of LTO".into(),
-                CommentVariant::TripleSlash
-            )
+                LineColumn { line: 2, column: 0 },
+                " and request various parts of LTO".into(),
+                CommentVariant::TripleSlash,
+                0_usize,
+            ),
         ];
 
         verify_reflow!(
