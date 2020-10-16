@@ -281,6 +281,16 @@ pub fn condition_display_content(
     (conditioned_line, offset, marker_size)
 }
 
+/// Replacement string for a suggestion, indentation holds indent values if
+/// `content` spans over multiple lines
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct Replacement {
+    /// replacement content
+    pub content: String,
+    /// number of whitespaces each lines has as prefix
+    pub indentation: Vec<usize>,
+}
+
 /// A suggestion for certain offending span.
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub struct Suggestion<'s> {
@@ -294,8 +304,9 @@ pub struct Suggestion<'s> {
     pub span: Span,
     /// Range relative to the chunk the current suggestion is located.
     pub range: Range,
-    /// Fix suggestions, might be words or the full sentence.
-    pub replacements: Vec<String>,
+    /// Fix suggestions, might be words or the full sentence together with
+    /// leading withespaces
+    pub replacements: Vec<Replacement>,
     /// Descriptive reason for the suggestion.
     pub description: Option<String>,
 }
@@ -429,17 +440,17 @@ impl<'s> fmt::Display for Suggestion<'s> {
 
         let replacement = match self.replacements.len() {
             0 => String::new(),
-            1 => format!(" - {}", fix.apply_to(&self.replacements[0])),
+            1 => format!(" - {}", fix.apply_to(&self.replacements[0].content)),
             2 => format!(
                 " - {} or {}",
-                fix.apply_to(&self.replacements[0]).to_string(),
-                fix.apply_to(&self.replacements[1]).to_string()
+                fix.apply_to(&self.replacements[0].content).to_string(),
+                fix.apply_to(&self.replacements[1].content).to_string()
             ),
             n if (n < 7) => {
-                let last = fix.apply_to(&self.replacements[n - 1]).to_string();
+                let last = fix.apply_to(&self.replacements[n - 1].content).to_string();
                 let joined = self.replacements[..n - 1]
                     .iter()
-                    .map(|x| fix.apply_to(x).to_string())
+                    .map(|x| fix.apply_to(x.content.to_owned()).to_string())
                     .collect::<Vec<String>>()
                     .as_slice()
                     .join(", ");
@@ -448,7 +459,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
             _n => {
                 let joined = self.replacements[..=6]
                     .iter()
-                    .map(|x| fix.apply_to(x).to_string())
+                    .map(|x| fix.apply_to(x.content.to_owned()).to_string())
                     .collect::<Vec<String>>()
                     .as_slice()
                     .join(", ");
@@ -676,10 +687,20 @@ mod tests {
                     column: 10,
                 },
             },
-            replacements: vec!["replacement_0", "replacement_1", "replacement_2"]
-                .into_iter()
-                .map(std::borrow::ToOwned::to_owned)
-                .collect(),
+            replacements: vec![
+                Replacement {
+                    content: "replacement_0".to_owned(),
+                    indentation: vec![0_usize],
+                },
+                Replacement {
+                    content: "replacement_1".to_owned(),
+                    indentation: vec![0_usize],
+                },
+                Replacement {
+                    content: "replacement_2".to_owned(),
+                    indentation: vec![0_usize],
+                },
+            ],
             description: Some("Possible spelling mistake found.".to_owned()),
         };
 
@@ -798,10 +819,20 @@ mod tests {
                     column: 15,
                 },
             },
-            replacements: vec!["replacement_0", "replacement_1", "replacement_2"]
-                .into_iter()
-                .map(std::borrow::ToOwned::to_owned)
-                .collect(),
+            replacements: vec![
+                Replacement {
+                    content: "replacement_0".to_owned(),
+                    indentation: vec![0_usize],
+                },
+                Replacement {
+                    content: "replacement_1".to_owned(),
+                    indentation: vec![0_usize],
+                },
+                Replacement {
+                    content: "replacement_2".to_owned(),
+                    indentation: vec![0_usize],
+                },
+            ],
             description: Some("Possible spelling mistake found.".to_owned()),
         };
 
@@ -863,10 +894,20 @@ mod tests {
                     column: 92,
                 },
             },
-            replacements: vec!["replacement_0", "replacement_1", "replacement_2"]
-                .into_iter()
-                .map(std::borrow::ToOwned::to_owned)
-                .collect(),
+            replacements: vec![
+                Replacement {
+                    content: "replacement_0".to_owned(),
+                    indentation: vec![0_usize],
+                },
+                Replacement {
+                    content: "replacement_1".to_owned(),
+                    indentation: vec![0_usize],
+                },
+                Replacement {
+                    content: "replacement_2".to_owned(),
+                    indentation: vec![0_usize],
+                },
+            ],
             description: Some("Possible spelling mistake found.".to_owned()),
         };
 
@@ -923,7 +964,10 @@ mod tests {
                 },
             },
             range: 2..6,
-            replacements: vec!["whocares".to_owned()],
+            replacements: vec![Replacement {
+                content: "whocares".to_owned(),
+                indentation: vec![0],
+            }],
             description: None,
         };
 

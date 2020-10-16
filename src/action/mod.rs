@@ -16,6 +16,13 @@ pub mod interactive;
 pub(crate) use bandaid::*;
 use interactive;
 
+/// Generate a string of whitespaces with length $n
+macro_rules! whites {
+    ($n:expr) => {{
+        vec![" "; $n.to_owned()].join("")
+    }};
+}
+
 /// State of conclusion.
 #[derive(Debug, Clone, Copy)]
 pub enum Finish {
@@ -488,12 +495,21 @@ Icecream truck"#
             BandAid::Replacement(
                 (2_usize, 27..36).try_into().unwrap(),
                 "comments with".to_owned(),
+                CommentVariant::TripleSlash,
+                0_usize,
             ),
             BandAid::Replacement(
                 (3_usize, 0..17).try_into().unwrap(),
-                "/// different multiple".to_owned(),
+                " different multiple".to_owned(),
+                CommentVariant::TripleSlash,
+                0_usize,
             ),
-            BandAid::Replacement((3_usize, 18..23).try_into().unwrap(), "words".to_owned()),
+            BandAid::Replacement(
+                (3_usize, 18..23).try_into().unwrap(),
+                "words".to_owned(),
+                CommentVariant::TripleSlash,
+                0_usize,
+            ),
         ];
         verify_correction!(
             "
@@ -518,6 +534,8 @@ Icecream truck"#
             BandAid::Replacement(
                 (2_usize, 27..36).try_into().unwrap(),
                 "comments with multiple words".to_owned(),
+                CommentVariant::TripleSlash,
+                0,
             ),
             BandAid::Deletion((3_usize, 0..17).try_into().unwrap()),
         ];
@@ -539,14 +557,17 @@ Icecream truck"#
             BandAid::Replacement(
                 (2_usize, 27..36).try_into().unwrap(),
                 "comments with multiple words".to_owned(),
+                CommentVariant::TripleSlash,
+                0,
             ),
             BandAid::Injection(
                 LineColumn {
                     line: 3_usize,
                     column: 0,
                 },
-                "but still more content".to_owned(),
-                CommentVariant::TripleSlash
+                " but still more content".to_owned(),
+                CommentVariant::TripleSlash,
+                0,
             ),
         ];
         verify_correction!(

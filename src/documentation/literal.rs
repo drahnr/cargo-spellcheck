@@ -14,8 +14,8 @@ pub enum CommentVariant {
     TripleSlash,
     /// `//!`
     DoubleSlashEM,
-    /// `#[doc=`
-    MacroDocEq,
+    /// `#[doc=` with the length of possible `r#`s
+    MacroDocEq(usize),
     /// Commonmark File
     CommonMark,
     /// Unknown Variant
@@ -31,9 +31,17 @@ impl Default for CommentVariant {
 impl ToString for CommentVariant {
     fn to_string(&self) -> String {
         match self {
-            CommentVariant::TripleSlash => "/// ".into(),
-            CommentVariant::DoubleSlashEM => "//! ".into(),
-            CommentVariant::MacroDocEq => "".into(),
+            CommentVariant::TripleSlash => "///".into(),
+            CommentVariant::DoubleSlashEM => "//!".into(),
+            CommentVariant::MacroDocEq(p) => {
+                let raw = match p {
+                    0 => "".to_string(),
+                    1 => "r".to_string(),
+                    x => "r".to_string() + &vec!["#"; x - 1].join(""),
+                };
+                let p = r#"#[ doc = "#.to_string() + &raw + "\"";
+                p
+            }
             _ => "".into(),
         }
     }
@@ -43,13 +51,20 @@ impl CommentVariant {
     /// Return legnth of comment prefix for each variant
     pub fn prefix(&self) -> usize {
         match self {
-            CommentVariant::TripleSlash | CommentVariant::DoubleSlashEM => 4,
-            CommentVariant::MacroDocEq => 0,
+            CommentVariant::TripleSlash | CommentVariant::DoubleSlashEM => 3,
+            CommentVariant::MacroDocEq(p) => *p,
+            _ => 0,
+        }
+    }
+
+    /// Return sufix of different comment variants
+    pub fn suffix(&self) -> usize {
+        match self {
+            CommentVariant::MacroDocEq(p) => 2 + p,
             _ => 0,
         }
     }
 }
-
 
 /// A literal with meta info where the first and list whitespace may be found.
 #[derive(Clone)]
@@ -201,7 +216,7 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
             span.start.column += pre;
             span.end.column = span.end.column.saturating_sub(post);
 
-            (CommentVariant::MacroDocEq, span, pre, post)
+            (CommentVariant::MacroDocEq(pre - 1), span, pre, post)
         };
 
         let len_in_chars = rendered_len.saturating_sub(post + pre);
@@ -458,6 +473,8 @@ pub(crate) mod tests {
         extracted_span: Span,
         /// trimmed span, so it is aligned with the proper doc comment
         trimmed_span: Span,
+        /// expected variant
+        variant: CommentVariant,
     }
 
     const TEST_DATA: &[Triplet] = &[
@@ -489,6 +506,7 @@ struct One;
                     column: 10usize,
                 },
             },
+            variant: CommentVariant::TripleSlash,
         },
         // 1
         Triplet {
@@ -518,6 +536,7 @@ struct Meanie;
                     column: 0usize + 12,
                 },
             },
+            variant: CommentVariant::TripleSlash,
         },
         // 2
         Triplet {
@@ -547,6 +566,7 @@ struct Two;
                     column: 6usize + 9,
                 },
             },
+            variant: CommentVariant::MacroDocEq(0),
         },
         // 3
         Triplet {
@@ -576,6 +596,7 @@ struct Three;
                     column: 13usize + 8,
                 },
             },
+            variant: CommentVariant::MacroDocEq(2),
         },
         // 4
         Triplet {
@@ -617,6 +638,7 @@ lines
                     column: 0usize,
                 },
             },
+            variant: CommentVariant::MacroDocEq(3),
         },
         // 5
         Triplet {
@@ -646,6 +668,7 @@ struct Five;
                     column: 15usize + 2,
                 },
             },
+            variant: CommentVariant::MacroDocEq(0),
         },
         // 6
         Triplet {
@@ -679,6 +702,7 @@ struct Five;
                     column: 92usize,
                 },
             },
+            variant: CommentVariant::TripleSlash,
         },
         // 7
         Triplet {
@@ -712,6 +736,7 @@ fn unicode(&self) -> bool {
                     column: 28usize,
                 },
             },
+            variant: CommentVariant::TripleSlash,
         },
         // 8
         Triplet {
@@ -756,6 +781,7 @@ fn unicode(&self) -> bool {
                     column: 0usize,
                 },
             },
+            variant: CommentVariant::MacroDocEq(3),
         },
     ];
 
@@ -781,6 +807,8 @@ fn unicode(&self) -> bool {
         assert_eq!(excerpt, expected_excerpt);
 
         assert_eq!(literal.span(), triplet.trimmed_span);
+
+        assert_eq!(literal.variant(), triplet.variant);
     }
 
     #[test]

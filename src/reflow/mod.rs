@@ -8,7 +8,9 @@ use anyhow::Result;
 use crate::checker::Checker;
 use crate::documentation::{CheckableChunk, Documentation};
 
-use crate::{CommentVariant, ContentOrigin, Detector, Range, Span, Suggestion, SuggestionSet};
+use crate::{
+    CommentVariant, ContentOrigin, Detector, Range, Replacement, Span, Suggestion, SuggestionSet,
+};
 
 use indexmap::IndexMap;
 
@@ -19,13 +21,6 @@ pub use config::ReflowConfig;
 
 mod iter;
 pub use iter::{Gluon, Tokeneer};
-
-/// Generate a string of whitespaces with length $n
-macro_rules! whites {
-    ($n:expr) => {{
-        vec![" "; $n].join("")
-    }};
-}
 
 #[derive(Debug)]
 pub struct Reflow;
@@ -58,77 +53,64 @@ fn reflow_inner<'s>(
     s: &'s str,
     range: Range,
     unbreakable_ranges: &[Range],
-    indentations: &[usize],
+    indentations: Vec<usize>,
     max_line_width: usize,
     variant: CommentVariant,
-) -> Option<String> {
+) -> Option<Replacement> {
     // make string and unbreakable ranges absolute
     let s_absolute = &s[range.clone()];
     let unbreakables = unbreakable_ranges
         .iter()
         .map(|r| (r.start - range.start)..(r.end - range.start));
 
-    let mut gluon = Gluon::new(s_absolute, max_line_width, indentations);
+    let mut gluon = Gluon::new(s_absolute, max_line_width, &indentations);
     gluon.add_unbreakables(unbreakables);
-
-    // vector of prefix for all lines
-    let prefix: Vec<String> = match variant {
-        CommentVariant::CommonMark | CommentVariant::MacroDocEq => {
-            // first indent is 0
-            let mut first: Vec<String> = vec!["".to_owned()];
-            let pre: Vec<String> = indentations.iter().map(|i| whites!(*i) + &variant.to_string()).collect();
-            first.extend(pre);
-            first
-        }
-        CommentVariant::TripleSlash => {
-            // first indent is 1, afterwards we have origin indent + comment style
-            let mut first: Vec<String> = vec![" ".to_owned()];
-            let pre: Vec<String> = indentations
-                .iter()
-                .map(|i| whites!(i - 3) + &variant.to_string())
-                .collect();
-            first.extend(pre);
-            first
-        }
-        CommentVariant::DoubleSlashEM => {
-            // first indent is 1, afterwards we have origin indent + comment style
-            let mut first: Vec<String> = vec![" ".to_owned()];
-            let pre: Vec<String> = indentations
-                .iter()
-                .map(|i| whites!(i - 3) + &variant.to_string())
-                .collect();
-            first.extend(pre);
-            first
-        }
-        CommentVariant::Unknown => return None,
-    };
 
     let mut reflow_applied = false;
     let mut lines = s_absolute.lines();
-    let mut pre = prefix.iter();
 
     // construct replacement string from prefix and Gluon iterations
     let acc = gluon.fold(String::new(), |mut acc, (_, content, _)| {
         if lines.next() != Some(&content) {
             reflow_applied = true;
         }
-        // the current indentation, if there are more lines than before, we use the indent from the last one
-        let pref = if let Some(p) = pre.next() {
-            p
-        } else {
-            prefix.last().unwrap()
-        };
-        acc.push_str(pref);
+        if variant == CommentVariant::TripleSlash || variant == CommentVariant::DoubleSlashEM {
+            // slash comments always need a leading whitespace in reflow, it's not covered
+            // by the gluon
+            // TODO: at some point Gluon covered it, but I don;t know why
+            acc.push_str(" ");
+        }
+
         acc.push_str(&content);
         acc.push_str("\n");
         acc
     });
 
     // iterations above add a newline at the end, we have to remove it
-    let replacement = acc.trim_end_matches("\n").to_string();
+    let content = acc.trim_end_matches("\n").to_string();
+    // Get the indentations
+    let diff = content.lines().count() as i64 - indentations.len() as i64;
+    let indentation = if diff < 0 {
+        indentations[..content.lines().count()].to_vec()
+    } else if diff > 0 {
+        let last = indentations.clone();
+        let res = [
+            indentations,
+            vec![*last.last().expect("Must contain one indentation"); diff as usize],
+        ]
+        .concat();
+        res
+    } else {
+        indentations
+    };
+
+    let indentation = indentation.iter().map(|i| i - variant.prefix()).collect();
 
     if reflow_applied {
-        Some(replacement)
+        Some(Replacement {
+            content,
+            indentation,
+        })
     } else {
         None
     }
@@ -175,7 +157,7 @@ fn store_suggestion<'s>(
         chunk.as_str(),
         range.clone(),
         unbreakable_ranges,
-        &indentations,
+        indentations,
         max_line_width,
         chunk.variant(),
     ) {
@@ -184,9 +166,9 @@ fn store_suggestion<'s>(
             detector: Detector::Reflow,
             origin: origin.clone(),
             description: None,
-            range: range,
+            range,
             replacements: vec![replacement],
-            span: span,
+            span,
         })
     }
 
@@ -330,13 +312,14 @@ mod tests {
                 chunk.as_str(),
                 range,
                 &unbreakables,
-                &indentation,
+                indentation,
                 $n,
                 chunk.variant()
             );
 
             if let Some(repl) = replacement {
-                assert_eq!(repl, $expected);
+                // TODO: check indentation
+                assert_eq!(repl.content, $expected);
             } else {
                 for line in CONTENT.lines() {
                     assert!(line.len() < $n);
@@ -357,9 +340,9 @@ test our rewrapping algorithm. With emojis: 🚤w🌴x🌋y🍈z🍉0",
         "Smart, isn't it? Lorem ipsum and some more \
         blanket text without any meaning"] =>
         r#" This module contains documentation that is too long for one line and
-/// moreover, it spans over mulitple lines such that we can test our rewrapping
-/// algorithm. With emojis: 🚤w🌴x🌋y🍈z🍉0 Smart, isn't it? Lorem ipsum and some more
-/// blanket text without any meaning"#);
+ moreover, it spans over mulitple lines such that we can test our rewrapping
+ algorithm. With emojis: 🚤w🌴x🌋y🍈z🍉0 Smart, isn't it? Lorem ipsum and some more
+ blanket text without any meaning"#);
     }
 
     #[test]
@@ -370,15 +353,15 @@ test our rewrapping algorithm. With emojis: 🚤w🌴x🌋y🍈z🍉0",
             verify_reflow_inner!(39 break ["This module contains documentation",
                 "which is split in two lines"] =>
                 r#" This module contains documentation
-/// which is split in two lines"#);
+ which is split in two lines"#);
         }
     }
 
     macro_rules! reflow {
-        ([ $( $line:literal ),+ $(,)?] => $expected:literal, $no_reflow:expr) => {
-            reflow!(80usize break [ $( $line ),+ ] => $expected, $no_reflow:expr);
+        ([ $( $line:literal ),+ $(,)?] => $expected:literal, $no_reflow:expr, $indentation:expr) => {
+            reflow!(80usize break [ $( $line ),+ ] => $expected, $no_reflow:expr, $indentation);
         };
-        ($n:literal break [ $( $line:literal ),+ $(,)?] => $expected:literal, $no_reflow:expr) => {
+        ($n:literal break [ $( $line:literal ),+ $(,)?] => $expected:literal, $no_reflow:expr, $indentation:expr) => {
             const CONTENT:&'static str = fluff_up!($( $line ),+);
             let docs = Documentation::from((ContentOrigin::TestEntityRust, CONTENT));
             assert_eq!(docs.entry_count(), 1);
@@ -400,19 +383,20 @@ test our rewrapping algorithm. With emojis: 🚤w🌴x🌋y🍈z🍉0",
                     .expect("Contains one suggestion. qed");
 
                     let replacement = suggestions.replacements.iter().next().expect("There exists a replacement. qed");
-                    assert_eq!(replacement.as_str(), $expected);
+                    assert_eq!(replacement.content.as_str(), $expected);
+                    assert_eq!(replacement.indentation, $indentation);
             }
         };
-        ($line:literal => $expected:literal, $no_reflow:expr) => {
-            reflow!([$line] => $expected, $no_reflow:expr);
+        ($line:literal => $expected:literal, $no_reflow:expr, $indentation:expr) => {
+            reflow!([$line] => $expected, $no_reflow:expr, $indentation);
         };
     }
 
     macro_rules! reflow_chyrp {
-        ([ $( $line:literal ),+ $(,)?] => $expected:literal, $no_reflow:expr) => {
-            reflow_chyrp!(80usize break [ $( $line ),+ ] => $expected, $no_reflow:expr);
+        ([ $( $line:literal ),+ $(,)?] => $expected:literal, $no_reflow:expr, $indent:expr) => {
+            reflow_chyrp!(80usize break [ $( $line ),+ ] => $expected, $no_reflow:expr, $indent:expr);
         };
-        ($n:literal break [ $( $line:literal ),+ $(,)?] => $expected:literal, $no_reflow:expr) => {
+        ($n:literal break [ $( $line:literal ),+ $(,)?] => $expected:literal, $no_reflow:expr, $indent:expr) => {
             const CONTENT:&'static str = chyrp_up!($( $line ),+);
             let docs = Documentation::from((ContentOrigin::TestEntityRust, dbg!(CONTENT)));
             assert_eq!(docs.entry_count(), 1);
@@ -434,11 +418,12 @@ test our rewrapping algorithm. With emojis: 🚤w🌴x🌋y🍈z🍉0",
                     .expect("Contains one suggestion. qed");
 
                     let replacement = suggestions.replacements.iter().next().expect("There exists a replacement. qed");
-                    assert_eq!(replacement.as_str(), $expected);
+                    assert_eq!(replacement.content.as_str(), $expected);
+                    assert_eq!(replacement.indentation, $indent);
             }
         };
-        ($line:literal => $expected:literal, $no_reflow:expr) => {
-            reflow_chyrp!([$line] => $expected, $no_reflow:expr);
+        ($line:literal => $expected:literal, $no_reflow:expr, $indent:expr) => {
+            reflow_chyrp!([$line] => $expected, $no_reflow:expr, $indent:expr);
         };
     }
 
@@ -455,20 +440,20 @@ there are two consecutive newlines \
 in one connected documentation span."] =>
 
 r#" This module contains documentation thats
-/// is too long for one line and moreover, it
-/// spans over mulitple lines such that we
-/// can test our rewrapping algorithm. Smart,
-/// isn't it? Lorem ipsum and some more
-/// blanket text without any meaning. But
-/// lets also see what happens if there are
-/// two consecutive newlines in one connected
-/// documentation span."#, false);
+ is too long for one line and moreover, it
+ spans over mulitple lines such that we
+ can test our rewrapping algorithm. Smart,
+ isn't it? Lorem ipsum and some more
+ blanket text without any meaning. But
+ lets also see what happens if there are
+ two consecutive newlines in one connected
+ documentation span."#, false, vec![0; 9]);
     }
 
     #[test]
     fn reflow_shorter_than_limit() {
         reflow!(80 break ["This module contains documentation that is ok for one line"] =>
-                "", true);
+                "", true, vec![0; 1]);
     }
 
     #[test]
@@ -476,8 +461,8 @@ r#" This module contains documentation thats
         reflow!(43 break ["This module contains documentation that is broken",
                           "into multiple short lines resulting in multiple spans."] =>
                 r#" This module contains documentation that
-/// is broken into multiple short lines
-/// resulting in multiple spans."#, false);
+ is broken into multiple short lines
+ resulting in multiple spans."#, false, vec![0; 3]);
     }
     #[test]
     fn reflow_indentations() {
@@ -487,8 +472,10 @@ r#" This module contains documentation thats
     struct Fluffy {};"#;
 
         const EXPECTED: &'static str = r#" A comment with indentation
-    /// that spans over two lines
-    /// and should be rewrapped."#;
+ that spans over two lines
+ and should be rewrapped."#;
+
+        const INDENTS: [usize; 3] = [4, 4, 4];
 
         let docs = Documentation::from((ContentOrigin::TestEntityRust, CONTENT));
         assert_eq!(docs.entry_count(), 1);
@@ -514,7 +501,8 @@ r#" This module contains documentation thats
             .iter()
             .next()
             .expect("There is a replacement. qed");
-        assert_eq!(replacement.as_str(), EXPECTED);
+        assert_eq!(replacement.content.as_str(), EXPECTED);
+        assert_eq!(replacement.indentation, INDENTS);
     }
 
     #[test]
@@ -526,8 +514,10 @@ r#" This module contains documentation thats
     struct Fluffy {};"##;
 
         const EXPECTED: &'static str = r#"A comment with indentation
-               that spans over two lines and
-               should be rewrapped."#;
+that spans over two lines and
+should be rewrapped."#;
+
+        const INDENT: [usize; 3] = [13, 13, 13];
 
         let docs = Documentation::from((ContentOrigin::TestEntityRust, CONTENT));
         assert_eq!(docs.entry_count(), 1);
@@ -553,7 +543,8 @@ r#" This module contains documentation thats
             .iter()
             .next()
             .expect("There is a replacement. qed");
-        assert_eq!(replacement.as_str(), EXPECTED);
+        assert_eq!(replacement.content.as_str(), EXPECTED);
+        assert_eq!(replacement.indentation, INDENT);
     }
 
     #[test]
@@ -561,21 +552,21 @@ r#" This module contains documentation thats
         reflow!(60 break ["Possible **ways** to run __rustc__ and request various parts of LTO.",
                           " `markdown` syntax which leads to __unbreakables__?  With emojis: 🚤w🌴x🌋y🍈z🍉0."] =>
             r#" Possible **ways** to run __rustc__ and request various
-/// parts of LTO. `markdown` syntax which leads to
-/// __unbreakables__? With emojis: 🚤w🌴x🌋y🍈z🍉0."#, false);
+ parts of LTO. `markdown` syntax which leads to
+ __unbreakables__? With emojis: 🚤w🌴x🌋y🍈z🍉0."#, false, vec![0; 3]);
     }
 
     #[test]
     fn reflow_two_paragraphs_not_required() {
         reflow!(80 break ["A short paragraph followed by another one.", "", "Surprise, we have another parapgrah."]
-                => "", true);
+                => "", true, vec![0; 3]);
     }
 
     #[test]
     fn reflow_two_short_lines() {
         reflow!(70 break ["A short paragraph followed by two lines.", "Surprise, we have more lines here."]
                 => " A short paragraph followed by two lines. Surprise, we have more
-/// lines here.", false);
+ lines here.", false, vec![0; 2]);
     }
 
     #[test]
@@ -587,9 +578,9 @@ r#" This module contains documentation thats
 
         let expected = vec![
             r#" Possible __ways__ to run __rustc__ and request various
-/// parts of LTO."#,
+ parts of LTO."#,
             r#" Some more text after the newline which **represents** a
-/// paragraph"#,
+ paragraph"#,
         ];
 
         let _ = env_logger::Builder::new()
@@ -620,7 +611,11 @@ r#" This module contains documentation thats
                 .next()
                 .expect("An replacement exists. qed");
 
-            assert_eq!(replacement.as_str(), expected);
+            assert_eq!(replacement.content.as_str(), expected);
+            assert_eq!(
+                replacement.indentation,
+                vec![0; replacement.content.lines().count()]
+            );
         }
     }
 
@@ -634,7 +629,7 @@ With a second part that is fine"#
 
         let expected = vec![
             r#"A long comment that spans over two
-         lines."#,
+lines."#,
             r#"With a second part that is fine"#,
         ];
 
@@ -660,19 +655,23 @@ With a second part that is fine"#
                 .iter()
                 .next()
                 .expect("An replacement exists. qed");
-            assert_eq!(replacement.as_str(), expect);
+            assert_eq!(replacement.content.as_str(), expect);
+            assert_eq!(
+                replacement.indentation,
+                vec![7; replacement.content.lines().count()]
+            );
         }
     }
 
     #[test]
     fn reflow_doc_short() {
-        reflow_chyrp!(40 break ["a", "b", "c"] => r#"a b c"#, false);
+        reflow_chyrp!(40 break ["a", "b", "c"] => r#"a b c"#, false, vec![7]);
     }
 
     #[test]
     fn reflow_doc_indent_middle() {
         reflow_chyrp!(28 break ["First line", "     Second line", "         third line"]
             => r#"First line Second
-         line third line"#, false);
+line third line"#, false, vec![7, 7]);
     }
 }

@@ -247,6 +247,13 @@ fn obtain_suggestions<'s>(
             return;
         }
         for (range, span) in plain.find_spans(range.clone()) {
+            let replacements = replacements
+                .iter()
+                .map(|content| crate::Replacement {
+                    content: content.into(),
+                    indentation: vec![0],
+                })
+                .collect();
             acc.add(
                 origin.clone(),
                 Suggestion {
@@ -254,7 +261,7 @@ fn obtain_suggestions<'s>(
                     range,
                     span,
                     origin: origin.clone(),
-                    replacements: replacements.clone(),
+                    replacements,
                     chunk,
                     description: Some("Possible spelling mistake found.".to_owned()),
                 },
