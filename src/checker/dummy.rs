@@ -42,7 +42,10 @@ impl Checker for DummyChecker {
                             range,
                             chunk.display(range.clone())
                         );
-                        let replacements = vec![format!("replacement_{}", index)];
+                        let replacements = vec![crate::Replacement {
+                            content: format!("replacement_{}", index),
+                            indentation: vec![index],
+                        }];
                         let suggestion = Suggestion {
                             detector,
                             span,
