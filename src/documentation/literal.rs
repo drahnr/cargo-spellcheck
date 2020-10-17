@@ -38,7 +38,7 @@ impl ToString for CommentVariant {
                     // TODO: make configureable if each line will start with #[doc ="
                     0 => "".to_string(),
                     1 => "r".to_string(),
-                    x => "r".to_string() + &vec!["#"; x - 1].join(""),
+                    x => "r".to_string() + &"#".repeat(x-1),
                 };
                 let p = r#"#[ doc = "#.to_string() + &raw + "\"";
                 p
@@ -71,7 +71,7 @@ impl CommentVariant {
         if let CommentVariant::MacroDocEq(p) = self {
             match p {
                 0 | 1 => r#""]"#.to_string(),
-                n => r#"""#.to_string() + &vec!["#"; n - 1].join("") + "]",
+                n => r#"""#.to_string() + &"#".repeat(n - 1) + "]",
             }
         } else {
             "".to_string()
