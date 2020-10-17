@@ -292,7 +292,8 @@ mod tests {
                 .map(::std::borrow::ToOwned::to_owned)
                 .enumerate()
                 .map(|(lineno, content)| (lineno + 1, content));
-            correct_lines($bandaids.into_iter(), lines, &mut sink).expect("Line correction must work in unit test!");
+            correct_lines($bandaids.into_iter(), lines, &mut sink)
+                .expect("Line correction must work in unit test!");
 
             assert_eq!(String::from_utf8_lossy(sink.as_slice()), $expected);
         };

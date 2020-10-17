@@ -292,22 +292,24 @@ impl CheckableChunk {
         acc
     }
 
-    /// Extract the overall length of all covered lines as they appear in the origin
+    /// Extract the overall length of all covered lines as they appear in the origin.
     pub fn extract_line_lengths(&self) -> Result<Vec<usize>> {
         let line_ranges = self.find_covered_lines(0..self.len_in_chars());
-        let lengths = line_ranges.iter().try_fold(Vec::new(), |mut acc, line_range| {
-            let spans = self.find_spans(line_range.clone());
-            if let Some(span) = spans.get(line_range) {
-                acc.push(span.start.column + line_range.len());
-                Ok(acc)
-            } else if let Some(span) = dbg!(&self.source_mapping).get(dbg!(line_range)) {
-                // if the span was not found, it should still be in the whole source mapping
-                acc.push(span.start.column + line_range.len());
-                Ok(acc)
-            } else {
-                anyhow::bail!("BUG: Found a range which does not cover its own chunk")
-            }
-        })?;
+        let lengths = line_ranges
+            .iter()
+            .try_fold(Vec::new(), |mut acc, line_range| {
+                let spans = self.find_spans(line_range.clone());
+                if let Some(span) = spans.get(line_range) {
+                    acc.push(span.start.column + line_range.len());
+                    Ok(acc)
+                } else if let Some(span) = self.source_mapping.get(line_range) {
+                    // if the span was not found, it should still be in the whole source mapping
+                    acc.push(span.start.column + line_range.len());
+                    Ok(acc)
+                } else {
+                    anyhow::bail!("BUG: Found a range {}..{} which that does not exist in its own source mapping: {:?}", line_range.start, line_range.end, &self.source_mapping)
+                }
+            })?;
 
         Ok(lengths)
     }
