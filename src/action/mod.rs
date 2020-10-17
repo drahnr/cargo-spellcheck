@@ -5,7 +5,7 @@ use anyhow::{anyhow, Result};
 use log::{debug, trace};
 use std::convert::TryInto;
 use std::fs::{self, OpenOptions};
-use std::io::{BufRead, Write};
+use std::io::{BufRead, Read, Write};
 
 use std::path::PathBuf;
 
@@ -38,160 +38,143 @@ impl Finish {
     }
 }
 
+
+/// A patch to be stitched ontop of another string.
+///
+/// Has intentionally no awareness of any rust or cmark/markdown semantics.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub(crate) enum Patch
+{
+    /// Replace the area spanned by `replace` with `replacement`.
+    /// Since `Span` is inclusive, `Replace` always will replace a character in the original sources.
+    Replace{ replace_span: Span, replacement: String},
+    /// Location where to insert.
+    Insert{ insert_at: LineColumn, content: String},
+}
+
+
+impl<'a> From<&'a BandAid> for Patch {
+    fn from(bandaid: &'a BandAid) -> Self {
+        // TODO XXX
+        Self::from(bandaid.clone())
+    }
+}
+
+impl From<BandAid> for Patch {
+    fn from(bandaid: BandAid) -> Self {
+        // TODO XXX this conversion is probably too simplistic
+        match bandaid {
+            BandAid::Deletion(span) => Self::Replace { replace_span: span.clone(), replacement: String::new() },
+            BandAid::Injection(linecol, content, _comment_variant, _) => Self::Insert { insert_at: linecol, content: content.to_owned() },
+            BandAid::Replacement(span, content, _comment_variant, _) => Self::Replace { replace_span: span.clone(), replacement: content.to_owned() },
+        }
+    }
+}
+
 /// Correct all lines by applying bandaids.
+///
+/// Assumes all `BandAids` do not overlap when replacing.
+/// Inserting multiple times at a particular `LineColumn` is ok,
+/// but replacing overlapping `Span`s of the original source is not.
+///
+/// This function is not concerend with _any_ semantics or comments or
+/// whatsoever at all.
 ///
 /// Note that with the current implementation trailing newlines are NOT
 /// preserved.
 ///
 /// [https://github.com/drahnr/cargo-spellcheck/issues/116](Tracking issue).
-fn correct_lines<'s>(
-    mut bandaids: impl Iterator<Item = BandAid>,
-    source: impl Iterator<Item = (usize, String)>,
+fn correct_lines<'s, II, I>(
+    patches: II,
+    source_buffer: String,
     mut sink: impl Write,
-) -> Result<()> {
-    let mut injection_first = true;
-    let mut injection_previous = false;
+) -> Result<()>
+where
+    II: IntoIterator<IntoIter=I, Item=Patch>,
+    I: Iterator<Item = Patch>,
+{
+    let patches = patches.into_iter();
+    let mut patches = patches.peekable();
 
-    let mut nxt: Option<BandAid> = bandaids.next();
-    for (line_number, content) in source {
-        trace!("Processing line {}", line_number);
-        let mut remainder_column = 0_usize;
-        // let content: String = content.map_err(|e| {
-        //     anyhow!("Line {} contains invalid utf8 characters", line_number).context(e)
-        // })?;
+    let mut source_iter = iter_with_line_column_from(source_buffer.as_str(), LineColumn {
+        line: 1,
+        column: 0,
+    }).peekable();
 
-        if nxt.is_none() {
-            // no candidates remaining, just keep going
-            sink.write(content.as_bytes())?;
-            sink.write("\n".as_bytes())?;
-            injection_first = true;
-            continue;
-        }
+    let mut current = None;
+    let mut byte_cursor = 0usize;
+    loop {
 
-        // If there is no bandaid for this line, write original content
-        // and keep going
-        if let Some(ref bandaid) = nxt {
-            if !bandaid.covers_line(line_number) {
-                sink.write(content.as_bytes())?;
-                sink.write("\n".as_bytes())?;
-                injection_first = true;
-                continue;
-            }
-        }
-
-        let content_len = content.chars().count();
-        let mut drop_entire_line = false;
-        while let Some(bandaid) = nxt.take() {
-            trace!("Applying next bandaid {:?}", bandaid);
-            trace!("where line {} is: >{}<", line_number, content);
-            let (range, replacement) = match &bandaid {
-                BandAid::Replacement(span, repl, variant, indent) => {
-                    drop_entire_line = false;
-                    injection_first = true;
-                    let indentation = " ".repeat(*indent);
-                    let range: Range = span
-                        .try_into()
-                        .expect("Bandaid::Replacement must be single-line. qed");
-                    // FIXME why and how, this is a hack!! XXX
-                    if range.start == 0 {
-                        (range, indentation + &variant.prefix_string() + repl)
-                    } else {
-                        (range, repl.to_owned())
-                    }
-                }
-                BandAid::Injection(location, repl, variant, indent) => {
-                    drop_entire_line = false;
-                    let indentation = " ".repeat(*indent);
-                    let connector = format!(
-                        "{suffix}\n{indentation}{prefix}",
-                        suffix = variant.suffix_string(),
-                        indentation = indentation,
-                        prefix = variant.prefix_string()
-                    );
-                    // for N insertion lines we need to inject N+1, so always add one trailing, and for the first line
-                    // inserted at a particular point add a leading too
-                    injection_previous = injection_first;
-                    let extra = if injection_first {
-                        injection_first = false;
-                        connector.as_str()
-                    } else {
-                        ""
-                    };
-                    let range = location.column..location.column;
-                    (
-                        range,
-                        format!(
-                            "{extra}{repl}{connector}",
-                            repl = repl,
-                            connector = connector,
-                            extra = extra
-                        ),
-                    )
-                }
-                BandAid::Deletion(span) => {
-                    injection_first = true;
-                    let range: Range = span
-                        .try_into()
-                        .expect("Bandaid::Deletion must be single-line. qed");
-                    // TODO: maybe it's better to already have the correct range in the bandaid
-                    drop_entire_line = range.end >= content_len;
-                    (range.start..range.end, "".to_owned())
-                }
+        let cc_from_byteoffset = if let Some(ref current) = current {
+            let (cc_start, data) = match current {
+                Patch::Replace{ replace_span, replacement} => {
+                    (replace_span.end, replacement.as_str())
+                },
+                Patch::Insert{ insert_at, content} => {
+                    (insert_at.clone(), content.as_str())
+                },
             };
 
-            // write the untouched part for the current line since the previous replacement
-            // (or start of the file if there was not previous one)
-            if range.start > remainder_column {
-                let intermezzo: Range = remainder_column..range.start;
-                // FIXME TODO
-                // The assumption here is we are injecting injections right BEFORE the \n
-                // at the very end of the previous line
-                // but this could screw up royally once we track the existing newline characters (plural!)
-                injection_first = intermezzo.len() > 0;
-                sink.write(dbg!(util::sub_chars(&content, intermezzo)).as_bytes())?;
+            sink.write(data.as_bytes())?;
+
+            // skip
+            let mut cc_start_byte_offset = byte_cursor;
+            'skip: while let Some((_c, byte_offset, _idx, linecol)) = source_iter.next() {
+                cc_start_byte_offset = byte_offset;
+                if linecol >= cc_start {
+                    break 'skip;
+                }
             }
+            cc_start_byte_offset
+        } else {
+            byte_cursor
+        };
+        debug_assert!(byte_cursor <= cc_from_byteoffset);
+        byte_cursor = cc_from_byteoffset;
 
-            // write the replacement chunk
-            sink.write(replacement.as_bytes())?;
-
-            remainder_column = range.end;
-            nxt = bandaids.next();
-            let complete_current_line = if let Some(ref bandaid) = nxt {
-                // if `nxt` is also targeting the current line, don't complete the line
-                !bandaid.covers_line(line_number)
-            } else {
-                // no more bandaids, complete the current line for sure
-                true
+        
+        let cc_to_byteoffset = if let Some(upcoming) = patches.peek() {
+            let cc_end = match upcoming {
+                Patch::Replace{ replace_span, ..} => {
+                    replace_span.start
+                },
+                Patch::Insert{ insert_at, ..} => {
+                    insert_at.clone()
+                },
             };
-            if complete_current_line {
-                // the last replacement may be the end of content
-                if remainder_column < content_len {
-                    debug!(
-                        "line {} len is {}, and remainder column is {}",
-                        line_number, content_len, remainder_column
-                    );
-                    // otherwise write all
-                    // not that this also covers writing a line without any suggestions
-                    sink.write(
-                        util::sub_chars(&content, remainder_column..content_len).as_bytes(),
-                    )?;
-                } else {
-                    debug!(
-                        "line {} len is {}, and remainder column is {}",
-                        line_number, content_len, remainder_column
-                    );
-                }
 
-                if !injection_previous && !drop_entire_line {
-                    sink.write("\n".as_bytes())?;
+            // do not write anythin
+
+            // carbon copy until this byte offset
+            let mut cc_end_byte_offset = byte_cursor;
+            'cc: while let Some((_c, byte_offset, _idx, linecol)) = source_iter.next() {
+                if linecol >= cc_end {
+                    break 'cc;
                 }
-                // break the inner loop
-                break;
-                // } else {
-                // next suggestion covers same line
+                // we need to drag this one behind, since...
+                cc_end_byte_offset = byte_offset;
             }
+            // in the case we reach EOF here the `cc_end_byte_offset` could never be updated correctly
+            std::cmp::min(cc_end_byte_offset + 1, source_buffer.len())
+        } else {
+            source_buffer.len()
+        };
+        debug_assert!(byte_cursor <= cc_to_byteoffset);
+
+        byte_cursor = cc_to_byteoffset;
+
+        let cc_range = cc_from_byteoffset..cc_to_byteoffset;
+        sink.write(&source_buffer[cc_range].as_bytes())?;
+
+        // move on to the next
+        current = patches.next();
+
+        if current.is_none() {
+            // we already made sure earlier to write out everything
+            break;
         }
     }
+
     Ok(())
 }
 
@@ -260,13 +243,12 @@ impl Action {
 
         let mut writer = std::io::BufWriter::with_capacity(1024, wr);
 
+        let mut content = String::with_capacity(2e6 as usize);
+        reader.get_mut().read_to_string(&mut content)?;
+
         correct_lines(
-            bandaids.into_iter(),
-            (&mut reader)
-                .lines()
-                .filter_map(Result::ok)
-                .enumerate()
-                .map(|(lineno, content)| (lineno + 1, content)),
+            bandaids.into_iter().map(|x| Patch::from(x)),
+            content, // FIXME for efficiency, correct_lines should integrate with `BufRead` instead of a `String` buffer
             &mut writer,
         )?;
 
@@ -331,19 +313,55 @@ mod tests {
     macro_rules! verify_correction {
         ($text:literal, $bandaids:expr, $expected:literal) => {
             let mut sink: Vec<u8> = Vec::with_capacity(1024);
-            let lines = $text
-                .lines()
-                .map(::std::borrow::ToOwned::to_owned)
-                .enumerate()
-                .map(|(lineno, content)| (lineno + 1, content));
 
-            correct_lines($bandaids.into_iter(), lines, &mut sink)
+            correct_lines($bandaids.into_iter().map(|bandaid| Patch::from(bandaid)), $text.to_owned(), &mut sink)
                 .expect("Line correction must work in unit test!");
 
             assert_eq!(String::from_utf8_lossy(sink.as_slice()), $expected);
         };
     }
 
+
+    #[test]
+    fn plain() {
+        let _ = env_logger::Builder::new()
+            .filter(None, log::LevelFilter::Trace)
+            .is_test(true)
+            .try_init();
+
+            let patches = vec![
+                Patch::Replace{
+                    replace_span: Span {
+                        start: LineColumn {
+                            line: 1,
+                            column: 6,
+                        },
+                        end: LineColumn {
+                            line: 2,
+                            column: 13,
+                        },
+                    },
+                    replacement: "& Omega".to_owned()
+                },
+                Patch::Insert{
+                    insert_at: LineColumn {
+                        line: 3,
+                        column: 0,
+                    },
+                    content: "\nIcecream truck".to_owned()
+                },
+            ];
+            verify_correction!(
+                r#"Alpha beta gamma
+zeta eta beta.
+"#,
+                patches,
+                r#"Alpha & Omega.
+
+Icecream truck"#
+            );
+
+    }
     #[test]
     fn replace_unicorns() {
         let _ = env_logger::Builder::new()

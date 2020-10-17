@@ -208,7 +208,7 @@ fn extract_sub_range_from_span(
     // relative to the range given / offset
     let mut start = 0usize;
     let mut end = 0usize;
-    for (_c, idx, LineColumn { line, column }) in
+    for (_c, _byte_offset, idx, LineColumn { line, column }) in
         util::iter_with_line_column_from(s.as_str(), span.start)
     {
         if line < sub_span.start.line {
