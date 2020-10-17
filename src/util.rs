@@ -8,7 +8,7 @@ use std::io::Read;
 pub fn iter_with_line_column_from<'a>(
     s: &'a str,
     start_point: LineColumn,
-) -> impl Iterator<Item = (char, usize, LineColumn)> + 'a {
+) -> impl Iterator<Item = (char, usize, usize, LineColumn)> + 'a {
     #[derive(Clone)]
     struct State {
         cursor: LineColumn,
@@ -19,9 +19,10 @@ pub fn iter_with_line_column_from<'a>(
         previous_char_was_newline: false,
     };
 
-    s.chars()
+    s.char_indices()
         .enumerate()
-        .scan(initial, |state, (idx, c)| -> Option<_> {
+        .map(|(idx, (byte_offset, c))| (idx, byte_offset, c))
+        .scan(initial, |state, (idx, byte_offset, c)| -> Option<_> {
             let cursor = state.cursor;
             state.previous_char_was_newline = c == '\n';
             if state.previous_char_was_newline {
@@ -30,14 +31,14 @@ pub fn iter_with_line_column_from<'a>(
             } else {
                 state.cursor.column += 1;
             }
-            Some((c, idx, cursor))
+            Some((c, byte_offset, idx, cursor))
         })
 }
 
 /// Iterate over annotated chars starting from line 1 and column 0 assuming `s` starts there.
 pub fn iter_with_line_column<'a>(
     s: &'a str,
-) -> impl Iterator<Item = (char, usize, LineColumn)> + 'a {
+) -> impl Iterator<Item = (char, usize, usize, LineColumn)> + 'a {
     iter_with_line_column_from(s, LineColumn { line: 1, column: 0 })
 }
 
@@ -62,16 +63,16 @@ where
         .expect("Must read successfully");
 
     let extraction = iter_with_line_column(s.as_str())
-        .skip_while(|(_c, _idx, cursor)| {
+        .skip_while(|(_c, _byte_offset, _idx, cursor)| {
             cursor.line < span.start.line
                 || (cursor.line == span.start.line && cursor.column < span.start.column)
         })
-        .take_while(|(_c, _idx, cursor)| {
+        .take_while(|(_c, _byte_offset, _idx, cursor)| {
             cursor.line < span.end.line
                 || (cursor.line == span.end.line && cursor.column <= span.end.column)
         })
         .fuse()
-        .map(|(c, _idx, _cursor)| c)
+        .map(|(c, _byte_offset, _idx, _cursor)| c)
         .collect::<String>();
     // log::trace!("Loading {:?} from line >{}<", &range, &line);
     Ok(extraction)
@@ -119,7 +120,7 @@ d"#;
         ];
 
         iter_with_line_column(S).zip(EXPECT.into_iter()).for_each(
-            |((c, _idx, lc), (expected_lc, expected_c))| {
+            |((c, _byte_offset, _idx, lc), (expected_lc, expected_c))| {
                 assert_eq!(lc, expected_lc.clone());
                 assert_eq!(c, expected_c.clone());
             },
