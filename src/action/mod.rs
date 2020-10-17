@@ -16,13 +16,6 @@ pub mod interactive;
 pub(crate) use bandaid::*;
 use interactive;
 
-/// Generate a string of whitespaces with length $n
-macro_rules! whites {
-    ($n:expr) => {{
-        vec![" "; $n.to_owned()].join("")
-    }};
-}
-
 /// State of conclusion.
 #[derive(Debug, Clone, Copy)]
 pub enum Finish {
