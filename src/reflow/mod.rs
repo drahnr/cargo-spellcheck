@@ -674,4 +674,12 @@ lines."#,
             => r#"First line Second
 line third line"#, false, vec![7, 7]);
     }
+
+    #[test]
+    fn reflow_doc_long() {
+        reflow_chyrp!(40 break ["One line which is quite long and needs to be reflown in another line."]
+            => r#"One line which is quite long
+and needs to be reflown in
+another line."#, false, vec![7, 7, 7]);
+    }
 }

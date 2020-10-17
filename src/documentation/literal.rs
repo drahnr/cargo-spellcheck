@@ -14,7 +14,7 @@ pub enum CommentVariant {
     TripleSlash,
     /// `//!`
     DoubleSlashEM,
-    /// `#[doc=` with the length of possible `r#`s
+    /// `#[doc=` with the length of possible `r#`s, i.e. total length of `r###` etc. including `r`
     MacroDocEq(usize),
     /// Commonmark File
     CommonMark,
@@ -35,6 +35,7 @@ impl ToString for CommentVariant {
             CommentVariant::DoubleSlashEM => "//!".into(),
             CommentVariant::MacroDocEq(p) => {
                 let raw = match p {
+                    // TODO: make configureable if each line will start with #[doc ="
                     0 => "".to_string(),
                     1 => "r".to_string(),
                     x => "r".to_string() + &vec!["#"; x - 1].join(""),
@@ -62,6 +63,18 @@ impl CommentVariant {
         match self {
             CommentVariant::MacroDocEq(p) => 2 + p,
             _ => 0,
+        }
+    }
+
+    /// Return string which will be appended to each line
+    pub fn suffix_string(&self) -> String {
+        if let CommentVariant::MacroDocEq(p) = self {
+            match p {
+                0 | 1 => r#""]"#.to_string(),
+                n => r#"""#.to_string() + &vec!["#"; n - 1].join("") + "]",
+            }
+        } else {
+            "".to_string()
         }
     }
 }
@@ -849,5 +862,29 @@ fn unicode(&self) -> bool {
     #[test]
     fn raw_variant_7_unicode_symbols() {
         comment_variant_span_range_validation(7);
+    }
+
+    #[test]
+    fn variant_to_string() {
+        let variant = CommentVariant::MacroDocEq(0);
+        assert_eq!(variant.to_string(), r##"#[ doc = ""##);
+        let variant = CommentVariant::MacroDocEq(1);
+        assert_eq!(variant.to_string(), r##"#[ doc = r""##);
+        let variant = CommentVariant::MacroDocEq(2);
+        assert_eq!(variant.to_string(), r##"#[ doc = r#""##);
+        let variant = CommentVariant::MacroDocEq(3);
+        assert_eq!(variant.to_string(), r##"#[ doc = r##""##);
+    }
+
+    #[test]
+    fn variant_suffix_string() {
+        let variant = CommentVariant::MacroDocEq(0);
+        assert_eq!(variant.suffix_string(), r##""]"##);
+        let variant = CommentVariant::MacroDocEq(1);
+        assert_eq!(variant.suffix_string(), r##""]"##);
+        let variant = CommentVariant::MacroDocEq(2);
+        assert_eq!(variant.suffix_string(), r##""#]"##);
+        let variant = CommentVariant::MacroDocEq(3);
+        assert_eq!(variant.suffix_string(), r###""##]"###);
     }
 }
