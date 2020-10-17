@@ -751,8 +751,15 @@ Buchfink"#];
 
     #[test]
     fn find_line_lengths_tripple_slash() {
-        const SOURCE: &'static str = fluff_up!(["xyz", "second", "third", "Converts a span to a range, where `self` is converted to a range reltive to the",
-             "passed span `scope`."] @ "       "
+        const SOURCE: &'static str = fluff_up!(
+            [
+                "xyz",
+                "second",
+                "third",
+                "Converts a span to a range, where `self` is converted to a range reltive to the",
+                "passed span `scope`."
+            ]
+            @ "       "
         );
 
         let _ = env_logger::builder().is_test(true).try_init();
@@ -760,19 +767,32 @@ Buchfink"#];
         let set = gen_literal_set(SOURCE);
         let chunk = dbg!(CheckableChunk::from_literalset(set));
 
-        let lens = chunk.extract_line_lengths().expect("Chunk has lines. qed");
+        let lens = chunk
+            .extract_line_lengths()
+            .expect("Chunk in unit test must have lines.");
 
-        assert_eq!(lens.len(), SOURCE.lines().count() - 1);
+        // the demo creates a single `struct X` entity with `n` comments before that.
+        let expected_line_count = SOURCE.lines().count() - 1;
+        assert_eq!(lens.len(), expected_line_count);
 
+        // XXX WRONG
         for (len, line) in lens.iter().zip(SOURCE.lines()) {
             assert_eq!(len, &line.len());
         }
     }
 
     #[test]
+    #[ignore = "prefix and suffix are not part of the accounted `extract_lines_lengths"]
     fn find_line_length_docmacro() {
-        const SOURCE: &'static str = chyrp_up!(["xyz", "second", "third", "Converts a span to a range, where `self` is converted to a range reltive to the",
-             "passed span `scope`."] @ "       "
+        const SOURCE: &'static str = chyrp_up!(
+            [
+                "xyz",
+                "second",
+                "third",
+                "Converts a span to a range, where `self` is converted to a range relative to the",
+                "passed span `scope`."
+            ]
+            @ "       "
         );
 
         let _ = env_logger::builder().is_test(true).try_init();
@@ -781,13 +801,18 @@ Buchfink"#];
         let set = gen_literal_set(SOURCE);
         let chunk = dbg!(CheckableChunk::from_literalset(set));
 
-        let lens = chunk.extract_line_lengths().expect("Chunk has lines. qed");
+        let lens = chunk
+            .extract_line_lengths()
+            .expect("Chunk in unit test must have lines.");
 
-        assert_eq!(lens.len(), SOURCE.lines().count() - 1);
+        // the demo creates a single `struct X` entity with `n` comments before that.
+        let expected_line_count = SOURCE.lines().count() - 1;
+        assert_eq!(lens.len(), expected_line_count);
 
+        // XXX WRONG
         for (len, line) in lens.iter().zip(SOURCE.lines()) {
             dbg!(len, &line);
-            assert_eq!(len, &line.len());
+            assert_eq!(*len, line.chars().count());
         }
     }
 }
