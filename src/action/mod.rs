@@ -49,6 +49,9 @@ fn correct_lines<'s>(
     source: impl Iterator<Item = (usize, String)>,
     mut sink: impl Write,
 ) -> Result<()> {
+    let mut injection_first = true;
+    let mut injection_previous = false;
+
     let mut nxt: Option<BandAid> = bandaids.next();
     for (line_number, content) in source {
         trace!("Processing line {}", line_number);
@@ -61,6 +64,7 @@ fn correct_lines<'s>(
             // no candidates remaining, just keep going
             sink.write(content.as_bytes())?;
             sink.write("\n".as_bytes())?;
+            injection_first = true;
             continue;
         }
 
@@ -70,49 +74,83 @@ fn correct_lines<'s>(
             if !bandaid.covers_line(line_number) {
                 sink.write(content.as_bytes())?;
                 sink.write("\n".as_bytes())?;
+                injection_first = true;
                 continue;
             }
         }
 
         let content_len = content.chars().count();
+        let mut drop_entire_line = false;
         while let Some(bandaid) = nxt.take() {
             trace!("Applying next bandaid {:?}", bandaid);
             trace!("where line {} is: >{}<", line_number, content);
             let (range, replacement) = match &bandaid {
                 BandAid::Replacement(span, repl, variant, indent) => {
+                    drop_entire_line = false;
+                    injection_first = true;
+                    let indentation = " ".repeat(*indent);
                     let range: Range = span
                         .try_into()
                         .expect("Bandaid::Replacement must be single-line. qed");
+                    // FIXME why and how, this is a hack!! XXX
                     if range.start == 0 {
-                        (range, " ".repeat(*indent) + &variant.prefix_string() + repl)
+                        (range, indentation + &variant.prefix_string() + repl)
                     } else {
                         (range, repl.to_owned())
                     }
                 }
                 BandAid::Injection(location, repl, variant, indent) => {
+                    drop_entire_line = false;
+                    let indentation = " ".repeat(*indent);
+                    let connector = format!(
+                        "{suffix}\n{indentation}{prefix}",
+                        suffix = variant.suffix_string(),
+                        indentation = indentation,
+                        prefix = variant.prefix_string()
+                    );
+                    // for N insertion lines we need to inject N+1, so always add one trailing, and for the first line
+                    // inserted at a particular point add a leading too
+                    injection_previous = injection_first;
+                    let extra = if injection_first {
+                        injection_first = false;
+                        connector.as_str()
+                    } else {
+                        ""
+                    };
                     let range = location.column..location.column;
                     (
                         range,
-                        " ".repeat(*indent)
-                            + &variant.prefix_string()
-                            + repl
-                            + &variant.suffix_string()
-                            + "\n",
+                        format!(
+                            "{extra}{repl}{connector}",
+                            repl = repl,
+                            connector = connector,
+                            extra = extra
+                        ),
                     )
                 }
                 BandAid::Deletion(span) => {
+                    injection_first = true;
                     let range: Range = span
                         .try_into()
                         .expect("Bandaid::Deletion must be single-line. qed");
                     // TODO: maybe it's better to already have the correct range in the bandaid
-                    (range.start..content_len, "".to_owned())
+                    drop_entire_line = range.end >= content_len;
+                    (range.start..range.end, "".to_owned())
                 }
             };
 
-            // write prelude for this line between start or previous replacement
+            // write the untouched part for the current line since the previous replacement
+            // (or start of the file if there was not previous one)
             if range.start > remainder_column {
-                sink.write(util::sub_chars(&content, remainder_column..range.start).as_bytes())?;
+                let intermezzo: Range = remainder_column..range.start;
+                // FIXME TODO
+                // The assumption here is we are injecting injections right BEFORE the \n
+                // at the very end of the previous line
+                // but this could screw up royally once we track the existing newline characters (plural!)
+                injection_first = intermezzo.len() > 0;
+                sink.write(dbg!(util::sub_chars(&content, intermezzo)).as_bytes())?;
             }
+
             // write the replacement chunk
             sink.write(replacement.as_bytes())?;
 
@@ -122,6 +160,7 @@ fn correct_lines<'s>(
                 // if `nxt` is also targeting the current line, don't complete the line
                 !bandaid.covers_line(line_number)
             } else {
+                // no more bandaids, complete the current line for sure
                 true
             };
             if complete_current_line {
@@ -143,8 +182,7 @@ fn correct_lines<'s>(
                     );
                 }
 
-                if let BandAid::Deletion(_) = bandaid {
-                } else {
+                if !injection_previous && !drop_entire_line {
                     sink.write("\n".as_bytes())?;
                 }
                 // break the inner loop
@@ -443,33 +481,50 @@ I like banana icecream every third day.
 
     #[test]
     fn bandaid_macrodoceq_injection() {
+        let _ = env_logger::Builder::new()
+            .filter(None, log::LevelFilter::Trace)
+            .is_test(true)
+            .try_init();
+
         let bandaids = vec![
             BandAid::Replacement(
-                (2_usize, 33..42).try_into().unwrap(),
-                "comments with multiple words".to_owned(),
+                (2_usize, 18..24).try_into().unwrap(),
+                "uchen".to_owned(),
                 CommentVariant::MacroDocEq(0),
                 0,
             ),
             BandAid::Injection(
                 LineColumn {
-                    line: 3_usize,
-                    column: 0,
+                    line: 2_usize,
+                    column: 24,
                 },
-                "but still more content".to_owned(),
+                "für".to_owned(),
                 CommentVariant::MacroDocEq(0),
                 0,
             ),
+            BandAid::Injection(
+                LineColumn {
+                    line: 2_usize,
+                    column: 24,
+                },
+                "den".to_owned(),
+                CommentVariant::MacroDocEq(0),
+                0,
+            ),
+            BandAid::Deletion((2_usize, 24..25).try_into().unwrap()),
+            BandAid::Deletion((3_usize, 0..10).try_into().unwrap()),
         ];
         verify_correction!(
             r#"
-#[ doc = "Let's test bandaids on comments
-          with multiple lines afterwards"]
+#[ doc = "Erdbeerkompott
+          Eisbär"]
 "#,
             bandaids,
             r#"
-#[ doc = "Let's test bandaids on comments with multiple words"]
-#[ doc = "but still more content"]
-#[ doc = "with multiple lines afterwards"]
+#[ doc = "Erdbeerkuchen"]
+#[ doc = "für"]
+#[ doc = "den"]
+#[ doc = "Eisbär"]
 "#
         );
     }
