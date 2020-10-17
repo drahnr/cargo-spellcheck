@@ -127,7 +127,7 @@ impl FirstAidKit {
                     let span = Span {
                         start: crate::LineColumn {
                             line,
-                            column: indent + chunk.variant().prefix(),
+                            column: indent + chunk.variant().prefix_len(),
                         },
                         end: crate::LineColumn {
                             line,

@@ -104,7 +104,10 @@ fn reflow_inner<'s>(
         indentations
     };
 
-    let indentation = indentation.iter().map(|i| i - variant.prefix()).collect();
+    let indentation = indentation
+        .iter()
+        .map(|i| i.saturating_sub(variant.prefix_len()))
+        .collect();
 
     if reflow_applied {
         Some(Replacement {
