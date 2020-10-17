@@ -6,11 +6,9 @@ use log::{debug, trace};
 
 use std::fs::{self, OpenOptions};
 use std::io::{Read, Write};
-
 use std::path::PathBuf;
 
 pub mod bandaid;
-pub mod bandaidset;
 pub mod interactive;
 
 pub(crate) use bandaid::*;
@@ -215,8 +213,6 @@ pub enum Action {
     Check,
     /// Interactively choose from checker provided suggestions.
     Fix,
-    /// Reflow all commants to a given maximum column width.
-    Reflow,
 }
 
 impl Action {
@@ -277,7 +273,7 @@ impl Action {
         reader.get_mut().read_to_string(&mut content)?;
 
         correct_lines(
-            bandaids.into_iter().map(|x| Patch::from(x)),
+            bandaids.into_iter(),
             content, // FIXME for efficiency, correct_lines should integrate with `BufRead` instead of a `String` buffer
             &mut writer,
         )?;
@@ -325,10 +321,10 @@ impl Action {
     pub fn run(self, suggestions: SuggestionSet, config: &Config) -> Result<Finish> {
         match self {
             Self::Check => self.check(suggestions, config),
-            Self::Fix | Self::Reflow => {
+            Self::Fix => {
                 let (picked, user_sel) =
                     interactive::UserPicked::select_interactive(suggestions, config)?;
-                if user_sel == interactiver::UserSelection::Abort {
+                if user_sel == interactive::UserSelection::Abort {
                     Ok(Finish::Abort)
                 } else {
                     let n = picked.total_count();
@@ -350,7 +346,7 @@ mod tests {
             let mut sink: Vec<u8> = Vec::with_capacity(1024);
 
             correct_lines(
-                $bandaids.into_iter().map(|bandaid| Patch::from(bandaid)),
+                $bandaids.into_iter(),
                 $text.to_owned(),
                 &mut sink,
             )
@@ -368,15 +364,15 @@ mod tests {
             .try_init();
 
         let patches = vec![
-            Patch::Replace {
-                replace_span: Span {
+            BandAid {
+                span: Span {
                     start: LineColumn { line: 1, column: 6 },
                     end: LineColumn {
                         line: 2,
                         column: 12,
                     },
                 },
-                replacement: "& Omega".to_owned(),
+                content: "& Omega".to_owned(),
             },
             Patch::Insert {
                 insert_at: LineColumn { line: 3, column: 0 },
@@ -394,7 +390,11 @@ Icecream truck"#
     }
 
     #[test]
+<<<<<<< HEAD
     fn patch_replace_1() {
+=======
+    fn patch_full() {
+>>>>>>> 04af889... refactor/action: rewrite correct_lines purely based on spans
         let _ = env_logger::Builder::new()
             .filter_level(log::LevelFilter::Trace)
             .is_test(true)
@@ -480,100 +480,5 @@ Icecream truck"#
             content: "Q".to_owned(),
         }];
         verify_correction!("A🐢C", patches, "A🐢CQ");
-    }
-
-    #[test]
-    fn bandaid_multiline() {
-        let bandaids = vec![
-            BandAid::Replacement(
-                (2_usize, 27..36).try_into().unwrap(),
-                "comments with".to_owned(),
-                CommentVariant::TripleSlash,
-                0_usize,
-            ),
-            BandAid::Replacement(
-                (3_usize, 0..17).try_into().unwrap(),
-                " different multiple".to_owned(),
-                CommentVariant::TripleSlash,
-                0_usize,
-            ),
-            BandAid::Replacement(
-                (3_usize, 18..23).try_into().unwrap(),
-                "words".to_owned(),
-                CommentVariant::TripleSlash,
-                0_usize,
-            ),
-        ];
-        verify_correction!(
-            "
-/// Let's test bandaids on comments
-/// with multiple lines afterwards
-",
-            bandaids,
-            "
-/// Let's test bandaids on comments with
-/// different multiple words afterwards
-"
-        );
-    }
-
-    #[test]
-    fn bandaid_deletion() {
-        let _ = env_logger::Builder::new()
-            .filter(None, log::LevelFilter::Trace)
-            .is_test(true)
-            .try_init();
-        let bandaids = vec![
-            BandAid::Replacement(
-                (2_usize, 27..36).try_into().unwrap(),
-                "comments with multiple words".to_owned(),
-                CommentVariant::TripleSlash,
-                0,
-            ),
-            BandAid::Deletion((3_usize, 0..17).try_into().unwrap()),
-        ];
-        verify_correction!(
-            "
-/// Let's test bandaids on comments
-/// with multiple lines afterwards
-",
-            bandaids,
-            "
-/// Let's test bandaids on comments with multiple words
-"
-        );
-    }
-
-    #[test]
-    fn bandaid_injection() {
-        let bandaids = vec![
-            BandAid::Replacement(
-                (2_usize, 27..36).try_into().unwrap(),
-                "comments with multiple words".to_owned(),
-                CommentVariant::TripleSlash,
-                0,
-            ),
-            BandAid::Injection(
-                LineColumn {
-                    line: 3_usize,
-                    column: 0,
-                },
-                " but still more content".to_owned(),
-                CommentVariant::TripleSlash,
-                0,
-            ),
-        ];
-        verify_correction!(
-            "
-/// Let's test bandaids on comments
-/// with multiple lines afterwards
-",
-            bandaids,
-            "
-/// Let's test bandaids on comments with multiple words
-/// but still more content
-/// with multiple lines afterwards
-"
-        );
     }
 }

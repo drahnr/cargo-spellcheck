@@ -32,8 +32,8 @@ impl CommentVariant {
     /// Return the prefix string.
     pub fn prefix_string(&self) -> String {
         match self {
-            CommentVariant::TripleSlash => "///".into(),
-            CommentVariant::DoubleSlashEM => "//!".into(),
+            CommentVariant::TripleSlash => "/// ".into(),
+            CommentVariant::DoubleSlashEM => "//! ".into(),
             CommentVariant::MacroDocEq(p) => {
                 let raw = match p {
                     // TODO: make configureable if each line will start with #[doc ="

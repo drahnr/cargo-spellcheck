@@ -168,10 +168,7 @@ pub mod tests {
         {
             assert_eq!(
                 suggestion.replacements,
-                vec![crate::Replacement {
-                    content: format!("replacement_{}", index),
-                    indentation: vec![index],
-                }]
+                vec![format!("replacement_{}", index)]
             );
             assert_eq!(suggestion.span, *expected_span);
         }
