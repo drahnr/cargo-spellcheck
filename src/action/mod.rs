@@ -99,7 +99,7 @@ fn correct_lines<'s>(
                 }
                 BandAid::Injection(location, repl, variant, indent) => {
                     let range = location.column..location.column;
-                    (range, whites!(indent) + &variant.to_string() + repl + "\n")
+                    (range, whites!(indent) + &variant.to_string() + repl + &variant.suffix_string() + "\n")
                 }
                 BandAid::Deletion(span) => {
                     let range: Range = span
@@ -446,7 +446,7 @@ I like banana icecream every third day.
             BandAid::Replacement(
                 (2_usize, 33..42).try_into().unwrap(),
                 "comments with multiple words".to_owned(),
-                CommentVariant::MacroDocEq(2),
+                CommentVariant::MacroDocEq(0),
                 0,
             ),
             BandAid::Injection(
@@ -455,7 +455,7 @@ I like banana icecream every third day.
                     column: 0,
                 },
                 "but still more content".to_owned(),
-                CommentVariant::MacroDocEq(2),
+                CommentVariant::MacroDocEq(0),
                 0,
             ),
         ];
@@ -466,9 +466,9 @@ I like banana icecream every third day.
 "#,
             bandaids,
             r#"
-#[ doc = "Let's test bandaids on comments with multiple words
-          but still more content
-          with multiple lines afterwards"]
+#[ doc = "Let's test bandaids on comments with multiple words"]
+#[ doc = "but still more content"]
+#[ doc = "with multiple lines afterwards"]
 "#
         );
     }
