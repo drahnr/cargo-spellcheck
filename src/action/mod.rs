@@ -18,13 +18,6 @@ pub(crate) use bandaidset::*;
 
 use interactive::{UserPicked, UserSelection};
 
-/// Generate a string of whitespaces with length $n
-macro_rules! whites {
-    ($n:expr) => {{
-        vec![" "; $n.to_owned()].join("")
-    }};
-}
-
 /// State of conclusion.
 #[derive(Debug, Clone, Copy)]
 pub enum Finish {
@@ -92,14 +85,14 @@ fn correct_lines<'s>(
                         .try_into()
                         .expect("Bandaid::Replacement must be single-line");
                     if range.start == 0 {
-                        (range, whites!(indent) + &variant.to_string() + repl)
+                        (range, " ".repeat(*indent) + &variant.to_string() + repl)
                     } else {
                         (range, repl.to_owned())
                     }
                 }
                 BandAid::Injection(location, repl, variant, indent) => {
                     let range = location.column..location.column;
-                    (range, whites!(indent) + &variant.to_string() + repl + &variant.suffix_string() + "\n")
+                    (range, " ".repeat(*indent) + &variant.to_string() + repl + &variant.suffix_string() + "\n")
                 }
                 BandAid::Deletion(span) => {
                     let range: Range = span
