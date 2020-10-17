@@ -85,14 +85,21 @@ fn correct_lines<'s>(
                         .try_into()
                         .expect("Bandaid::Replacement must be single-line. qed");
                     if range.start == 0 {
-                        (range, " ".repeat(*indent) + &variant.to_string() + repl)
+                        (range, " ".repeat(*indent) + &variant.prefix_string() + repl)
                     } else {
                         (range, repl.to_owned())
                     }
                 }
                 BandAid::Injection(location, repl, variant, indent) => {
                     let range = location.column..location.column;
-                    (range, " ".repeat(*indent) + &variant.to_string() + repl + &variant.suffix_string() + "\n")
+                    (
+                        range,
+                        " ".repeat(*indent)
+                            + &variant.prefix_string()
+                            + repl
+                            + &variant.suffix_string()
+                            + "\n",
+                    )
                 }
                 BandAid::Deletion(span) => {
                     let range: Range = span

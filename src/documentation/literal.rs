@@ -28,29 +28,26 @@ impl Default for CommentVariant {
     }
 }
 
-impl ToString for CommentVariant {
-    fn to_string(&self) -> String {
+impl CommentVariant {
+    /// Return the prefix string.
+    pub fn prefix_string(&self) -> String {
         match self {
             CommentVariant::TripleSlash => "///".into(),
             CommentVariant::DoubleSlashEM => "//!".into(),
             CommentVariant::MacroDocEq(p) => {
                 let raw = match p {
                     // TODO: make configureable if each line will start with #[doc ="
-                    0 => "".to_string(),
-                    1 => "r".to_string(),
-                    x => "r".to_string() + &"#".repeat(x-1),
+                    // TODO: but not here!
+                    0 => "\"".to_owned(),
+                    x => format!("r{}\"", "#".repeat(x.saturating_sub(1))),
                 };
-                let p = r#"#[ doc = "#.to_string() + &raw + "\"";
-                p
+                format!(r#"#[ doc = {}"#, raw)
             }
-            _ => "".into(),
+            _ => unreachable!("All comment variants have a string representation. qed"),
         }
     }
-}
-
-impl CommentVariant {
     /// Return legnth of comment prefix for each variant
-    pub fn prefix(&self) -> usize {
+    pub fn prefix_len(&self) -> usize {
         match self {
             CommentVariant::TripleSlash | CommentVariant::DoubleSlashEM => 3,
             CommentVariant::MacroDocEq(p) => *p,
@@ -58,8 +55,8 @@ impl CommentVariant {
         }
     }
 
-    /// Return sufix of different comment variants
-    pub fn suffix(&self) -> usize {
+    /// Return suffix of different comment variants
+    pub fn suffix_len(&self) -> usize {
         match self {
             CommentVariant::MacroDocEq(p) => 2 + p,
             _ => 0,
@@ -867,23 +864,23 @@ fn unicode(&self) -> bool {
     #[test]
     fn variant_to_string() {
         let variant = CommentVariant::MacroDocEq(0);
-        assert_eq!(variant.to_string(), r##"#[ doc = ""##);
+        assert_eq!(variant.prefix_string(), r###"#[ doc = ""###);
         let variant = CommentVariant::MacroDocEq(1);
-        assert_eq!(variant.to_string(), r##"#[ doc = r""##);
+        assert_eq!(variant.prefix_string(), r###"#[ doc = r""###);
         let variant = CommentVariant::MacroDocEq(2);
-        assert_eq!(variant.to_string(), r##"#[ doc = r#""##);
+        assert_eq!(variant.prefix_string(), r###"#[ doc = r#""###);
         let variant = CommentVariant::MacroDocEq(3);
-        assert_eq!(variant.to_string(), r##"#[ doc = r##""##);
+        assert_eq!(variant.prefix_string(), r###"#[ doc = r##""###);
     }
 
     #[test]
     fn variant_suffix_string() {
         let variant = CommentVariant::MacroDocEq(0);
-        assert_eq!(variant.suffix_string(), r##""]"##);
+        assert_eq!(variant.suffix_string(), r###""]"###);
         let variant = CommentVariant::MacroDocEq(1);
-        assert_eq!(variant.suffix_string(), r##""]"##);
+        assert_eq!(variant.suffix_string(), r###""]"###);
         let variant = CommentVariant::MacroDocEq(2);
-        assert_eq!(variant.suffix_string(), r##""#]"##);
+        assert_eq!(variant.suffix_string(), r###""#]"###);
         let variant = CommentVariant::MacroDocEq(3);
         assert_eq!(variant.suffix_string(), r###""##]"###);
     }
