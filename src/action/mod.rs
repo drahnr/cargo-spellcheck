@@ -38,13 +38,12 @@ impl Finish {
     }
 }
 
-/// correct all lines
-/// `bandaids` are the fixes to be applied to the lines
+/// Correct all lines by applying bandaids.
 ///
-/// Note that `Lines` as created by `(x as BufLines).lines()` does
-/// not preserve trailing newlines, so either the iterator
-/// needs to be modified to yield an extra (i.e. with `.chain("".to_owned())`)
-/// or a manual newlines has to be written to the `sink`.
+/// Note that with the current implementation trailing newlines are NOT
+/// preserved.
+///
+/// [https://github.com/drahnr/cargo-spellcheck/issues/116](Tracking issue).
 fn correct_lines<'s>(
     mut bandaids: impl Iterator<Item = BandAid>,
     source: impl Iterator<Item = (usize, String)>,
@@ -299,6 +298,7 @@ mod tests {
                 .map(::std::borrow::ToOwned::to_owned)
                 .enumerate()
                 .map(|(lineno, content)| (lineno + 1, content));
+
             correct_lines($bandaids.into_iter(), lines, &mut sink)
                 .expect("Line correction must work in unit test!");
 
