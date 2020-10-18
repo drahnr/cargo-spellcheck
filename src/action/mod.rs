@@ -38,20 +38,23 @@ impl Finish {
     }
 }
 
-
 /// A patch to be stitched ontop of another string.
 ///
 /// Has intentionally no awareness of any rust or cmark/markdown semantics.
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub(crate) enum Patch
-{
+pub(crate) enum Patch {
     /// Replace the area spanned by `replace` with `replacement`.
     /// Since `Span` is inclusive, `Replace` always will replace a character in the original sources.
-    Replace{ replace_span: Span, replacement: String},
+    Replace {
+        replace_span: Span,
+        replacement: String,
+    },
     /// Location where to insert.
-    Insert{ insert_at: LineColumn, content: String},
+    Insert {
+        insert_at: LineColumn,
+        content: String,
+    },
 }
-
 
 impl<'a> From<&'a BandAid> for Patch {
     fn from(bandaid: &'a BandAid) -> Self {
@@ -64,9 +67,18 @@ impl From<BandAid> for Patch {
     fn from(bandaid: BandAid) -> Self {
         // TODO XXX this conversion is probably too simplistic
         match bandaid {
-            BandAid::Deletion(span) => Self::Replace { replace_span: span.clone(), replacement: String::new() },
-            BandAid::Injection(linecol, content, _comment_variant) => Self::Insert { insert_at: linecol, content: content.to_owned() },
-            BandAid::Replacement(span, content, _comment_variant) => Self::Replace { replace_span: span.clone(), replacement: content.to_owned() },
+            BandAid::Deletion(span) => Self::Replace {
+                replace_span: span.clone(),
+                replacement: String::new(),
+            },
+            BandAid::Injection(linecol, content) => Self::Insert {
+                insert_at: linecol,
+                content: content.to_owned(),
+            },
+            BandAid::Replacement(span, content) => Self::Replace {
+                replace_span: span.clone(),
+                replacement: content.to_owned(),
+            },
         }
     }
 }
@@ -84,35 +96,28 @@ impl From<BandAid> for Patch {
 /// preserved.
 ///
 /// [https://github.com/drahnr/cargo-spellcheck/issues/116](Tracking issue).
-fn correct_lines<'s, II, I>(
-    patches: II,
-    source_buffer: String,
-    mut sink: impl Write,
-) -> Result<()>
+fn correct_lines<'s, II, I>(patches: II, source_buffer: String, mut sink: impl Write) -> Result<()>
 where
-    II: IntoIterator<IntoIter=I, Item=Patch>,
+    II: IntoIterator<IntoIter = I, Item = Patch>,
     I: Iterator<Item = Patch>,
 {
     let patches = patches.into_iter();
     let mut patches = patches.peekable();
 
-    let mut source_iter = iter_with_line_column_from(source_buffer.as_str(), LineColumn {
-        line: 1,
-        column: 0,
-    }).peekable();
+    let mut source_iter =
+        iter_with_line_column_from(source_buffer.as_str(), LineColumn { line: 1, column: 0 })
+            .peekable();
 
     let mut current = None;
     let mut byte_cursor = 0usize;
     loop {
-
         let cc_from_byteoffset = if let Some(ref current) = current {
             let (cc_start, data) = match current {
-                Patch::Replace{ replace_span, replacement} => {
-                    (replace_span.end, replacement.as_str())
-                },
-                Patch::Insert{ insert_at, content} => {
-                    (insert_at.clone(), content.as_str())
-                },
+                Patch::Replace {
+                    replace_span,
+                    replacement,
+                } => (replace_span.end, replacement.as_str()),
+                Patch::Insert { insert_at, content } => (insert_at.clone(), content.as_str()),
             };
 
             sink.write(data.as_bytes())?;
@@ -132,15 +137,10 @@ where
         debug_assert!(byte_cursor <= cc_from_byteoffset);
         byte_cursor = cc_from_byteoffset;
 
-
         let cc_to_byteoffset = if let Some(upcoming) = patches.peek() {
             let cc_end = match upcoming {
-                Patch::Replace{ replace_span, ..} => {
-                    replace_span.start
-                },
-                Patch::Insert{ insert_at, ..} => {
-                    insert_at.clone()
-                },
+                Patch::Replace { replace_span, .. } => replace_span.start,
+                Patch::Insert { insert_at, .. } => insert_at.clone(),
             };
 
             // do not write anythin
@@ -314,13 +314,16 @@ mod tests {
         ($text:literal, $bandaids:expr, $expected:literal) => {
             let mut sink: Vec<u8> = Vec::with_capacity(1024);
 
-            correct_lines($bandaids.into_iter().map(|bandaid| Patch::from(bandaid)), $text.to_owned(), &mut sink)
-                .expect("Line correction must work in unit test!");
+            correct_lines(
+                $bandaids.into_iter().map(|bandaid| Patch::from(bandaid)),
+                $text.to_owned(),
+                &mut sink,
+            )
+            .expect("Line correction must work in unit test!");
 
             assert_eq!(String::from_utf8_lossy(sink.as_slice()), $expected);
         };
     }
-
 
     #[test]
     fn plain() {
@@ -329,38 +332,31 @@ mod tests {
             .is_test(true)
             .try_init();
 
-            let patches = vec![
-                Patch::Replace{
-                    replace_span: Span {
-                        start: LineColumn {
-                            line: 1,
-                            column: 6,
-                        },
-                        end: LineColumn {
-                            line: 2,
-                            column: 13,
-                        },
+        let patches = vec![
+            Patch::Replace {
+                replace_span: Span {
+                    start: LineColumn { line: 1, column: 6 },
+                    end: LineColumn {
+                        line: 2,
+                        column: 13,
                     },
-                    replacement: "& Omega".to_owned()
                 },
-                Patch::Insert{
-                    insert_at: LineColumn {
-                        line: 3,
-                        column: 0,
-                    },
-                    content: "\nIcecream truck".to_owned()
-                },
-            ];
-            verify_correction!(
-                r#"Alpha beta gamma
+                replacement: "& Omega".to_owned(),
+            },
+            Patch::Insert {
+                insert_at: LineColumn { line: 3, column: 0 },
+                content: "\nIcecream truck".to_owned(),
+            },
+        ];
+        verify_correction!(
+            r#"Alpha beta gamma
 zeta eta beta.
 "#,
-                patches,
-                r#"Alpha & Omega.
+            patches,
+            r#"Alpha & Omega.
 
 Icecream truck"#
-            );
-
+        );
     }
     #[test]
     fn replace_unicorns() {
@@ -373,18 +369,9 @@ Icecream truck"#
             BandAid::Replacement(
                 (2_usize, 7..15).try_into().unwrap(),
                 "banana icecream".to_owned(),
-                CommentVariant::TripleSlash
             ),
-            BandAid::Replacement(
-                (2_usize, 22..28).try_into().unwrap(),
-                "third".to_owned(),
-                CommentVariant::TripleSlash
-            ),
-            BandAid::Replacement(
-                (2_usize, 29..36).try_into().unwrap(),
-                "day".to_owned(),
-                CommentVariant::TripleSlash
-            ),
+            BandAid::Replacement((2_usize, 22..28).try_into().unwrap(), "third".to_owned()),
+            BandAid::Replacement((2_usize, 29..36).try_into().unwrap(), "day".to_owned()),
         ];
         verify_correction!(
             r#"
@@ -405,18 +392,12 @@ I like banana icecream every third day.
             BandAid::Replacement(
                 (2_usize, 27..36).try_into().unwrap(),
                 "comments with".to_owned(),
-                CommentVariant::TripleSlash
             ),
             BandAid::Replacement(
                 (3_usize, 0..17).try_into().unwrap(),
                 " different multiple".to_owned(),
-                CommentVariant::TripleSlash
             ),
-            BandAid::Replacement(
-                (3_usize, 18..23).try_into().unwrap(),
-                "words".to_owned(),
-                CommentVariant::TripleSlash
-            ),
+            BandAid::Replacement((3_usize, 18..23).try_into().unwrap(), "words".to_owned()),
         ];
         verify_correction!(
             "
@@ -441,7 +422,6 @@ I like banana icecream every third day.
             BandAid::Replacement(
                 (2_usize, 27..36).try_into().unwrap(),
                 "comments with multiple words".to_owned(),
-                CommentVariant::TripleSlash
             ),
             BandAid::Deletion((3_usize, 0..17).try_into().unwrap()),
         ];
@@ -463,7 +443,6 @@ I like banana icecream every third day.
             BandAid::Replacement(
                 (2_usize, 27..36).try_into().unwrap(),
                 "comments with multiple words".to_owned(),
-                CommentVariant::TripleSlash
             ),
             BandAid::Injection(
                 LineColumn {
@@ -471,7 +450,6 @@ I like banana icecream every third day.
                     column: 0,
                 },
                 " but still more content".to_owned(),
-                CommentVariant::TripleSlash
             ),
         ];
         verify_correction!(
@@ -496,18 +474,13 @@ I like banana icecream every third day.
             .try_init();
 
         let bandaids = vec![
-            BandAid::Replacement(
-                (2_usize, 18..24).try_into().unwrap(),
-                "uchen".to_owned(),
-                CommentVariant::MacroDocEq(0)
-            ),
+            BandAid::Replacement((2_usize, 18..24).try_into().unwrap(), "uchen".to_owned()),
             BandAid::Injection(
                 LineColumn {
                     line: 2_usize,
                     column: 24,
                 },
                 "für".to_owned(),
-                CommentVariant::MacroDocEq(0)
             ),
             BandAid::Injection(
                 LineColumn {
@@ -515,7 +488,6 @@ I like banana icecream every third day.
                     column: 24,
                 },
                 "den".to_owned(),
-                CommentVariant::MacroDocEq(0)
             ),
             BandAid::Deletion((2_usize, 24..25).try_into().unwrap()),
             BandAid::Deletion((3_usize, 0..10).try_into().unwrap()),
