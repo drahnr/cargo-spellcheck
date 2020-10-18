@@ -8,6 +8,7 @@ use indexmap::IndexMap;
 use log::trace;
 use pulldown_cmark::{Event, LinkType, Options, Parser, Tag};
 
+use crate::config::ValidationConfig;
 use crate::documentation::{CheckableChunk, Range};
 use crate::util::sub_chars;
 use crate::Span;
@@ -23,6 +24,8 @@ pub struct PlainOverlay<'a> {
     // key: plain string range
     // value: the corresponding areas in the full markdown
     mapping: IndexMap<Range, Range>,
+    /// Extra validation checks configuration when parsing a chunk.
+    config: ValidationConfig,
 }
 
 impl<'a> PlainOverlay<'a> {
@@ -135,7 +138,6 @@ impl<'a> PlainOverlay<'a> {
                         //
                         // therefore, if we want to do omit Text event checks of the Link text event
                         // inline text, we have to keep track of the start link type.
-
                     }
                     Tag::List(_) => {
                         // make sure nested lists are not clumped together
@@ -245,13 +247,21 @@ impl<'a> PlainOverlay<'a> {
     /// Create a common mark overlay based on the provided `CheckableChunk` reference.
     // TODO consider returning a Vec<PlainOverlay<'a>> to account for list items
     // or other non-linear information which might not pass a grammar check as a whole
-    pub fn erase_markdown(chunk: &'a CheckableChunk) -> Self {
+    #[inline]
+    pub fn erase_markdown_with_config(chunk: &'a CheckableChunk, config: ValidationConfig) -> Self {
         let (plain, mapping) = Self::extract_plain_with_mapping(chunk.as_str());
         Self {
             raw: chunk,
             plain,
             mapping,
+            config,
         }
+    }
+
+    /// Same as [`fn erase_markdown` ](Self::erase_markdown_with_config) with a default config.
+    #[inline(always)]
+    pub fn erase_markdown(chunk: &'a CheckableChunk) -> Self {
+        Self::erase_markdown_with_config(chunk, ValidationConfig::default())
     }
 
     /// Since most checkers will operate on the plain data, an indirection to map cmark reduced / plain

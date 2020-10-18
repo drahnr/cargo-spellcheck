@@ -252,6 +252,13 @@ impl<'de> serde::de::Visitor<'de> for SearchDirVisitor {
     }
 }
 
+/// Commonmark specific validation flags.
+#[derive(Deserialize, Serialize, Debug, Clone, Copy, Default)]
+pub struct ValidationConfig {
+    /// Check links for their existance
+    pub link_check: bool,
+}
+
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct HunspellConfig {
@@ -265,6 +272,11 @@ pub struct HunspellConfig {
     pub extra_dictionaries: Option<Vec<PathBuf>>,
     /// Additional quirks besides dictionary lookups.
     pub quirks: Option<Quirks>,
+
+    /// Configuration parameters for the validation and checking of
+    /// specific common mark tags.
+    #[serde(flatten)]
+    pub commonmark_validation: Option<ValidationConfig>,
 }
 
 impl HunspellConfig {
@@ -541,6 +553,7 @@ impl Default for Config {
                 search_dirs: Some(os_specific_search_dirs().to_vec()).into(),
                 extra_dictionaries: Some(Vec::new()),
                 quirks: Some(Quirks::default()),
+                commonmark_validation: None,
             }),
             languagetool: None,
         }
@@ -671,14 +684,25 @@ lang = "en_US"
     fn partial_7() {
         let cfg = Config::parse(
             r#"
+[Hunspell]
+link_check = true
+
 [Hunspell.quirks]
 allow_concatenation = true
 allow_dashes = true
 transform_regex = ["^'([^\\s])'$", "^[0-9]+x$"]
+
 			"#,
         )
         .unwrap();
-        let _hunspell = cfg.hunspell.expect("Must contain hunspell cfg");
+        let hunspell = cfg.hunspell.expect("Must contain hunspell cfg");
+        assert_eq!(
+            hunspell
+                .commonmark_validation
+                .expect("Commonmark validation must exist")
+                .link_check,
+            true
+        );
     }
 
     #[test]

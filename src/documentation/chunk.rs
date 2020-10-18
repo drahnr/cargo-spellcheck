@@ -7,6 +7,7 @@ use super::*;
 use indexmap::IndexMap;
 use std::path::Path;
 
+use crate::config::ValidationConfig;
 use crate::documentation::PlainOverlay;
 use crate::{util::sub_chars, Range, Span};
 
@@ -275,6 +276,11 @@ impl CheckableChunk {
     /// Obtain an accessor object containing mapping and string repr, removing the markdown anotations.
     pub fn erase_markdown(&self) -> PlainOverlay {
         PlainOverlay::erase_markdown(self)
+    }
+
+    /// Obtain an accessor object containing mapping and string repr, removing the markdown anotations.
+    pub fn erase_markdown_with_config(&self, validation_config: ValidationConfig) -> PlainOverlay {
+        PlainOverlay::erase_markdown_with_config(self, validation_config)
     }
 
     /// Obtain the length in characters.

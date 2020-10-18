@@ -7,6 +7,7 @@
 
 use super::{tokenize, Checker, Detector, Documentation, Suggestion, SuggestionSet};
 
+use crate::config::HunspellConfig;
 use crate::documentation::{CheckableChunk, ContentOrigin, PlainOverlay};
 use crate::util::sub_chars;
 use crate::Range;
@@ -114,11 +115,12 @@ impl HunspellChecker {
 }
 
 impl Checker for HunspellChecker {
-    type Config = crate::config::HunspellConfig;
+    type Config = HunspellConfig;
     fn check<'a, 's>(docu: &'a Documentation, config: &Self::Config) -> Result<SuggestionSet<'s>>
     where
         'a: 's,
     {
+        let validation_config = config.commonmark_validation.clone().unwrap_or_default();
         let hunspell = Self::inner_init(config)?;
 
         let (transform_regex, allow_concatenated, allow_dashed) =
@@ -138,7 +140,7 @@ impl Checker for HunspellChecker {
                 debug!("Processing {}", origin.as_path().display());
 
                 for chunk in chunks {
-                    let plain = chunk.erase_markdown();
+                    let plain = chunk.erase_markdown_with_config(validation_config);
                     trace!("{:?}", &plain);
                     let txt = plain.as_str();
                     for range in tokenize(txt) {
