@@ -339,7 +339,7 @@ impl UserPicked {
                         .unwrap()
                         .queue(PrintStyledContent(StyledContent::new(
                             others.clone(),
-                            replacement.content.clone(),
+                            replacement.clone(),
                         )))
                         .unwrap();
                 } else {
@@ -356,7 +356,7 @@ impl UserPicked {
                         .unwrap()
                         .queue(PrintStyledContent(StyledContent::new(
                             highlight.clone(),
-                            replacement.content.clone(),
+                            replacement.clone(),
                         )))
                         .unwrap();
                 }

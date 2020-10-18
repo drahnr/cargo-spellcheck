@@ -6,7 +6,7 @@ use anyhow::{anyhow, bail, Error, Result};
 use log::trace;
 
 use crate::CheckableChunk;
-use crate::{CommentVariant, LineColumn, Replacement, Span};
+use crate::{CommentVariant, LineColumn, Span};
 
 use super::BandAid;
 
@@ -48,26 +48,25 @@ impl TryFrom<(String, &Span)> for FirstAidKit {
             bail!("Construction of `FirstAidKit` from single-line span only")
         } else {
             // Is only used for custom replacement
-            let bandaid = BandAid::Replacement(*span, replacement, CommentVariant::Unknown, 0);
+            let bandaid = BandAid::Replacement(*span, replacement, CommentVariant::Unknown);
             Ok(Self::from(bandaid))
         }
     }
 }
 
-impl TryFrom<(&Span, Replacement, CommentVariant)> for FirstAidKit {
+impl TryFrom<(&Span, String, CommentVariant)> for FirstAidKit {
     type Error = Error;
 
     fn try_from(
-        (span, replacement, variant): (&Span, Replacement, CommentVariant),
+        (span, replacement, variant): (&Span, String, CommentVariant),
     ) -> Result<Self> {
         if span.is_multiline() {
             bail!("Can't construct `FirstAidKit` from single-line span only")
         } else {
             let bandaid = BandAid::Replacement(
                 *span,
-                replacement.content,
+                replacement,
                 variant,
-                *replacement.indentation.first().unwrap(),
             );
             Ok(Self::from(bandaid))
         }
@@ -76,7 +75,7 @@ impl TryFrom<(&Span, Replacement, CommentVariant)> for FirstAidKit {
 
 impl FirstAidKit {
     /// Extract a set of bandaids by means of parsing the chunk
-    pub fn load_from(chunk: &CheckableChunk, span: Span, replacement: Replacement) -> Result<Self> {
+    pub fn load_from(chunk: &CheckableChunk, span: Span, replacement: String) -> Result<Self> {
         trace!(
             "proc_macro literal span of doc comment: ({},{})..({},{})",
             span.start.line,
@@ -85,11 +84,11 @@ impl FirstAidKit {
             span.end.column
         );
 
-        if span.is_multiline() || replacement.content.lines().count() > 1 {
-            let mut replacement_lines = replacement.content.lines().peekable();
+        if span.is_multiline() || replacement.lines().count() > 1 {
+            let mut replacement_lines = replacement.lines().peekable();
             let mut span_lines = (span.start.line..=span.end.line).peekable();
             let mut bandaids: Vec<BandAid> = Vec::new();
-            let mut indentations = replacement.indentation.iter();
+            // let mut indentations = replacement.indentation.iter();
             let first_line = replacement_lines
                 .next()
                 .ok_or_else(|| anyhow!("Replacement must contain at least one line"))?
@@ -114,7 +113,6 @@ impl FirstAidKit {
                 first_span,
                 first_line,
                 chunk.variant(),
-                *indentations.next().unwrap(),
             ));
 
             // process all subsequent lines
@@ -122,12 +120,10 @@ impl FirstAidKit {
                 let bandaid = if let Some(line) = span_lines.next() {
                     // Replacement covers a line in original content
 
-                    let indent = *indentations.next().unwrap();
-
                     let span = Span {
                         start: crate::LineColumn {
                             line,
-                            column: indent + chunk.variant().prefix_len(),
+                            column: chunk.variant().prefix_len(),
                         },
                         end: crate::LineColumn {
                             line,
@@ -136,7 +132,7 @@ impl FirstAidKit {
                                 .ok_or_else(|| anyhow!("Chunk covers relevant lines. qed"))?,
                         },
                     };
-                    BandAid::Replacement(span, replacement.to_string(), chunk.variant(), indent)
+                    BandAid::Replacement(span, replacement.to_string(), chunk.variant())
                 } else {
                     // Original content is shorter than replacement
                     let insertion = LineColumn {
@@ -148,7 +144,6 @@ impl FirstAidKit {
                         insertion,
                         replacement.to_string(),
                         chunk.variant(),
-                        *indentations.next().unwrap(),
                     )
                 };
                 bandaids.push(bandaid);
@@ -210,7 +205,6 @@ pub(crate) mod tests {
             (1_usize, 16..45).try_into().unwrap(),
             "the one thousandth time I'm writing".to_owned(),
             CommentVariant::Unknown,
-            0_usize,
         )];
 
         let kit = FirstAidKit::try_from((REPLACEMENT.to_owned(), &span))
@@ -262,14 +256,12 @@ pub(crate) mod tests {
             BandAid::Replacement(
                 (1_usize, 3..81).try_into().unwrap(),
                 " one tousandth time I'm writing a test string. Maybe one could".to_owned(),
-                CommentVariant::TripleSlash,
-                0_usize,
+                CommentVariant::TripleSlash
             ),
             BandAid::Replacement(
                 (2_usize, 3..44).try_into().unwrap(),
                 " automate that. Maybe not. But writing this is annoying".to_owned(),
-                CommentVariant::TripleSlash,
-                0_usize,
+                CommentVariant::TripleSlash
             ),
         ];
 
@@ -287,20 +279,17 @@ pub(crate) mod tests {
             BandAid::Replacement(
                 (1_usize, 3..81).try_into().unwrap(),
                 " one tousandth time I'm writing a test string. Maybe one could".to_owned(),
-                CommentVariant::TripleSlash,
-                0_usize,
+                CommentVariant::TripleSlash
             ),
             BandAid::Replacement(
                 (2_usize, 3..62).try_into().unwrap(),
                 " automate that. Maybe not. But writing this is annoying.".to_owned(),
-                CommentVariant::TripleSlash,
-                0_usize,
+                CommentVariant::TripleSlash
             ),
             BandAid::Replacement(
                 (3_usize, 3..38).try_into().unwrap(),
                 " However, I don't have a choice now, do I? Come on!".to_owned(),
-                CommentVariant::TripleSlash,
-                0_usize,
+                CommentVariant::TripleSlash
             ),
         ];
 
@@ -319,14 +308,12 @@ pub(crate) mod tests {
             BandAid::Replacement(
                 (1_usize, 3..78).try_into().unwrap(),
                 " This is the one 💯🗤⛩ time I'm writing".to_owned(),
-                CommentVariant::TripleSlash,
-                0_usize,
+                CommentVariant::TripleSlash
             ),
             BandAid::Injection(
                 LineColumn { line: 2, column: 0 },
                 " a test string with emojis like 😋😋⏪🦀.".to_owned(),
-                CommentVariant::TripleSlash,
-                0_usize,
+                CommentVariant::TripleSlash
             ),
         ];
 
@@ -343,14 +330,12 @@ pub(crate) mod tests {
             BandAid::Replacement(
                 (1_usize, 3..39).try_into().unwrap(),
                 " Possible __ways__ to run __rustc__ and request various".into(),
-                CommentVariant::TripleSlash,
-                0_usize,
+                CommentVariant::TripleSlash
             ),
             BandAid::Replacement(
                 (2_usize, 3..37).try_into().unwrap(),
                 " parts of LTO described in 3 lines.".into(),
-                CommentVariant::TripleSlash,
-                0_usize,
+                CommentVariant::TripleSlash
             ),
             BandAid::Deletion((3_usize, 0..26).try_into().unwrap()),
         ];
@@ -370,14 +355,12 @@ pub(crate) mod tests {
             BandAid::Replacement(
                 (1_usize, 3..72).try_into().unwrap(),
                 " Possible __ways__ to run __rustc__".into(),
-                CommentVariant::TripleSlash,
-                0_usize,
+                CommentVariant::TripleSlash
             ),
             BandAid::Injection(
                 LineColumn { line: 2, column: 0 },
                 " and request various parts of LTO".into(),
-                CommentVariant::TripleSlash,
-                0_usize,
+                CommentVariant::TripleSlash
             ),
         ];
 
@@ -405,14 +388,12 @@ pub(crate) mod tests {
                     },
                 },
                 "Possibilities are".to_owned(),
-                CommentVariant::MacroDocEq(2),
-                7_usize,
+                CommentVariant::MacroDocEq(2)
             ),
             BandAid::Injection(
                 LineColumn { line: 2, column: 0 },
                 "endless, needless to say.".into(),
-                CommentVariant::MacroDocEq(2),
-                7_usize,
+                CommentVariant::MacroDocEq(2)
             ),
         ];
         // TODO design decision: do we want to merge these into one, or produce one per line?
@@ -436,14 +417,12 @@ pub(crate) mod tests {
                     },
                 },
                 r#"Possibilities are endless,"#.to_owned(),
-                CommentVariant::MacroDocEq(2),
-                7_usize,
+                CommentVariant::MacroDocEq(2)
             ),
             BandAid::Replacement(
                 (2_usize, 9..15).try_into().unwrap(),
                 "needless to say.".into(),
-                CommentVariant::MacroDocEq(2),
-                7_usize,
+                CommentVariant::MacroDocEq(2)
             ),
         ];
 
@@ -469,8 +448,7 @@ pub(crate) mod tests {
                     },
                 },
                 "Possibilities are endless, described in 2 lines.".to_owned(),
-                CommentVariant::MacroDocEq(2),
-                7_usize,
+                CommentVariant::MacroDocEq(2)
             ),
             BandAid::Deletion((2_usize, 0..29).try_into().unwrap()),
         ];

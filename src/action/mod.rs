@@ -65,8 +65,8 @@ impl From<BandAid> for Patch {
         // TODO XXX this conversion is probably too simplistic
         match bandaid {
             BandAid::Deletion(span) => Self::Replace { replace_span: span.clone(), replacement: String::new() },
-            BandAid::Injection(linecol, content, _comment_variant, _) => Self::Insert { insert_at: linecol, content: content.to_owned() },
-            BandAid::Replacement(span, content, _comment_variant, _) => Self::Replace { replace_span: span.clone(), replacement: content.to_owned() },
+            BandAid::Injection(linecol, content, _comment_variant) => Self::Insert { insert_at: linecol, content: content.to_owned() },
+            BandAid::Replacement(span, content, _comment_variant) => Self::Replace { replace_span: span.clone(), replacement: content.to_owned() },
         }
     }
 }
@@ -132,7 +132,7 @@ where
         debug_assert!(byte_cursor <= cc_from_byteoffset);
         byte_cursor = cc_from_byteoffset;
 
-        
+
         let cc_to_byteoffset = if let Some(upcoming) = patches.peek() {
             let cc_end = match upcoming {
                 Patch::Replace{ replace_span, ..} => {
@@ -373,20 +373,17 @@ Icecream truck"#
             BandAid::Replacement(
                 (2_usize, 7..15).try_into().unwrap(),
                 "banana icecream".to_owned(),
-                CommentVariant::TripleSlash,
-                0_usize,
+                CommentVariant::TripleSlash
             ),
             BandAid::Replacement(
                 (2_usize, 22..28).try_into().unwrap(),
                 "third".to_owned(),
-                CommentVariant::TripleSlash,
-                0_usize,
+                CommentVariant::TripleSlash
             ),
             BandAid::Replacement(
                 (2_usize, 29..36).try_into().unwrap(),
                 "day".to_owned(),
-                CommentVariant::TripleSlash,
-                0_usize,
+                CommentVariant::TripleSlash
             ),
         ];
         verify_correction!(
@@ -408,20 +405,17 @@ I like banana icecream every third day.
             BandAid::Replacement(
                 (2_usize, 27..36).try_into().unwrap(),
                 "comments with".to_owned(),
-                CommentVariant::TripleSlash,
-                0_usize,
+                CommentVariant::TripleSlash
             ),
             BandAid::Replacement(
                 (3_usize, 0..17).try_into().unwrap(),
                 " different multiple".to_owned(),
-                CommentVariant::TripleSlash,
-                0_usize,
+                CommentVariant::TripleSlash
             ),
             BandAid::Replacement(
                 (3_usize, 18..23).try_into().unwrap(),
                 "words".to_owned(),
-                CommentVariant::TripleSlash,
-                0_usize,
+                CommentVariant::TripleSlash
             ),
         ];
         verify_correction!(
@@ -447,8 +441,7 @@ I like banana icecream every third day.
             BandAid::Replacement(
                 (2_usize, 27..36).try_into().unwrap(),
                 "comments with multiple words".to_owned(),
-                CommentVariant::TripleSlash,
-                0,
+                CommentVariant::TripleSlash
             ),
             BandAid::Deletion((3_usize, 0..17).try_into().unwrap()),
         ];
@@ -470,8 +463,7 @@ I like banana icecream every third day.
             BandAid::Replacement(
                 (2_usize, 27..36).try_into().unwrap(),
                 "comments with multiple words".to_owned(),
-                CommentVariant::TripleSlash,
-                0,
+                CommentVariant::TripleSlash
             ),
             BandAid::Injection(
                 LineColumn {
@@ -479,8 +471,7 @@ I like banana icecream every third day.
                     column: 0,
                 },
                 " but still more content".to_owned(),
-                CommentVariant::TripleSlash,
-                0,
+                CommentVariant::TripleSlash
             ),
         ];
         verify_correction!(
@@ -508,8 +499,7 @@ I like banana icecream every third day.
             BandAid::Replacement(
                 (2_usize, 18..24).try_into().unwrap(),
                 "uchen".to_owned(),
-                CommentVariant::MacroDocEq(0),
-                0,
+                CommentVariant::MacroDocEq(0)
             ),
             BandAid::Injection(
                 LineColumn {
@@ -517,8 +507,7 @@ I like banana icecream every third day.
                     column: 24,
                 },
                 "für".to_owned(),
-                CommentVariant::MacroDocEq(0),
-                0,
+                CommentVariant::MacroDocEq(0)
             ),
             BandAid::Injection(
                 LineColumn {
@@ -526,8 +515,7 @@ I like banana icecream every third day.
                     column: 24,
                 },
                 "den".to_owned(),
-                CommentVariant::MacroDocEq(0),
-                0,
+                CommentVariant::MacroDocEq(0)
             ),
             BandAid::Deletion((2_usize, 24..25).try_into().unwrap()),
             BandAid::Deletion((3_usize, 0..10).try_into().unwrap()),
