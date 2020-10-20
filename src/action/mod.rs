@@ -88,8 +88,7 @@ where
     II: IntoIterator<IntoIter = I, Item = Patch>,
     I: Iterator<Item = Patch>,
 {
-    let patches = patches.into_iter();
-    let mut patches = patches.peekable();
+    let mut patches = patches.into_iter().peekable();
 
     let mut source_iter =
         iter_with_line_column_from(source_buffer.as_str(), LineColumn { line: 1, column: 0 })
