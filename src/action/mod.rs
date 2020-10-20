@@ -397,7 +397,7 @@ Icecream truck"#
             replace_span: (1_usize, 0..1).try_into().unwrap(),
             replacement: "Y".to_owned(),
         }];
-        verify_correction!("TFFU", bandaids, "YFFU");
+        verify_correction!("T🐠🐠U", bandaids, "Y🐠🐠U");
     }
 
     #[test]
@@ -410,7 +410,7 @@ Icecream truck"#
             replace_span: (1_usize, 1..3).try_into().unwrap(),
             replacement: "Y".to_owned(),
         }];
-        verify_correction!("TFFU", bandaids, "TYU");
+        verify_correction!("T🐠🐠U", bandaids, "TYU");
     }
 
     #[test]
@@ -423,7 +423,7 @@ Icecream truck"#
             replace_span: (1_usize, 3..4).try_into().unwrap(),
             replacement: "Y".to_owned(),
         }];
-        verify_correction!("TFFU", bandaids, "TFFY");
+        verify_correction!("T🐠🐠U", bandaids, "T🐠🐠Y");
     }
 
     #[test]
@@ -440,7 +440,7 @@ Icecream truck"#
             },
             content: "Q".to_owned(),
         }];
-        verify_correction!("ABC", patches, "QABC");
+        verify_correction!("A🐢C", patches, "QA🐢C");
     }
 
     #[test]
@@ -457,7 +457,7 @@ Icecream truck"#
             },
             content: "Q".to_owned(),
         }];
-        verify_correction!("ABC", patches, "ABQC");
+        verify_correction!("A🐢C", patches, "A🐢QC");
     }
     #[test]
     fn patch_injection_3() {
@@ -473,6 +473,6 @@ Icecream truck"#
             },
             content: "Q".to_owned(),
         }];
-        verify_correction!("ABC", patches, "ABCQ");
+        verify_correction!("A🐢C", patches, "A🐢CQ");
     }
 }
