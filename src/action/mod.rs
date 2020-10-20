@@ -390,11 +390,7 @@ Icecream truck"#
     }
 
     #[test]
-<<<<<<< HEAD
     fn patch_replace_1() {
-=======
-    fn patch_full() {
->>>>>>> 04af889... refactor/action: rewrite correct_lines purely based on spans
         let _ = env_logger::Builder::new()
             .filter_level(log::LevelFilter::Trace)
             .is_test(true)
