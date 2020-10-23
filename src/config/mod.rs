@@ -8,6 +8,9 @@
 // TODO pendeng refactor, avoid spending time on documenting the status quo.
 #![allow(missing_docs)]
 
+mod search_dirs;
+pub use search_dirs::*;
+
 use crate::suggestion::Detector;
 use anyhow::{anyhow, bail, Error, Result};
 use fancy_regex::Regex;
@@ -118,14 +121,17 @@ impl<'de> serde::de::Visitor<'de> for RegexVisitor {
 pub struct Quirks {
     /// A regular expression, whose capture groups will be checked, instead of the initial token.
     /// Only the first one that matches will be used to split the word.
-    pub transform_regex: Option<Vec<WrappedRegex>>,
+    #[serde(default)]
+    pub transform_regex: Vec<WrappedRegex>,
     /// Allow concatenated words instead of dashed connection.
     /// Note that this only applies, if one of the suggested replacements has an item that is
     /// equivalent except for addition dashes (`-`).
-    pub allow_concatenation: Option<bool>,
+    #[serde(default)]
+    pub allow_concatenation: bool,
     /// The counterpart of `allow_concatenation`. Accepts words which have repalcement suggestions
     /// that contain additional dashes.
-    pub allow_dashes: Option<bool>,
+    #[serde(default)]
+    pub allow_dashes: bool,
 }
 
 impl Default for Quirks {
@@ -133,122 +139,24 @@ impl Default for Quirks {
         // use some for default, so for generating the default config has the default values
         // but the options are necessary to allow omitting them in the config file
         Self {
-            transform_regex: Some(vec![]),
-            allow_concatenation: Some(false),
-            allow_dashes: Some(false),
+            transform_regex: vec![],
+            allow_concatenation: false,
+            allow_dashes: false,
         }
     }
 }
 
 impl Quirks {
     pub(crate) fn allow_concatenated(&self) -> bool {
-        self.allow_concatenation.unwrap_or(false)
+        self.allow_concatenation
     }
 
     pub(crate) fn allow_dashed(&self) -> bool {
-        self.allow_dashes.unwrap_or(false)
+        self.allow_dashes
     }
 
     pub(crate) fn transform_regex(&self) -> &[WrappedRegex] {
-        if let Some(ref tr) = self.transform_regex {
-            tr.as_slice()
-        } else {
-            &[]
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct SearchDirs(pub Option<Vec<PathBuf>>);
-
-impl std::ops::Deref for SearchDirs {
-    type Target = Option<Vec<PathBuf>>;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl std::convert::AsRef<Option<Vec<PathBuf>>> for SearchDirs {
-    fn as_ref(&self) -> &Option<Vec<PathBuf>> {
-        &self.0
-    }
-}
-
-impl Serialize for SearchDirs {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::ser::Serializer,
-    {
-        if let Some(x) = self.as_ref() {
-            serializer.serialize_some(x)
-        } else {
-            serializer.serialize_none()
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for SearchDirs {
-    fn deserialize<D>(deserializer: D) -> Result<SearchDirs, D::Error>
-    where
-        D: serde::de::Deserializer<'de>,
-    {
-        deserializer
-            .deserialize_option(SearchDirVisitor)
-            .map(Into::into)
-    }
-}
-
-impl Into<Option<Vec<PathBuf>>> for SearchDirs {
-    fn into(self) -> Option<Vec<PathBuf>> {
-        self.0
-    }
-}
-
-impl From<Option<Vec<PathBuf>>> for SearchDirs {
-    fn from(other: Option<Vec<PathBuf>>) -> SearchDirs {
-        SearchDirs(other)
-    }
-}
-
-struct SearchDirVisitor;
-
-impl<'de> serde::de::Visitor<'de> for SearchDirVisitor {
-    type Value = Option<Vec<PathBuf>>;
-
-    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        formatter.write_str("Search Dir Visitors must be an optional sequence of path")
-    }
-
-    fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
-    where
-        D: serde::de::Deserializer<'de>,
-    {
-        Ok(deserializer.deserialize_seq(self)?.map(|mut seq| {
-            seq.extend(
-                os_specific_search_dirs()
-                    .iter()
-                    .map(|path: &PathBuf| PathBuf::from(path)),
-            );
-            seq
-        }))
-    }
-
-    fn visit_none<E>(self) -> Result<Self::Value, E>
-    where
-        E: serde::de::Error,
-    {
-        Ok(Some(os_specific_search_dirs().to_vec()))
-    }
-
-    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-    where
-        A: serde::de::SeqAccess<'de>,
-    {
-        let mut v = Vec::with_capacity(8);
-        while let Some(item) = seq.next_element()? {
-            v.push(item);
-        }
-        Ok(Some(v))
+        &self.transform_regex
     }
 }
 
@@ -260,11 +168,14 @@ pub struct HunspellConfig {
     pub lang: Option<String>,
     /// Additional search dirs for `.dic` and `.aff` files.
     // must be option so it can be omitted in the config
+    #[serde(default)]
     pub search_dirs: SearchDirs,
     /// Additional dictionaries for topic specific lingo.
-    pub extra_dictionaries: Option<Vec<PathBuf>>,
+    #[serde(default)]
+    pub extra_dictionaries: Vec<PathBuf>,
     /// Additional quirks besides dictionary lookups.
-    pub quirks: Option<Quirks>,
+    #[serde(default)]
+    pub quirks: Quirks,
 }
 
 impl HunspellConfig {
@@ -277,74 +188,62 @@ impl HunspellConfig {
     }
 
     pub fn search_dirs(&self) -> &[PathBuf] {
-        if let Some(ref search_dirs) = self.search_dirs.as_ref() {
-            search_dirs.as_slice()
-        } else {
-            os_specific_search_dirs()
-        }
+        &self.search_dirs
     }
 
     pub fn extra_dictionaries(&self) -> &[PathBuf] {
-        if let Some(ref extra_dictionaries) = self.extra_dictionaries {
-            extra_dictionaries.as_slice()
-        } else {
-            &[]
-        }
+        &self.extra_dictionaries
     }
 
     pub fn sanitize_paths(&mut self, base: &Path) -> Result<()> {
-        if let Some(ref mut search_dirs) = self.search_dirs.0 {
-            *search_dirs = search_dirs
-                .iter_mut()
-                .filter_map(|search_dir| {
-                    let abspath = if !search_dir.is_absolute() {
-                        base.join(&search_dir)
-                    } else {
-                        search_dir.to_owned()
-                    };
+        self.search_dirs = self.search_dirs.iter()
+            .filter_map(|search_dir| {
+                let abspath = if !search_dir.is_absolute() {
+                    base.join(&search_dir)
+                } else {
+                    search_dir.to_owned()
+                };
 
-                    abspath.canonicalize().ok().map(|abspath| {
-                        trace!(
-                            "Sanitized ({} + {}) -> {}",
-                            base.display(),
-                            search_dir.display(),
-                            abspath.display()
-                        );
-                        abspath
-                    })
-                })
-                .collect();
-
-            // convert all extra dictionaries to absolute paths
-            if let Some(ref mut extra_dictionaries) = self.extra_dictionaries {
-                'o: for extra_dic in extra_dictionaries.iter_mut() {
-                    for search_dir in search_dirs.iter().filter_map(|search_dir| {
-                        if !extra_dic.is_absolute() {
-                            base.join(&search_dir).canonicalize().ok()
-                        } else {
-                            Some(search_dir.to_owned())
-                        }
-                    }) {
-                        let abspath = if !extra_dic.is_absolute() {
-                            search_dir.join(&extra_dic)
-                        } else {
-                            continue 'o;
-                        };
-                        if let Ok(abspath) = abspath.canonicalize() {
-                            if abspath.is_file() {
-                                *extra_dic = abspath;
-                                continue 'o;
-                            }
-                        } else {
-                            log::debug!("Failed to canonicalize {}", abspath.display());
-                        }
-                    }
-                    bail!(
-                        "Could not find extra dictionary {} in any of the search paths",
-                        extra_dic.display()
+                abspath.canonicalize().ok().map(|abspath| {
+                    trace!(
+                        "Sanitized ({} + {}) -> {}",
+                        base.display(),
+                        search_dir.display(),
+                        abspath.display()
                     );
+                    abspath
+                })
+            })
+            .collect::<Vec<PathBuf>>().into();
+
+        // convert all extra dictionaries to absolute paths
+
+        'o: for extra_dic in self.extra_dictionaries.iter_mut() {
+            for search_dir in self.search_dirs.iter().filter_map(|search_dir| {
+                if !extra_dic.is_absolute() {
+                    base.join(&search_dir).canonicalize().ok()
+                } else {
+                    Some(search_dir.to_owned())
+                }
+            }) {
+                let abspath = if !extra_dic.is_absolute() {
+                    search_dir.join(&extra_dic)
+                } else {
+                    continue 'o;
+                };
+                if let Ok(abspath) = abspath.canonicalize() {
+                    if abspath.is_file() {
+                        *extra_dic = abspath;
+                        continue 'o;
+                    }
+                } else {
+                    log::debug!("Failed to canonicalize {}", abspath.display());
                 }
             }
+            bail!(
+                "Could not find extra dictionary {} in any of the search paths",
+                extra_dic.display()
+            );
         }
 
         Ok(())
@@ -510,37 +409,14 @@ impl Config {
     }
 }
 
-fn os_specific_search_dirs() -> &'static [PathBuf] {
-    lazy_static::lazy_static! {
-        static ref OS_SPECIFIC_LOOKUP_DIRS: Vec<PathBuf> =
-            if cfg!(target_os = "macos") {
-                directories::BaseDirs::new()
-                    .map(|base| vec![base.home_dir().to_owned().join("/Library/Spelling/"), PathBuf::from("/Library/Spelling/")])
-                    .unwrap_or_else(|| Vec::new())
-            } else if cfg!(target_os = "linux") {
-                vec![
-                    // Fedora
-                    PathBuf::from("/usr/share/myspell/"),
-                    PathBuf::from("/usr/share/hunspell/"),
-                    // Arch Linux
-                    PathBuf::from("/usr/share/myspell/dicts/"),
-                ]
-            } else {
-                Vec::new()
-            };
-
-    }
-    OS_SPECIFIC_LOOKUP_DIRS.as_slice()
-}
-
 impl Default for Config {
     fn default() -> Self {
         Self {
             hunspell: Some(HunspellConfig {
                 lang: Some("en_US".to_owned()),
-                search_dirs: Some(os_specific_search_dirs().to_vec()).into(),
-                extra_dictionaries: Some(Vec::new()),
-                quirks: Some(Quirks::default()),
+                search_dirs: SearchDirs::default(),
+                extra_dictionaries: Vec::new(),
+                quirks: Quirks::default(),
             }),
             languagetool: None,
         }
@@ -693,8 +569,9 @@ search_dirs = ["/search/1", "/search/2"]
 
         let hunspell: HunspellConfig = cfg.hunspell.expect("Must contain hunspell cfg");
         let search_dirs = hunspell.search_dirs;
-        let search_dirs: Option<_> = search_dirs.as_ref().clone();
-        let search_dirs = search_dirs.expect("Must be some search dirs");
+        let search_dirs: Vec<_> = search_dirs.as_ref().clone();
+        assert!(!search_dirs.is_empty());
+
         #[cfg(target_os = "linux")]
         assert_eq!(search_dirs.len(), 5);
 

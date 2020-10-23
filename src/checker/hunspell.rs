@@ -122,15 +122,16 @@ impl Checker for HunspellChecker {
         let hunspell = Self::inner_init(config)?;
 
         let (transform_regex, allow_concatenated, allow_dashed) =
-            if let Some(quirks) = &config.quirks {
+        {
+            let quirks = &config.quirks;
+            {
                 (
                     quirks.transform_regex(),
                     quirks.allow_concatenated(),
                     quirks.allow_dashed(),
                 )
-            } else {
-                (&[][..], false, false)
-            };
+            }
+        };
 
         let suggestions = docu.iter().try_fold::<SuggestionSet, _, Result<_>>(
             SuggestionSet::new(),
