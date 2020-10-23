@@ -1,6 +1,5 @@
 use super::*;
 
-
 /// Obtain os specific search dirs.
 fn os_specific_search_dirs() -> &'static [PathBuf] {
     lazy_static::lazy_static! {
@@ -94,7 +93,7 @@ impl<'de> serde::de::Visitor<'de> for SearchDirVisitor {
     where
         D: serde::de::Deserializer<'de>,
     {
-        let mut seq= deserializer.deserialize_seq(self)?;
+        let mut seq = deserializer.deserialize_seq(self)?;
         seq.extend(
             os_specific_search_dirs()
                 .iter()
@@ -102,7 +101,6 @@ impl<'de> serde::de::Visitor<'de> for SearchDirVisitor {
         );
         Ok(seq)
     }
-
 
     fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
     where
