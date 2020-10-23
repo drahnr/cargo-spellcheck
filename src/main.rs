@@ -349,7 +349,7 @@ fn run() -> anyhow::Result<ExitCode> {
         Action::Check
     };
 
-    trace!("Executing: {:?} with {:?}", action, &config);
+    debug!("Executing: {:?} with {:?}", action, &config);
 
     let combined = traverse::extract(
         args.arg_paths,
