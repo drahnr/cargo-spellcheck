@@ -196,7 +196,9 @@ impl HunspellConfig {
     }
 
     pub fn sanitize_paths(&mut self, base: &Path) -> Result<()> {
-        self.search_dirs = self.search_dirs.iter()
+        self.search_dirs = self
+            .search_dirs
+            .iter()
             .filter_map(|search_dir| {
                 let abspath = if !search_dir.is_absolute() {
                     base.join(&search_dir)
@@ -214,7 +216,8 @@ impl HunspellConfig {
                     abspath
                 })
             })
-            .collect::<Vec<PathBuf>>().into();
+            .collect::<Vec<PathBuf>>()
+            .into();
 
         // convert all extra dictionaries to absolute paths
 

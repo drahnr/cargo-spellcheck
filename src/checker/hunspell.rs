@@ -121,8 +121,7 @@ impl Checker for HunspellChecker {
     {
         let hunspell = Self::inner_init(config)?;
 
-        let (transform_regex, allow_concatenated, allow_dashed) =
-        {
+        let (transform_regex, allow_concatenated, allow_dashed) = {
             let quirks = &config.quirks;
             {
                 (
