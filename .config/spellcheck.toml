@@ -13,3 +13,4 @@ transform_regex = ["^'([^\\s])'$", "^[0-9]+x$", "^\\#[0-9]+$", "^[0-9]+$", "^.+\
 # accepts `alphabeta` variants if the checker provides a replacement suggestion
 # of `alpha-beta`.
 allow_concatenation = true
+allow_dashed = true
