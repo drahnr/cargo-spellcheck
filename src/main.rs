@@ -257,21 +257,24 @@ fn run() -> anyhow::Result<ExitCode> {
     }
 
     let (explicit_cfg, config_path) = match args.flag_cfg.as_ref() {
-        Some(path) => {
-            let path = if path.is_absolute() {
-                path.to_owned()
+        Some(config_path) => {
+            let config_path = if config_path.is_absolute() {
+                config_path.to_owned()
             } else {
-                traverse::cwd()?.join(path)
+                traverse::cwd()?.join(config_path)
             };
-            (true, path)
+            (true, config_path)
         }
         None => {
-            // @todo refactor needed
+            // TODO refactor needed
 
             // the current work dir as fallback
-            let mut config_path: PathBuf = traverse::cwd()?.join("Cargo.toml");
+            let cwd = traverse::cwd()?;
+            let mut config_path: PathBuf = cwd.as_path().join("Cargo.toml");
 
-            // overwrite with the first found manifest
+            // TODO Currently uses the first manifest dir as search dir for a spellcheck.toml
+            // TODO with a fallback to the cwd as project dir.
+            // TODO But it would be preferable to use the config specific to each dir if available.
             for path in args.arg_paths.iter() {
                 let path = if let Some(path) = if path.is_absolute() {
                     path.to_owned()
@@ -310,12 +313,18 @@ fn run() -> anyhow::Result<ExitCode> {
 
             let config_path = config_path.with_file_name(""); //.expect("Found file ends in Cargo.toml and is abs. qed");
 
-            let path = config::Config::project_config(&config_path)
+            let resolved_config_path = config::Config::project_config(&config_path)
+                .or_else(|e| {
+                    debug!("Manifest dir found {}: {}", config_path.display(), e);
+                    // in case there is none, attempt the cwd first before falling back to the user config
+                    // this is a common case for workspace setups where we want to sanitize a sub project
+                    config::Config::project_config(cwd.as_path())
+                })
                 .or_else(|e| {
                     debug!("Fallback to user default lookup, failed to load project specific config {}: {}", config_path.display(), e);
                     Config::default_path()
                 })?;
-            (false, path)
+            (false, resolved_config_path)
         }
     };
     info!("Using configuration file {}", config_path.display());
