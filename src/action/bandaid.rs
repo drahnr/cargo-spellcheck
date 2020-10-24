@@ -5,7 +5,7 @@
 //! to suggestions on one line.
 //! Multi-line suggestions are collected in a `FirstAidKit`.
 
-use crate::{CommentVariant, LineColumn, Span};
+use crate::Span;
 
 /// A chosen suggestion for a certain span
 #[derive(Debug, Clone, PartialEq, Eq)]

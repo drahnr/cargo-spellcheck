@@ -13,7 +13,6 @@ use crossterm::{
     terminal, QueueableCommand,
 };
 
-use std::convert::TryFrom;
 use std::io::stdout;
 
 const HELP: &'static str = r##"y - apply this suggestion
