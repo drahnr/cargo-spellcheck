@@ -349,7 +349,7 @@ impl CheckableChunk {
 
     /// The variant type of comment.
     pub fn variant(&self) -> CommentVariant {
-        self.variant
+        self.variant.clone()
     }
 }
 

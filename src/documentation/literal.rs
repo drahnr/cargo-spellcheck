@@ -7,15 +7,15 @@ use std::convert::TryFrom;
 use std::fmt;
 
 /// Track what kind of comment the literal is
-#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CommentVariant {
     /// `///`
     TripleSlash,
     /// `//!`
     DoubleSlashEM,
-    /// `#[doc=` with the length of possible `r#`s, i.e. total length of `r###` etc. including `r`
-    MacroDocEq(usize),
+    /// `#[doc=` with actual prefix like `#[doc=` and the total length of `r###` etc. including `r`
+    MacroDocEq(String, usize),
     /// Commonmark File
     CommonMark,
     /// Unknown Variant
@@ -34,14 +34,14 @@ impl CommentVariant {
         match self {
             CommentVariant::TripleSlash => "/// ".into(),
             CommentVariant::DoubleSlashEM => "//! ".into(),
-            CommentVariant::MacroDocEq(p) => {
+            CommentVariant::MacroDocEq(d, p) => {
                 let raw = match p {
                     // TODO: make configureable if each line will start with #[doc ="
                     // TODO: but not here!
                     0 => "\"".to_owned(),
                     x => format!("r{}\"", "#".repeat(x.saturating_sub(1))),
                 };
-                format!(r#"#[ doc = {}"#, raw)
+                format!(r#"{}{}"#, d, raw)
             }
             _ => unreachable!("All comment variants have a string representation. qed"),
         }
@@ -50,7 +50,7 @@ impl CommentVariant {
     pub fn prefix_len(&self) -> usize {
         match self {
             CommentVariant::TripleSlash | CommentVariant::DoubleSlashEM => 3,
-            CommentVariant::MacroDocEq(p) => *p,
+            CommentVariant::MacroDocEq(d, p) => d.len() + *p + 1,
             _ => 0,
         }
     }
@@ -58,14 +58,14 @@ impl CommentVariant {
     /// Return suffix of different comment variants
     pub fn suffix_len(&self) -> usize {
         match self {
-            CommentVariant::MacroDocEq(p) => 2 + p,
+            CommentVariant::MacroDocEq(_, p) => 2 + p,
             _ => 0,
         }
     }
 
     /// Return string which will be appended to each line
     pub fn suffix_string(&self) -> String {
-        if let CommentVariant::MacroDocEq(p) = self {
+        if let CommentVariant::MacroDocEq(_, p) = self {
             match p {
                 0 | 1 => r#""]"#.to_string(),
                 n => r#"""#.to_string() + &"#".repeat(n - 1) + "]",
@@ -152,8 +152,21 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
         span.end.column = span.end.column.saturating_sub(1);
 
         let rendered = util::load_span_from(content.as_bytes(), span.clone())?;
+        let prefix_span = Span {
+            start: crate::LineColumn {
+                line: span.start.line,
+                column: 0,
+            },
+            end: crate::LineColumn {
+                line: span.start.line,
+                column: span.start.column.saturating_sub(1),
+            },
+        };
+        let prefix = util::load_span_from(content.as_bytes(), prefix_span)?
+            .trim_start()
+            .to_string();
         // TODO cache the offsets for faster processing and avoiding repeated O(n) ops
-        // let byteoffset2char = rendered.char_indices().enumerate().collect::<indexmap::IndexMap<usize, (usize, char)>>();
+        // let byteoffset2char = rendered.char_indices().enumerate().collect::<indexmap::IndexMap<_usize, (_usize, char)>>();
         // let rendered_len = byteoffset2char.len();
         let rendered_len = rendered.chars().count();
 
@@ -216,8 +229,8 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
                 // r####" must match "####
                 let pre = 1;
                 let post = 1;
-                debug_assert_eq!('"', rendered.as_bytes()[0usize] as char);
-                debug_assert_eq!('"', rendered.as_bytes()[rendered.len() - 1usize] as char);
+                debug_assert_eq!('"', rendered.as_bytes()[0_usize] as char);
+                debug_assert_eq!('"', rendered.as_bytes()[rendered.len() - 1_usize] as char);
                 (pre, post)
             } else {
                 bail!("Regex should match >{}<", rendered);
@@ -226,7 +239,12 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
             span.start.column += pre;
             span.end.column = span.end.column.saturating_sub(post);
 
-            (CommentVariant::MacroDocEq(pre - 1), span, pre, post)
+            (
+                CommentVariant::MacroDocEq(prefix, pre.saturating_sub(1)),
+                span,
+                pre,
+                post,
+            )
         };
 
         let len_in_chars = rendered_len.saturating_sub(post + pre);
@@ -312,7 +330,7 @@ impl TrimmedLiteral {
 
     /// The string variant type, see [`CommentVariant`](self::CommentVariant) for details.
     pub fn variant(&self) -> CommentVariant {
-        self.variant
+        self.variant.clone()
     }
 
     /// Display helper, mostly used for debug investigations
@@ -487,130 +505,131 @@ pub(crate) mod tests {
         variant: CommentVariant,
     }
 
-    const TEST_DATA: &[Triplet] = &[
-        // 0
-        Triplet {
-            source: r#"
+    fn comment_variant_span_range_validation(index: usize) {
+        let test_data: &[Triplet] = &[
+            // 0
+            Triplet {
+                source: r#"
 /// One Doc
 struct One;
 "#,
-            extracted: r#"" One Doc""#,
-            trimmed: " One Doc",
-            extracted_span: Span {
-                start: LineColumn {
-                    line: 2usize,
-                    column: 0,
+                extracted: r#"" One Doc""#,
+                trimmed: " One Doc",
+                extracted_span: Span {
+                    start: LineColumn {
+                        line: 2_usize,
+                        column: 0,
+                    },
+                    end: LineColumn {
+                        line: 2_usize,
+                        column: 10_usize,
+                    },
                 },
-                end: LineColumn {
-                    line: 2usize,
-                    column: 10usize,
+                trimmed_span: Span {
+                    start: LineColumn {
+                        line: 2_usize,
+                        column: 3_usize,
+                    },
+                    end: LineColumn {
+                        line: 2_usize,
+                        column: 10_usize,
+                    },
                 },
+                variant: CommentVariant::TripleSlash,
             },
-            trimmed_span: Span {
-                start: LineColumn {
-                    line: 2usize,
-                    column: 3usize,
-                },
-                end: LineColumn {
-                    line: 2usize,
-                    column: 10usize,
-                },
-            },
-            variant: CommentVariant::TripleSlash,
-        },
-        // 1
-        Triplet {
-            source: r##"
+            // 1
+            Triplet {
+                source: r##"
     ///meanie
 struct Meanie;
 "##,
-            extracted: r#""meanie""#,
-            trimmed: "meanie",
-            extracted_span: Span {
-                start: LineColumn {
-                    line: 2usize,
-                    column: 0usize + 7 - PREFIX_RAW_LEN,
+                extracted: r#""meanie""#,
+                trimmed: "meanie",
+                extracted_span: Span {
+                    start: LineColumn {
+                        line: 2_usize,
+                        column: 0_usize + 7 - PREFIX_RAW_LEN,
+                    },
+                    end: LineColumn {
+                        line: 2_usize,
+                        column: 0_usize + 12 + SUFFIX_RAW_LEN,
+                    },
                 },
-                end: LineColumn {
-                    line: 2usize,
-                    column: 0usize + 12 + SUFFIX_RAW_LEN,
+                trimmed_span: Span {
+                    start: LineColumn {
+                        line: 2_usize,
+                        column: 0_usize + 7,
+                    },
+                    end: LineColumn {
+                        line: 2_usize,
+                        column: 0_usize + 12,
+                    },
                 },
+                variant: CommentVariant::TripleSlash,
             },
-            trimmed_span: Span {
-                start: LineColumn {
-                    line: 2usize,
-                    column: 0usize + 7,
-                },
-                end: LineColumn {
-                    line: 2usize,
-                    column: 0usize + 12,
-                },
-            },
-            variant: CommentVariant::TripleSlash,
-        },
-        // 2
-        Triplet {
-            source: r#"
+            // 2
+            Triplet {
+                source: r#"
 #[doc = "Two Doc"]
 struct Two;
 "#,
-            extracted: r#""Two Doc""#,
-            trimmed: "Two Doc",
-            extracted_span: Span {
-                start: LineColumn {
-                    line: 2usize,
-                    column: 0usize + 10 - GAENSEFUESSCHEN,
+                extracted: r#""Two Doc""#,
+                trimmed: "Two Doc",
+                extracted_span: Span {
+                    start: LineColumn {
+                        line: 2_usize,
+                        column: 0_usize + 10 - GAENSEFUESSCHEN,
+                    },
+                    end: LineColumn {
+                        line: 2__usize,
+                        column: 6__usize + 10 + GAENSEFUESSCHEN,
+                    },
                 },
-                end: LineColumn {
-                    line: 2usize,
-                    column: 6usize + 10 + GAENSEFUESSCHEN,
+                trimmed_span: Span {
+                    start: LineColumn {
+                        line: 2__usize,
+                        column: 0__usize + 9,
+                    },
+                    end: LineColumn {
+                        line: 2__usize,
+                        column: 6__usize + 9,
+                    },
                 },
+                variant: CommentVariant::MacroDocEq("#[doc = ".to_string(), 0),
             },
-            trimmed_span: Span {
-                start: LineColumn {
-                    line: 2usize,
-                    column: 0usize + 9,
-                },
-                end: LineColumn {
-                    line: 2usize,
-                    column: 6usize + 9,
-                },
-            },
-            variant: CommentVariant::MacroDocEq(0),
-        },
-        // 3
-        Triplet {
-            source: r##"
+            // 3
+            Triplet {
+                source: r##"
     #[doc=r#"Three Doc"#]
 struct Three;
 "##,
-            extracted: r###"r#"Three Doc"#"###,
-            trimmed: "Three Doc",
-            extracted_span: Span {
-                start: LineColumn {
-                    line: 2usize,
-                    column: 4usize + 11,
+                extracted: r###"r#"Three Doc"#"###,
+                trimmed: "Three Doc",
+                extracted_span: Span {
+                    start: LineColumn {
+                        line: 2__usize,
+                        column: 4__usize + 11,
+                    },
+                    end: LineColumn {
+                        line: 2__usize,
+                        column: 13__usize + 11,
+                    },
                 },
-                end: LineColumn {
-                    line: 2usize,
-                    column: 13usize + 11,
+                trimmed_span: Span {
+                    start: LineColumn {
+                        line: 2__usize,
+                        column: 0__usize + 13,
+                    },
+                    end: LineColumn {
+                        line: 2__usize,
+                        column: 13__usize + 8,
+                    },
                 },
+                variant: CommentVariant::MacroDocEq("#[doc=".to_string(), 2),
             },
-            trimmed_span: Span {
-                start: LineColumn {
-                    line: 2usize,
-                    column: 0usize + 13,
-                },
-                end: LineColumn {
-                    line: 2usize,
-                    column: 13usize + 8,
-                },
-            },
-            variant: CommentVariant::MacroDocEq(2),
-        },
-        // 4
-        Triplet {
-            source: r###"
+            // 4
+            Triplet {
+                source: r###"
 #[doc = r##"Four
 has
 multiple
@@ -618,71 +637,71 @@ lines
 "##]
 struct Four;
 "###,
-            extracted: r###"r##"Four
+                extracted: r###"r##"Four
 has
 multiple
 lines
 "##"###,
-            trimmed: r#"Four
+                trimmed: r#"Four
 has
 multiple
 lines
 "#,
-            extracted_span: Span {
-                start: LineColumn {
-                    line: 2usize,
-                    column: 12usize - 4,
+                extracted_span: Span {
+                    start: LineColumn {
+                        line: 2__usize,
+                        column: 12__usize - 4,
+                    },
+                    end: LineColumn {
+                        line: 6__usize,
+                        column: 0__usize + 3,
+                    },
                 },
-                end: LineColumn {
-                    line: 6usize,
-                    column: 0usize + 3,
+                trimmed_span: Span {
+                    start: LineColumn {
+                        line: 2__usize,
+                        column: 12__usize,
+                    },
+                    end: LineColumn {
+                        line: 6__usize,
+                        column: 0__usize,
+                    },
                 },
+                variant: CommentVariant::MacroDocEq("#[doc = ".to_string(), 3),
             },
-            trimmed_span: Span {
-                start: LineColumn {
-                    line: 2usize,
-                    column: 12usize,
-                },
-                end: LineColumn {
-                    line: 6usize,
-                    column: 0usize,
-                },
-            },
-            variant: CommentVariant::MacroDocEq(3),
-        },
-        // 5
-        Triplet {
-            source: r###"
+            // 5
+            Triplet {
+                source: r###"
 #[doc        ="XYZ"]
 struct Five;
 "###,
-            extracted: r#""XYZ""#,
-            trimmed: r#"XYZ"#,
-            extracted_span: Span {
-                start: LineColumn {
-                    line: 2usize,
-                    column: 15usize - GAENSEFUESSCHEN,
+                extracted: r#""XYZ""#,
+                trimmed: r#"XYZ"#,
+                extracted_span: Span {
+                    start: LineColumn {
+                        line: 2__usize,
+                        column: 15__usize - GAENSEFUESSCHEN,
+                    },
+                    end: LineColumn {
+                        line: 2__usize,
+                        column: 15__usize + 2 + GAENSEFUESSCHEN,
+                    },
                 },
-                end: LineColumn {
-                    line: 2usize,
-                    column: 15usize + 2 + GAENSEFUESSCHEN,
+                trimmed_span: Span {
+                    start: LineColumn {
+                        line: 2__usize,
+                        column: 15_usize,
+                    },
+                    end: LineColumn {
+                        line: 2_usize,
+                        column: 15_usize + 2,
+                    },
                 },
+                variant: CommentVariant::MacroDocEq("#[doc        =".to_string(), 0),
             },
-            trimmed_span: Span {
-                start: LineColumn {
-                    line: 2usize,
-                    column: 15usize,
-                },
-                end: LineColumn {
-                    line: 2usize,
-                    column: 15usize + 2,
-                },
-            },
-            variant: CommentVariant::MacroDocEq(0),
-        },
-        // 6
-        Triplet {
-            source: r#"
+            // 6
+            Triplet {
+                source: r#"
 
     /// if a layer is provided a identiacla "input" and "output", it will only be supplied an
     fn compute_in_place(&self) -> bool {
@@ -690,33 +709,33 @@ struct Five;
     }
 
 "#,
-            extracted: r#"" if a layer is provided a identiacla "input" and "output", it will only be supplied an""#,
-            trimmed: r#" if a layer is provided a identiacla "input" and "output", it will only be supplied an"#,
-            extracted_span: Span {
-                start: LineColumn {
-                    line: 3usize,
-                    column: 7usize - GAENSEFUESSCHEN,
+                extracted: r#"" if a layer is provided a identiacla "input" and "output", it will only be supplied an""#,
+                trimmed: r#" if a layer is provided a identiacla "input" and "output", it will only be supplied an"#,
+                extracted_span: Span {
+                    start: LineColumn {
+                        line: 3_usize,
+                        column: 7_usize - GAENSEFUESSCHEN,
+                    },
+                    end: LineColumn {
+                        line: 2_usize,
+                        column: 92_usize + GAENSEFUESSCHEN,
+                    },
                 },
-                end: LineColumn {
-                    line: 2usize,
-                    column: 92usize + GAENSEFUESSCHEN,
+                trimmed_span: Span {
+                    start: LineColumn {
+                        line: 3_usize,
+                        column: 7_usize,
+                    },
+                    end: LineColumn {
+                        line: 3_usize,
+                        column: 92_usize,
+                    },
                 },
+                variant: CommentVariant::TripleSlash,
             },
-            trimmed_span: Span {
-                start: LineColumn {
-                    line: 3usize,
-                    column: 7usize,
-                },
-                end: LineColumn {
-                    line: 3usize,
-                    column: 92usize,
-                },
-            },
-            variant: CommentVariant::TripleSlash,
-        },
-        // 7
-        Triplet {
-            source: r#"
+            // 7
+            Triplet {
+                source: r#"
 
 /// 🍉 ← αA<sup>OP</sup>x + βy
 fn unicode(&self) -> bool {
@@ -724,33 +743,33 @@ fn unicode(&self) -> bool {
 }
 
 "#,
-            extracted: r#"" 🍉 ← αA<sup>OP</sup>x + βy""#,
-            trimmed: r#" 🍉 ← αA<sup>OP</sup>x + βy"#,
-            extracted_span: Span {
-                start: LineColumn {
-                    line: 3usize,
-                    column: 3usize - GAENSEFUESSCHEN,
+                extracted: r#"" 🍉 ← αA<sup>OP</sup>x + βy""#,
+                trimmed: r#" 🍉 ← αA<sup>OP</sup>x + βy"#,
+                extracted_span: Span {
+                    start: LineColumn {
+                        line: 3_usize,
+                        column: 3_usize - GAENSEFUESSCHEN,
+                    },
+                    end: LineColumn {
+                        line: 2_usize,
+                        column: 28_usize + GAENSEFUESSCHEN,
+                    },
                 },
-                end: LineColumn {
-                    line: 2usize,
-                    column: 28usize + GAENSEFUESSCHEN,
+                trimmed_span: Span {
+                    start: LineColumn {
+                        line: 3_usize,
+                        column: 3_usize,
+                    },
+                    end: LineColumn {
+                        line: 3_usize,
+                        column: 28_usize,
+                    },
                 },
+                variant: CommentVariant::TripleSlash,
             },
-            trimmed_span: Span {
-                start: LineColumn {
-                    line: 3usize,
-                    column: 3usize,
-                },
-                end: LineColumn {
-                    line: 3usize,
-                    column: 28usize,
-                },
-            },
-            variant: CommentVariant::TripleSlash,
-        },
-        // 8
-        Triplet {
-            source: r###"
+            // 8
+            Triplet {
+                source: r###"
         #[doc = r##"Four
         has
 
@@ -759,49 +778,48 @@ fn unicode(&self) -> bool {
         "##]
         struct Four;
         "###,
-            extracted: r###"r##"Four
+                extracted: r###"r##"Four
         has
 
         multiple
         lines
         "##"###,
-            trimmed: r#"Four
+                trimmed: r#"Four
         has
 
         multiple
         lines
         "#,
-            extracted_span: Span {
-                start: LineColumn {
-                    line: 2usize,
-                    column: 12usize - 4,
+                extracted_span: Span {
+                    start: LineColumn {
+                        line: 2_usize,
+                        column: 12_usize - 4,
+                    },
+                    end: LineColumn {
+                        line: 6_usize,
+                        column: 0_usize + 3,
+                    },
                 },
-                end: LineColumn {
-                    line: 6usize,
-                    column: 0usize + 3,
+                trimmed_span: Span {
+                    start: LineColumn {
+                        line: 2_usize,
+                        column: 12_usize,
+                    },
+                    end: LineColumn {
+                        line: 6_usize,
+                        column: 0_usize,
+                    },
                 },
+                variant: CommentVariant::MacroDocEq("#[ doc = ".to_string(), 3),
             },
-            trimmed_span: Span {
-                start: LineColumn {
-                    line: 2usize,
-                    column: 12usize,
-                },
-                end: LineColumn {
-                    line: 6usize,
-                    column: 0usize,
-                },
-            },
-            variant: CommentVariant::MacroDocEq(3),
-        },
-    ];
+        ];
 
-    fn comment_variant_span_range_validation(index: usize) {
         let _ = env_logger::builder()
             .filter(None, log::LevelFilter::Trace)
             .is_test(true)
             .try_init();
 
-        let triplet = TEST_DATA[index].clone();
+        let triplet = test_data[index].clone();
         let literals = annotated_literals(triplet.source);
 
         assert_eq!(literals.len(), 1);
@@ -863,25 +881,25 @@ fn unicode(&self) -> bool {
 
     #[test]
     fn variant_to_string() {
-        let variant = CommentVariant::MacroDocEq(0);
+        let variant = CommentVariant::MacroDocEq("#[ doc = ".to_string(), 0);
         assert_eq!(variant.prefix_string(), r###"#[ doc = ""###);
-        let variant = CommentVariant::MacroDocEq(1);
-        assert_eq!(variant.prefix_string(), r###"#[ doc = r""###);
-        let variant = CommentVariant::MacroDocEq(2);
-        assert_eq!(variant.prefix_string(), r###"#[ doc = r#""###);
-        let variant = CommentVariant::MacroDocEq(3);
-        assert_eq!(variant.prefix_string(), r###"#[ doc = r##""###);
+        let variant = CommentVariant::MacroDocEq("#[doc = ".to_string(), 1);
+        assert_eq!(variant.prefix_string(), r###"#[doc = r""###);
+        let variant = CommentVariant::MacroDocEq("#[ doc =".to_string(), 2);
+        assert_eq!(variant.prefix_string(), r###"#[ doc =r#""###);
+        let variant = CommentVariant::MacroDocEq("#[doc=".to_string(), 3);
+        assert_eq!(variant.prefix_string(), r###"#[doc=r##""###);
     }
 
     #[test]
     fn variant_suffix_string() {
-        let variant = CommentVariant::MacroDocEq(0);
+        let variant = CommentVariant::MacroDocEq("#[ doc= ".to_string(), 0);
         assert_eq!(variant.suffix_string(), r###""]"###);
-        let variant = CommentVariant::MacroDocEq(1);
+        let variant = CommentVariant::MacroDocEq("#[doc = ".to_string(), 1);
         assert_eq!(variant.suffix_string(), r###""]"###);
-        let variant = CommentVariant::MacroDocEq(2);
+        let variant = CommentVariant::MacroDocEq("#[doc = ".to_string(), 2);
         assert_eq!(variant.suffix_string(), r###""#]"###);
-        let variant = CommentVariant::MacroDocEq(3);
+        let variant = CommentVariant::MacroDocEq("#[ doc =".to_string(), 3);
         assert_eq!(variant.suffix_string(), r###""##]"###);
     }
 }
