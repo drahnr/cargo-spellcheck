@@ -67,7 +67,6 @@ where
         let cc_start_byte_offset = if let Some(ref new) = current {
             let cc_start = new.span.end;
             let data = new.content.as_str();
-            let insertion = false;
 
             write_to_sink("new", data)?;
 
