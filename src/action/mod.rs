@@ -12,7 +12,6 @@ pub mod bandaid;
 pub mod interactive;
 
 pub(crate) use bandaid::*;
-use interactive;
 
 /// State of conclusion.
 #[derive(Debug, Clone, Copy)]
@@ -34,46 +33,6 @@ impl Finish {
     }
 }
 
-/// A patch to be stitched ontop of another string.
-///
-/// Has intentionally no awareness of any rust or cmark/markdown semantics.
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub(crate) enum Patch {
-    /// Replace the area spanned by `replace` with `replacement`.
-    /// Since `Span` is inclusive, `Replace` always will replace a character in the original sources.
-    Replace {
-        replace_span: Span,
-        replacement: String,
-    },
-    /// Location where to insert.
-    Insert {
-        insert_at: LineColumn,
-        content: String,
-    },
-}
-
-impl<'a> From<&'a BandAid> for Patch {
-    fn from(bandaid: &'a BandAid) -> Self {
-        // TODO XXX
-        Self::from(bandaid.clone())
-    }
-}
-
-impl From<BandAid> for Patch {
-    fn from(bandaid: BandAid) -> Self {
-        match bandaid {
-            bandaid if bandaid.span.start == bandaid.span.end => Self::Insert {
-                insert_at: bandaid.span.start,
-                content: bandaid.replacement,
-            },
-            _ => Self::Replace {
-                replace_span: bandaid.span,
-                replacement: bandaid.replacement,
-            },
-        }
-    }
-}
-
 /// Correct all lines by applying bandaids.
 ///
 /// Assumes all `BandAids` do not overlap when replacing.
@@ -84,8 +43,8 @@ impl From<BandAid> for Patch {
 /// whatsoever at all.
 fn correct_lines<'s, II, I>(patches: II, source_buffer: String, mut sink: impl Write) -> Result<()>
 where
-    II: IntoIterator<IntoIter = I, Item = Patch>,
-    I: Iterator<Item = Patch>,
+    II: IntoIterator<IntoIter = I, Item = BandAid>,
+    I: Iterator<Item = BandAid>,
 {
     let mut patches = patches.into_iter().peekable();
 
@@ -102,49 +61,40 @@ where
 
     let mut cc_end_byte_offset = 0;
 
-    let mut current = None;
+    let mut current: Option<BandAid> = None;
     let mut byte_cursor = 0usize;
     loop {
-        let cc_start_byte_offset = if let Some(ref current) = current {
-            let (cc_start, data, insertion) = match current {
-                Patch::Replace {
-                    replace_span,
-                    replacement,
-                } => (replace_span.end, replacement.as_str(), false),
-                Patch::Insert { insert_at, content } => (insert_at.clone(), content.as_str(), true),
-            };
+        let cc_start_byte_offset = if let Some(ref new) = current {
+            let cc_start = new.span.end;
+            let data = new.content.as_str();
+            let insertion = false;
 
             write_to_sink("new", data)?;
 
-            if insertion {
-                // do not advance anythin on insertion
-                byte_cursor
-            } else {
-                // skip the range of chars based on the line column
-                // so the cursor continues after the "replaced" characters
-                let mut cc_start_byte_offset = byte_cursor;
-                'skip: while let Some((c, byte_offset, _idx, linecol)) = source_iter.peek() {
-                    let byte_offset = *byte_offset;
-                    let linecol = *linecol;
+            // skip the range of chars based on the line column
+            // so the cursor continues after the "replaced" characters
+            let mut cc_start_byte_offset = byte_cursor;
+            'skip: while let Some((c, byte_offset, _idx, linecol)) = source_iter.peek() {
+                let byte_offset = *byte_offset;
+                let linecol = *linecol;
 
-                    cc_start_byte_offset = byte_offset + c.len_utf8();
+                cc_start_byte_offset = byte_offset + c.len_utf8();
 
-                    if linecol >= cc_start {
-                        log::trace!(
-                            target: TARGET,
-                            "skip buffer: >{}<",
-                            &source_buffer[cc_end_byte_offset..cc_start_byte_offset].escape_debug()
-                        );
+                if linecol >= cc_start {
+                    log::trace!(
+                        target: TARGET,
+                        "skip buffer: >{}<",
+                        &source_buffer[cc_end_byte_offset..cc_start_byte_offset].escape_debug()
+                    );
 
-                        break 'skip;
-                    }
-
-                    log::trace!(target: TARGET, "skip[{}]: >{}<", _idx, c.escape_debug());
-
-                    let _ = source_iter.next();
+                    break 'skip;
                 }
-                cc_start_byte_offset
+
+                log::trace!(target: TARGET, "skip[{}]: >{}<", _idx, c.escape_debug());
+
+                let _ = source_iter.next();
             }
+            cc_start_byte_offset
         } else {
             byte_cursor
         };
@@ -152,10 +102,7 @@ where
         byte_cursor = cc_start_byte_offset;
 
         cc_end_byte_offset = if let Some(upcoming) = patches.peek() {
-            let cc_end = match upcoming {
-                Patch::Replace { replace_span, .. } => replace_span.start,
-                Patch::Insert { insert_at, .. } => insert_at.clone(),
-            };
+            let cc_end = upcoming.span.start;
 
             // do not write anything
 
@@ -213,6 +160,8 @@ pub enum Action {
     Check,
     /// Interactively choose from checker provided suggestions.
     Fix,
+    /// Reflow documentation comments.
+    Reflow,
 }
 
 impl Action {
@@ -345,12 +294,8 @@ mod tests {
         ($text:literal, $bandaids:expr, $expected:literal) => {
             let mut sink: Vec<u8> = Vec::with_capacity(1024);
 
-            correct_lines(
-                $bandaids.into_iter(),
-                $text.to_owned(),
-                &mut sink,
-            )
-            .expect("Line correction must work in unit test!");
+            correct_lines($bandaids.into_iter(), $text.to_owned(), &mut sink)
+                .expect("Line correction must work in unit test!");
 
             assert_eq!(String::from_utf8_lossy(sink.as_slice()), $expected);
         };
@@ -476,43 +421,5 @@ Icecream truck"#
             content: "Q".to_owned(),
         }];
         verify_correction!("A🐢C", patches, "A🐢CQ");
-    }
-
-    #[test]
-    fn bandaid_multiline() {
-        const TEST: &'static str = "
-/// Let's test bandaids on comments
-/// with multiple lines";
-
-        const RESULT: &'static str = "
-/// Let's test bandaids on comments with
-/// different multiple lines
-";
-
-        let mut sink: Vec<u8> = Vec::with_capacity(1024);
-        let bandaids = vec![
-            BandAid {
-                span: Span {
-                    start: LineColumn {line: 1, column: 27 },
-                    end: LineColumn {line: 2, column: 28 }},
-                replacement: "comments with\n/// different multiple lines".to_owned(),
-            },
-            // BandAid {
-            //     span: (2_usize, 22..28).try_into().unwrap(),
-            //     replacement: "third".to_owned(),
-            // },
-            // BandAid {
-            //     span: (2_usize, 29..36).try_into().unwrap(),
-            //     replacement: "day".to_owned(),
-            // },
-        ];
-        let lines = TEST
-            .lines()
-            .map(std::borrow::ToOwned::to_owned)
-            .enumerate()
-            .map(|(lineno, content)| (lineno + 1, content));
-
-        correct_lines(bandaids.into_iter(), lines, &mut sink).expect("correction works. qed");
-        assert_eq!(String::from_utf8_lossy(sink.as_slice()), RESULT);
     }
 }

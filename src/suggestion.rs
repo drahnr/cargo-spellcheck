@@ -440,14 +440,14 @@ impl<'s> fmt::Display for Suggestion<'s> {
 
         let replacement = match self.replacements.len() {
             0 => String::new(),
-            1 => format!(" - {}", fix.apply_to(&self.replacements[0].content)),
+            1 => format!(" - {}", fix.apply_to(&self.replacements[0])),
             2 => format!(
                 " - {} or {}",
-                fix.apply_to(&self.replacements[0].content).to_string(),
-                fix.apply_to(&self.replacements[1].content).to_string()
+                fix.apply_to(&self.replacements[0]).to_string(),
+                fix.apply_to(&self.replacements[1]).to_string()
             ),
             n if (n < 7) => {
-                let last = fix.apply_to(&self.replacements[n - 1].content).to_string();
+                let last = fix.apply_to(&self.replacements[n - 1]).to_string();
                 let joined = self.replacements[..n - 1]
                     .iter()
                     .map(|x| fix.apply_to(x.to_owned()).to_string())
@@ -937,10 +937,7 @@ mod tests {
                 },
             },
             range: 2..6,
-            replacements: vec![Replacement {
-                content: "whocares".to_owned(),
-                indentation: vec![0],
-            }],
+            replacements: vec!["whocares".to_owned()],
             description: None,
         };
 
