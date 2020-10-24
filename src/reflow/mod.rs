@@ -51,9 +51,9 @@ fn reflow_inner<'s>(
     s: &'s str,
     range: Range,
     unbreakable_ranges: &[Range],
-    indentations: Vec<usize>,
+    indentations: &[usize],
     max_line_width: usize,
-    variant: CommentVariant,
+    variant: &CommentVariant,
 ) -> Option<String> {
     // make string and unbreakable ranges absolute
     let s_absolute = &s[range.clone()];
@@ -71,7 +71,10 @@ fn reflow_inner<'s>(
         indentations.last().expect("Must contain one indentation") - variant.prefix_len();
     // first line has to be without indent and variant prefix
     let (_, content, _) = gluon.next().expect("Must contain one line");
-    let acc = content + "\n";
+    if lines.next() != Some(&content) {
+        reflow_applied = true;
+    }
+    let acc = content + &variant.suffix_string() + "\n";
 
     // construct replacement string from prefix and Gluon iterations
     let content = gluon.fold(acc, |mut acc, (_, content, _)| {
@@ -87,6 +90,7 @@ fn reflow_inner<'s>(
         acc.push_str(&pre);
         acc.push_str(&variant.prefix_string());
         acc.push_str(&content);
+        acc.push_str(&variant.suffix_string());
         acc.push_str("\n");
         acc
     });
@@ -96,6 +100,12 @@ fn reflow_inner<'s>(
         c.to_string()
     } else {
         return None;
+    };
+    // for MacroDocEq comments, we also have to remove the last closing delimiter
+    let content = if let Some(c) = content.strip_suffix(&variant.suffix_string()) {
+        c.to_string()
+    } else {
+        content
     };
 
     if reflow_applied {
@@ -134,10 +144,13 @@ fn store_suggestion<'s>(
         start: span_start.start,
         end: span_end.end,
     };
-    // TODO: find_covered_spans() seems to report a span which is off by one. Ultimately, the problem
-    // is somewhere inside chunk's source_mapping?!
-    span.start.line += 1;
-    span.end.line += 1;
+    // TODO: find_covered_spans() seems to report a span which is off by one for TrppleSlash comments. Ultimately,
+    // the problem is somewhere inside chunk's source_mapping?!
+    if chunk.variant() == CommentVariant::TripleSlash
+        || chunk.variant() == CommentVariant::DoubleSlashEM
+    {
+        span.start.column += 1;
+    }
 
     // Get indentation for each span, if a span covers multiple
     // lines, use same indentation for all lines
@@ -150,9 +163,9 @@ fn store_suggestion<'s>(
         chunk.as_str(),
         range.clone(),
         unbreakable_ranges,
-        indentations,
+        &indentations,
         max_line_width,
-        chunk.variant(),
+        &chunk.variant(),
     ) {
         acc.push(Suggestion {
             chunk,
@@ -305,9 +318,9 @@ mod tests {
                 chunk.as_str(),
                 range,
                 &unbreakables,
-                indentation,
+                &indentation,
                 $n,
-                chunk.variant()
+                &chunk.variant()
             );
 
             if let Some(repl) = replacement {
@@ -341,7 +354,7 @@ test our rewrapping algorithm. With emojis: 🚤w🌴x🌋y🍈z🍉0",
     #[test]
     fn reflow_inner_not_required() {
         verify_reflow_inner!(80 break ["This module contains documentation."] =>
-            r#" This module contains documentation."#);
+            r#"This module contains documentation."#);
         {
             verify_reflow_inner!(39 break ["This module contains documentation",
                 "which is split in two lines"] =>
@@ -503,12 +516,12 @@ r#"This module contains documentation thats
             "#]
     struct Fluffy {};"##;
 
-        const EXPECTED: &'static str = r#"A comment with indentation
-that spans over two lines and
-should be rewrapped."#;
+        const EXPECTED: &'static str = r##"A comment with indentation"#]
+    #[doc = r#"that spans over two lines and"#]
+    #[doc = r#"should be rewrapped."##;
 
         let docs = Documentation::from((ContentOrigin::TestEntityRust, CONTENT));
-        assert_eq!(docs.entry_count(), 1);
+        assert_eq!(dbg!(&docs).entry_count(), 1);
         let chunks = docs
             .get(&ContentOrigin::TestEntityRust)
             .expect("Contains test data. qed");
@@ -609,10 +622,11 @@ should be rewrapped."#;
 
 With a second part that is fine"#
         );
+        println!("{}", chyrped);
 
         let expected = vec![
-            r#"A long comment that spans over two
-lines."#,
+            r##"A long comment that spans over two"#]
+#[doc=r#"lines."##,
             r#"With a second part that is fine"#,
         ];
 
@@ -650,15 +664,15 @@ lines."#,
     #[test]
     fn reflow_doc_indent_middle() {
         reflow_chyrp!(28 break ["First line", "     Second line", "         third line"]
-            => r#"First line Second
-line third line"#, false);
+            => r##"First line Second"#]
+#[doc=r#"line third line"##, false);
     }
 
     #[test]
     fn reflow_doc_long() {
         reflow_chyrp!(40 break ["One line which is quite long and needs to be reflown in another line."]
-            => r#"One line which is quite long
-and needs to be reflown in
-another line."#, false);
+            => r##"One line which is quite long"#]
+#[doc=r#"and needs to be reflown in"#]
+#[doc=r#"another line."##, false);
     }
 }
