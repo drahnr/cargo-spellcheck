@@ -10,11 +10,9 @@ use std::io::{BufRead, Read, Write};
 use std::path::PathBuf;
 
 pub mod bandaid;
-pub mod bandaidset;
 pub mod interactive;
 
 pub(crate) use bandaid::*;
-pub(crate) use bandaidset::*;
 
 use interactive::{UserPicked, UserSelection};
 
@@ -38,51 +36,6 @@ impl Finish {
     }
 }
 
-/// A patch to be stitched ontop of another string.
-///
-/// Has intentionally no awareness of any rust or cmark/markdown semantics.
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub(crate) enum Patch {
-    /// Replace the area spanned by `replace` with `replacement`.
-    /// Since `Span` is inclusive, `Replace` always will replace a character in the original sources.
-    Replace {
-        replace_span: Span,
-        replacement: String,
-    },
-    /// Location where to insert.
-    Insert {
-        insert_at: LineColumn,
-        content: String,
-    },
-}
-
-impl<'a> From<&'a BandAid> for Patch {
-    fn from(bandaid: &'a BandAid) -> Self {
-        // TODO XXX
-        Self::from(bandaid.clone())
-    }
-}
-
-impl From<BandAid> for Patch {
-    fn from(bandaid: BandAid) -> Self {
-        // TODO XXX this conversion is probably too simplistic
-        match bandaid {
-            BandAid::Deletion(span) => Self::Replace {
-                replace_span: span.clone(),
-                replacement: String::new(),
-            },
-            BandAid::Injection(linecol, content) => Self::Insert {
-                insert_at: linecol,
-                content: content.to_owned(),
-            },
-            BandAid::Replacement(span, content) => Self::Replace {
-                replace_span: span.clone(),
-                replacement: content.to_owned(),
-            },
-        }
-    }
-}
-
 /// Correct all lines by applying bandaids.
 ///
 /// Assumes all `BandAids` do not overlap when replacing.
@@ -98,8 +51,8 @@ impl From<BandAid> for Patch {
 /// [https://github.com/drahnr/cargo-spellcheck/issues/116](Tracking issue).
 fn correct_lines<'s, II, I>(patches: II, source_buffer: String, mut sink: impl Write) -> Result<()>
 where
-    II: IntoIterator<IntoIter = I, Item = Patch>,
-    I: Iterator<Item = Patch>,
+    II: IntoIterator<IntoIter = I, Item = BandAid>,
+    I: Iterator<Item = BandAid>,
 {
     let patches = patches.into_iter();
     let mut patches = patches.peekable();
@@ -108,17 +61,12 @@ where
         iter_with_line_column_from(source_buffer.as_str(), LineColumn { line: 1, column: 0 })
             .peekable();
 
-    let mut current = None;
+    let mut current: Option<BandAid> = None;
     let mut byte_cursor = 0usize;
     loop {
-        let cc_from_byteoffset = if let Some(ref current) = current {
-            let (cc_start, data) = match current {
-                Patch::Replace {
-                    replace_span,
-                    replacement,
-                } => (replace_span.end, replacement.as_str()),
-                Patch::Insert { insert_at, content } => (insert_at.clone(), content.as_str()),
-            };
+        let cc_from_byteoffset = if let Some(relevant) = current {
+            let cc_start = relevant.span.end;
+            let data = relevant.content;
 
             sink.write(data.as_bytes())?;
 
@@ -138,10 +86,7 @@ where
         byte_cursor = cc_from_byteoffset;
 
         let cc_to_byteoffset = if let Some(upcoming) = patches.peek() {
-            let cc_end = match upcoming {
-                Patch::Replace { replace_span, .. } => replace_span.start,
-                Patch::Insert { insert_at, .. } => insert_at.clone(),
-            };
+            let cc_end = upcoming.span.start;
 
             // do not write anythin
 
@@ -247,7 +192,7 @@ impl Action {
         reader.get_mut().read_to_string(&mut content)?;
 
         correct_lines(
-            bandaids.into_iter().map(|x| Patch::from(x)),
+            bandaids.into_iter(),
             content, // FIXME for efficiency, correct_lines should integrate with `BufRead` instead of a `String` buffer
             &mut writer,
         )?;
@@ -315,7 +260,7 @@ mod tests {
             let mut sink: Vec<u8> = Vec::with_capacity(1024);
 
             correct_lines(
-                $bandaids.into_iter().map(|bandaid| Patch::from(bandaid)),
+                $bandaids.into_iter(),
                 $text.to_owned(),
                 &mut sink,
             )
@@ -333,18 +278,21 @@ mod tests {
             .try_init();
 
         let patches = vec![
-            Patch::Replace {
-                replace_span: Span {
+            BandAid {
+                span: Span {
                     start: LineColumn { line: 1, column: 6 },
                     end: LineColumn {
                         line: 2,
                         column: 13,
                     },
                 },
-                replacement: "& Omega".to_owned(),
+                content: "& Omega".to_owned(),
             },
-            Patch::Insert {
-                insert_at: LineColumn { line: 3, column: 0 },
+            BandAid {
+                span: Span {
+                    start: LineColumn { line: 3, column: 0 },
+                    end: LineColumn { line: 3, column: 0},
+                },
                 content: "\nIcecream truck".to_owned(),
             },
         ];
@@ -366,12 +314,18 @@ Icecream truck"#
             .try_init();
 
         let bandaids = vec![
-            BandAid::Replacement(
-                (2_usize, 7..15).try_into().unwrap(),
-                "banana icecream".to_owned(),
-            ),
-            BandAid::Replacement((2_usize, 22..28).try_into().unwrap(), "third".to_owned()),
-            BandAid::Replacement((2_usize, 29..36).try_into().unwrap(), "day".to_owned()),
+            BandAid {
+                span: (2_usize, 7..15).try_into().unwrap(),
+                content: "banana icecream".to_owned(),
+            },
+            BandAid {
+                span: (2_usize, 22..28).try_into().unwrap(),
+                content: "third".to_owned(),
+            },
+            BandAid {
+                span: (2_usize, 29..36).try_into().unwrap(),
+                content: "day".to_owned(),
+            },
         ];
         verify_correction!(
             r#"
@@ -389,15 +343,22 @@ I like banana icecream every third day.
     #[test]
     fn bandaid_multiline() {
         let bandaids = vec![
-            BandAid::Replacement(
-                (2_usize, 27..36).try_into().unwrap(),
-                "comments with".to_owned(),
-            ),
-            BandAid::Replacement(
-                (3_usize, 0..17).try_into().unwrap(),
-                " different multiple".to_owned(),
-            ),
-            BandAid::Replacement((3_usize, 18..23).try_into().unwrap(), "words".to_owned()),
+            BandAid {
+                span: (2_usize, 27..36).try_into().unwrap(),
+                content: "comments with".to_owned(),
+            },
+            BandAid {
+                span: (3_usize, 3..18).try_into().unwrap(),
+                content: " different multiple".to_owned(),
+            },
+            BandAid {
+                span: (3_usize, 18..24).try_into().unwrap(),
+                content: "words".to_owned(),
+            },
+            BandAid {
+                span: (3_usize, 34..36).try_into().unwrap(),
+                content: "\n/// and even a newline".to_owned(),
+            }
         ];
         verify_correction!(
             "
@@ -408,6 +369,7 @@ I like banana icecream every third day.
             "
 /// Let's test bandaids on comments with
 /// different multiple words afterwards
+/// and even a newline
 "
         );
     }
@@ -419,11 +381,13 @@ I like banana icecream every third day.
             .is_test(true)
             .try_init();
         let bandaids = vec![
-            BandAid::Replacement(
-                (2_usize, 27..36).try_into().unwrap(),
-                "comments with multiple words".to_owned(),
-            ),
-            BandAid::Deletion((3_usize, 0..17).try_into().unwrap()),
+            BandAid {
+                span: Span {
+                    start : LineColumn { line: 2, column: 27, },
+                    end: LineColumn { line: 3, column: 35, },
+                },
+                content: "comments with multiple words".to_owned(),
+            },
         ];
         verify_correction!(
             "
@@ -440,17 +404,10 @@ I like banana icecream every third day.
     #[test]
     fn bandaid_injection() {
         let bandaids = vec![
-            BandAid::Replacement(
-                (2_usize, 27..36).try_into().unwrap(),
-                "comments with multiple words".to_owned(),
-            ),
-            BandAid::Injection(
-                LineColumn {
-                    line: 3_usize,
-                    column: 0,
-                },
-                " but still more content".to_owned(),
-            ),
+            BandAid {
+                span: (2_usize, 27..36).try_into().unwrap(),
+                content: "comments with multiple words\n/// but still more content".to_owned(),
+            },
         ];
         verify_correction!(
             "
@@ -474,23 +431,26 @@ I like banana icecream every third day.
             .try_init();
 
         let bandaids = vec![
-            BandAid::Replacement((2_usize, 18..24).try_into().unwrap(), "uchen".to_owned()),
-            BandAid::Injection(
-                LineColumn {
-                    line: 2_usize,
-                    column: 24,
-                },
-                "für".to_owned(),
-            ),
-            BandAid::Injection(
-                LineColumn {
-                    line: 2_usize,
-                    column: 24,
-                },
-                "den".to_owned(),
-            ),
-            BandAid::Deletion((2_usize, 24..25).try_into().unwrap()),
-            BandAid::Deletion((3_usize, 0..10).try_into().unwrap()),
+            BandAid {
+                span: (2_usize, 18..24).try_into().unwrap(),
+                content: "uchen".to_owned()
+            },
+            // BandAid::Injection(
+            //     LineColumn {
+            //         line: 2_usize,
+            //         column: 24,
+            //     },
+            //     "für".to_owned(),
+            // ),
+            // BandAid::Injection(
+            //     LineColumn {
+            //         line: 2_usize,
+            //         column: 24,
+            //     },
+            //     "den".to_owned(),
+            // ),
+            // BandAid::Deletion((2_usize, 24..25).try_into().unwrap()),
+            // BandAid::Deletion((3_usize, 0..10).try_into().unwrap()),
         ];
         verify_correction!(
             r#"
@@ -505,5 +465,5 @@ I like banana icecream every third day.
 #[ doc = "Eisbär"]
 "#
         );
-    }
+}
 }

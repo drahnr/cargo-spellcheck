@@ -69,7 +69,7 @@ fn reflow_inner<'s>(
     let mut reflow_applied = false;
     let mut lines = s_absolute.lines();
     let mut indents = indentations.iter();
-    let last_ident = indentations.last().expect("Must contain one indentation");
+    let last_ident = indentations.last().expect("Must contain one indentation")  - variant.prefix_len();
     // first line has to be without indent and variant prefix
     let (_, content, _) = gluon.next().expect("Must contain one line");
     let acc = content + "\n";
@@ -82,7 +82,7 @@ fn reflow_inner<'s>(
         let pre = if let Some(i) = indents.next() {
             " ".repeat(*i - variant.prefix_len())
         } else {
-            " ".repeat(*last_ident)
+            " ".repeat(last_ident)
         };
 
         acc.push_str(&pre);
@@ -92,26 +92,12 @@ fn reflow_inner<'s>(
         acc
     });
 
-    // Get the indentations
-    let diff = content.lines().count() as i64 - indentations.len() as i64;
-    let indentation = if diff < 0 {
-        indentations[..content.lines().count()].to_vec()
-    } else if diff > 0 {
-        let last = indentations.clone();
-        let res = [
-            indentations,
-            vec![*last.last().expect("Must contain one indentation"); diff as usize],
-        ]
-        .concat();
-        res
+    // remove last new line
+    let content = if let Some(c) = content.strip_suffix("\n") {
+        c.to_string()
     } else {
-        indentations
+        return None;
     };
-
-    // let indentation = indentation
-    //     .iter()
-    //     .map(|i| i.saturating_sub(variant.prefix_len()))
-    //     .collect();
 
     if reflow_applied {
         Some(content)
@@ -145,10 +131,14 @@ fn store_suggestion<'s>(
     } else {
         span_start
     };
-    let span = Span {
+    let mut span = Span {
         start: span_start.start,
         end: span_end.end,
     };
+    // TODO: find_covered_spans() seems to report a span which is off by one. Ultimately, the problem
+    // is somewhere inside chunk's source_mapping?!
+    span.start.line += 1;
+    span.end.line += 1;
 
     // Get indentation for each span, if a span covers multiple
     // lines, use same indentation for all lines
@@ -343,7 +333,7 @@ spans over mulitple lines such that we can \
 test our rewrapping algorithm. With emojis: 🚤w🌴x🌋y🍈z🍉0",
         "Smart, isn't it? Lorem ipsum and some more \
         blanket text without any meaning"] =>
-        r#" This module contains documentation that is too long for one line and
+        r#"This module contains documentation that is too long for one line and
 /// moreover, it spans over mulitple lines such that we can test our rewrapping
 /// algorithm. With emojis: 🚤w🌴x🌋y🍈z🍉0 Smart, isn't it? Lorem ipsum and some more
 /// blanket text without any meaning"#);
@@ -356,8 +346,8 @@ test our rewrapping algorithm. With emojis: 🚤w🌴x🌋y🍈z🍉0",
         {
             verify_reflow_inner!(39 break ["This module contains documentation",
                 "which is split in two lines"] =>
-                r#" This module contains documentation
- which is split in two lines"#);
+                r#"This module contains documentation
+/// which is split in two lines"#);
         }
     }
 
@@ -373,6 +363,7 @@ test our rewrapping algorithm. With emojis: 🚤w🌴x🌋y🍈z🍉0",
             assert_eq!(dbg!(chunks).len(), 1);
             let chunk = &chunks[0];
             let _plain = chunk.erase_cmark();
+            println!("{}", CONTENT);
 
             let cfg = ReflowConfig {
                 max_line_length: $n,
@@ -387,6 +378,7 @@ test our rewrapping algorithm. With emojis: 🚤w🌴x🌋y🍈z🍉0",
                     .expect("Contains one suggestion. qed");
 
                     let replacement = suggestions.replacements.iter().next().expect("There exists a replacement. qed");
+                    println!("#####{}", replacement);
                     assert_eq!(replacement.as_str(), $expected);
             }
         };
@@ -441,15 +433,15 @@ blanket text without any meaning.",
 there are two consecutive newlines \
 in one connected documentation span."] =>
 
-r#" This module contains documentation thats
- is too long for one line and moreover, it
- spans over mulitple lines such that we
- can test our rewrapping algorithm. Smart,
- isn't it? Lorem ipsum and some more
- blanket text without any meaning. But
- lets also see what happens if there are
- two consecutive newlines in one connected
- documentation span."#, false);
+r#"This module contains documentation thats
+/// is too long for one line and moreover, it
+/// spans over mulitple lines such that we
+/// can test our rewrapping algorithm. Smart,
+/// isn't it? Lorem ipsum and some more
+/// blanket text without any meaning. But
+/// lets also see what happens if there are
+/// two consecutive newlines in one connected
+/// documentation span."#, false);
     }
 
     #[test]
@@ -462,9 +454,9 @@ r#" This module contains documentation thats
     fn reflow_multiple_lines() {
         reflow!(43 break ["This module contains documentation that is broken",
                           "into multiple short lines resulting in multiple spans."] =>
-                r#" This module contains documentation that
- is broken into multiple short lines
- resulting in multiple spans."#, false);
+                r#"This module contains documentation that
+/// is broken into multiple short lines
+/// resulting in multiple spans."#, false);
     }
     #[test]
     fn reflow_indentations() {
@@ -473,9 +465,9 @@ r#" This module contains documentation thats
     /// two lines and should be rewrapped.
     struct Fluffy {};"#;
 
-        const EXPECTED: &'static str = r#" A comment with indentation
- that spans over two lines
- and should be rewrapped."#;
+        const EXPECTED: &'static str = r#"A comment with indentation
+    /// that spans over two lines
+    /// and should be rewrapped."#;
 
         let docs = Documentation::from((ContentOrigin::TestEntityRust, CONTENT));
         assert_eq!(docs.entry_count(), 1);
@@ -547,9 +539,9 @@ should be rewrapped."#;
     fn reflow_markdown() {
         reflow!(60 break ["Possible **ways** to run __rustc__ and request various parts of LTO.",
                           " `markdown` syntax which leads to __unbreakables__?  With emojis: 🚤w🌴x🌋y🍈z🍉0."] =>
-            r#" Possible **ways** to run __rustc__ and request various
- parts of LTO. `markdown` syntax which leads to
- __unbreakables__? With emojis: 🚤w🌴x🌋y🍈z🍉0."#, false);
+            r#"Possible **ways** to run __rustc__ and request various
+/// parts of LTO. `markdown` syntax which leads to
+/// __unbreakables__? With emojis: 🚤w🌴x🌋y🍈z🍉0."#, false);
     }
 
     #[test]
@@ -561,8 +553,8 @@ should be rewrapped."#;
     #[test]
     fn reflow_two_short_lines() {
         reflow!(70 break ["A short paragraph followed by two lines.", "Surprise, we have more lines here."]
-                => " A short paragraph followed by two lines. Surprise, we have more
- lines here.", false);
+                => "A short paragraph followed by two lines. Surprise, we have more
+/// lines here.", false);
     }
 
     #[test]
@@ -573,10 +565,10 @@ should be rewrapped."#;
 /// Some more text after the newline which **represents** a paragraph";
 
         let expected = vec![
-            r#" Possible __ways__ to run __rustc__ and request various
- parts of LTO."#,
-            r#" Some more text after the newline which **represents** a
- paragraph"#,
+            r#"Possible __ways__ to run __rustc__ and request various
+/// parts of LTO."#,
+            r#"Some more text after the newline which **represents** a
+/// paragraph"#,
         ];
 
         let _ = env_logger::Builder::new()
