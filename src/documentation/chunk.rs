@@ -9,28 +9,49 @@ use std::path::Path;
 
 use crate::documentation::PlainOverlay;
 use crate::{util::sub_chars, Range, Span};
+
 /// Definition of the source of a checkable chunk
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub enum ContentOrigin {
+    /// A common mark file at given path.
     CommonMarkFile(PathBuf),
-    RustDocTest(PathBuf, Span), // span is just there to disambiguiate
+    /// A rustdoc comment, part of file reference by path in span.
+    RustDocTest(PathBuf, Span),
+    /// Full rust source file.
     RustSourceFile(PathBuf),
+    /// A test entity for a rust file, with no meaning outside of test.
     #[cfg(test)]
-    TestEntity,
+    TestEntityRust,
+    /// A test entity for a cmark file, with no meaning outside of test.
+    #[cfg(test)]
+    TestEntityCommonMark,
 }
 
 impl ContentOrigin {
+    /// Represent the content origin as [path](std::path::PathBuf).
+    ///
+    /// For unit and integration tests, two additional hardcoded variants
+    /// are available, which resolve to static paths:
+    /// `TestEntityRust` variant becomes `/tmp/test/entity.rs`,
+    /// `TestEntityCommonMark` variant becomes `/tmp/test/entity.md`.
     pub fn as_path(&self) -> &Path {
         match self {
             Self::CommonMarkFile(path) => path.as_path(),
             Self::RustDocTest(path, _) => path.as_path(),
             Self::RustSourceFile(path) => path.as_path(),
             #[cfg(test)]
-            Self::TestEntity => {
+            Self::TestEntityCommonMark => {
                 lazy_static::lazy_static! {
-                    static ref TEST_ENTITY: PathBuf = PathBuf::from("/tmp/test/entity");
+                    static ref TEST_ENTITY_CMARK: PathBuf = PathBuf::from("/tmp/test/entity.md");
                 };
-                TEST_ENTITY.as_path()
+                TEST_ENTITY_CMARK.as_path()
+            }
+            #[cfg(test)]
+            Self::TestEntityRust => {
+                lazy_static::lazy_static! {
+                    static ref TEST_ENTITY_RUST: PathBuf = PathBuf::from("/tmp/test/entity.rs");
+                };
+                TEST_ENTITY_RUST.as_path()
             }
         }
     }
@@ -65,16 +86,17 @@ impl std::hash::Hash for CheckableChunk {
 }
 
 impl CheckableChunk {
-    /// Specific to rust source code, either as part of doc test comments or file scope
+    /// Specific to rust source code, either as part of doc test comments or file scope.
     pub fn from_literalset(set: LiteralSet) -> Self {
         set.into_chunk()
     }
 
-    /// Load content from string, may contain markdown content
+    /// Load content from string, may contain markdown content.
     pub fn from_str(content: &str, source_mapping: IndexMap<Range, Span>) -> Self {
         Self::from_string(content.to_string(), source_mapping)
     }
 
+    /// Load content from an owned string by taking ownership.
     pub fn from_string(content: String, source_mapping: IndexMap<Range, Span>) -> Self {
         Self {
             content,
@@ -97,7 +119,7 @@ impl CheckableChunk {
     /// ]
     /// ```
     pub(super) fn find_spans(&self, range: Range) -> IndexMap<Range, Span> {
-        trace!(
+        trace!(target: "find_spans",
             "############################################ chunk find_span {:?}",
             &range
         );
@@ -106,9 +128,9 @@ impl CheckableChunk {
         self.source_mapping
             .iter()
             .skip_while(|(fragment_range, _span)| fragment_range.end <= start)
-            .take_while(|(fragment_range, _span)| end <= fragment_range.end)
+            .take_while(|(fragment_range, _span)| fragment_range.start < end)
             .inspect(|x| {
-                trace!(">>> item {:?} ∈ {:?}", &range, x.0);
+                trace!(target: "find_spans", ">>> item {:?} ∈ {:?}", &range, x.0);
             })
             .filter(|(fragment_range, _)| {
                 // could possibly happen on empty documentation lines with `///`
@@ -119,7 +141,7 @@ impl CheckableChunk {
                 let sub_fragment_range = std::cmp::max(fragment_range.start, range.start)
                     ..std::cmp::min(fragment_range.end, range.end);
 
-                trace!(
+                trace!(target: "find_spans",
                     ">> fragment: span: {:?} => range: {:?} | sub: {:?} -> sub_fragment: {:?}",
                     &fragment_span,
                     &fragment_range,
@@ -127,18 +149,18 @@ impl CheckableChunk {
                     &sub_fragment_range,
                 );
 
-                log::trace!(
+                log::trace!(target: "find_spans",
                     "[f]display;\n>{}<",
                     ChunkDisplay::try_from((self, fragment_range.clone()))
                         .expect("must be convertable")
                 );
-                log::trace!(
+                log::trace!(target: "find_spans",
                     "[f]content;\n>{}<",
                     crate::util::sub_chars(self.as_str(), fragment_range.clone())
                 );
 
                 if sub_fragment_range.len() == 0 {
-                    log::trace!("sub fragment is zero, dropping!");
+                    log::trace!(target: "find_spans","sub fragment is zero, dropping!");
                     return None;
                 }
 
@@ -162,7 +184,7 @@ impl CheckableChunk {
                     }
                     Some(x)
                 }) {
-                    trace!("char[{}]: {}", idx, c);
+                    trace!(target: "find_spans", "char[{}]: {}", idx, c);
                     if idx == shift {
                         sub_fragment_span.start = cursor;
                     }
@@ -187,18 +209,65 @@ impl CheckableChunk {
             .collect::<IndexMap<_, _>>()
     }
 
+    /// Yields a set of ranges covering all spanned lines (the full line).
+    pub fn find_covered_lines<'i>(&'i self, range: Range) -> Vec<Range> {
+        // assumes the _mistake_ is within one line
+        // if not we chop it down to the first line
+        let mut acc = Vec::with_capacity(32);
+        let mut iter = self.as_str().chars().enumerate();
+
+        let mut last_newline_idx = 0usize;
+        // simulate the previous newline was at virtual `-1`
+        let mut state_idx = 0usize;
+        let mut state_c = '\n';
+        loop {
+            if let Some((idx, c)) = iter.next() {
+                if c == '\n' {
+                    if range.start <= idx {
+                        // do not include the newline
+                        acc.push(last_newline_idx..idx);
+                    }
+                    last_newline_idx = idx + 1;
+                    if last_newline_idx >= range.end {
+                        break;
+                    }
+                }
+                state_c = c;
+                state_idx = idx;
+            } else {
+                // if the previous character was a new line,
+                // such that the common mark chunk ended with
+                // a newline, we do not want to append another empty line
+                // for no reason, we include empty lines for `\n\n` though
+                if state_c != '\n' {
+                    // we want to include the last character
+                    acc.push(last_newline_idx..(state_idx + 1));
+                }
+                break;
+            };
+        }
+        acc
+    }
+
+    /// Obtain the content as `str` representation.
     pub fn as_str(&self) -> &str {
         self.content.as_str()
     }
 
+    /// Get the display wrapper type to be used with i.e. `format!(..)`.
     pub fn display(&self, range: Range) -> ChunkDisplay {
         ChunkDisplay::from((self, range))
     }
 
+    /// Iterate over all ranges and the associated span.
     pub fn iter(&self) -> indexmap::map::Iter<Range, Span> {
         self.source_mapping.iter()
     }
 
+    /// Number of fragments.
+    ///
+    /// A fragment is a continuous sub-string which is not
+    /// split up any further.
     pub fn fragment_count(&self) -> usize {
         self.source_mapping.len()
     }
@@ -325,8 +394,35 @@ mod test {
     use super::*;
 
     #[test]
+    fn find_spans_emoji() {
+        const TEST: &str = r##"ab **🐡** xy"##;
+
+        let chunk = CheckableChunk::from_str(
+            TEST,
+            indexmap::indexmap! { 0..11 => Span {
+                start: LineColumn {
+                    line: 1usize,
+                    column: 4usize,
+                },
+                end: LineColumn {
+                    line: 1usize,
+                    column: 14usize,
+                },
+            }},
+        );
+
+        assert_eq!(chunk.find_spans(0..2).len(), 1);
+        assert_eq!(chunk.find_spans(5..6).len(), 1);
+        assert_eq!(chunk.find_spans(9..11).len(), 1);
+        assert_eq!(chunk.find_spans(9..20).len(), 1);
+    }
+
+    #[test]
     fn find_spans_simple() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        let _ = env_logger::builder()
+            .is_test(true)
+            .filter(None, log::LevelFilter::Trace)
+            .try_init();
 
         // generate  `///<space>...`
         const SOURCE: &'static str = fluff_up!(["xyz"]);
@@ -363,7 +459,10 @@ mod test {
 
     #[test]
     fn find_spans_multiline() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        let _ = env_logger::builder()
+            .is_test(true)
+            .filter(None, log::LevelFilter::Trace)
+            .try_init();
 
         const SOURCE: &'static str = fluff_up!(["xyz", "second", "third", "Converts a span to a range, where `self` is converted to a range reltive to the",
              "passed span `scope`."] @ "       "
@@ -445,7 +544,10 @@ mod test {
 
     #[test]
     fn find_spans_chyrp() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        let _ = env_logger::builder()
+            .is_test(true)
+            .filter(None, log::LevelFilter::Trace)
+            .try_init();
 
         const SOURCE: &'static str = chyrp_up!(["Amsel", "Wacholderdrossel", "Buchfink"]);
         let set = gen_literal_set(SOURCE);

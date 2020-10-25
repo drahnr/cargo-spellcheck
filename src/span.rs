@@ -23,7 +23,9 @@ use super::CheckableChunk;
 /// Column values in UTF-8 characters in a line, 0-indexed and inclusive.
 #[derive(Clone, Debug, Copy, PartialEq, Eq)]
 pub struct Span {
+    /// Start of the span, inclusive, see [LineColumn](proc_macro2::LineColumn).
     pub start: LineColumn,
+    /// End of the span, inclusive, see [LineColumn](proc_macro2::LineColumn).
     pub end: LineColumn,
 }
 
@@ -171,6 +173,30 @@ impl TryFrom<(usize, Range)> for Span {
     }
 }
 
+impl TryFrom<(usize, std::ops::RangeInclusive<usize>)> for Span {
+    type Error = Error;
+    fn try_from(original: (usize, std::ops::RangeInclusive<usize>)) -> Result<Self> {
+        if original.1.start() <= original.1.end() {
+            Ok(Self {
+                start: LineColumn {
+                    line: original.0,
+                    column: *original.1.start(),
+                },
+                end: LineColumn {
+                    line: original.0,
+                    column: *original.1.end(),
+                },
+            })
+        } else {
+            bail!(
+                "range must be valid to be converted to a Span {}..{}",
+                original.1.start(),
+                original.1.end()
+            )
+        }
+    }
+}
+
 impl From<&TrimmedLiteral> for Span {
     fn from(literal: &TrimmedLiteral) -> Self {
         literal.span()
@@ -201,7 +227,7 @@ fn extract_sub_range_from_span(
     // relative to the range given / offset
     let mut start = 0usize;
     let mut end = 0usize;
-    for (_c, idx, LineColumn { line, column }) in
+    for (_c, _byte_offset, idx, LineColumn { line, column }) in
         util::iter_with_line_column_from(s.as_str(), span.start)
     {
         if line < sub_span.start.line {
@@ -257,7 +283,10 @@ mod tests {
 
     #[test]
     fn span_to_range_singleline() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        let _ = env_logger::builder()
+            .is_test(true)
+            .filter(None, log::LevelFilter::Trace)
+            .try_init();
 
         const CONTENT: &'static str = fluff_up!("Itsyou!!", "", "Game-Over!!", "");
         let set = gen_literal_set(CONTENT);
@@ -326,7 +355,10 @@ mod tests {
 
     #[test]
     fn span_to_range_multiline() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        let _ = env_logger::builder()
+            .is_test(true)
+            .filter(None, log::LevelFilter::Trace)
+            .try_init();
 
         chyrp_dbg!("Xy fff?? Not.., you again!", "", "AlphaOmega", "");
         const CONTENT: &'static str = chyrp_up!("Xy fff?? Not.., you again!", "", "AlphaOmega", "");
@@ -412,8 +444,6 @@ AlphaOmega
 
     #[test]
     fn extraction_fluff() {
-        const SOURCE: &'static str = fluff_up!(["one", "two", "three"]);
-
         const CHUNK_S: &'static str = r#" one
  two
  three"#;
@@ -440,8 +470,6 @@ AlphaOmega
 
     #[test]
     fn extraction_chyrp() {
-        const SOURCE: &'static str = chyrp_up!(["one", "two", "three"]);
-
         const CHUNK_S: &'static str = r#"one
 two
 three"#;

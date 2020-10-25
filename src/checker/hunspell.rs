@@ -6,7 +6,10 @@
 //! Can handle multiple dictionaries.
 
 use super::{tokenize, Checker, Detector, Documentation, Suggestion, SuggestionSet};
+
+use crate::documentation::{CheckableChunk, ContentOrigin, PlainOverlay};
 use crate::util::sub_chars;
+use crate::Range;
 use log::{debug, trace};
 use std::path::PathBuf;
 
@@ -14,20 +17,14 @@ use hunspell_rs::Hunspell;
 
 use anyhow::{anyhow, bail, Result};
 
+use super::quirks::{
+    replacements_contain_dashed, replacements_contain_dashless, transform, Transformed,
+};
+
 pub struct HunspellChecker;
 
-impl Checker for HunspellChecker {
-    type Config = crate::config::HunspellConfig;
-    fn check<'a, 's>(docu: &'a Documentation, config: &Self::Config) -> Result<SuggestionSet<'s>>
-    where
-        'a: 's,
-    {
-        // let hunspell = lazy_static::lazy_static!{
-        //     static ref HUNSPELL_CTX: Result<Hunspell> = {
-
-        //     }
-        // };
-
+impl HunspellChecker {
+    fn inner_init(config: &<Self as Checker>::Config) -> Result<Hunspell> {
         let search_dirs = config.search_dirs();
 
         let lang = config.lang();
@@ -85,15 +82,15 @@ impl Checker for HunspellChecker {
 
         if cfg!(debug_assertions) && lang == "en_US" {
             // "Test" is a valid word
-            assert!(hunspell.check("Test"));
+            debug_assert!(hunspell.check("Test"));
             // suggestion must contain the word itself if it is valid
-            assert!(hunspell.suggest("Test").contains(&"Test".to_string()));
+            debug_assert!(hunspell.suggest("Test").contains(&"Test".to_string()));
         }
 
         // suggestion must contain the word itself if it is valid extra dictionary
         // be more strict about the extra dictionaries, they have to exist
-        for extra_dic in config.extra_dictonaries().iter() {
-            trace!("Adding extra dictionary {}", extra_dic.display());
+        for extra_dic in config.extra_dictionaries().iter() {
+            debug!("Adding extra dictionary {}", extra_dic.display());
             if !extra_dic.is_file() {
                 bail!("Extra dictionary {} is not a file", extra_dic.display())
             }
@@ -111,48 +108,85 @@ impl Checker for HunspellChecker {
                 )
             }
         }
+        debug!("Dictionary setup completed successfully.");
+        Ok(hunspell)
+    }
+}
+
+impl Checker for HunspellChecker {
+    type Config = crate::config::HunspellConfig;
+    fn check<'a, 's>(docu: &'a Documentation, config: &Self::Config) -> Result<SuggestionSet<'s>>
+    where
+        'a: 's,
+    {
+        let hunspell = Self::inner_init(config)?;
+
+        let (transform_regex, allow_concatenated, allow_dashed) = {
+            let quirks = &config.quirks;
+            {
+                (
+                    quirks.transform_regex(),
+                    quirks.allow_concatenated(),
+                    quirks.allow_dashed(),
+                )
+            }
+        };
 
         let suggestions = docu.iter().try_fold::<SuggestionSet, _, Result<_>>(
             SuggestionSet::new(),
-            |mut acc, (origin, chunks)| {
+            move |mut acc, (origin, chunks)| {
                 debug!("Processing {}", origin.as_path().display());
+
                 for chunk in chunks {
                     let plain = chunk.erase_markdown();
                     trace!("{:?}", &plain);
                     let txt = plain.as_str();
                     for range in tokenize(txt) {
                         let word = sub_chars(txt, range.clone());
-                        if !hunspell.check(&word) {
-                            trace!("No match for word (plain range: {:?}): >{}<", &range, &word);
-                            // get rid of single character suggestions
-                            let replacements = hunspell
-                                .suggest(&word)
-                                .into_iter()
-                                .filter(|x| x.len() > 1) // single char suggestions tend to be useless
-                                .collect::<Vec<_>>();
-
-                            for (range, span) in plain.find_spans(range.clone()) {
-                                acc.add(
-                                    origin.clone(),
-                                    Suggestion {
-                                        detector: Detector::Hunspell,
-                                        range,
-                                        span,
-                                        origin: origin.clone(),
-                                        replacements: replacements.clone(),
-                                        chunk,
-                                        description: Some(
-                                            "Possible spelling mistake found.".to_owned(),
-                                        ),
-                                    },
-                                )
-                            }
+                        if transform_regex.is_empty() {
+                            obtain_suggestions(
+                                &plain,
+                                chunk,
+                                &hunspell,
+                                origin,
+                                word,
+                                range,
+                                allow_concatenated,
+                                allow_dashed,
+                                &mut acc,
+                            )
                         } else {
-                            trace!(
-                                "Found a match for word (plain range: {:?}): >{}<",
-                                &range,
-                                word
-                            );
+                            match transform(&transform_regex[..], word.as_str(), range.clone()) {
+                                Transformed::Fragments(word_fragments) => {
+                                    for (range, word_fragment) in word_fragments {
+                                        obtain_suggestions(
+                                            &plain,
+                                            chunk,
+                                            &hunspell,
+                                            origin,
+                                            word_fragment.to_owned(),
+                                            range,
+                                            allow_concatenated,
+                                            allow_dashed,
+                                            &mut acc,
+                                        );
+                                    }
+                                }
+                                Transformed::Atomic((range, word)) => {
+                                    obtain_suggestions(
+                                        &plain,
+                                        chunk,
+                                        &hunspell,
+                                        origin,
+                                        word.to_owned(),
+                                        range,
+                                        allow_concatenated,
+                                        allow_dashed,
+                                        &mut acc,
+                                    );
+                                }
+                                Transformed::Whitelisted(_) => {}
+                            }
                         }
                     }
                 }
@@ -162,5 +196,56 @@ impl Checker for HunspellChecker {
 
         // TODO sort spans by file and line + column
         Ok(suggestions)
+    }
+}
+
+fn obtain_suggestions<'s>(
+    plain: &PlainOverlay,
+    chunk: &'s CheckableChunk,
+    hunspell: &Hunspell,
+    origin: &ContentOrigin,
+    word: String,
+    range: Range,
+    allow_concatenated: bool,
+    allow_dashed: bool,
+    acc: &mut SuggestionSet<'s>,
+) {
+    if !hunspell.check(&word) {
+        trace!("No match for word (plain range: {:?}): >{}<", &range, &word);
+        // get rid of single character suggestions
+        let replacements = hunspell
+            .suggest(&word)
+            .into_iter()
+            .filter(|x| x.len() > 1) // single char suggestions tend to be useless
+            .collect::<Vec<_>>();
+
+        if allow_concatenated && replacements_contain_dashless(&word, replacements.as_slice()) {
+            trace!(target: "quirks", "Found dashless word in replacement suggestions, treating {} as ok", &word);
+            return;
+        }
+        if allow_dashed && replacements_contain_dashed(&word, replacements.as_slice()) {
+            trace!(target: "quirks", "Found dashed word in replacement suggestions, treating {} as ok", &word);
+            return;
+        }
+        for (range, span) in plain.find_spans(range.clone()) {
+            acc.add(
+                origin.clone(),
+                Suggestion {
+                    detector: Detector::Hunspell,
+                    range,
+                    span,
+                    origin: origin.clone(),
+                    replacements: replacements.clone(),
+                    chunk,
+                    description: Some("Possible spelling mistake found.".to_owned()),
+                },
+            )
+        }
+    } else {
+        trace!(
+            "Found a match for word (plain range: {:?}): >{}<",
+            &range,
+            word
+        );
     }
 }

@@ -72,19 +72,21 @@ mistakes are found instead of `0`.
   * [ ] Handle doctests with ` ```rust` as virtual files [#43](https://github.com/drahnr/cargo-spellcheck/issues/43)
   * [ ] Verify all types of links [#44](https://github.com/drahnr/cargo-spellcheck/issues/44)
 * [x] Check `README.md` files [#37](https://github.com/drahnr/cargo-spellcheck/issues/37)
-* [ ] Check mdbook `book.toml` file trees [#62](https://github.com/drahnr/cargo-spellcheck/issues/62)
 * [x] Improve interactive user interface with `crossterm`
 * [x] Ellipsize overly long statements with `...` [#42](https://github.com/drahnr/cargo-spellcheck/issues/42)
 * [ ] Learn topic lingo and filter false-positive-suggestions [#41](https://github.com/drahnr/cargo-spellcheck/issues/41)
 * [x] Handle cargo workspaces [#38](https://github.com/drahnr/cargo-spellcheck/issues/38)
 * [ ] Re-wrap doc comments [#39](https://github.com/drahnr/cargo-spellcheck/issues/39)
-* [ ] Word split validation [#40](https://github.com/drahnr/cargo-spellcheck/issues/40)
 
 `hunspell` and `languagetool` are currently the two supported featuresets.
 
 ## Configuration
 
 ```toml
+# Project settings where a Cargo.toml exists and is passed
+# ${CARGO_MANIFEST_DIR}/.config/spellcheck.toml
+
+# Fallback to per use configuration files:
 # Linux:   /home/alice/.config/cargo_spellcheck/config.toml
 # Windows: C:\Users\Alice\AppData\Roaming\cargo_spellcheck\config.toml
 # macOS:   /Users/Alice/Library/Preferences/cargo_spellcheck/config.toml
@@ -98,12 +100,35 @@ lang = "en_US"
 # Linux: [ /usr/share/myspell ]
 # Windows: []
 # macOS [ /home/alice/Libraries/hunspell, /Libraries/hunspell ]
-search_dirs = []
-extra_dictonaries = []
+
+# Additional search paths, which take presedence over the default
+# os specific search dirs, searched in order, defaults last
+# search_dirs = []
+
+# Adds additional dictionaries, can be specified as 
+# absolute paths or relative in the search dirs (in this order).
+# Relative paths are resolved relative to the configuration file
+# which is used.
+# Refer to `man 5 hunspell`
+# or https://www.systutorials.com/docs/linux/man/4-hunspell/#lbAE
+# on how to define a custom dictionary file.
+extra_dictionaries = []
+
+[Hunspell.quirks]
+# Transforms words that are provided by the tokenizer
+# into word fragments based on the capture groups which are to
+# be checked.
+# If no capture groups are present, the matched word is whitelisted.
+transform_regex = ["^'([^\\s])'$", "^[0-9]+x$"]
+# Accepts `alphabeta` variants if the checker provides a replacement suggestion
+# of `alpha-beta`.
+allow_concatenation = true
+# And the counterpart, which accepts words with dashes, when the suggestion has
+# recommendations without the dashes. This is less common.
+allow_dashed = false
 ```
 
-To increase verbosity use `CARGO_SPELLCHECK=cargo_spellcheck=trace` to see internal details or
-add `-v` (multiple) to increase verbosity.
+To increase verbosity add `-v` (multiple) to increase verbosity.
 
 ## Installation
 
@@ -140,4 +165,4 @@ export LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config
 
 #### LanguageTool
 
-Run a instance of the [LanguageTool server i.e. as container](https://hub.docker.com/r/erikvl87/languagetool).
+Run an instance of the [LanguageTool server i.e. as container](https://hub.docker.com/r/erikvl87/languagetool).

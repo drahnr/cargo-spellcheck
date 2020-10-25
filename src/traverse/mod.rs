@@ -7,11 +7,11 @@ use crate::Documentation;
 
 use anyhow::{anyhow, bail, Error, Result};
 use log::{debug, trace, warn};
-use std::convert::TryFrom;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 
-fn cwd() -> Result<PathBuf> {
+pub(crate) fn cwd() -> Result<PathBuf> {
     std::env::current_dir().map_err(|_e| anyhow::anyhow!("Missing cwd!"))
 }
 
@@ -350,7 +350,7 @@ pub(crate) fn extract(
                 if cargo_toml.is_file() {
                     Extraction::Manifest(cargo_toml)
                 } else {
-                    // @todo should we just collect all .rs files here instead?
+                    // TODO should we just collect all .rs files here instead?
 
                     // we know it's a directory, and we limit the entries to 0 levels,
                     // will cause to yield all "^.*\.rs$" files in that dir
@@ -403,12 +403,13 @@ pub(crate) fn extract(
                             let content: String = fs::read_to_string(&path).map_err(|e| {
                                 anyhow!("Failed to read {}", path.display()).context(e)
                             })?;
-                            if let Ok(cluster) = Clusters::try_from(content.as_str()) {
-                                let chunks = Vec::<CheckableChunk>::from(cluster);
-                                docs.add(ContentOrigin::RustSourceFile(path.to_owned()), chunks);
-                            } else {
-                                log::error!("BUG: Failed to create cluster for {}", path.display());
-                            }
+                            docs.add_rust(
+                                ContentOrigin::RustSourceFile(path.to_owned()),
+                                content.as_str(),
+                            )
+                            .unwrap_or_else(|_e| {
+                                log::error!("BUG: Failed to create cluster for {}", path.display())
+                            });
                         }
                     }
                     CheckEntity::Markdown(path) => {
@@ -418,35 +419,14 @@ pub(crate) fn extract(
                         if content.len() < 1 {
                             bail!("Common mark / markdown file is empty")
                         }
-                        // extract the full content span and range
-                        let start = LineColumn { line: 1, column: 0 };
-                        let end = content
-                            .lines()
-                            .enumerate()
-                            .last()
-                            .map(|(idx, line)| (idx + 1, line))
-                            .map(|(lineno, line)| LineColumn {
-                                line: lineno,
-                                column: line.chars().count(),
-                            })
-                            .ok_or_else(|| {
-                                anyhow!(
-                                    "Common mark / markdown file does not contain a single line"
-                                )
-                            })?;
-
-                        let span = Span { start, end };
-                        let source_mapping = indexmap::indexmap! {
-                           0..content.chars().count() => span
-                        };
-                        docs.add(
+                        docs.add_commonmark(
                             ContentOrigin::CommonMarkFile(path.to_owned()),
-                            vec![CheckableChunk::from_string(content, source_mapping)],
-                        );
+                            content.as_str(),
+                        )?;
                     }
                     other => {
                         warn!("Did not impl handling of {:?} type files", other);
-                        // @todo generate Documentation structs from non-file sources
+                        // TODO generate Documentation structs from non-file sources
                     }
                 }
                 Ok(docs)
@@ -547,7 +527,10 @@ mod tests {
         };
 
         ([ $( $path:literal ),* $(,)?] + $recurse: expr => [ $( $file:literal ),* $(,)?] ) => {
-            let _ = env_logger::builder().is_test(true).try_init();
+                    let _ = env_logger::builder()
+            .is_test(true)
+            .filter(None, log::LevelFilter::Trace)
+            .try_init();
 
             let docs = extract(
                 vec![

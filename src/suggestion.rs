@@ -24,12 +24,19 @@ use crate::{Range, Span};
 #[derive(Debug, Clone, Copy, BitFlags, Eq, PartialEq, Hash)]
 #[repr(u8)]
 pub enum Detector {
+    /// Hunspell lib based detector.
     Hunspell = 0b0001,
+    /// Language tool server based detection.
     LanguageTool = 0b0010,
+    /// Detection of nothing, a test helper.
     #[cfg(test)]
     Dummy = 0b1000,
 }
 
+/// Terminal size in characters.
+///
+/// Returns `80usize` for tests and in case the terminal size
+/// can not be retrieved.
 pub fn get_terminal_size() -> usize {
     const DEFAULT_TERMINAL_SIZE: usize = 80;
     #[cfg(not(test))]
@@ -69,8 +76,8 @@ impl fmt::Display for Detector {
     }
 }
 
-// For long lines, literal will be trimmed to display in one terminal line.
-// Misspelled words that are too long shall also be ellipsized.
+/// For long lines, literal will be trimmed to display in one terminal line.
+/// Misspelled words that are too long shall also be ellipsized.
 pub fn condition_display_content(
     terminal_size: usize,
     _indent: usize,
@@ -183,7 +190,7 @@ pub fn condition_display_content(
     // left and right we would like to partition the remaining space equally
     let avail_space_half = avail_space / 2usize;
 
-    // @todo introduce a threshold, so the shortened version is not longer than than the original
+    // TODO introduce a threshold, so the shortened version is not longer than than the original
     let (left_context, right_context, left_dots, right_dots) = match (
         avail_space_half > left_context.len(),
         avail_space_half > right_context.len(),
@@ -336,7 +343,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
 
         // underline the relevant part with ^^^^^
 
-        // @todo this needs some more thought once multiline comments pop up
+        // TODO this needs some more thought once multiline comments pop up
         let marker_size = self.span.one_line_len().unwrap_or_else(|| {
             self.chunk
                 .len_in_chars()
@@ -345,31 +352,16 @@ impl<'s> fmt::Display for Suggestion<'s> {
 
         // assumes the _mistake_ is within one line
         // if not we chop it down to the first line
-        let (line_range, start_of_line_offset) = self
-            .chunk
-            .as_str()
-            .chars()
-            .enumerate()
-            .scan(0usize, |last_newline_plus_1, (idx, c)| {
-                match c {
-                    '\n' => {
-                        *last_newline_plus_1 = idx + 1;
-                    }
-                    _ => {}
-                }
-                Some((idx, c, *last_newline_plus_1))
-            })
-            .skip_while(|(idx, _c, _last_newline_plus_1)| *idx < self.range.start)
-            .take_while(|(_idx, c, _last_newline_plus_1)| *c != '\n')
-            .last() // the last contains the last chars index, and the index of the previous newline
-            .map(|(idx, _, last_newline_plus_1)| {
-                let mistake_to_start_of_line_offset = self.range.start - last_newline_plus_1;
+        let mistake_lines = self.chunk.find_covered_lines(self.range.clone());
+        let (line_range, start_of_line_offset) = mistake_lines
+            .first()
+            .map(|line_range| {
                 (
-                    last_newline_plus_1..(idx + 1),
-                    mistake_to_start_of_line_offset,
+                    line_range,
+                    self.range.start.saturating_sub(line_range.start),
                 )
             })
-            .expect("Must have at least one relevant line");
+            .expect("Lines covered must exist");
 
         let intra_line_mistake_range = Range {
             start: start_of_line_offset,
@@ -465,22 +457,21 @@ impl<'s> fmt::Display for Suggestion<'s> {
         };
 
         error.apply_to(replacement).fmt(formatter)?;
-        formatter.write_str("\n")?;
 
-        context_marker
-            .apply_to(format!("{:>width$}", "|\n", width = indent + 1))
-            .fmt(formatter)?;
+        if !self.replacements.is_empty() {
+            formatter.write_str("\n")?;
+            context_marker
+                .apply_to(format!("{:>width$}", "|\n", width = indent + 1))
+                .fmt(formatter)?;
+            context_marker
+                .apply_to(format!("{:>width$}", "|", width = indent))
+                .fmt(formatter)?;
+        }
 
-        context_marker
-            .apply_to(format!("{:>width$}", "|", width = indent))
-            .fmt(formatter)?;
         if let Some(ref description) = self.description {
             writeln!(formatter, "   {}", description)?;
         }
-
-        context_marker
-            .apply_to(format!("{:>width$}", "|\n", width = indent + 1))
-            .fmt(formatter)
+        Ok(())
     }
 }
 
@@ -507,18 +498,22 @@ pub struct SuggestionSet<'s> {
 }
 
 impl<'s> SuggestionSet<'s> {
+    /// Create a new and empty suggestion set.
     pub fn new() -> Self {
         Self {
             per_file: indexmap::IndexMap::with_capacity(64),
         }
     }
 
+    /// Iterate over all suggestions tupled with the content origin of the file the
+    /// suggestion relates to.
     pub fn iter<'a>(
         &'a self,
     ) -> impl DoubleEndedIterator<Item = (&'a ContentOrigin, &'a Vec<Suggestion<'s>>)> {
         self.per_file.iter()
     }
 
+    /// Adds a new suggestion to the set.
     pub fn add(&mut self, origin: ContentOrigin, suggestion: Suggestion<'s>) {
         self.per_file
             .entry(origin)
@@ -526,6 +521,7 @@ impl<'s> SuggestionSet<'s> {
             .push(suggestion);
     }
 
+    /// Adds a slice of suggestions at once.
     pub fn append(&mut self, origin: ContentOrigin, suggestions: &[Suggestion<'s>]) {
         self.per_file
             .entry(origin)
@@ -533,6 +529,7 @@ impl<'s> SuggestionSet<'s> {
             .extend_from_slice(suggestions);
     }
 
+    /// Alternative form of [`Self::append`](Self::append).
     pub fn extend<I>(&mut self, origin: ContentOrigin, suggestions: I)
     where
         I: IntoIterator<Item = Suggestion<'s>>,
@@ -602,7 +599,7 @@ impl<'s> SuggestionSet<'s> {
         self.per_file.len()
     }
 
-    /// Count the number of suggestions accross all files in total
+    /// Count the number of suggestions across all files in total
     pub fn total_count(&self) -> usize {
         self.per_file.iter().map(|(_origin, vec)| vec.len()).sum()
     }
@@ -665,7 +662,7 @@ mod tests {
 
         let suggestion = Suggestion {
             detector: Detector::Dummy,
-            origin: ContentOrigin::TestEntity,
+            origin: ContentOrigin::TestEntityRust,
             chunk: &chunk,
             range: 7..12,
             span: Span {
@@ -683,14 +680,57 @@ mod tests {
         };
 
         const EXPECTED: &'static str = r#"error: spellcheck(Dummy)
-  --> /tmp/test/entity:1
+  --> /tmp/test/entity.rs:1
    |
  1 |  Is it dyrck again?
    |        ^^^^^
    | - replacement_0, replacement_1, or replacement_2
    |
    |   Possible spelling mistake found.
+"#;
+        assert_display_eq(suggestion, EXPECTED);
+    }
+
+    #[test]
+    fn fmt_0_no_suggestion() {
+        const CONTENT: &'static str = " Is it dyrck again?";
+        let chunk = CheckableChunk::from_str(
+            CONTENT,
+            indexmap::indexmap! { 0..18 => Span {
+                    start: LineColumn {
+                        line: 1,
+                        column: 0,
+                    },
+                    end: LineColumn {
+                        line: 1,
+                        column: 17,
+                    }
+                }
+            },
+        );
+
+        let suggestion = Suggestion {
+            detector: Detector::Dummy,
+            origin: ContentOrigin::TestEntityRust,
+            chunk: &chunk,
+            range: 7..12,
+            span: Span {
+                start: LineColumn { line: 1, column: 6 },
+                end: LineColumn {
+                    line: 1,
+                    column: 10,
+                },
+            },
+            replacements: vec![],
+            description: Some("Possible spelling mistake found.".to_owned()),
+        };
+
+        const EXPECTED: &'static str = r#"error: spellcheck(Dummy)
+  --> /tmp/test/entity.rs:1
    |
+ 1 |  Is it dyrck again?
+   |        ^^^^^
+   |   Possible spelling mistake found.
 "#;
         assert_display_eq(suggestion, EXPECTED);
     }
@@ -739,7 +779,7 @@ mod tests {
 
         let suggestion = Suggestion {
             detector: Detector::Dummy,
-            origin: ContentOrigin::TestEntity,
+            origin: ContentOrigin::TestEntityRust,
             chunk: &chunk,
             range: 6..12,
             span: Span {
@@ -760,14 +800,13 @@ mod tests {
         };
 
         const EXPECTED: &'static str = r#"error: spellcheck(Dummy)
-  --> /tmp/test/entity:1
+  --> /tmp/test/entity.rs:1
    |
  1 |  Line mitake 1
    |       ^^^^^^
    | - replacement_0, replacement_1, or replacement_2
    |
    |   Possible spelling mistake found.
-   |
 "#;
 
         assert_display_eq(suggestion, EXPECTED);
@@ -807,7 +846,7 @@ mod tests {
 
         let suggestion = Suggestion {
             detector: Detector::Dummy,
-            origin: ContentOrigin::TestEntity,
+            origin: ContentOrigin::TestEntityRust,
             chunk: &chunk,
             range: 66..94,
             span: Span {
@@ -825,14 +864,13 @@ mod tests {
         };
 
         const EXPECTED: &'static str = r#"error: spellcheck(Dummy)
-  --> /tmp/test/entity:2
+  --> /tmp/test/entity.rs:2
    |
  2 | ..uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuper duuu...uper too long
    |                                                 ^^^^^^^^^^^
    | - replacement_0, replacement_1, or replacement_2
    |
    |   Possible spelling mistake found.
-   |
 "#;
 
         assert_display_eq(suggestion, EXPECTED);
@@ -840,7 +878,10 @@ mod tests {
 
     #[test]
     fn multiline_is_dbg_printable() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        let _ = env_logger::builder()
+            .is_test(true)
+            .filter(None, log::LevelFilter::Trace)
+            .try_init();
 
         use crate::documentation::CheckableChunk;
         let chunk = CheckableChunk::from_str(
@@ -861,7 +902,7 @@ mod tests {
 
         let suggestion = Suggestion {
             detector: Detector::Dummy,
-            origin: ContentOrigin::TestEntity,
+            origin: ContentOrigin::TestEntityRust,
             chunk: &chunk,
             span: Span {
                 start: LineColumn {

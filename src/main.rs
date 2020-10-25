@@ -1,3 +1,12 @@
+#![deny(dead_code)]
+#![deny(missing_docs)]
+#![deny(unused_crate_dependencies)]
+#![warn(clippy::pedantic)]
+
+//! cargo-spellcheck
+//!
+//! A syntax tree based doc comment and common mark spell checker.
+
 mod action;
 mod checker;
 mod config;
@@ -16,12 +25,18 @@ pub use self::util::*;
 
 use docopt::Docopt;
 
-use log::{info, trace, warn};
+use log::{debug, info, trace, warn};
 use serde::Deserialize;
+
+#[cfg(not(target_os = "windows"))]
 use signal_hook::{iterator, SIGINT, SIGQUIT, SIGTERM};
+
+#[cfg(target_os = "windows")]
+use signal_hook as _;
 
 use std::path::PathBuf;
 
+/// Docopt usage string.
 const USAGE: &str = r#"
 Spellcheck all your doc comments
 
@@ -52,10 +67,19 @@ Options:
   --skip-readme             Do not attempt to process README.md files listed in Cargo.toml manifests.
 "#;
 
+/// A simple exit code representation.
+///
+/// `Custom` can be specified by the user,
+/// others map to thei unix equivalents where
+/// available.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum ExitCode {
+    /// Regular termination and does not imply anything
+    /// in regards to spelling mistakes found or not.
     Success,
+    /// Terminate requested by a *nix signal.
     Signal,
+    /// A custom exit code, as specified with `--code=<code>`.
     Custom(u8),
     // Failure is already default for `Err(anyhow::Error)`
 }
@@ -91,6 +115,10 @@ struct Args {
     cmd_config: bool,
 }
 
+/// Handle incoming signals.
+///
+/// Only relevant for *-nix platforms.
+#[cfg(not(target_os = "windows"))]
 fn signal_handler() {
     let signals =
         iterator::Signals::new(vec![SIGTERM, SIGINT, SIGQUIT]).expect("Failed to create Signals");
@@ -107,6 +135,10 @@ fn signal_handler() {
     }
 }
 
+/// Agjust the raw arguments for call variants.
+///
+/// The program could be called like `cargo-spellcheck`, `cargo spellcheck` or
+/// `cargo spellcheck check` and even ``cargo-spellcheck check`.
 fn parse_args(mut argv_iter: impl Iterator<Item = String>) -> Result<Args, docopt::Error> {
     Docopt::new(USAGE).and_then(|d| {
         // if ends with file name `cargo-spellcheck`, split
@@ -142,6 +174,7 @@ fn parse_args(mut argv_iter: impl Iterator<Item = String>) -> Result<Args, docop
     })
 }
 
+/// The inner main.
 fn run() -> anyhow::Result<ExitCode> {
     let args = parse_args(std::env::args()).unwrap_or_else(|e| e.exit());
 
@@ -168,6 +201,7 @@ fn run() -> anyhow::Result<ExitCode> {
         return Ok(ExitCode::Success);
     }
 
+    #[cfg(not(target_os = "windows"))]
     std::thread::spawn(move || signal_handler());
 
     let checkers = |config: &mut Config| {
@@ -223,21 +257,91 @@ fn run() -> anyhow::Result<ExitCode> {
     }
 
     let (explicit_cfg, config_path) = match args.flag_cfg.as_ref() {
-        Some(path) => (true, path.to_owned()),
-        _ => (false, Config::default_path()?),
+        Some(config_path) => {
+            let config_path = if config_path.is_absolute() {
+                config_path.to_owned()
+            } else {
+                traverse::cwd()?.join(config_path)
+            };
+            (true, config_path)
+        }
+        None => {
+            // TODO refactor needed
+
+            // the current work dir as fallback
+            let cwd = traverse::cwd()?;
+            let mut config_path: PathBuf = cwd.as_path().join("Cargo.toml");
+
+            // TODO Currently uses the first manifest dir as search dir for a spellcheck.toml
+            // TODO with a fallback to the cwd as project dir.
+            // TODO But it would be preferable to use the config specific to each dir if available.
+            for path in args.arg_paths.iter() {
+                let path = if let Some(path) = if path.is_absolute() {
+                    path.to_owned()
+                } else {
+                    traverse::cwd()?.join(path)
+                }
+                .canonicalize()
+                .ok()
+                {
+                    path
+                } else {
+                    warn!(
+                        "Provided path could not be canonicalized {}",
+                        path.display()
+                    );
+                    // does not exist or access issues
+                    continue;
+                };
+
+                if path.is_dir() {
+                    let path = path.join("Cargo.toml");
+                    if path.is_file() {
+                        debug!("Using {} manifest as anchor file", path.display());
+                        config_path = path;
+                        break;
+                    }
+                } else if let Some(file_name) = path.file_name() {
+                    if file_name == "Cargo.toml" && path.is_file() {
+                        debug!("Using {} manifest as anchor file", path.display());
+                        config_path = path.to_owned();
+                        break;
+                    }
+                }
+                // otherwise it's a file and we do not care about it
+            }
+
+            let config_path = config_path.with_file_name(""); //.expect("Found file ends in Cargo.toml and is abs. qed");
+
+            let resolved_config_path = config::Config::project_config(&config_path)
+                .or_else(|e| {
+                    debug!("Manifest dir found {}: {}", config_path.display(), e);
+                    // in case there is none, attempt the cwd first before falling back to the user config
+                    // this is a common case for workspace setups where we want to sanitize a sub project
+                    config::Config::project_config(cwd.as_path())
+                })
+                .or_else(|e| {
+                    debug!("Fallback to user default lookup, failed to load project specific config {}: {}", config_path.display(), e);
+                    Config::default_path()
+                })?;
+            (false, resolved_config_path)
+        }
     };
+    info!("Using configuration file {}", config_path.display());
     let mut config = match Config::load_from(&config_path) {
         Ok(config) => config,
         Err(e) => {
             if explicit_cfg {
-                return Err(anyhow::anyhow!(
-                    "Explicitly given config file does not exist"
-                ));
+                return Err(e);
             } else {
-                warn!(
-                    "Loading configuration from {}, due to: {}",
+                debug!(
+                    "Loading configuration from {} failed due to: {}",
                     config_path.display(),
                     e
+                );
+                warn!(
+                    "Loading configuration from {} failed, falling back to default values",
+                    config_path.display(),
                 );
                 Config::default()
             }
@@ -254,7 +358,7 @@ fn run() -> anyhow::Result<ExitCode> {
         Action::Check
     };
 
-    trace!("Executing: {:?} with {:?}", action, &config);
+    debug!("Executing: {:?} with {:?}", action, &config);
 
     let combined = traverse::extract(
         args.arg_paths,
@@ -274,6 +378,7 @@ fn run() -> anyhow::Result<ExitCode> {
     }
 }
 
+#[allow(missing_docs)]
 fn main() -> anyhow::Result<()> {
     std::process::exit(run()?.as_u8() as i32)
 }

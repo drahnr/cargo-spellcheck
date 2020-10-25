@@ -1,6 +1,6 @@
 [package]
 name = "cargo-spellcheck"
-version = "0.3.1-alpha.0"
+version = "0.4.7-alpha.0"
 authors = ["Bernhard Schuster <bernhard@ahoi.io>"]
 edition = "2018"
 repository = "https://github.com/drahnr/cargo-spellcheck.git"
@@ -19,25 +19,28 @@ walkdir = "2"
 syn = { version = "1", features = ["full"] }
 log = "0.4"
 env_logger = "0.7"
-console = "0.11"
+console = "0.12"
 indexmap = "1"
 enumflags2 = "0.6"
 # for the config file
 toml = "0.5"
 # for parsing and extracting elements from Cargo.toml
 cargo_toml = "0.8"
-directories = "2"
+directories = "3"
 lazy_static = "1"
-pulldown-cmark = "0.7"
+pulldown-cmark = "0.8"
 itertools = "0.9"
-crossterm = "0.17"
-fancy-regex = "0.3"
+crossterm = "0.18"
+fancy-regex = "0.4"
 signal-hook = "0.1"
 
 
 # config parsing, must be independent of features
-iso_country = { version = "0.1" }
-isolang = { version = "1", features = ["serde_serialize"] }
+
+# TODO parse the country codes of dictionaries?
+# iso_country = { version = "0.1" }
+# isolang = { version = "1", features = ["serde_serialize"] }
+
 url = { version = "2", features = ["serde"] }
 
 # dictionary
@@ -49,7 +52,7 @@ languagetool-rs = { version = "0.1", package = "languagetool", optional = true }
 
 [dev-dependencies]
 # for stripping ansi color codes
-console = "0.11"
+console = "0.12"
 
 [features]
 default = ["hunspell"]

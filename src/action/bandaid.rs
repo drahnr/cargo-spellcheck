@@ -1,10 +1,15 @@
+//! A mistake bandaid.
+//!
+//! Covers the mistake with a suggested replacement, as
+//! picked by the user.
+
 use crate::span::Span;
 use crate::suggestion::Suggestion;
 use anyhow::{bail, Error, Result};
 use log::trace;
 use std::convert::TryFrom;
 
-#[doc = r#"A choosen sugestion for a certain span"#]
+/// A choosen sugestion for a certain span
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BandAid {
     /// a span, where the first line has index 1, columns are base 0
@@ -14,9 +19,11 @@ pub struct BandAid {
 }
 
 impl BandAid {
+    /// Create a new bandaid from a span and the content to replace the
+    /// spans current content.
     pub fn new(replacement: &str, span: &Span) -> Self {
         trace!(
-            "proc_macro literal span of doc comment: ({},{})..({},{})",
+            "span of doc comment: ({},{})..({},{})",
             span.start.line,
             span.start.column,
             span.end.line,
@@ -66,11 +73,9 @@ impl From<(String, Span)> for BandAid {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use crate::span::Span;
     use crate::util::load_span_from;
+    use crate::{LineColumn, Span};
     use anyhow::anyhow;
-    use proc_macro2::LineColumn;
-    use std::io::Read;
     use std::path::Path;
 
     /// Extract span from file as String
@@ -158,7 +163,6 @@ l
     }
 
     #[test]
-    #[ignore]
     fn try_from_string_works() {
         const TEST: &str = include_str!("../../demo/src/main.rs");
 
@@ -207,7 +211,6 @@ l
     }
 
     #[test]
-    #[ignore]
     fn try_from_raw_string_works() {
         const TEST: &str = include_str!("../../demo/src/lib.rs");
         let fn_with_doc = TEST

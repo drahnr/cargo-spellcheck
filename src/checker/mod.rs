@@ -16,6 +16,9 @@ mod hunspell;
 #[cfg(feature = "languagetool")]
 mod languagetool;
 
+#[cfg(any(feature = "languagetool", feature = "hunspell"))]
+mod quirks;
+
 /// Implementation for a checker
 pub(crate) trait Checker {
     type Config;
@@ -28,6 +31,8 @@ pub(crate) trait Checker {
 ///
 /// Does not handle hyphenation yet or partial words at boundaries.
 /// Returns the a vector of ranges for the input str.
+///
+/// All ranges are in characters.
 fn tokenize(s: &str) -> Vec<Range> {
     let mut started = false;
     let mut linear_start = 0usize;
@@ -38,14 +43,14 @@ fn tokenize(s: &str) -> Vec<Range> {
     let blacklist = "\";:,.?!#(){}[]-\n\r/`".to_owned();
     let is_ignore_char = |c: char| c.is_whitespace() || blacklist.contains(c);
 
-    for (c_idx, c) in s.char_indices() {
+    for (c_idx, (_byte_offset, c)) in s.char_indices().enumerate() {
         if is_ignore_char(c) {
             linear_end = c_idx;
             if started {
                 bananasplit.push(linear_start..linear_end);
             }
             started = false;
-        // @todo handle hyphenation
+        // TODO handle hyphenation
         // if c == '\n' {
         //     column = 0;
         //     line += 1;
@@ -58,14 +63,14 @@ fn tokenize(s: &str) -> Vec<Range> {
         }
     }
     // at the end of string, assume word complete
-    // @todo for hypenation, check if line ends with a dash
+    // TODO for hypenation, check if line ends with a dash
     if started {
         if let Some((idx, _)) = s.char_indices().next_back() {
             // increase by one, since the range's end goes one beyond, end bounds is _exclusive_ for ranges
             let linear_end = idx + 1;
             bananasplit.push(linear_start..linear_end)
         } else {
-            log::warn!("Most liekly lost a word when tokenizing! BUG");
+            log::error!("BUG: Most likely lost a word when tokenizing!");
         }
     }
     bananasplit
@@ -86,11 +91,10 @@ where
                 .languagetool
                 .as_ref()
                 .expect("Must be Some(LanguageToolConfig) if is_enabled returns true");
-            if let Ok(mut suggestions) =
-                self::languagetool::LanguageToolChecker::check(documentation, config)
-            {
-                collective.join(suggestions);
-            }
+
+            let mut suggestions =
+                self::languagetool::LanguageToolChecker::check(documentation, config)?;
+            collective.join(suggestions);
         }
     }
 
@@ -102,9 +106,8 @@ where
                 .hunspell
                 .as_ref()
                 .expect("Must be Some(HunspellConfig) if is_enabled returns true");
-            if let Ok(suggestions) = self::hunspell::HunspellChecker::check(documentation, config) {
-                collective.join(suggestions);
-            }
+            let suggestions = self::hunspell::HunspellChecker::check(documentation, config)?;
+            collective.join(suggestions);
         }
     }
 
@@ -121,7 +124,7 @@ pub mod tests {
     use crate::ContentOrigin;
     use crate::LineColumn;
 
-    use std::path::PathBuf;
+    use crate::fluff_up;
 
     const TEXT: &'static str = "With markdown removed, for sure.";
     lazy_static::lazy_static! {
@@ -142,16 +145,13 @@ pub mod tests {
         }
     }
 
-    // @todo looks pretty similiar to the one in bandaid doesn't it?
+    // TODO looks pretty similiar to the one in bandaid doesn't it?
     pub fn extraction_test_body(content: &str, expected_spans: &[Span]) {
         let _ = env_logger::builder()
             .filter(None, log::LevelFilter::Trace)
             .is_test(true)
             .try_init();
-        let d = Documentation::from((
-            ContentOrigin::RustSourceFile(PathBuf::from("dummy/dummy.rs")),
-            content,
-        ));
+        let d = Documentation::from((ContentOrigin::TestEntityRust, content));
         let suggestion_set =
             dummy::DummyChecker::check(&d, &()).expect("Dummy extraction must never fail");
 
@@ -176,53 +176,29 @@ pub mod tests {
     }
 
     #[test]
-    #[ignore] // @todo FIXME
     fn extract_suggestions_simple() {
-        const SIMPLE: &'static str = "two literals";
+        const SIMPLE: &'static str = fluff_up!("two literals");
 
         /// keep in mind, `Span` bounds are inclusive, unlike Ranges, where range.end is _exclusive_
         const EXPECTED_SPANS: &[Span] = &[
             Span {
-                start: LineColumn { line: 1, column: 1 },
-                end: LineColumn { line: 1, column: 3 },
+                start: LineColumn { line: 1, column: 4 },
+                end: LineColumn { line: 1, column: 6 },
             },
             Span {
-                start: LineColumn { line: 1, column: 5 },
+                start: LineColumn { line: 1, column: 8 },
                 end: LineColumn {
                     line: 1,
-                    column: 12,
+                    column: 15,
                 },
             },
         ];
-        extraction_test_body(SIMPLE, EXPECTED_SPANS);
+        extraction_test_body(dbg!(SIMPLE), EXPECTED_SPANS);
     }
 
     #[test]
-    #[ignore] // @todo FIXME
     fn extract_suggestions_left_aligned() {
-        const SIMPLE: &'static str = "two  literals ";
-
-        /// keep in mind, `Span` bounds are inclusive, unlike Ranges, where range.end is _exclusive_
-        const EXPECTED_SPANS: &[Span] = &[
-            Span {
-                start: LineColumn { line: 1, column: 1 },
-                end: LineColumn { line: 1, column: 3 },
-            },
-            Span {
-                start: LineColumn { line: 1, column: 6 },
-                end: LineColumn {
-                    line: 1,
-                    column: 13,
-                },
-            },
-        ];
-        extraction_test_body(SIMPLE, EXPECTED_SPANS);
-    }
-
-    #[test]
-    #[ignore] // @todo FIXME
-    fn extract_suggestions_3spaces() {
-        const SIMPLE: &'static str = "   3rd  testcase ";
+        const SIMPLE: &'static str = fluff_up!("two  literals ");
 
         /// keep in mind, `Span` bounds are inclusive, unlike Ranges, where range.end is _exclusive_
         const EXPECTED_SPANS: &[Span] = &[
@@ -238,6 +214,33 @@ pub mod tests {
                 },
             },
         ];
-        extraction_test_body(SIMPLE, EXPECTED_SPANS);
+        extraction_test_body(dbg!(SIMPLE), EXPECTED_SPANS);
+    }
+
+    #[test]
+    fn extract_suggestions_3spaces() {
+        const SIMPLE: &'static str = fluff_up!("  third  testcase ");
+
+        /// keep in mind, `Span` bounds are inclusive, unlike Ranges, where range.end is _exclusive_
+        const EXPECTED_SPANS: &[Span] = &[
+            Span {
+                start: LineColumn { line: 1, column: 6 },
+                end: LineColumn {
+                    line: 1,
+                    column: 10,
+                },
+            },
+            Span {
+                start: LineColumn {
+                    line: 1,
+                    column: 13,
+                },
+                end: LineColumn {
+                    line: 1,
+                    column: 20,
+                },
+            },
+        ];
+        extraction_test_body(dbg!(SIMPLE), EXPECTED_SPANS);
     }
 }

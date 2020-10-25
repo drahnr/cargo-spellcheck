@@ -41,14 +41,19 @@ impl LiteralSet {
         Err(literal)
     }
 
+    /// The set of trimmed literals this set covers.
     pub fn literals<'x>(&'x self) -> Vec<&'x TrimmedLiteral> {
         self.literals.iter().by_ref().collect()
     }
 
+    /// The number of literals inside this set.
     pub fn len(&self) -> usize {
         self.literals.len()
     }
 
+    /// Convert to a checkable chunk.
+    ///
+    /// Creates the map from content ranges to source spans.
     pub fn into_chunk(self) -> crate::documentation::CheckableChunk {
         let n = self.len();
         let mut source_mapping = indexmap::IndexMap::with_capacity(n);
@@ -110,6 +115,7 @@ pub(crate) mod tests {
     pub(crate) use super::super::literal::tests::annotated_literals;
     use super::*;
 
+    /// A debug helper to print concatenated length of all items.
     #[macro_export]
     macro_rules! chyrp_dbg {
         ($first:literal $(, $( $line:literal ),+ )? $(,)? $(@ $prefix:literal)? ) => {
@@ -118,6 +124,19 @@ pub(crate) mod tests {
         }
     }
 
+    /// A helper macro creating valid doc string using
+    /// the macro syntax `#[doc=r#"..."#]`.
+    ///
+    /// Example:
+    ///
+    /// ```rust
+    /// let x = chryp_up!(["some", "thing"])
+    /// let y = r##"#[doc=r#"some
+    /// thing"#
+    /// struct ChyrpChyrp;"##;
+    ///
+    /// assert_eq!(x,y);
+    /// ```
     #[macro_export]
     macro_rules! chyrp_up {
         ([ $( $line:literal ),+ $(,)? ] $(@ $prefix:literal)? ) => {
@@ -128,6 +147,19 @@ pub(crate) mod tests {
         };
     }
 
+    /// A helper macro creating valid doc string using
+    /// the macro syntax `/// ...`.
+    ///
+    /// Example:
+    ///
+    /// ```rust
+    /// let x = fluff_up!(["some", "thing"])
+    /// let y = r#"/// some
+    /// /// thing
+    /// struct Fluff;"##;
+    ///
+    /// assert_eq!(x,y);
+    /// ```
     #[macro_export]
     macro_rules! fluff_up {
         ([ $( $line:literal ),+ $(,)?] $( @ $prefix:literal)?) => {
@@ -143,20 +175,20 @@ pub(crate) mod tests {
 
     #[test]
     fn fluff_one() {
-        const TEST: &'static str = fluff_up!(["a"]);
+        const RAW: &'static str = fluff_up!(["a"]);
         const EXPECT: &'static str = r#"/// a
 struct Fluff;"#;
-        assert_eq!(TEST, EXPECT);
+        assert_eq!(RAW, EXPECT);
     }
 
     #[test]
     fn fluff_multi() {
-        const TEST: &'static str = fluff_up!(["a", "b", "c"]);
+        const RAW: &'static str = fluff_up!(["a", "b", "c"]);
         const EXPECT: &'static str = r#"/// a
 /// b
 /// c
 struct Fluff;"#;
-        assert_eq!(TEST, EXPECT);
+        assert_eq!(RAW, EXPECT);
     }
 
     pub(crate) fn gen_literal_set(source: &str) -> LiteralSet {
@@ -174,36 +206,41 @@ struct Fluff;"#;
         dbg!(cls)
     }
 
-    const SKIP: usize = 3;
-
-    const EXMALIBU_RANGE_START: usize = SKIP + 9;
+    // range within the literalset content string
+    const EXMALIBU_RANGE_START: usize = 9;
     const EXMALIBU_RANGE_END: usize = EXMALIBU_RANGE_START + 8;
     const EXMALIBU_RANGE: Range = EXMALIBU_RANGE_START..EXMALIBU_RANGE_END;
-    const TEST: &str = r#"/// Another exmalibu verification pass.
+    const RAW: &str = r#"/// Another exmalibu verification pass.
 /// 🚤w🌴x🌋y🍈z🍉0
 /// ♫ Boats float, ♫♫ don't they? ♫
 struct Vikings;
 "#;
 
-    const TEST_LITERALS_COMBINED: &str = r#" Another exmalibu verification pass.
+    const EXMALIBU_CHUNK_STR: &str = r#" Another exmalibu verification pass.
  🚤w🌴x🌋y🍈z🍉0
  ♫ Boats float, ♫♫ don't they? ♫"#;
 
     #[test]
     fn combine_literals() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        let _ = env_logger::builder()
+            .is_test(true)
+            .filter(None, log::LevelFilter::Trace)
+            .try_init();
 
-        let cls = gen_literal_set(TEST);
+        let cls = gen_literal_set(RAW);
 
         assert_eq!(cls.len(), 3);
-        assert_eq!(cls.to_string(), TEST_LITERALS_COMBINED.to_string());
+        assert_eq!(cls.to_string(), EXMALIBU_CHUNK_STR.to_owned());
     }
 
     #[test]
     fn coverage() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        let _ = env_logger::builder()
+            .is_test(true)
+            .filter(None, log::LevelFilter::Trace)
+            .try_init();
 
-        let literal_set = gen_literal_set(TEST);
+        let literal_set = gen_literal_set(RAW);
         let chunk: CheckableChunk = literal_set.into_chunk();
         let map_range_to_span = chunk.find_spans(EXMALIBU_RANGE);
         let (_range, _span) = map_range_to_span
@@ -212,16 +249,16 @@ struct Vikings;
             .expect("Must be at least one literal");
 
         let range_for_raw_str = Range {
-            start: EXMALIBU_RANGE_START - SKIP,
-            end: EXMALIBU_RANGE_END - SKIP,
+            start: EXMALIBU_RANGE_START,
+            end: EXMALIBU_RANGE_END,
         };
 
         // check test integrity
-        assert_eq!("exmalibu", &TEST[EXMALIBU_RANGE]);
+        assert_eq!("exmalibu", &EXMALIBU_CHUNK_STR[EXMALIBU_RANGE]);
 
         // check actual result
         assert_eq!(
-            &TEST[EXMALIBU_RANGE],
+            &EXMALIBU_CHUNK_STR[EXMALIBU_RANGE],
             &chunk.as_str()[range_for_raw_str.clone()]
         );
     }
@@ -242,10 +279,10 @@ struct Vikings;
 
             let range: Range = $range;
 
-            const TEST: &str = fluff_up!($( $txt),+);
+            const RAW: &str = fluff_up!($( $txt),+);
             const START: usize = 3; // skip `///` which is the span we get from the literal
             let _end: usize = START $( + $txt.len())+;
-            let literal_set = gen_literal_set(dbg!(TEST));
+            let literal_set = gen_literal_set(dbg!(RAW));
 
 
             let chunk: CheckableChunk = dbg!(literal_set.into_chunk());
@@ -260,8 +297,8 @@ struct Vikings;
                 end: range.end + START,
             };
 
-            assert_eq!(&TEST[range_for_raw_str.clone()], &chunk.as_str()[range], "Testing range extract vs stringified chunk for integrity");
-            assert_eq!(&TEST[range_for_raw_str], $expected, "Testing range extract vs expected");
+            assert_eq!(&RAW[range_for_raw_str.clone()], &chunk.as_str()[range], "Testing range extract vs stringified chunk for integrity");
+            assert_eq!(&RAW[range_for_raw_str], $expected, "Testing range extract vs expected");
         };
     }
 
@@ -284,18 +321,17 @@ struct Vikings;
             .is_test(true)
             .try_init();
 
-        let literal_set = dbg!(gen_literal_set(TEST));
+        let literal_set = dbg!(gen_literal_set(RAW));
 
         let chunk = dbg!(literal_set.clone().into_chunk());
         let it = dbg!(literal_set.literals()).into_iter();
 
-        const THREE_SLASHES: usize = 3usize;
         for (range, span, s) in itertools::cons_tuples(chunk.iter().zip(it)) {
             if range.len() == 0 {
                 continue;
             }
             assert_eq!(
-                load_span_from(TEST.as_bytes(), span.clone()).expect("Span extraction must work"),
+                load_span_from(RAW.as_bytes(), span.clone()).expect("Span extraction must work"),
                 crate::util::sub_chars(chunk.as_str(), range.clone())
             );
 
