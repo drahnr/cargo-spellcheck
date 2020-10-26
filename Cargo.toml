@@ -33,7 +33,7 @@ itertools = "0.9"
 crossterm = "0.17"
 fancy-regex = "0.3"
 signal-hook = "0.1"
-
+reqwest = {version = "0.10.8", features = ["blocking"] }
 
 # config parsing, must be independent of features
 
