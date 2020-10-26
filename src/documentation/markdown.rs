@@ -12,7 +12,7 @@ use crate::documentation::{CheckableChunk, Range};
 use crate::util::sub_chars;
 use crate::Span;
 
-/// A plain representation of cmark riddled set of a chunk.
+/// A plain representation of cmark riddled chunk.
 #[derive(Clone)]
 pub struct PlainOverlay<'a> {
     /// A reference to the underlying [`CheckableChunk`][super::chunk].

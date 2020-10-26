@@ -59,7 +59,7 @@ fn reflow_inner<'s>(
     let s_absolute = &s[range.clone()];
     let unbreakables = unbreakable_ranges
         .iter()
-        .map(|r| (r.start - range.start)..(r.end - range.start));
+        .map(|r| (r.start.saturating_sub(range.start))..(r.end.saturating_sub(range.start)));
 
     let mut gluon = Gluon::new(s_absolute, max_line_width, &indentations);
     gluon.add_unbreakables(unbreakables);
@@ -68,7 +68,7 @@ fn reflow_inner<'s>(
     let mut lines = s_absolute.lines();
     let mut indents = indentations.iter();
     let last_ident =
-        indentations.last().expect("Must contain one indentation") - variant.prefix_len();
+        indentations.last().expect("Must contain one indentation").saturating_sub(variant.prefix_len());
     // first line has to be without indent and variant prefix
     let (_, content, _) = gluon.next().expect("Must contain one line");
     if lines.next() != Some(&content) {
@@ -78,11 +78,11 @@ fn reflow_inner<'s>(
 
     // construct replacement string from prefix and Gluon iterations
     let content = gluon.fold(acc, |mut acc, (_, content, _)| {
-        if lines.next() != Some(&content) {
+        if lines.next() == Some(&content) {
             reflow_applied = true;
         }
         let pre = if let Some(i) = indents.next() {
-            " ".repeat(*i - variant.prefix_len())
+            " ".repeat((*i).saturating_sub(variant.prefix_len()))
         } else {
             " ".repeat(last_ident)
         };
@@ -117,14 +117,13 @@ fn reflow_inner<'s>(
 
 /// Collect reflowed Paragraphs in a Vector of suggestions
 fn store_suggestion<'s>(
-    acc: &mut Vec<Suggestion<'s>>,
     chunk: &'s CheckableChunk,
     origin: &ContentOrigin,
     paragraph: usize,
     end: usize,
     unbreakable_ranges: &[Range],
     max_line_width: usize,
-) -> Result<usize> {
+) -> Result<(Suggestion<'s>, usize), usize> {
     let range = Range {
         start: paragraph,
         end,
@@ -133,7 +132,7 @@ fn store_suggestion<'s>(
     let span_start = if let Some(first) = spans.next() {
         first
     } else {
-        return Ok(paragraph);
+        return Err(paragraph);
     };
     let span_end = if let Some(last) = spans.last() {
         last
@@ -156,7 +155,10 @@ fn store_suggestion<'s>(
     // lines, use same indentation for all lines
     let indentations = chunk
         .find_covered_spans(range.clone())
-        .flat_map(|s| vec![s.start.column; s.end.line - s.start.line + 1])
+        .flat_map(|s| {
+            debug_assert!(s.start.line <= s.end.line);
+            vec![s.start.column; s.end.line - s.start.line + 1]
+        })
         .collect::<Vec<usize>>();
 
     if let Some(replacement) = reflow_inner(
@@ -167,18 +169,21 @@ fn store_suggestion<'s>(
         max_line_width,
         &chunk.variant(),
     ) {
-        acc.push(Suggestion {
-            chunk,
-            detector: Detector::Reflow,
-            origin: origin.clone(),
-            description: None,
-            range,
-            replacements: vec![replacement],
-            span,
-        })
+        return Ok((
+            Suggestion {
+                chunk,
+                detector: Detector::Reflow,
+                origin: origin.clone(),
+                description: None,
+                range,
+                replacements: vec![replacement],
+                span,
+            },
+            end,
+        ));
+    } else {
+        return Err(end); // a new beginning (maybe)
     }
-
-    Ok(end) // a new beginning (maybe)
 }
 
 /// Parses a `CheckableChunk` and performs the rewrapping on contained paragraphs
@@ -198,7 +203,6 @@ fn reflow<'s>(
     for (event, cover) in parser.into_offset_iter() {
         match event {
             Event::Start(tag) => {
-                // TODO check links
                 match tag {
                     Tag::Image(_, _, _)
                     | Tag::Link(_, _, _)
@@ -212,15 +216,20 @@ fn reflow<'s>(
                     }
                     _ => {
                         // all of these break a reflow-able chunk
-                        paragraph = store_suggestion(
-                            &mut acc,
+                        match store_suggestion(
                             chunk,
                             origin,
                             paragraph,
                             paragraph,
                             unbreakable_stack.as_slice(),
                             cfg.max_line_length,
-                        )?;
+                        ) {
+                            Ok((s, p)) => {
+                                paragraph = p;
+                                acc.push(s);
+                            },
+                            Err(p) => paragraph = p,
+                        }
                         unbreakable_stack.clear();
                     }
                 }
@@ -243,15 +252,20 @@ fn reflow<'s>(
                     }
                     Tag::Paragraph => {
                         // regular end of paragraph
-                        paragraph = store_suggestion(
-                            &mut acc,
+                        match store_suggestion(
                             chunk,
                             origin,
                             paragraph,
                             cover.end,
                             unbreakable_stack.as_slice(),
                             cfg.max_line_length,
-                        )?;
+                        ) {
+                            Ok((s, p)) => {
+                                paragraph = p;
+                                acc.push(s);
+                            }
+                            Err(p) => paragraph = p,
+                        }
                         unbreakable_stack.clear();
                     }
                     _ => {
@@ -271,15 +285,20 @@ fn reflow<'s>(
                 // ignored
             }
             Event::HardBreak => {
-                paragraph = store_suggestion(
-                    &mut acc,
+                match store_suggestion(
                     chunk,
                     origin,
                     paragraph,
                     cover.end,
                     unbreakable_stack.as_slice(),
                     cfg.max_line_length,
-                )?;
+                ) {
+                    Ok((s, p)) => {
+                        paragraph = p;
+                        acc.push(s);
+                    },
+                    Err(p) => paragraph = p,
+                }
                 unbreakable_stack.clear();
             }
             Event::Rule => {
