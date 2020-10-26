@@ -281,16 +281,6 @@ pub fn condition_display_content(
     (conditioned_line, offset, marker_size)
 }
 
-/// Replacement string for a suggestion, indentation holds indent values if
-/// `content` spans over multiple lines
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub struct Replacement {
-    /// replacement content
-    pub content: String,
-    /// number of whitespaces each lines has as prefix
-    pub indentation: Vec<usize>,
-}
-
 /// A suggestion for certain offending span.
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub struct Suggestion<'s> {

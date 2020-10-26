@@ -43,7 +43,7 @@ impl CommentVariant {
                 };
                 format!(r#"{}{}"#, d, raw)
             }
-            _ => unreachable!("All comment variants have a string representation. qed"),
+            unhandled => unreachable!("String representation for comment variant {:?} exists. qed", unhandled),
         }
     }
     /// Return legnth of comment prefix for each variant
@@ -68,7 +68,7 @@ impl CommentVariant {
         if let CommentVariant::MacroDocEq(_, p) = self {
             match p {
                 0 | 1 => r#""]"#.to_string(),
-                n => r#"""#.to_string() + &"#".repeat(n - 1) + "]",
+                n => r#"""#.to_string() + &"#".repeat(n.saturating_sub(1)) + "]",
             }
         } else {
             "".to_string()
@@ -145,7 +145,7 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
         // from the file again, and then determining its type is way safer.
 
         let mut span = Span::from(literal.span());
-        // itt's unclear why the trailing `]` character is part of the given span, it shout not be part
+        // It's unclear why the trailing `]` character is part of the given span, it shout not be part
         // of it, but the span we obtain from literal seems to be wrong, adding one trailing char.
 
         // Either cut off `]` or `\n` - we don't need either.
@@ -607,7 +607,7 @@ struct Three;
                 trimmed: "Three Doc",
                 extracted_span: Span {
                     start: LineColumn {
-                        line: 2__usize,
+                        line: 2_usize,
                         column: 4__usize + 11,
                     },
                     end: LineColumn {
