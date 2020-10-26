@@ -6,6 +6,7 @@ use log::{debug, trace};
 
 use std::fs::{self, OpenOptions};
 use std::io::{Read, Write};
+
 use std::path::PathBuf;
 
 pub mod bandaid;
@@ -33,6 +34,46 @@ impl Finish {
     }
 }
 
+/// A patch to be stitched ontop of another string.
+///
+/// Has intentionally no awareness of any rust or cmark/markdown semantics.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub(crate) enum Patch {
+    /// Replace the area spanned by `replace` with `replacement`.
+    /// Since `Span` is inclusive, `Replace` always will replace a character in the original sources.
+    Replace {
+        replace_span: Span,
+        replacement: String,
+    },
+    /// Location where to insert.
+    Insert {
+        insert_at: LineColumn,
+        content: String,
+    },
+}
+
+impl<'a> From<&'a BandAid> for Patch {
+    fn from(bandaid: &'a BandAid) -> Self {
+        // TODO XXX
+        Self::from(bandaid.clone())
+    }
+}
+
+impl From<BandAid> for Patch {
+    fn from(bandaid: BandAid) -> Self {
+        match bandaid {
+            bandaid if bandaid.span.start == bandaid.span.end => Self::Insert {
+                insert_at: bandaid.span.start,
+                content: bandaid.content,
+            },
+            _ => Self::Replace {
+                replace_span: bandaid.span,
+                replacement: bandaid.content,
+            },
+        }
+    }
+}
+
 /// Correct all lines by applying bandaids.
 ///
 /// Assumes all `BandAids` do not overlap when replacing.
@@ -43,8 +84,8 @@ impl Finish {
 /// whatsoever at all.
 fn correct_lines<'s, II, I>(patches: II, source_buffer: String, mut sink: impl Write) -> Result<()>
 where
-    II: IntoIterator<IntoIter = I, Item = BandAid>,
-    I: Iterator<Item = BandAid>,
+    II: IntoIterator<IntoIter = I, Item = Patch>,
+    I: Iterator<Item = Patch>,
 {
     let mut patches = patches.into_iter().peekable();
 
@@ -61,39 +102,49 @@ where
 
     let mut cc_end_byte_offset = 0;
 
-    let mut current: Option<BandAid> = None;
+    let mut current = None;
     let mut byte_cursor = 0usize;
     loop {
-        let cc_start_byte_offset = if let Some(ref new) = current {
-            let cc_start = new.span.end;
-            let data = new.content.as_str();
+        let cc_start_byte_offset = if let Some(ref current) = current {
+            let (cc_start, data, insertion) = match current {
+                Patch::Replace {
+                    replace_span,
+                    replacement,
+                } => (replace_span.end, replacement.as_str(), false),
+                Patch::Insert { insert_at, content } => (insert_at.clone(), content.as_str(), true),
+            };
 
             write_to_sink("new", data)?;
 
-            // skip the range of chars based on the line column
-            // so the cursor continues after the "replaced" characters
-            let mut cc_start_byte_offset = byte_cursor;
-            'skip: while let Some((c, byte_offset, _idx, linecol)) = source_iter.peek() {
-                let byte_offset = *byte_offset;
-                let linecol = *linecol;
+            if insertion {
+                // do not advance anythin on insertion
+                byte_cursor
+            } else {
+                // skip the range of chars based on the line column
+                // so the cursor continues after the "replaced" characters
+                let mut cc_start_byte_offset = byte_cursor;
+                'skip: while let Some((c, byte_offset, _idx, linecol)) = source_iter.peek() {
+                    let byte_offset = *byte_offset;
+                    let linecol = *linecol;
 
-                cc_start_byte_offset = byte_offset + c.len_utf8();
+                    cc_start_byte_offset = byte_offset + c.len_utf8();
 
-                if linecol >= cc_start {
-                    log::trace!(
-                        target: TARGET,
-                        "skip buffer: >{}<",
-                        &source_buffer[cc_end_byte_offset..cc_start_byte_offset].escape_debug()
-                    );
+                    if linecol >= cc_start {
+                        log::trace!(
+                            target: TARGET,
+                            "skip buffer: >{}<",
+                            &source_buffer[cc_end_byte_offset..cc_start_byte_offset].escape_debug()
+                        );
 
-                    break 'skip;
+                        break 'skip;
+                    }
+
+                    log::trace!(target: TARGET, "skip[{}]: >{}<", _idx, c.escape_debug());
+
+                    let _ = source_iter.next();
                 }
-
-                log::trace!(target: TARGET, "skip[{}]: >{}<", _idx, c.escape_debug());
-
-                let _ = source_iter.next();
+                cc_start_byte_offset
             }
-            cc_start_byte_offset
         } else {
             byte_cursor
         };
@@ -101,7 +152,10 @@ where
         byte_cursor = cc_start_byte_offset;
 
         cc_end_byte_offset = if let Some(upcoming) = patches.peek() {
-            let cc_end = upcoming.span.start;
+            let cc_end = match upcoming {
+                Patch::Replace { replace_span, .. } => replace_span.start,
+                Patch::Insert { insert_at, .. } => insert_at.clone(),
+            };
 
             // do not write anything
 
@@ -159,7 +213,7 @@ pub enum Action {
     Check,
     /// Interactively choose from checker provided suggestions.
     Fix,
-    /// Reflow documentation comments.
+    /// Reflow doc comments so they adhere to a given maximum column width.
     Reflow,
 }
 
@@ -221,7 +275,7 @@ impl Action {
         reader.get_mut().read_to_string(&mut content)?;
 
         correct_lines(
-            bandaids.into_iter(),
+            bandaids.into_iter().map(|x| Patch::from(x)),
             content, // FIXME for efficiency, correct_lines should integrate with `BufRead` instead of a `String` buffer
             &mut writer,
         )?;
@@ -269,10 +323,10 @@ impl Action {
     pub fn run(self, suggestions: SuggestionSet, config: &Config) -> Result<Finish> {
         match self {
             Self::Check => self.check(suggestions, config),
-            Self::Fix => {
+            Self::Fix | Self::Reflow => {
                 let (picked, user_sel) =
                     interactive::UserPicked::select_interactive(suggestions, config)?;
-                if user_sel == interactive::UserSelection::Abort {
+                if user_sel == UserSelection::Abort {
                     Ok(Finish::Abort)
                 } else {
                     let n = picked.total_count();
@@ -293,8 +347,12 @@ mod tests {
         ($text:literal, $bandaids:expr, $expected:literal) => {
             let mut sink: Vec<u8> = Vec::with_capacity(1024);
 
-            correct_lines($bandaids.into_iter(), $text.to_owned(), &mut sink)
-                .expect("Line correction must work in unit test!");
+            correct_lines(
+                $bandaids.into_iter().map(|bandaid| Patch::from(bandaid)),
+                $text.to_owned(),
+                &mut sink,
+            )
+            .expect("Line correction must work in unit test!");
 
             assert_eq!(String::from_utf8_lossy(sink.as_slice()), $expected);
         };
@@ -308,15 +366,15 @@ mod tests {
             .try_init();
 
         let patches = vec![
-            BandAid {
-                span: Span {
+            Patch::Replace {
+                replace_span: Span {
                     start: LineColumn { line: 1, column: 6 },
                     end: LineColumn {
                         line: 2,
                         column: 12,
                     },
                 },
-                content: "& Omega".to_owned(),
+                replacement: "& Omega".to_owned(),
             },
             Patch::Insert {
                 insert_at: LineColumn { line: 3, column: 0 },
