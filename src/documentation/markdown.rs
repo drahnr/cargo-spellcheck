@@ -13,6 +13,7 @@ use crate::documentation::{CheckableChunk, Range};
 use crate::util::sub_chars;
 use crate::Span;
 
+const LINK_CHECK: bool = true;
 /// A plain representation of markdown riddled set of trimmed literals.
 #[derive(Clone)]
 pub struct PlainOverlay<'a> {
@@ -60,6 +61,14 @@ impl<'a> PlainOverlay<'a> {
 
     fn valid_url(url: &str) -> bool {
         url::Url::parse(url).is_ok()
+    }
+    fn reachable_link(url: &str) -> bool {
+        use reqwest;
+        let response = reqwest::blocking::get(url).unwrap();
+        if response.status().is_success() {
+            return true;
+        }
+        return false;
     }
 
     /// Handles broken references in commonmark.
@@ -128,6 +137,11 @@ impl<'a> PlainOverlay<'a> {
                         inception = fenced == rust_fence;
                     }
                     Tag::Link(link_type, _url, _title) => {
+                        if LINK_CHECK {
+                            if Self::reachable_link(&_url) {
+                                println!("{:?} is reachable.", _url);
+                            }
+                        }
                         followed_by_link_type = Some(link_type);
                         // from the pulldown-cmark = "0.8.0" crate, this text:
                         // [crates.io](https://crates.io/)
