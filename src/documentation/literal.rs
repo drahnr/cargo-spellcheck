@@ -43,7 +43,10 @@ impl CommentVariant {
                 };
                 format!(r#"{}{}"#, d, raw)
             }
-            unhandled => unreachable!("String representation for comment variant {:?} exists. qed", unhandled),
+            unhandled => unreachable!(
+                "String representation for comment variant {:?} exists. qed",
+                unhandled
+            ),
         }
     }
     /// Return legnth of comment prefix for each variant
