@@ -12,6 +12,7 @@ mod search_dirs;
 pub use search_dirs::*;
 
 use crate::reflow::ReflowConfig;
+use crate::Detector;
 use anyhow::{anyhow, bail, Error, Result};
 use fancy_regex::Regex;
 use log::trace;
