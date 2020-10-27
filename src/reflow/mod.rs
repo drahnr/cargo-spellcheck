@@ -67,8 +67,10 @@ fn reflow_inner<'s>(
     let mut reflow_applied = false;
     let mut lines = s_absolute.lines();
     let mut indents = indentations.iter();
-    let last_ident =
-        indentations.last().expect("Must contain one indentation").saturating_sub(variant.prefix_len());
+    let last_ident = indentations
+        .last()
+        .expect("Must contain one indentation")
+        .saturating_sub(variant.prefix_len());
     // first line has to be without indent and variant prefix
     let (_, content, _) = gluon.next().expect("Must contain one line");
     if lines.next() != Some(&content) {
@@ -227,7 +229,7 @@ fn reflow<'s>(
                             Ok((s, p)) => {
                                 paragraph = p;
                                 acc.push(s);
-                            },
+                            }
                             Err(p) => paragraph = p,
                         }
                         unbreakable_stack.clear();
@@ -296,7 +298,7 @@ fn reflow<'s>(
                     Ok((s, p)) => {
                         paragraph = p;
                         acc.push(s);
-                    },
+                    }
                     Err(p) => paragraph = p,
                 }
                 unbreakable_stack.clear();
