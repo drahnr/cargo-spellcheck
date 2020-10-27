@@ -581,7 +581,7 @@ impl<'s> SuggestionSet<'s> {
 
     /// Join two sets
     ///
-    /// Merges multiple keys into one.
+    /// Merges another suggestion set into self.
     pub fn join<I>(&mut self, other: I)
     where
         I: IntoIterator<Item = (ContentOrigin, Vec<Suggestion<'s>>)>,

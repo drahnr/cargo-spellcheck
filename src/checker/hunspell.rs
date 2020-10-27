@@ -10,8 +10,11 @@ use super::{tokenize, Checker, Detector, Documentation, Suggestion, SuggestionSe
 use crate::documentation::{CheckableChunk, ContentOrigin, PlainOverlay};
 use crate::util::sub_chars;
 use crate::Range;
+
+use rayon::prelude::*;
 use log::{debug, trace};
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use hunspell_rs::Hunspell;
 
@@ -21,10 +24,16 @@ use super::quirks::{
     replacements_contain_dashed, replacements_contain_dashless, transform, Transformed,
 };
 
+
+pub struct HunspellWrapper(pub Arc<Hunspell>);
+
+unsafe impl Send for HunspellWrapper {}
+unsafe impl Sync for HunspellWrapper {}
+
 pub struct HunspellChecker;
 
 impl HunspellChecker {
-    fn inner_init(config: &<Self as Checker>::Config) -> Result<Hunspell> {
+    fn inner_init(config: &<Self as Checker>::Config) -> Result<HunspellWrapper> {
         let search_dirs = config.search_dirs();
 
         let lang = config.lang();
@@ -109,7 +118,7 @@ impl HunspellChecker {
             }
         }
         debug!("Dictionary setup completed successfully.");
-        Ok(hunspell)
+        Ok(HunspellWrapper(Arc::new(hunspell)))
     }
 }
 
@@ -132,8 +141,8 @@ impl Checker for HunspellChecker {
             }
         };
 
-        let suggestions = docu.iter().try_fold::<SuggestionSet, _, Result<_>>(
-            SuggestionSet::new(),
+        let suggestions = docu.par_iter().try_fold::<SuggestionSet, Result<_>, _, _>(
+            || SuggestionSet::new(),
             move |mut acc, (origin, chunks)| {
                 debug!("Processing {}", origin.as_path().display());
 
@@ -141,6 +150,7 @@ impl Checker for HunspellChecker {
                     let plain = chunk.erase_markdown();
                     trace!("{:?}", &plain);
                     let txt = plain.as_str();
+                    let hunspell = &*hunspell.0;
                     for range in tokenize(txt) {
                         let word = sub_chars(txt, range.clone());
                         if transform_regex.is_empty() {
@@ -192,7 +202,10 @@ impl Checker for HunspellChecker {
                 }
                 Ok(acc)
             },
-        )?;
+        ).try_reduce(|| SuggestionSet::new(), |mut a, b| {
+            a.join(b);
+            Ok(a)
+        })?;
 
         // TODO sort spans by file and line + column
         Ok(suggestions)
