@@ -187,7 +187,7 @@ fn run() -> anyhow::Result<ExitCode> {
         _ => log::LevelFilter::Error,
     };
 
-    env_logger::from_env(env_logger::Env::new().filter_or("CARGO_SPELLCHECK", "warn"))
+    env_logger::Builder::from_env(env_logger::Env::new().filter_or("CARGO_SPELLCHECK", "warn"))
         .filter_level(verbosity)
         .init();
 
@@ -202,7 +202,7 @@ fn run() -> anyhow::Result<ExitCode> {
     }
 
     #[cfg(not(target_os = "windows"))]
-    std::thread::spawn(move || signal_handler());
+    let _signalthread = std::thread::spawn(move || signal_handler());
 
     let checkers = |config: &mut Config| {
         // overwrite checkers

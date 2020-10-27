@@ -14,6 +14,7 @@
 
 use super::*;
 
+use rayon::prelude::*;
 use anyhow::{anyhow, Result};
 use indexmap::IndexMap;
 use log::trace;
@@ -61,9 +62,19 @@ impl Documentation {
         self.index.iter()
     }
 
+    /// Borrowing iterator across content origins and associated sets of chunks.
+    pub fn par_iter(&self) -> impl ParallelIterator<Item = (&ContentOrigin, &Vec<CheckableChunk>)> {
+        self.index.par_iter()
+    }
+
     /// Consuming iterator across content origins and associated sets of chunks.
     pub fn into_iter(self) -> impl Iterator<Item = (ContentOrigin, Vec<CheckableChunk>)> {
         self.index.into_iter()
+    }
+
+    /// Consuming iterator across content origins and associated sets of chunks.
+    pub fn into_par_iter(self) -> impl ParallelIterator<Item = (ContentOrigin, Vec<CheckableChunk>)> {
+        self.index.into_par_iter()
     }
 
     /// Join `self` with another doc to form a new one.
