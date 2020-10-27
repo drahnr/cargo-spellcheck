@@ -153,13 +153,13 @@ impl Documentation {
         Ok(())
     }
 
-    /// get funky
+    /// Obtain the set of chunks for a particular origin.
     #[inline(always)]
     pub fn get(&self, origin: &ContentOrigin) -> Option<&[CheckableChunk]> {
         self.index.get(origin).map(AsRef::as_ref)
     }
 
-    /// get funky
+    /// Count the number of origins.
     #[inline(always)]
     pub fn entry_count(&self) -> usize {
         self.index.len()
