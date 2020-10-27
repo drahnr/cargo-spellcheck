@@ -11,8 +11,8 @@ use crate::documentation::{CheckableChunk, ContentOrigin, PlainOverlay};
 use crate::util::sub_chars;
 use crate::Range;
 
-use rayon::prelude::*;
 use log::{debug, trace};
+use rayon::prelude::*;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -23,7 +23,6 @@ use anyhow::{anyhow, bail, Result};
 use super::quirks::{
     replacements_contain_dashed, replacements_contain_dashless, transform, Transformed,
 };
-
 
 pub struct HunspellWrapper(pub Arc<Hunspell>);
 
@@ -141,71 +140,78 @@ impl Checker for HunspellChecker {
             }
         };
 
-        let suggestions = docu.par_iter().try_fold::<SuggestionSet, Result<_>, _, _>(
-            || SuggestionSet::new(),
-            move |mut acc, (origin, chunks)| {
-                debug!("Processing {}", origin.as_path().display());
+        let suggestions = docu
+            .par_iter()
+            .try_fold::<SuggestionSet, Result<_>, _, _>(
+                || SuggestionSet::new(),
+                move |mut acc, (origin, chunks)| {
+                    debug!("Processing {}", origin.as_path().display());
 
-                for chunk in chunks {
-                    let plain = chunk.erase_markdown();
-                    trace!("{:?}", &plain);
-                    let txt = plain.as_str();
-                    let hunspell = &*hunspell.0;
-                    for range in tokenize(txt) {
-                        let word = sub_chars(txt, range.clone());
-                        if transform_regex.is_empty() {
-                            obtain_suggestions(
-                                &plain,
-                                chunk,
-                                &hunspell,
-                                origin,
-                                word,
-                                range,
-                                allow_concatenated,
-                                allow_dashed,
-                                &mut acc,
-                            )
-                        } else {
-                            match transform(&transform_regex[..], word.as_str(), range.clone()) {
-                                Transformed::Fragments(word_fragments) => {
-                                    for (range, word_fragment) in word_fragments {
+                    for chunk in chunks {
+                        let plain = chunk.erase_markdown();
+                        trace!("{:?}", &plain);
+                        let txt = plain.as_str();
+                        let hunspell = &*hunspell.0;
+                        for range in tokenize(txt) {
+                            let word = sub_chars(txt, range.clone());
+                            if transform_regex.is_empty() {
+                                obtain_suggestions(
+                                    &plain,
+                                    chunk,
+                                    &hunspell,
+                                    origin,
+                                    word,
+                                    range,
+                                    allow_concatenated,
+                                    allow_dashed,
+                                    &mut acc,
+                                )
+                            } else {
+                                match transform(&transform_regex[..], word.as_str(), range.clone())
+                                {
+                                    Transformed::Fragments(word_fragments) => {
+                                        for (range, word_fragment) in word_fragments {
+                                            obtain_suggestions(
+                                                &plain,
+                                                chunk,
+                                                &hunspell,
+                                                origin,
+                                                word_fragment.to_owned(),
+                                                range,
+                                                allow_concatenated,
+                                                allow_dashed,
+                                                &mut acc,
+                                            );
+                                        }
+                                    }
+                                    Transformed::Atomic((range, word)) => {
                                         obtain_suggestions(
                                             &plain,
                                             chunk,
                                             &hunspell,
                                             origin,
-                                            word_fragment.to_owned(),
+                                            word.to_owned(),
                                             range,
                                             allow_concatenated,
                                             allow_dashed,
                                             &mut acc,
                                         );
                                     }
+                                    Transformed::Whitelisted(_) => {}
                                 }
-                                Transformed::Atomic((range, word)) => {
-                                    obtain_suggestions(
-                                        &plain,
-                                        chunk,
-                                        &hunspell,
-                                        origin,
-                                        word.to_owned(),
-                                        range,
-                                        allow_concatenated,
-                                        allow_dashed,
-                                        &mut acc,
-                                    );
-                                }
-                                Transformed::Whitelisted(_) => {}
                             }
                         }
                     }
-                }
-                Ok(acc)
-            },
-        ).try_reduce(|| SuggestionSet::new(), |mut a, b| {
-            a.join(b);
-            Ok(a)
-        })?;
+                    Ok(acc)
+                },
+            )
+            .try_reduce(
+                || SuggestionSet::new(),
+                |mut a, b| {
+                    a.join(b);
+                    Ok(a)
+                },
+            )?;
 
         // TODO sort spans by file and line + column
         Ok(suggestions)

@@ -14,12 +14,12 @@
 
 use super::*;
 
-use rayon::prelude::*;
 use anyhow::{anyhow, Result};
 use indexmap::IndexMap;
 use log::trace;
 pub use proc_macro2::LineColumn;
 use proc_macro2::{Spacing, TokenTree};
+use rayon::prelude::*;
 use std::convert::{TryFrom, TryInto};
 use std::path::PathBuf;
 
@@ -73,7 +73,9 @@ impl Documentation {
     }
 
     /// Consuming iterator across content origins and associated sets of chunks.
-    pub fn into_par_iter(self) -> impl ParallelIterator<Item = (ContentOrigin, Vec<CheckableChunk>)> {
+    pub fn into_par_iter(
+        self,
+    ) -> impl ParallelIterator<Item = (ContentOrigin, Vec<CheckableChunk>)> {
         self.index.into_par_iter()
     }
 
