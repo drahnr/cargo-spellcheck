@@ -56,12 +56,12 @@ fn reflow_inner<'s>(
     variant: &CommentVariant,
 ) -> Result<Option<String>> {
     // make string and unbreakable ranges absolute
-    let s_absolute = &s[range.clone()];
+    let s_absolute = crate::util::sub_chars(s, range.clone());
     let unbreakables = unbreakable_ranges
         .iter()
         .map(|r| (r.start.saturating_sub(range.start))..(r.end.saturating_sub(range.start)));
 
-    let mut gluon = Gluon::new(s_absolute, max_line_width, &indentations);
+    let mut gluon = Gluon::new(&s_absolute, max_line_width, &indentations);
     gluon.add_unbreakables(unbreakables);
 
     let mut reflow_applied = false;
