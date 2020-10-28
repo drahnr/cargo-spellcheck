@@ -3,7 +3,7 @@
 //! Note that for commonmark this might not be possible with links.
 //! The reflow is done based on the comments no matter the content.
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 
 use crate::checker::Checker;
 use crate::documentation::{CheckableChunk, Documentation};
@@ -54,7 +54,7 @@ fn reflow_inner<'s>(
     indentations: &[usize],
     max_line_width: usize,
     variant: &CommentVariant,
-) -> Option<String> {
+) -> Result<Option<String>> {
     // make string and unbreakable ranges absolute
     let s_absolute = &s[range.clone()];
     let unbreakables = unbreakable_ranges
@@ -69,10 +69,12 @@ fn reflow_inner<'s>(
     let mut indents = indentations.iter();
     let last_ident = indentations
         .last()
-        .expect("Must contain one indentation")
+        .ok_or_else(|| anyhow!("No line indentation present."))?
         .saturating_sub(variant.prefix_len());
     // first line has to be without indent and variant prefix
-    let (_, content, _) = gluon.next().expect("Must contain one line");
+    let (_, content, _) = gluon
+        .next()
+        .ok_or_else(|| anyhow!("Must contain one line"))?;
     if lines.next() != Some(&content) {
         reflow_applied = true;
     }
@@ -101,20 +103,19 @@ fn reflow_inner<'s>(
     let content = if let Some(c) = content.strip_suffix("\n") {
         c.to_string()
     } else {
-        return None;
-    };
-    // for MacroDocEq comments, we also have to remove the last closing delimiter
-    let content = if let Some(c) = content.strip_suffix(&variant.suffix_string()) {
-        c.to_string()
-    } else {
-        content
+        return Ok(None);
     };
 
-    if reflow_applied {
+    Ok(if reflow_applied {
+        // for MacroDocEq comments, we also have to remove the last closing delimiter
+        let content = content
+            .strip_suffix(&variant.suffix_string())
+            .map(|content| content.to_owned())
+            .unwrap_or_else(|| content);
         Some(content)
     } else {
         None
-    }
+    })
 }
 
 /// Collect reflowed Paragraphs in a Vector of suggestions
@@ -125,7 +126,7 @@ fn store_suggestion<'s>(
     end: usize,
     unbreakable_ranges: &[Range],
     max_line_width: usize,
-) -> Result<(Suggestion<'s>, usize), usize> {
+) -> Result<(usize, Option<Suggestion<'s>>)> {
     let range = Range {
         start: paragraph,
         end,
@@ -134,7 +135,7 @@ fn store_suggestion<'s>(
     let span_start = if let Some(first) = spans.next() {
         first
     } else {
-        return Err(paragraph);
+        return Ok((paragraph, None));
     };
     let span_end = if let Some(last) = spans.last() {
         last
@@ -163,16 +164,18 @@ fn store_suggestion<'s>(
         })
         .collect::<Vec<usize>>();
 
-    if let Some(replacement) = reflow_inner(
-        chunk.as_str(),
-        range.clone(),
-        unbreakable_ranges,
-        &indentations,
-        max_line_width,
-        &chunk.variant(),
-    ) {
-        return Ok((
-            Suggestion {
+    Ok((
+        end,
+        reflow_inner(
+            chunk.as_str(),
+            range.clone(),
+            unbreakable_ranges,
+            &indentations,
+            max_line_width,
+            &chunk.variant(),
+        )?
+        .map(|replacement| {
+            let suggestion = Suggestion {
                 chunk,
                 detector: Detector::Reflow,
                 origin: origin.clone(),
@@ -180,12 +183,10 @@ fn store_suggestion<'s>(
                 range,
                 replacements: vec![replacement],
                 span,
-            },
-            end,
-        ));
-    } else {
-        return Err(end); // a new beginning (maybe)
-    }
+            };
+            suggestion
+        }),
+    ))
 }
 
 /// Parses a `CheckableChunk` and performs the rewrapping on contained paragraphs
@@ -218,19 +219,17 @@ fn reflow<'s>(
                     }
                     _ => {
                         // all of these break a reflow-able chunk
-                        match store_suggestion(
+                        let (p, suggestion) = store_suggestion(
                             chunk,
                             origin,
                             paragraph,
                             paragraph,
                             unbreakable_stack.as_slice(),
                             cfg.max_line_length,
-                        ) {
-                            Ok((s, p)) => {
-                                paragraph = p;
-                                acc.push(s);
-                            }
-                            Err(p) => paragraph = p,
+                        )?;
+                        paragraph = p;
+                        if let Some(suggestion) = suggestion {
+                            acc.push(suggestion);
                         }
                         unbreakable_stack.clear();
                     }
@@ -254,19 +253,17 @@ fn reflow<'s>(
                     }
                     Tag::Paragraph => {
                         // regular end of paragraph
-                        match store_suggestion(
+                        let (p, suggestion) = store_suggestion(
                             chunk,
                             origin,
                             paragraph,
                             cover.end,
                             unbreakable_stack.as_slice(),
                             cfg.max_line_length,
-                        ) {
-                            Ok((s, p)) => {
-                                paragraph = p;
-                                acc.push(s);
-                            }
-                            Err(p) => paragraph = p,
+                        )?;
+                        paragraph = p;
+                        if let Some(suggestion) = suggestion {
+                            acc.push(suggestion);
                         }
                         unbreakable_stack.clear();
                     }
@@ -287,19 +284,17 @@ fn reflow<'s>(
                 // ignored
             }
             Event::HardBreak => {
-                match store_suggestion(
+                let (p, suggestion) = store_suggestion(
                     chunk,
                     origin,
                     paragraph,
                     cover.end,
                     unbreakable_stack.as_slice(),
                     cfg.max_line_length,
-                ) {
-                    Ok((s, p)) => {
-                        paragraph = p;
-                        acc.push(s);
-                    }
-                    Err(p) => paragraph = p,
+                )?;
+                paragraph = p;
+                if let Some(suggestion) = suggestion {
+                    acc.push(suggestion);
                 }
                 unbreakable_stack.clear();
             }
@@ -344,7 +339,7 @@ mod tests {
                 &chunk.variant()
             );
 
-            if let Some(repl) = replacement {
+            if let Ok(Some(repl)) = replacement {
                 // TODO: check indentation
                 assert_eq!(repl, $expected);
             } else {
