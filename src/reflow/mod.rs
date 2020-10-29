@@ -20,6 +20,8 @@ pub use config::ReflowConfig;
 mod iter;
 pub use iter::{Gluon, Tokeneer};
 
+use rayon::prelude::*;
+
 #[derive(Debug)]
 pub struct Reflow;
 
@@ -29,12 +31,25 @@ impl Checker for Reflow {
     where
         'a: 's,
     {
-        let mut suggestions = SuggestionSet::new();
-        for (origin, chunks) in docu.iter() {
-            for chunk in chunks {
-                suggestions.extend(origin.clone(), reflow(origin, chunk, config)?);
-            }
-        }
+        let suggestions = docu
+            .par_iter()
+            .try_fold::<SuggestionSet, Result<SuggestionSet>, _, _>(
+                || SuggestionSet::new(),
+                |mut acc, (origin, chunks)| {
+                    for chunk in chunks {
+                        let suggestions = reflow(origin, chunk, config)?;
+                        acc.extend(origin.clone(), suggestions);
+                    }
+                    Ok(acc)
+                },
+            )
+            .try_reduce(
+                || SuggestionSet::new(),
+                |mut a, b| {
+                    a.join(b);
+                    Ok(a)
+                },
+            )?;
         Ok(suggestions)
     }
 }
