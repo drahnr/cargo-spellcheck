@@ -175,7 +175,7 @@ fn store_suggestion<'s>(
         .find_covered_spans(range.clone())
         .flat_map(|s| {
             debug_assert!(s.start.line <= s.end.line);
-            vec![s.start.column; s.end.line - s.start.line + 1]
+            vec![s.start.column; s.end.line.saturating_sub(s.start.line) + 1]
         })
         .collect::<Vec<usize>>();
 
