@@ -43,6 +43,7 @@ impl CommentVariant {
                 };
                 format!(r#"{}{}"#, d, raw)
             }
+            CommentVariant::CommonMark => "".to_string(),
             unhandled => unreachable!(
                 "String representation for comment variant {:?} exists. qed",
                 unhandled

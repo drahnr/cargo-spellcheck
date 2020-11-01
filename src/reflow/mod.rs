@@ -86,10 +86,13 @@ fn reflow_inner<'s>(
         .last()
         .ok_or_else(|| anyhow!("No line indentation present."))?
         .saturating_sub(variant.prefix_len());
-    // first line has to be without indent and variant prefix
-    let (_, content, _) = gluon
-        .next()
-        .ok_or_else(|| anyhow!("Must contain one line"))?;
+    // First line has to be without indent and variant prefix.
+    // If there is nothing to reflow, just pretend there was no reflow
+    let (_, content, _) = match gluon
+        .next() {
+            Some(c) => c,
+            None => return Ok(None),
+        };
     if lines.next() != Some(&content) {
         reflow_applied = true;
     }
@@ -705,5 +708,64 @@ With a second part that is fine"#
             => r##"One line which is quite long"#]
 #[doc=r#"and needs to be reflown in"#]
 #[doc=r#"another line."##, false);
+    }
+
+    #[test]
+    fn reflow_sole_markdown() {
+        use std::convert::TryInto;
+        const CONTENT: &'static str =
+            "# Possible __ways__ to run __rustc__ and request various parts of LTO.
+
+A short line but long enough such that we reflow it. Yada lorem ipsum stuff needed.
+
+- a list
+- another point
+
+Some <pre>Hmtl tags</pre>.
+
+Some more text after the newline which **represents** a paragraph";
+
+        let expected = vec![
+            r#"A short line but long enough such that we reflow it. Yada
+lorem ipsum stuff needed."#,
+            r#"Some more text after the newline which **represents** a
+paragraph"#,
+        ];
+
+        let _ = env_logger::Builder::new()
+            .filter(None, log::LevelFilter::Debug)
+            .is_test(true)
+            .try_init();
+
+        let docs = Documentation::from((ContentOrigin::TestEntityCommonMark, CONTENT));
+        assert_eq!(docs.entry_count(), 1);
+        let chunks = docs
+            .get(&ContentOrigin::TestEntityCommonMark)
+            .expect("Contains test data. qed");
+        assert_eq!(dbg!(chunks).len(), 1);
+        let chunk = &chunks[0];
+
+        let cfg = ReflowConfig {
+            max_line_length: 60,
+        };
+
+        let suggestion_set =
+            reflow(&ContentOrigin::TestEntityCommonMark, &chunk, &cfg).expect("Reflow is working. qed");
+        assert_eq!(suggestion_set.len(), 2);
+
+        for (sug, expected) in suggestion_set.iter().zip(expected) {
+            dbg!(&sug.span);
+            dbg!(&sug.range);
+            assert_eq!(sug.replacements.len(), 1);
+            let replacement = sug
+                .replacements
+                .iter()
+                .next()
+                .expect("An replacement exists. qed");
+            let span: Span = (1_usize, 0_usize..20).try_into().unwrap();
+            assert_eq!(sug.span, span);
+
+            assert_eq!(replacement.as_str(), expected);
+        }
     }
 }
