@@ -54,6 +54,21 @@ impl Checker for Reflow {
     }
 }
 
+/// Extract line delimiter of a string
+fn extract_delimiter<'s>(s: &'s str) -> &'s str {
+    if s.contains("\r\n") {
+        "\r\n"
+    } else if s.contains("\n\r") {
+        "\n\r"
+    } else if s.contains("\r") {
+        "\r"
+    } else {
+        // handles the case of single-line strings, we can't extract
+        // a type and have to guess
+        "\n"
+    }
+}
+
 /// Reflows a parsed commonmark paragraph contained in `s`
 ///
 /// Returns the `Some(replacement)` string if a reflow has been performed and `None` otherwise.
@@ -70,6 +85,9 @@ fn reflow_inner<'s>(
     max_line_width: usize,
     variant: &CommentVariant,
 ) -> Result<Option<String>> {
+    // Get type of newline from current chunk, either plain \n or \r\n
+    let line_delimiter = extract_delimiter(s);
+
     // make string and unbreakable ranges absolute
     let s_absolute = crate::util::sub_chars(s, range.clone());
     let unbreakables = unbreakable_ranges
@@ -95,7 +113,7 @@ fn reflow_inner<'s>(
     if lines.next() != Some(&content) {
         reflow_applied = true;
     }
-    let acc = content + &variant.suffix_string() + "\n";
+    let acc = content + &variant.suffix_string() + line_delimiter;
 
     // construct replacement string from prefix and Gluon iterations
     let content = gluon.fold(acc, |mut acc, (_, content, _)| {
@@ -112,12 +130,12 @@ fn reflow_inner<'s>(
         acc.push_str(&variant.prefix_string());
         acc.push_str(&content);
         acc.push_str(&variant.suffix_string());
-        acc.push_str("\n");
+        acc.push_str(line_delimiter);
         acc
     });
 
     // remove last new line
-    let content = if let Some(c) = content.strip_suffix("\n") {
+    let content = if let Some(c) = content.strip_suffix(line_delimiter) {
         c.to_string()
     } else {
         return Ok(None);
@@ -730,13 +748,6 @@ With a second part that is fine"#
 
     #[test]
     fn reflow_sole_markdown() {
-        let _ = env_logger::Builder::new()
-            .filter(None, log::LevelFilter::Debug)
-            .is_test(true)
-            .try_init();
-
-        use std::convert::TryInto;
-
         const CONFIG: ReflowConfig = ReflowConfig {
             max_line_length: 60,
         };
@@ -751,7 +762,8 @@ A short line but long enough such that we reflow it. Yada lorem ipsum stuff need
 
 Some <pre>Hmtl tags</pre>.
 
-Some more text after the newline which **represents** a paragraph";
+Some more text after the newline which **represents** a paragraph
+in two lines. In my opinion paraghraphs are always multiline. Fullstop.";
 
         const EXPECTED: &[(&'static str, Span)] = &[
             (
@@ -767,19 +779,25 @@ lorem ipsum stuff needed."#,
             ),
             (
                 r#"Some more text after the newline which **represents** a
-paragraph"#,
+paragraph in two lines. In my opinion paraghraphs are always
+multiline. Fullstop."#,
                 Span {
                     start: LineColumn {
                         line: 10,
                         column: 0,
                     },
                     end: LineColumn {
-                        line: 10,
-                        column: 64,
+                        line: 11,
+                        column: 70,
                     },
                 },
             ),
         ];
+
+        let _ = env_logger::Builder::new()
+            .filter(None, log::LevelFilter::Debug)
+            .is_test(true)
+            .try_init();
 
         let docs = Documentation::from((ContentOrigin::TestEntityCommonMark, CONTENT));
         assert_eq!(docs.entry_count(), 1);
@@ -809,4 +827,19 @@ paragraph"#,
             assert_eq!(replacement.as_str(), expected_content);
         }
     }
+
+    #[test]
+    fn reflow_line_delimiters() {
+        let test_data = vec![
+            ("Two lines\nhere", "\n"),
+            ("Two lines\r\nhere", "\r\n"),
+            ("Two lines\n\rhere", "\n\r"),
+            ("Two lines\rhere", "\r"),
+            ("Two lines\nhere\rand more", "\r"),
+        ];
+        for (input, expected) in test_data {
+            assert_eq!(extract_delimiter(input), expected);
+        }
+    }
+
 }
