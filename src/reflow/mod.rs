@@ -841,5 +841,4 @@ multiline. Fullstop."#,
             assert_eq!(extract_delimiter(input), expected);
         }
     }
-
 }
