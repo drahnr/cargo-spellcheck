@@ -82,17 +82,16 @@ fn reflow_inner<'s>(
     let mut reflow_applied = false;
     let mut lines = s_absolute.lines();
     let mut indents = indentations.iter();
-    let last_ident = indentations
+    let last_indent = indentations
         .last()
         .ok_or_else(|| anyhow!("No line indentation present."))?
         .saturating_sub(variant.prefix_len());
     // First line has to be without indent and variant prefix.
     // If there is nothing to reflow, just pretend there was no reflow
-    let (_, content, _) = match gluon
-        .next() {
-            Some(c) => c,
-            None => return Ok(None),
-        };
+    let (_, content, _) = match gluon.next() {
+        Some(c) => c,
+        None => return Ok(None),
+    };
     if lines.next() != Some(&content) {
         reflow_applied = true;
     }
@@ -106,7 +105,7 @@ fn reflow_inner<'s>(
         let pre = if let Some(i) = indents.next() {
             " ".repeat((*i).saturating_sub(variant.prefix_len()))
         } else {
-            " ".repeat(last_ident)
+            " ".repeat(last_indent)
         };
 
         acc.push_str(&pre);
@@ -149,7 +148,19 @@ fn store_suggestion<'s>(
         start: paragraph,
         end,
     };
-    let mut spans = chunk.find_covered_spans(range.clone());
+    #[cfg(debug_assertions)]
+    let s = chunk.as_str();
+    #[cfg(debug_assertions)]
+    let sb = s.as_bytes();
+
+    #[cfg(debug_assertions)]
+    log::trace!(
+        "reflow::store_suggestion[range]: {}",
+        crate::util::sub_chars(s, range.clone())
+    );
+
+    let spans = chunk.find_spans(range.clone());
+    let mut spans = spans.into_iter().map(|(_range, span)| span);
     let span_start = if let Some(first) = spans.next() {
         first
     } else {
@@ -164,6 +175,12 @@ fn store_suggestion<'s>(
         start: span_start.start,
         end: span_end.end,
     };
+    #[cfg(debug_assertions)]
+    log::trace!(
+        "reflow::store_suggestion[span]: {}",
+        crate::util::load_span_from(sb, span).unwrap()
+    );
+
     // TODO: find_covered_spans() seems to report a span which is off by one for TrppleSlash comments. Ultimately,
     // the problem is somewhere inside chunk's source_mapping?!
     if chunk.variant() == CommentVariant::TripleSlash
@@ -332,6 +349,7 @@ fn reflow<'s>(
 mod tests {
     use super::*;
     use crate::{chyrp_up, fluff_up};
+    use crate::{LineColumn, Span};
 
     macro_rules! verify_reflow_inner {
         ([ $( $line:literal ),+ $(,)?] => $expected:literal) => {
@@ -712,7 +730,17 @@ With a second part that is fine"#
 
     #[test]
     fn reflow_sole_markdown() {
+        let _ = env_logger::Builder::new()
+            .filter(None, log::LevelFilter::Debug)
+            .is_test(true)
+            .try_init();
+
         use std::convert::TryInto;
+
+        const CONFIG: ReflowConfig = ReflowConfig {
+            max_line_length: 60,
+        };
+
         const CONTENT: &'static str =
             "# Possible __ways__ to run __rustc__ and request various parts of LTO.
 
@@ -725,17 +753,33 @@ Some <pre>Hmtl tags</pre>.
 
 Some more text after the newline which **represents** a paragraph";
 
-        let expected = vec![
-            r#"A short line but long enough such that we reflow it. Yada
+        const EXPECTED: &[(&'static str, Span)] = &[
+            (
+                r#"A short line but long enough such that we reflow it. Yada
 lorem ipsum stuff needed."#,
-            r#"Some more text after the newline which **represents** a
+                Span {
+                    start: LineColumn { line: 3, column: 0 },
+                    end: LineColumn {
+                        line: 3,
+                        column: 83,
+                    },
+                },
+            ),
+            (
+                r#"Some more text after the newline which **represents** a
 paragraph"#,
+                Span {
+                    start: LineColumn {
+                        line: 10,
+                        column: 0,
+                    },
+                    end: LineColumn {
+                        line: 10,
+                        column: 64,
+                    },
+                },
+            ),
         ];
-
-        let _ = env_logger::Builder::new()
-            .filter(None, log::LevelFilter::Debug)
-            .is_test(true)
-            .try_init();
 
         let docs = Documentation::from((ContentOrigin::TestEntityCommonMark, CONTENT));
         assert_eq!(docs.entry_count(), 1);
@@ -743,17 +787,14 @@ paragraph"#,
             .get(&ContentOrigin::TestEntityCommonMark)
             .expect("Contains test data. qed");
         assert_eq!(dbg!(chunks).len(), 1);
-        let chunk = &chunks[0];
+        let chunk = chunks.first().unwrap();
 
-        let cfg = ReflowConfig {
-            max_line_length: 60,
-        };
-
-        let suggestion_set =
-            reflow(&ContentOrigin::TestEntityCommonMark, &chunk, &cfg).expect("Reflow is working. qed");
+        let suggestion_set = reflow(&ContentOrigin::TestEntityCommonMark, &chunk, &CONFIG)
+            .expect("Reflow is working. qed");
         assert_eq!(suggestion_set.len(), 2);
 
-        for (sug, expected) in suggestion_set.iter().zip(expected) {
+        for (sug, &(expected_content, expected_span)) in suggestion_set.iter().zip(EXPECTED.iter())
+        {
             dbg!(&sug.span);
             dbg!(&sug.range);
             assert_eq!(sug.replacements.len(), 1);
@@ -761,11 +802,11 @@ paragraph"#,
                 .replacements
                 .iter()
                 .next()
-                .expect("An replacement exists. qed");
-            let span: Span = (1_usize, 0_usize..20).try_into().unwrap();
-            assert_eq!(sug.span, span);
+                .expect("Reflow always provides a replacement string. qed");
 
-            assert_eq!(replacement.as_str(), expected);
+            assert_eq!(sug.span, expected_span);
+
+            assert_eq!(replacement.as_str(), expected_content);
         }
     }
 }

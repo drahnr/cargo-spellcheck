@@ -235,6 +235,21 @@ impl CheckableChunk {
     /// |-- s1 --|-- s2 --|-- s3 --|-- s4 --|
     ///             |----- range -----|
     /// ```
+    ///
+    /// Attention:
+    ///
+    /// For large `#[doc="long multiline text"]` comments,
+    /// the covered span might be large (i.e. just one single)
+    /// which leads to a surprising result of just one span
+    /// for a relatively small input `range`.
+    ///
+    /// Below setup results in `[s0]`
+    ///
+    /// ```text,ignore
+    /// |---...--- s0 ----------------------...---|
+    ///             |--- range ---|
+    /// ```
+    ///
     pub fn find_covered_spans<'a>(&'a self, range: Range) -> impl Iterator<Item = &'a Span> {
         let Range { start, end } = range;
         self.source_mapping
