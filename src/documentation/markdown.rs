@@ -65,10 +65,7 @@ impl<'a> PlainOverlay<'a> {
     fn reachable_link(url: &str) -> bool {
         use reqwest;
         let response = reqwest::blocking::get(url).unwrap();
-        if response.status().is_success() {
-            return true;
-        }
-        return false;
+        response.status().is_success()
     }
 
     /// Handles broken references in commonmark.
