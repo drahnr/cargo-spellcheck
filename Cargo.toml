@@ -32,6 +32,7 @@ pulldown-cmark = "0.8"
 itertools = "0.9"
 crossterm = "0.18"
 fancy-regex = "0.4"
+regex = "1.4.2"
 signal-hook = "0.1"
 rayon = "1.5"
 

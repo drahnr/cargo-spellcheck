@@ -56,17 +56,29 @@ impl Checker for Reflow {
 
 /// Extract line delimiter of a string
 fn extract_delimiter<'s>(s: &'s str) -> &'s str {
-    if s.contains("\r\n") {
-        "\r\n"
-    } else if s.contains("\n\r") {
-        "\n\r"
-    } else if s.contains("\r") {
-        "\r"
-    } else {
-        // handles the case of single-line strings, we can't extract
-        // a type and have to guess
-        "\n"
-    }
+    lazy_static::lazy_static! {
+        static ref LF: regex::Regex = regex::Regex::new(r#"[^\r]\n[^\r]"#).expect("LF regex compiles");
+        static ref CRLF: regex::Regex = regex::Regex::new(r#"\r\n[^\r]"#).expect("CRLF regex compiles");
+        static ref LFCR: regex::Regex = regex::Regex::new(r#"[^\r]\n\r"#).expect("LFCR regex compiles");
+    };
+
+    let lf: Vec<_> = LF.find_iter(s).map(|m| m.start()).collect();
+    let lf = (lf.len(), lf.first().unwrap_or(&0_usize), "\n");
+    let crlf: Vec<_> = CRLF.find_iter(s).map(|m| m.start()).collect();
+    let crlf = (crlf.len(), crlf.first().unwrap_or(&0_usize), "\r\n");
+    let lfcr: Vec<_> = LFCR.find_iter(s).map(|m| m.start()).collect();
+    let lfcr = (lfcr.len(), lfcr.first().unwrap_or(&0_usize), "\n\r");
+
+    let mut vec = vec![lf, crlf, lfcr];
+    vec.sort_by(|a, b| {
+        if a.1 == b.1 {
+            a.0.cmp(&b.0)
+        } else {
+            b.0.cmp(&a.0)
+        }
+    });
+
+    vec.first().unwrap().2
 }
 
 /// Reflows a parsed commonmark paragraph contained in `s`
@@ -834,8 +846,11 @@ multiline. Fullstop."#,
             ("Two lines\nhere", "\n"),
             ("Two lines\r\nhere", "\r\n"),
             ("Two lines\n\rhere", "\n\r"),
-            ("Two lines\rhere", "\r"),
-            ("Two lines\nhere\rand more", "\r"),
+            ("Two lines\rhere", "\n"),
+            ("Two lines\nhere\r\nand more\r\nsfd", "\r\n"),
+            ("Two lines\r\nhere\nand more\n", "\n"),
+            ("Two lines\nhere\r\nand more\n\r", "\n"),
+            ("Two lines\nhere\r\nand more\n", "\n"),
         ];
         for (input, expected) in test_data {
             assert_eq!(extract_delimiter(input), expected);
