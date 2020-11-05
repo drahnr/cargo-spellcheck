@@ -472,6 +472,12 @@ mod tests {
             verify_reflow_inner!(80usize break [ $( $line ),+ ] => $expected);
         };
         ($n:literal break [ $( $line:literal ),+ $(,)?] => $expected:literal) => {
+
+            let _ = env_logger::Builder::new()
+                .filter(None, log::LevelFilter::Debug)
+                .is_test(true)
+                .try_init();
+
             const CONTENT: &'static str = fluff_up!($( $line ),+);
             let docs = Documentation::from((ContentOrigin::TestEntityRust, CONTENT));
             assert_eq!(docs.entry_count(), 1);
@@ -538,6 +544,11 @@ test our rewrapping algorithm. With emojis: 🚤w🌴x🌋y🍈z🍉0",
             reflow!(80usize break [ $( $line ),+ ] => $expected, $no_reflow:expr);
         };
         ($n:literal break [ $( $line:literal ),+ $(,)?] => $expected:literal, $no_reflow:expr) => {
+            let _ = env_logger::Builder::new()
+                .filter(None, log::LevelFilter::Debug)
+                .is_test(true)
+                .try_init();
+
             const CONTENT:&'static str = fluff_up!($( $line ),+);
             let docs = Documentation::from((ContentOrigin::TestEntityRust, CONTENT));
             assert_eq!(docs.entry_count(), 1);
@@ -574,6 +585,11 @@ test our rewrapping algorithm. With emojis: 🚤w🌴x🌋y🍈z🍉0",
             reflow_chyrp!(80usize break [ $( $line ),+ ] => $expected, $no_reflow:expr);
         };
         ($n:literal break [ $( $line:literal ),+ $(,)?] => $expected:literal, $no_reflow:expr) => {
+            let _ = env_logger::Builder::new()
+                .filter(None, log::LevelFilter::Debug)
+                .is_test(true)
+                .try_init();
+
             const CONTENT:&'static str = chyrp_up!($( $line ),+);
             let docs = Documentation::from((ContentOrigin::TestEntityRust, dbg!(CONTENT)));
             assert_eq!(docs.entry_count(), 1);
@@ -642,6 +658,12 @@ r#"This module contains documentation thats
     }
     #[test]
     fn reflow_indentations() {
+        let _ = env_logger::Builder::new()
+            .filter(None, log::LevelFilter::Debug)
+            .is_test(true)
+            .try_init();
+
+
         const CONTENT: &'static str = r#"
     /// A comment with indentation that spans over
     /// two lines and should be rewrapped.
