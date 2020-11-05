@@ -54,31 +54,75 @@ impl Checker for Reflow {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct LineSepStat {
+    first_appearance: usize,
+    count: usize,
+    newline: &'static str,
+}
+
+#[inline(always)]
+fn extract_delimiter_inner<'a>(
+    mut iter: impl Iterator<Item = regex::Match<'a>>,
+    newline: &'static str,
+) -> Option<LineSepStat> {
+    if let Some(first) = iter.next() {
+        let first = first.start();
+        let n = iter.count() + 1;
+        Some(LineSepStat {
+            first_appearance: first,
+            count: n,
+            newline,
+        })
+    } else {
+        None
+    }
+}
+
 /// Extract line delimiter of a string
-fn extract_delimiter<'s>(s: &'s str) -> &'s str {
+fn extract_delimiter<'s>(s: &'s str) -> Option<&'static str> {
+    use regex::Regex;
+
+    // TODO lots of room for optimizations here
     lazy_static::lazy_static! {
-        static ref LF: regex::Regex = regex::Regex::new(r#"[^\r]\n[^\r]"#).expect("LF regex compiles");
-        static ref CRLF: regex::Regex = regex::Regex::new(r#"\r\n[^\r]"#).expect("CRLF regex compiles");
-        static ref LFCR: regex::Regex = regex::Regex::new(r#"[^\r]\n\r"#).expect("LFCR regex compiles");
+        static ref LF: Regex = Regex::new(r#"\n"#).expect("LF regex compiles. qed");
+        static ref CR: Regex = Regex::new(r#"\r"#).expect("CR regex compiles. qed");
+        static ref CRLF: Regex = Regex::new(r#"\r\n"#).expect("CRLF regex compiles. qed");
+        static ref LFCR: Regex = Regex::new(r#"\n\r"#).expect("LFCR regex compiles. qed");
     };
 
-    let lf: Vec<_> = LF.find_iter(s).map(|m| m.start()).collect();
-    let lf = (lf.len(), lf.first().unwrap_or(&0_usize), "\n");
-    let crlf: Vec<_> = CRLF.find_iter(s).map(|m| m.start()).collect();
-    let crlf = (crlf.len(), crlf.first().unwrap_or(&0_usize), "\r\n");
-    let lfcr: Vec<_> = LFCR.find_iter(s).map(|m| m.start()).collect();
-    let lfcr = (lfcr.len(), lfcr.first().unwrap_or(&0_usize), "\n\r");
+    // first look for two letter line delimiters
+    let mut lfcr = extract_delimiter_inner(LFCR.find_iter(s), "\n\r");
+    let mut crlf = extract_delimiter_inner(CRLF.find_iter(s), "\r\n");
 
-    let mut vec = vec![lf, crlf, lfcr];
-    vec.sort_by(|a, b| {
-        if a.1 == b.1 {
-            a.0.cmp(&b.0)
-        } else {
-            b.0.cmp(&a.0)
-        }
+    // remove the 2 line line delimiters from the single line line delimiters, since they overlap
+    let mut lf = extract_delimiter_inner(LF.find_iter(s), "\n").map(|mut stat| {
+        stat.count = stat.count.saturating_sub(std::cmp::max(
+            crlf.as_ref().map(|stat| stat.count).unwrap_or_default(),
+            lfcr.as_ref().map(|stat| stat.count).unwrap_or_default(),
+        ));
+        stat
+    });
+    let mut cr = extract_delimiter_inner(CR.find_iter(s), "\r").map(|mut stat| {
+        stat.count = stat.count.saturating_sub(std::cmp::max(
+            crlf.as_ref().map(|stat| stat.count).unwrap_or_default(),
+            lfcr.as_ref().map(|stat| stat.count).unwrap_or_default(),
+        ));
+        stat
     });
 
-    vec.first().unwrap().2
+    // order is important, `max_by` prefers the latter ones over the earlier ones on equality
+    vec![cr, lf, crlf, lfcr]
+        .into_iter()
+        .filter_map(|x| x)
+        .max_by(|b, a| {
+            if a.count == b.count {
+                dbg!(a.first_appearance.cmp(&b.first_appearance))
+            } else {
+                b.count.cmp(&a.count)
+            }
+        })
+        .map(|x| x.newline)
 }
 
 /// Reflows a parsed commonmark paragraph contained in `s`
@@ -98,7 +142,9 @@ fn reflow_inner<'s>(
     variant: &CommentVariant,
 ) -> Result<Option<String>> {
     // Get type of newline from current chunk, either plain \n or \r\n
-    let line_delimiter = extract_delimiter(s);
+    // TODO if ther is no newline in `s`, we assume `\n`
+    // TODO make this depend on the file
+    let line_delimiter = extract_delimiter(s).unwrap_or("\n");
 
     // make string and unbreakable ranges absolute
     let s_absolute = crate::util::sub_chars(s, range.clone());
@@ -842,18 +888,23 @@ multiline. Fullstop."#,
 
     #[test]
     fn reflow_line_delimiters() {
-        let test_data = vec![
+        const TEST_DATA: &[(&'static str, &'static str)] = &[
             ("Two lines\nhere", "\n"),
             ("Two lines\r\nhere", "\r\n"),
+            ("\r\n\r\n", "\r\n"),
+            ("\n\r\n\r\n", "\n\r"),
+            ("\n\n\n\r\n", "\n"),
+            ("\n\r\n\n\r\n", "\n\r"),
             ("Two lines\n\rhere", "\n\r"),
-            ("Two lines\rhere", "\n"),
             ("Two lines\nhere\r\nand more\r\nsfd", "\r\n"),
             ("Two lines\r\nhere\nand more\n", "\n"),
             ("Two lines\nhere\r\nand more\n\r", "\n"),
             ("Two lines\nhere\r\nand more\n", "\n"),
         ];
-        for (input, expected) in test_data {
-            assert_eq!(extract_delimiter(input), expected);
+        for (input, expected) in TEST_DATA {
+            let expected = *expected;
+            println!("{:?} should detect {:?}", input, expected);
+            assert_eq!(extract_delimiter(input), Some(expected));
         }
     }
 }
