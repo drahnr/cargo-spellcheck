@@ -298,15 +298,6 @@ fn store_suggestion<'s>(
         crate::util::load_span_from(sb, span).unwrap()
     );
 
-    // TODO: find_covered_spans() seems to report a span which is
-    // TODO off by one for TrippleSlash comments. Ultimately,
-    // the problem is somewhere inside chunk's source_mapping?!
-    if chunk.variant() == CommentVariant::TripleSlash
-        || chunk.variant() == CommentVariant::DoubleSlashEM
-    {
-        span.start.column += 1;
-    }
-
     // Get indentation for each span, if a span covers multiple
     // lines, use same indentation for all lines
     let indentations = range2span
