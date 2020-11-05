@@ -111,6 +111,33 @@ pub fn sub_chars(s: &str, range: Range) -> String {
         .collect::<String>()
 }
 
+/// Extract a subset of chars by iterating.
+/// Range must be in characters.
+pub fn sub_char_range<'s>(s: &'s str, range: Range) -> &'s str {
+    let mut peekable = s.char_indices().enumerate().peekable();
+    let mut byte_range = Range {
+        start: 0,
+        end: 0,
+    };
+    while let Some((idx, (byte_offset_start, _c))) = dbg!(peekable.next()) {
+
+        if idx <= range.start {
+            byte_range.start = byte_offset_start;
+        }
+
+        byte_range.end = byte_offset_start;
+
+        if idx >= range.end {
+            break;
+        }
+        if peekable.peek().is_none() {
+            byte_range.end = s.len();
+        }
+
+    }
+    &s[dbg!(byte_range)]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -208,5 +235,14 @@ Schlupfwespe,
             load_span_from(&mut SOURCE.as_bytes(), SPAN).expect("Must succeed"),
             S2.to_owned()
         );
+    }
+
+    #[test]
+    fn sub() {
+                                            //   0123454678
+        const DATA: (&'static str, Range) = ("a🐲o🌡i🡴f🕧aodnferntkng", 1..3);
+        const EXPECTED: &'static str = "🐲o";
+        assert_eq!(sub_char_range(DATA.0, DATA.1), EXPECTED);
+        assert_eq!(sub_chars(DATA.0, DATA.1), EXPECTED.to_owned());
     }
 }
