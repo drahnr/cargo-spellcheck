@@ -137,7 +137,7 @@ fn reflow_inner<'s>(
     s: &'s str,
     range: Range,
     unbreakable_ranges: &[Range],
-    indentations: &[usize],
+    indentations: &[Indentation<'s>],
     max_line_width: usize,
     variant: &CommentVariant,
 ) -> Result<Option<String>> {
@@ -157,11 +157,12 @@ fn reflow_inner<'s>(
 
     let mut reflow_applied = false;
     let mut lines = s_absolute.lines();
-    let mut indents = indentations.iter();
+    let mut indents_iter = indentations.iter();
     let last_indent = indentations
         .last()
-        .ok_or_else(|| anyhow!("No line indentation present."))?
-        .saturating_sub(variant.prefix_len());
+        .copied()
+        .ok_or_else(|| anyhow!("No line indentation present."))?;
+
     // First line has to be without indent and variant prefix.
     // If there is nothing to reflow, just pretend there was no reflow
     let (_, content, _) = match gluon.next() {
@@ -178,11 +179,12 @@ fn reflow_inner<'s>(
         if lines.next() == Some(&content) {
             reflow_applied = true;
         }
-        let pre = if let Some(i) = indents.next() {
-            " ".repeat((*i).saturating_sub(variant.prefix_len()))
+        let pre = if let Some(indentation) = indents_iter.next() {
+            indentation
         } else {
-            " ".repeat(last_indent)
-        };
+            &last_indent
+        }
+        .to_string_but_skip_n(variant.prefix_len());
 
         acc.push_str(&pre);
         acc.push_str(&variant.prefix_string());
@@ -211,6 +213,46 @@ fn reflow_inner<'s>(
     })
 }
 
+#[derive(Default, Debug, Hash, Eq, PartialEq, Copy, Clone)]
+pub(crate) struct Indentation<'s> {
+    pub(crate) offset: usize,
+    s: Option<&'s str>,
+}
+
+impl<'s> ToString for Indentation<'s> {
+    fn to_string(&self) -> String {
+        if let Some(s) = self.s {
+            s.to_owned()
+        } else {
+            " ".repeat(self.offset)
+        }
+    }
+}
+
+impl<'s> Indentation<'s> {
+    pub(crate) fn new(offset: usize) -> Self {
+        Self { offset, s: None }
+    }
+
+    #[allow(unused)]
+    pub(crate) fn with_str(offset: usize, s: &'s str) -> Self {
+        Self { offset, s: Some(s) }
+    }
+
+    pub(crate) fn offset(&self) -> usize {
+        self.offset
+    }
+
+    /// Convert to a string but skip `n` chars
+    pub(crate) fn to_string_but_skip_n(&self, n: usize) -> String {
+        if let Some(s) = self.s {
+            crate::util::sub_char_range(s, 0..).to_owned()
+        } else {
+            " ".repeat(self.offset.saturating_sub(n))
+        }
+    }
+}
+
 /// Collect reflowed Paragraphs in a Vector of suggestions
 fn store_suggestion<'s>(
     chunk: &'s CheckableChunk,
@@ -224,19 +266,18 @@ fn store_suggestion<'s>(
         start: paragraph,
         end,
     };
-    #[cfg(debug_assertions)]
     let s = chunk.as_str();
     #[cfg(debug_assertions)]
     let sb = s.as_bytes();
 
     #[cfg(debug_assertions)]
     log::trace!(
-        "reflow::store_suggestion[range]: {}",
+        "reflow::store_suggestion[range]: {:?}",
         crate::util::sub_chars(s, range.clone())
     );
 
-    let spans = chunk.find_spans(range.clone());
-    let mut spans = spans.into_iter().map(|(_range, span)| span);
+    let range2span = chunk.find_spans(range.clone());
+    let mut spans = range2span.iter().map(|(_range, span)| *span);
     let span_start = if let Some(first) = spans.next() {
         first
     } else {
@@ -253,11 +294,12 @@ fn store_suggestion<'s>(
     };
     #[cfg(debug_assertions)]
     log::trace!(
-        "reflow::store_suggestion[span]: {}",
+        "reflow::store_suggestion[span]: {:?}",
         crate::util::load_span_from(sb, span).unwrap()
     );
 
-    // TODO: find_covered_spans() seems to report a span which is off by one for TrppleSlash comments. Ultimately,
+    // TODO: find_covered_spans() seems to report a span which is
+    // TODO off by one for TrippleSlash comments. Ultimately,
     // the problem is somewhere inside chunk's source_mapping?!
     if chunk.variant() == CommentVariant::TripleSlash
         || chunk.variant() == CommentVariant::DoubleSlashEM
@@ -267,13 +309,17 @@ fn store_suggestion<'s>(
 
     // Get indentation for each span, if a span covers multiple
     // lines, use same indentation for all lines
-    let indentations = chunk
-        .find_covered_spans(range.clone())
-        .flat_map(|s| {
-            debug_assert!(s.start.line <= s.end.line);
-            vec![s.start.column; s.end.line.saturating_sub(s.start.line) + 1]
+    let indentations = range2span
+        .iter()
+        .flat_map(|(range, span)| {
+            debug_assert!(span.start.line <= span.end.line);
+
+            // TODO use crate::util::sub_char_range(s, range.clone())
+            // TODO and `Indent::with_str(..)`
+            let indentation = Indentation::new(span.start.column);
+            vec![indentation; span.end.line.saturating_sub(span.start.line) + 1]
         })
-        .collect::<Vec<usize>>();
+        .collect::<Vec<Indentation>>();
 
     Ok((
         end,
@@ -440,7 +486,9 @@ mod tests {
             let chunk = &chunks[0];
 
             let range = 0..chunk.as_str().len();
-            let indentation: Vec<usize> = [3; 6].to_vec();
+            let indentation: Vec<_> = [3; 6].into_iter().map(|&n| {
+                Indentation::<'static>::new(n)
+            }).collect::<Vec<_>>();
             let unbreakables = Vec::new();
             let replacement = reflow_inner(
                 chunk.as_str(),
