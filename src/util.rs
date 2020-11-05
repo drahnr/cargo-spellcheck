@@ -111,29 +111,34 @@ pub fn sub_chars(s: &str, range: Range) -> String {
         .collect::<String>()
 }
 
+use core::ops::{Bound, RangeBounds};
+
 /// Extract a subset of chars by iterating.
 /// Range must be in characters.
-pub fn sub_char_range<'s>(s: &'s str, range: Range) -> &'s str {
+pub fn sub_char_range<'s>(s: &'s str, range: impl RangeBounds<usize>) -> &'s str {
     let mut peekable = s.char_indices().enumerate().peekable();
-    let mut byte_range = Range {
-        start: 0,
-        end: 0,
-    };
-    while let Some((idx, (byte_offset_start, _c))) = dbg!(peekable.next()) {
-
-        if idx <= range.start {
-            byte_range.start = byte_offset_start;
+    let mut byte_range = Range { start: 0, end: 0 };
+    'loopy: while let Some((idx, (byte_offset_start, _c))) = dbg!(peekable.next()) {
+        match range.start_bound() {
+            Bound::Included(&start) if idx <= start => {
+                byte_range.start = byte_offset_start;
+            }
+            Bound::Excluded(_start) => {
+                unreachable!("Exclusive start bounds do not exist. qed");
+            }
+            _ => {}
         }
 
         byte_range.end = byte_offset_start;
 
-        if idx >= range.end {
-            break;
+        match range.end_bound() {
+            Bound::Included(&end) if idx > end => break 'loopy,
+            Bound::Excluded(&end) if idx >= end => break 'loopy,
+            _ => {}
         }
         if peekable.peek().is_none() {
             byte_range.end = s.len();
         }
-
     }
     &s[dbg!(byte_range)]
 }
@@ -238,11 +243,21 @@ Schlupfwespe,
     }
 
     #[test]
-    fn sub() {
-                                            //   0123454678
-        const DATA: (&'static str, Range) = ("a🐲o🌡i🡴f🕧aodnferntkng", 1..3);
-        const EXPECTED: &'static str = "🐲o";
-        assert_eq!(sub_char_range(DATA.0, DATA.1), EXPECTED);
-        assert_eq!(sub_chars(DATA.0, DATA.1), EXPECTED.to_owned());
+    fn sub_a() {
+        const A: &'static str = "a🐲o🌡i🡴f🕧aodnferntkng";
+        const A_EXPECTED: &'static str = "a🐲o";
+
+        assert_eq!(sub_char_range(A, 0..3), A_EXPECTED);
+        assert_eq!(sub_char_range(A, ..3), A_EXPECTED);
+        assert_eq!(sub_chars(A, 0..3), A_EXPECTED.to_owned());
+    }
+
+    #[test]
+    fn sub_b() {
+        const B: &'static str = "fff🦦🡴🕧";
+        const B_EXPECTED: &'static str = "🦦🡴🕧";
+
+        assert_eq!(sub_char_range(B, 3..=5), B_EXPECTED);
+        assert_eq!(sub_char_range(B, 3..), B_EXPECTED);
     }
 }
