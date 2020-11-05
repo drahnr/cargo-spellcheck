@@ -256,7 +256,7 @@ impl<'s> Indentation<'s> {
     }
 }
 
-/// Collect reflowed Paragraphs in a Vector of suggestions
+/// Collect reflowed Paragraphs in a `Vec` of `Suggestions`.
 fn store_suggestion<'s>(
     chunk: &'s CheckableChunk,
     origin: &ContentOrigin,
@@ -276,7 +276,7 @@ fn store_suggestion<'s>(
     #[cfg(debug_assertions)]
     log::trace!(
         "reflow::store_suggestion[range]: {:?}",
-        crate::util::sub_chars(s, range.clone())
+        crate::util::sub_char_range(s, range.clone())
     );
 
     let range2span = chunk.find_spans(range.clone());
