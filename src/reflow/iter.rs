@@ -169,13 +169,17 @@ pub struct Gluon<'s> {
     /// A set of indentations for considering indentations
     /// if there are more lines than there are lines, the last
     /// values in this vector willl bre reused.
-    indentations: &'s [usize],
+    indentations: &'s [Indentation<'s>],
     /// The inner iterator which first tokenizes the string into undividable items.
     inner: Tokeneer<'s>,
 }
 
 impl<'s> Gluon<'s> {
-    pub fn new(s: &'s str, max_line_width: usize, indentations: &'s [usize]) -> Self {
+    pub(crate) fn new(
+        s: &'s str,
+        max_line_width: usize,
+        indentations: &'s [Indentation<'s>],
+    ) -> Self {
         Self {
             queue: VecDeque::new(),
             max_line_width,
@@ -187,7 +191,7 @@ impl<'s> Gluon<'s> {
 
     #[inline(always)]
     #[allow(unused)]
-    pub fn add_unbreakables(&mut self, unbreakable_ranges: impl IntoIterator<Item = Range>) {
+    pub(crate) fn add_unbreakables(&mut self, unbreakable_ranges: impl IntoIterator<Item = Range>) {
         self.inner.add_unbreakables(unbreakable_ranges);
     }
 
@@ -220,19 +224,14 @@ impl<'s> Iterator for Gluon<'s> {
         // the last used one
         // Iff the whole thing was empty to begin with, `0`
         // is the default fallback.
-        let offset = self
+        let indentation = self
             .indentations
             .get(
                 // the next not yet crafted line
                 self.line_counter + 1,
             )
-            .map(|x: &usize| *x)
-            .unwrap_or_else(|| {
-                self.indentations
-                    .last()
-                    .map(|x: &usize| *x)
-                    .unwrap_or(0usize)
-            });
+            .map(|x| *x)
+            .unwrap_or_else(|| self.indentations.last().map(|x| *x).unwrap_or_default());
 
         while let Some((char_range, _byte_range, cow_str)) = self.inner.next() {
             // calculate the current characters that are already in that line
@@ -246,6 +245,7 @@ impl<'s> Iterator for Gluon<'s> {
                 0usize
             };
 
+            let offset = indentation.offset();
             let item_len = char_range.len();
             let item = (char_range.clone(), cow_str);
             let ret = if offset + acc_len <= self.max_line_width {
@@ -307,6 +307,10 @@ mod tests {
         unbreakables: Vec<Range>,
         indentations: Vec<usize>,
     ) {
+        let indentations = indentations
+            .into_iter()
+            .map(|n| Indentation::<'static>::new(n))
+            .collect::<Vec<_>>();
         let expected = expected
             .lines()
             .enumerate()
