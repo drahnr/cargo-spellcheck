@@ -142,9 +142,12 @@ fn reflow_inner<'s>(
     variant: &CommentVariant,
 ) -> Result<Option<String>> {
     // Get type of newline from current chunk, either plain \n or \r\n
-    // TODO if ther is no newline in `s`, we assume `\n`
-    // TODO make this depend on the file
-    let line_delimiter = extract_delimiter(s).unwrap_or("\n");
+    let line_delimiter = extract_delimiter(s).unwrap_or_else(|| {
+        // TODO if ther is no newline in `s`, we assume `\n`
+        // TODO make this depend on the file
+        log::warn!("Could not determine a line delimiter, falling back to \\n");
+        "\n"
+    });
 
     // make string and unbreakable ranges absolute
     let s_absolute = crate::util::sub_chars(s, range.clone());
