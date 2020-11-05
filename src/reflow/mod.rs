@@ -92,18 +92,18 @@ fn extract_delimiter<'s>(s: &'s str) -> Option<&'static str> {
     };
 
     // first look for two letter line delimiters
-    let mut lfcr = extract_delimiter_inner(LFCR.find_iter(s), "\n\r");
-    let mut crlf = extract_delimiter_inner(CRLF.find_iter(s), "\r\n");
+    let lfcr = extract_delimiter_inner(LFCR.find_iter(s), "\n\r");
+    let crlf = extract_delimiter_inner(CRLF.find_iter(s), "\r\n");
 
     // remove the 2 line line delimiters from the single line line delimiters, since they overlap
-    let mut lf = extract_delimiter_inner(LF.find_iter(s), "\n").map(|mut stat| {
+    let lf = extract_delimiter_inner(LF.find_iter(s), "\n").map(|mut stat| {
         stat.count = stat.count.saturating_sub(std::cmp::max(
             crlf.as_ref().map(|stat| stat.count).unwrap_or_default(),
             lfcr.as_ref().map(|stat| stat.count).unwrap_or_default(),
         ));
         stat
     });
-    let mut cr = extract_delimiter_inner(CR.find_iter(s), "\r").map(|mut stat| {
+    let cr = extract_delimiter_inner(CR.find_iter(s), "\r").map(|mut stat| {
         stat.count = stat.count.saturating_sub(std::cmp::max(
             crlf.as_ref().map(|stat| stat.count).unwrap_or_default(),
             lfcr.as_ref().map(|stat| stat.count).unwrap_or_default(),
@@ -291,7 +291,7 @@ fn store_suggestion<'s>(
     } else {
         span_start
     };
-    let mut span = Span {
+    let span = Span {
         start: span_start.start,
         end: span_end.end,
     };
@@ -305,7 +305,7 @@ fn store_suggestion<'s>(
     // lines, use same indentation for all lines
     let indentations = range2span
         .iter()
-        .flat_map(|(range, span)| {
+        .flat_map(|(_range, span)| {
             debug_assert!(span.start.line <= span.end.line);
 
             // TODO use crate::util::sub_char_range(s, range.clone())
@@ -486,7 +486,7 @@ mod tests {
             let chunk = &chunks[0];
 
             let range = 0..chunk.as_str().len();
-            let indentation: Vec<_> = [3; 6].into_iter().map(|&n| {
+            let indentation: Vec<_> = [3; 6].iter().map(|&n| {
                 Indentation::<'static>::new(n)
             }).collect::<Vec<_>>();
             let unbreakables = Vec::new();
@@ -662,7 +662,6 @@ r#"This module contains documentation thats
             .filter(None, log::LevelFilter::Debug)
             .is_test(true)
             .try_init();
-
 
         const CONTENT: &'static str = r#"
     /// A comment with indentation that spans over
