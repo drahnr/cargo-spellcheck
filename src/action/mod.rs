@@ -74,15 +74,15 @@ impl From<BandAid> for Patch {
     }
 }
 
-/// Correct all lines by applying bandaids.
+/// Correct lines by applying patches.
 ///
 /// Assumes all `BandAids` do not overlap when replacing.
 /// Inserting multiple times at a particular `LineColumn` is ok,
 /// but replacing overlapping `Span`s of the original source is not.
 ///
 /// This function is not concerend with _any_ semantics or comments or
-/// whatsoever at all.
-fn correct_lines<'s, II, I>(patches: II, source_buffer: String, mut sink: impl Write) -> Result<()>
+/// whatsoever at all, it blindly replaces what is given to it.
+fn apply_patches<'s, II, I>(patches: II, source_buffer: String, mut sink: impl Write) -> Result<()>
 where
     II: IntoIterator<IntoIter = I, Item = Patch>,
     I: Iterator<Item = Patch>,
@@ -274,7 +274,7 @@ impl Action {
         let mut content = String::with_capacity(2e6 as usize);
         reader.get_mut().read_to_string(&mut content)?;
 
-        correct_lines(
+        apply_patches(
             bandaids.into_iter().map(|x| Patch::from(x)),
             content, // FIXME for efficiency, correct_lines should integrate with `BufRead` instead of a `String` buffer
             &mut writer,
@@ -347,7 +347,7 @@ mod tests {
         ($text:literal, $bandaids:expr, $expected:literal) => {
             let mut sink: Vec<u8> = Vec::with_capacity(1024);
 
-            correct_lines(
+            apply_patches(
                 $bandaids.into_iter().map(|bandaid| Patch::from(bandaid)),
                 $text.to_owned(),
                 &mut sink,
