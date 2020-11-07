@@ -209,7 +209,7 @@ impl CheckableChunk {
                         sub_fragment_span.end = cursor;
                         break 'w;
                     }
-                    if iter.peek().is_some() && started {
+                    if iter.peek().is_none() && started {
                         sub_fragment_span.end = cursor;
                     }
                     // FIXME what about \n\r or \r\n or \r ?
