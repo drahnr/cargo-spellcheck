@@ -4,12 +4,12 @@
 
 use super::*;
 
-use std::path::Path;
-use std::fmt;
 use std::convert::TryFrom;
+use std::fmt;
+use std::path::Path;
 
-use indexmap::IndexMap;
 use anyhow::{Error, Result};
+use indexmap::IndexMap;
 
 use crate::documentation::PlainOverlay;
 use crate::{util::sub_chars, Range, Span};
@@ -159,7 +159,11 @@ impl CheckableChunk {
                 (fragment_span, fragment_range, sub_fragment_range)
             })
             .inspect(|(fragment_span, fragment_range, sub_fragment_range)| {
-                let (fragment_span, fragment_range, sub_fragment_range) = (fragment_span.clone(), fragment_range.clone(), sub_fragment_range.clone());
+                let (fragment_span, fragment_range, sub_fragment_range) = (
+                    fragment_span.clone(),
+                    fragment_range.clone(),
+                    sub_fragment_range.clone(),
+                );
                 log::trace!(target: "find_spans",
                     ">> fragment: span: {:?} => range: {:?} | sub: {:?} -> sub_fragment: {:?}",
                     &fragment_span,
@@ -188,7 +192,7 @@ impl CheckableChunk {
                 }
                 Some((fragment_span, fragment_range, sub_fragment_range))
             })
-            .filter_map(|(fragment_span, fragment_range, sub_fragment_range)|{
+            .filter_map(|(fragment_span, fragment_range, sub_fragment_range)| {
                 // take the full fragment string, we need to count newlines before and after
                 let s = sub_char_range(self.as_str(), fragment_range.clone());
 
@@ -218,9 +222,7 @@ impl CheckableChunk {
                             cursor.line += 1;
                             cursor.column = 0;
                         }
-                        _ => {
-                            cursor.column += 1
-                        }
+                        _ => cursor.column += 1,
                     }
                 }
 

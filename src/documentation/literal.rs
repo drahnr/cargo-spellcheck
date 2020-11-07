@@ -14,7 +14,9 @@ pub enum CommentVariant {
     TripleSlash,
     /// `//!`
     DoubleSlashEM,
-    /// `#[doc=` with actual prefix like `#[doc=` and the total length of `r###` etc. including `r`
+    /// `#[doc=` with actual prefix like `#[doc=` and
+    /// the total length of `r###` etc. including `r`
+    /// but without `"`
     MacroDocEq(String, usize),
     /// Commonmark File
     CommonMark,
