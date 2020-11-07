@@ -115,11 +115,14 @@ use core::ops::{Bound, RangeBounds};
 
 /// Extract a subset of chars by iterating.
 /// Range must be in characters.
-pub fn sub_char_range<'s, R>(s: &'s str, range: R) -> &'s str where R: RangeBounds<usize> {
+pub fn sub_char_range<'s, R>(s: &'s str, range: R) -> &'s str
+where
+    R: RangeBounds<usize>,
+{
     let mut peekable = s.char_indices().enumerate().peekable();
     let mut byte_range = Range { start: 0, end: 0 };
     let mut started = false;
-    'loopy: while let Some((idx, (byte_offset_start, _c))) = dbg!(peekable.next()) {
+    'loopy: while let Some((idx, (byte_offset_start, _c))) = peekable.next() {
         match range.start_bound() {
             Bound::Included(&start) if idx == start => {
                 started = true;
@@ -148,7 +151,7 @@ pub fn sub_char_range<'s, R>(s: &'s str, range: R) -> &'s str where R: RangeBoun
             }
         }
     }
-    &s[dbg!(byte_range)]
+    &s[byte_range]
 }
 
 #[cfg(test)]

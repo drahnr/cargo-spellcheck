@@ -291,7 +291,8 @@ impl<'s> Iterator for Gluon<'s> {
         if self.queue.is_empty() {
             None
         } else {
-            Some(self.craft_line())
+            let line = self.craft_line();
+            Some(line)
         }
     }
 }

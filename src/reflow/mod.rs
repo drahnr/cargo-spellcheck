@@ -149,7 +149,7 @@ fn reflow_inner<'s>(
         "\n"
     });
 
-    // make string and unbreakable ranges absolute
+    // extract the relevant part from the entire `chunk`, that will be our working set.
     let s_absolute = crate::util::sub_chars(s, range.clone());
     let unbreakables = unbreakable_ranges
         .iter()
@@ -576,7 +576,7 @@ test our rewrapping algorithm. With emojis: 🚤w🌴x🌋y🍈z🍉0",
                     .expect("Contains one suggestion. qed");
 
                     let replacement = suggestions.replacements.iter().next().expect("There exists a replacement. qed");
-                    println!("#####{}", replacement);
+                    log::info!("Replacement {:?}", replacement);
                     assert_eq!(replacement.as_str(), $expected);
             }
         };
@@ -664,7 +664,7 @@ r#"This module contains documentation thats
     #[test]
     fn reflow_indentations() {
         let _ = env_logger::Builder::new()
-            .filter(None, log::LevelFilter::Debug)
+            .filter_level(log::LevelFilter::Trace)
             .is_test(true)
             .try_init();
 
@@ -768,9 +768,9 @@ r#"This module contains documentation thats
     }
 
     #[test]
-    fn reflow_split_one_into_two() {
-        reflow!(8 break ["A 🌴/ 🍉&🍈"]
-                => "A 🌴/\n/// 🍉&🍈",
+    fn reflow_split_one_into_three() {
+        reflow!(9 break ["A 🌴xX 🍉yY 🍈zZ"]
+                => "A 🌴xX\n/// 🍉yY\n/// 🍈zZ",
                 false);
     }
 
