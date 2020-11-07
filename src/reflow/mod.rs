@@ -541,6 +541,9 @@ test our rewrapping algorithm. With emojis: 🚤w🌴x🌋y🍈z🍉0",
         }
     }
 
+    /// Run reflow on a set of lines that are `fluff_up`ed
+    /// and match the resulting `Patch`s replacment with
+    /// an `expected`.
     macro_rules! reflow {
         ([ $( $line:literal ),+ $(,)?] => $expected:literal, $no_reflow:expr) => {
             reflow!(80usize break [ $( $line ),+ ] => $expected, $no_reflow:expr);
@@ -758,10 +761,17 @@ r#"This module contains documentation thats
     }
 
     #[test]
-    fn reflow_two_short_lines() {
-        reflow!(70 break ["A short paragraph followed by two lines.", "Surprise, we have more lines here."]
-                => "A short paragraph followed by two lines. Surprise, we have more
-/// lines here.", false);
+    fn reflow_fold_two_to_one() {
+        reflow!(20 break ["A 🚤>", "<To 🌴/🍉&🍈"]
+                => "A 🚤> <To 🌴/🍉&🍈",
+                false);
+    }
+
+    #[test]
+    fn reflow_split_one_into_two() {
+        reflow!(8 break ["A 🌴/ 🍉&🍈"]
+                => "A 🌴/\n/// 🍉&🍈",
+                false);
     }
 
     #[test]
