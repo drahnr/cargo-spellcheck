@@ -718,10 +718,16 @@ Buchfink"#];
     fn find_spans_inclusive_multiline() {
         let _ = env_logger::builder().is_test(true).try_init();
 
-        const SOURCE: &'static str = fluff_up!(["xyz", "second", "third", "Converts a span to a range, where `self` is converted to a range reltive to the",
-             "passed span `scope`."] @ "       "
+        const SOURCE: &'static str = fluff_up!(
+            [
+                "xyz",
+                "second",
+                "third",
+                "Converts a span to a range, where `self` is converted to a range reltive to the",
+                "passed span `scope`."
+            ] @ "       "
         );
-        let set = gen_literal_set(SOURCE);
+        let set = dbg!(gen_literal_set(SOURCE));
         let chunk = dbg!(CheckableChunk::from_literalset(set));
         const SPACES: usize = 7;
         const TRIPLE_SLASH_SPACE: usize = 3;
@@ -759,10 +765,15 @@ Buchfink"#];
             },
         ];
 
-        let range2span = chunk.find_covered_spans(CHUNK_RANGE);
+        let coverage = chunk.find_covered_spans(CHUNK_RANGE);
 
-        for (spans, expected) in range2span.zip(EXPECTED_SPANS) {
-            assert_eq!(spans, expected);
+        for (span, expected) in coverage.zip(EXPECTED_SPANS) {
+            assert_eq!(span, expected);
+        }
+
+        let mapping = chunk.find_spans(CHUNK_RANGE);
+        for ((range, span), expected) in mapping.iter().zip(EXPECTED_SPANS) {
+            assert_eq!(span, expected);
         }
     }
 

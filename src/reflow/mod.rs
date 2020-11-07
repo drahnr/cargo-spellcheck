@@ -218,7 +218,7 @@ fn reflow_inner<'s>(
 
 #[derive(Default, Debug, Hash, Eq, PartialEq, Copy, Clone)]
 pub(crate) struct Indentation<'s> {
-    pub(crate) offset: usize,
+    offset: usize,
     s: Option<&'s str>,
 }
 
@@ -234,11 +234,13 @@ impl<'s> ToString for Indentation<'s> {
 
 impl<'s> Indentation<'s> {
     pub(crate) fn new(offset: usize) -> Self {
+        log::trace!("New offset with indentation of {} ", offset);
         Self { offset, s: None }
     }
 
     #[allow(unused)]
     pub(crate) fn with_str(offset: usize, s: &'s str) -> Self {
+        log::trace!("New offset with indentation of {} and {:?}", offset, s);
         Self { offset, s: Some(s) }
     }
 
@@ -248,11 +250,11 @@ impl<'s> Indentation<'s> {
 
     /// Convert to a string but skip `n` chars
     pub(crate) fn to_string_but_skip_n(&self, n: usize) -> String {
-        if let Some(s) = self.s {
-            crate::util::sub_char_range(s, 0..).to_owned()
+        dbg!(if let Some(s) = self.s {
+            crate::util::sub_char_range(s, 0..n).to_owned()
         } else {
             " ".repeat(self.offset.saturating_sub(n))
-        }
+        })
     }
 }
 
@@ -665,11 +667,11 @@ r#"This module contains documentation thats
 
         const CONTENT: &'static str = r#"
     /// A comment with indentation that spans over
-    /// two lines and should be rewrapped.
+    /// two linez and should be rewrapped.
     struct Fluffy {};"#;
 
         const EXPECTED: &'static str = r#"A comment with indentation
-    /// that spans over two lines
+    /// that spans over two linez
     /// and should be rewrapped."#;
 
         let docs = Documentation::from((ContentOrigin::TestEntityRust, CONTENT));
@@ -686,12 +688,15 @@ r#"This module contains documentation thats
         let suggestion_set =
             reflow(&ContentOrigin::TestEntityRust, chunk, &cfg).expect("Reflow is wokring. qed");
 
-        let suggestions = suggestion_set
+        let suggestion = suggestion_set
             .iter()
             .next()
             .expect("Contains one suggestion. qed");
 
-        let replacement = suggestions
+        
+        dbg!(crate::util::load_span_from(&mut CONTENT.as_bytes(), suggestion.span).unwrap());
+
+        let replacement = suggestion
             .replacements
             .iter()
             .next()

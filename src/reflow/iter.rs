@@ -208,6 +208,7 @@ impl<'s> Gluon<'s> {
                 char_range.end = std::cmp::max(range.end, char_range.end);
                 s
             })
+            .inspect(|x| {log::trace!("Gluing together: {:?} with > <", x)})
             .join(" ");
         (self.line_counter, line_content, char_range)
     }
