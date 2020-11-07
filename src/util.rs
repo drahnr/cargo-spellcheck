@@ -118,9 +118,11 @@ use core::ops::{Bound, RangeBounds};
 pub fn sub_char_range<'s>(s: &'s str, range: impl RangeBounds<usize>) -> &'s str {
     let mut peekable = s.char_indices().enumerate().peekable();
     let mut byte_range = Range { start: 0, end: 0 };
+    let mut started = false;
     'loopy: while let Some((idx, (byte_offset_start, _c))) = dbg!(peekable.next()) {
         match range.start_bound() {
-            Bound::Included(&start) if idx <= start => {
+            Bound::Included(&start) if idx == start => {
+                started = true;
                 byte_range.start = byte_offset_start;
             }
             Bound::Excluded(_start) => {
@@ -129,15 +131,21 @@ pub fn sub_char_range<'s>(s: &'s str, range: impl RangeBounds<usize>) -> &'s str
             _ => {}
         }
 
-        byte_range.end = byte_offset_start;
-
         match range.end_bound() {
-            Bound::Included(&end) if idx > end => break 'loopy,
-            Bound::Excluded(&end) if idx >= end => break 'loopy,
+            Bound::Included(&end) if idx > end => {
+                byte_range.end = byte_offset_start;
+                break 'loopy
+            },
+            Bound::Excluded(&end) if idx >= end => {
+                byte_range.end = byte_offset_start;
+                break 'loopy
+            },
             _ => {}
         }
         if peekable.peek().is_none() {
-            byte_range.end = s.len();
+            if started {
+                byte_range.end = s.len();
+            }
         }
     }
     &s[dbg!(byte_range)]
@@ -259,5 +267,14 @@ Schlupfwespe,
 
         assert_eq!(sub_char_range(B, 3..=5), B_EXPECTED);
         assert_eq!(sub_char_range(B, 3..), B_EXPECTED);
+    }
+
+    #[test]
+    fn sub_c() {
+        const B: &'static str = "fff🦦🡴🕧";
+        const B_EXPECTED: &'static str = "";
+
+        assert_eq!(sub_char_range(B, 10..), B_EXPECTED);
+        assert_eq!(sub_char_range(B, 15..16), B_EXPECTED);
     }
 }
