@@ -4,8 +4,12 @@
 
 use super::*;
 
-use indexmap::IndexMap;
 use std::path::Path;
+use std::fmt;
+use std::convert::TryFrom;
+
+use indexmap::IndexMap;
+use anyhow::{Error, Result};
 
 use crate::documentation::PlainOverlay;
 use crate::{util::sub_chars, Range, Span};
@@ -394,8 +398,6 @@ impl From<Clusters> for Vec<CheckableChunk> {
     }
 }
 
-use std::fmt;
-
 /// A display style wrapper for a trimmed literal.
 ///
 /// Allows better display of coverage results without code duplication.
@@ -404,18 +406,25 @@ use std::fmt;
 #[derive(Debug, Clone)]
 pub struct ChunkDisplay<'a>(pub &'a CheckableChunk, pub Range);
 
-impl<'a, R> From<(R, Range)> for ChunkDisplay<'a>
+impl<'a, C> From<(C, &Range)> for ChunkDisplay<'a>
 where
-    R: Into<&'a CheckableChunk>,
+    C: Into<&'a CheckableChunk>,
 {
-    fn from(tuple: (R, Range)) -> Self {
+    fn from(tuple: (C, &Range)) -> Self {
+        let tuple0 = tuple.0.into();
+        Self(tuple0, tuple.1.clone())
+    }
+}
+
+impl<'a, C> From<(C, Range)> for ChunkDisplay<'a>
+where
+    C: Into<&'a CheckableChunk>,
+{
+    fn from(tuple: (C, Range)) -> Self {
         let tuple0 = tuple.0.into();
         Self(tuple0, tuple.1)
     }
 }
-
-use anyhow::{Error, Result};
-use std::convert::TryFrom;
 
 impl<'a, R> TryFrom<(R, Span)> for ChunkDisplay<'a>
 where
