@@ -702,13 +702,18 @@ r#"This module contains documentation thats
             .try_init();
 
         const CONTENT: &'static str = r#"
-    /// A to Z or Ff0
-    /// span
+    /// 🔴 🍁
+    /// 🤔
     struct Fluffy {};"#;
 
-        const EXPECTED: &'static str = r#"A to Z
-    /// or Ff0
-    /// span"#;
+        const EXPECTED: &'static str = r#"🔴
+    /// 🍁
+    /// 🤔"#;
+
+
+    const CONFIG: ReflowConfig = ReflowConfig {
+        max_line_length: 9,
+    };
 
         let docs = Documentation::from((ContentOrigin::TestEntityRust, CONTENT));
         assert_eq!(docs.entry_count(), 1);
@@ -718,11 +723,8 @@ r#"This module contains documentation thats
         assert_eq!(dbg!(chunks).len(), 1);
         let chunk = &chunks[0];
 
-        let cfg = ReflowConfig {
-            max_line_length: 13,
-        };
         let suggestion_set =
-            reflow(&ContentOrigin::TestEntityRust, chunk, &cfg).expect("Reflow is wokring. qed");
+            reflow(&ContentOrigin::TestEntityRust, chunk, &CONFIG).expect("Reflow is wokring. qed");
 
         let suggestion = suggestion_set
             .iter()
