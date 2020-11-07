@@ -134,12 +134,12 @@ pub fn sub_char_range<'s>(s: &'s str, range: impl RangeBounds<usize>) -> &'s str
         match range.end_bound() {
             Bound::Included(&end) if idx > end => {
                 byte_range.end = byte_offset_start;
-                break 'loopy
-            },
+                break 'loopy;
+            }
             Bound::Excluded(&end) if idx >= end => {
                 byte_range.end = byte_offset_start;
-                break 'loopy
-            },
+                break 'loopy;
+            }
             _ => {}
         }
         if peekable.peek().is_none() {

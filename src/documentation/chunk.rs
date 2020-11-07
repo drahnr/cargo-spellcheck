@@ -187,6 +187,7 @@ impl CheckableChunk {
                 let state: LineColumn = fragment_span.start;
                 for (idx, c, cursor) in s.chars().enumerate().scan(state, |state, (idx, c)| {
                     let x: (usize, char, LineColumn) = (idx, c, state.clone());
+                    // FIXME what about \n\r or \r\n or \r ?
                     match c {
                         '\n' => {
                             state.line += 1;
