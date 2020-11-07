@@ -683,7 +683,10 @@ Buchfink"#];
 
     #[test]
     fn find_spans_inclusive() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        let _ = env_logger::builder()
+            .filter_level(log::LevelFilter::Trace)
+            .is_test(true)
+            .try_init();
 
         const SOURCE: &'static str = fluff_up!(["Some random words"]);
         let set = gen_literal_set(SOURCE);
@@ -715,8 +718,71 @@ Buchfink"#];
     }
 
     #[test]
-    fn find_spans_inclusive_multiline() {
-        let _ = env_logger::builder().is_test(true).try_init();
+    fn find_spans_and_coverage_integrity() -> Result<()> {
+        let _ = env_logger::builder()
+            .filter_level(log::LevelFilter::Trace)
+            .is_test(true)
+            .try_init();
+
+        const SOURCE: &'static str = fluff_up!(
+            [
+                "ü×ä×ß",
+                "DEFGHIJ",
+                "🐔🌗🐢"
+            ] @ "       "
+        );
+        let set = dbg!(gen_literal_set(SOURCE));
+        let chunk = dbg!(CheckableChunk::from_literalset(set));
+        let s = chunk.as_str();
+        assert_eq!(s, " ü×ä×ß\n DEFGHIJ\n 🐔🌗🐢");
+
+        const SPACES: usize = 7;
+        const TRIPLE_SLASH_SPACE: usize = 4;
+
+        const CHUNK_RANGE_START: usize = 5 + 1;
+        const CHUNK_RANGE_END: usize = CHUNK_RANGE_START + 8;
+        const CHUNK_RANGE: Range = CHUNK_RANGE_START..CHUNK_RANGE_END;
+
+        const EXPECTED_SPANS: &[Span] = &[Span {
+            start: LineColumn {
+                line: 2,
+                column: SPACES + TRIPLE_SLASH_SPACE - 1, // we want to include the whitespace here
+            },
+            end: LineColumn {
+                line: 2,
+                column: SPACES + TRIPLE_SLASH_SPACE + 6, // inclusive
+            },
+        }];
+        dbg!(crate::util::sub_char_range(s, CHUNK_RANGE.clone()));
+        let coverage = chunk.find_covered_spans(CHUNK_RANGE.clone());
+        let mapping = chunk.find_spans(CHUNK_RANGE.clone());
+
+        for (coverage_span, (find_range, find_span), expected) in
+            itertools::cons_tuples(coverage.zip(mapping.iter()).zip(EXPECTED_SPANS))
+        {
+            let cs = crate::util::load_span_from(SOURCE.as_bytes(), coverage_span.clone())?;
+            let fs = crate::util::load_span_from(SOURCE.as_bytes(), find_span.clone())?;
+            let fr = crate::util::sub_char_range(chunk.as_str(), find_range.clone());
+            let x = crate::util::load_span_from(SOURCE.as_bytes(), expected.clone())?;
+            log::trace!("[find]chunk[range]: {:?}", fr);
+            log::trace!("[find]excerpt(true): {:?}", fs);
+            log::trace!("[cove]excerpt(true): {:?}", cs);
+            log::trace!("expected: {:?}", x);
+            assert_eq!(coverage_span, expected);
+            assert_eq!(find_span, expected);
+            assert_eq!(fr, x);
+            assert_eq!(fs, x);
+            assert_eq!(cs, x);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn find_coverage_multiline() {
+        let _ = env_logger::builder()
+            .filter_level(log::LevelFilter::Trace)
+            .is_test(true)
+            .try_init();
 
         const SOURCE: &'static str = fluff_up!(
             [
@@ -770,11 +836,6 @@ Buchfink"#];
         for (span, expected) in coverage.zip(EXPECTED_SPANS) {
             assert_eq!(span, expected);
         }
-
-        let mapping = chunk.find_spans(CHUNK_RANGE);
-        for ((range, span), expected) in mapping.iter().zip(EXPECTED_SPANS) {
-            assert_eq!(span, expected);
-        }
     }
 
     #[test]
@@ -790,7 +851,10 @@ Buchfink"#];
             @ "       "
         );
 
-        let _ = env_logger::builder().is_test(true).try_init();
+        let _ = env_logger::builder()
+            .is_test(true)
+            .filter_level(log::LevelFilter::Trace)
+            .try_init();
 
         let set = gen_literal_set(SOURCE);
         let chunk = dbg!(CheckableChunk::from_literalset(set));
@@ -823,7 +887,10 @@ Buchfink"#];
             @ "       "
         );
 
-        let _ = env_logger::builder().is_test(true).try_init();
+        let _ = env_logger::builder()
+            .is_test(true)
+            .filter_level(log::LevelFilter::Trace)
+            .try_init();
 
         println!("{}", SOURCE);
         let set = gen_literal_set(SOURCE);

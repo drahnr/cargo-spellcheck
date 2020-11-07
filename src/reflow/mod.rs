@@ -693,7 +693,6 @@ r#"This module contains documentation thats
             .next()
             .expect("Contains one suggestion. qed");
 
-        
         dbg!(crate::util::load_span_from(&mut CONTENT.as_bytes(), suggestion.span).unwrap());
 
         let replacement = suggestion
