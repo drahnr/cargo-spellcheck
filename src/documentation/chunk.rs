@@ -148,12 +148,15 @@ impl CheckableChunk {
                 // could possibly happen on empty documentation lines with `///`
                 fragment_range.len() > 0
             })
-            .filter_map(|(fragment_range, fragment_span)| {
+            .map(|(fragment_range, fragment_span)| {
                 // trim range so we only capture the relevant part
                 let sub_fragment_range = std::cmp::max(fragment_range.start, range.start)
                     ..std::cmp::min(fragment_range.end, range.end);
-
-                trace!(target: "find_spans",
+                (fragment_span, fragment_range, sub_fragment_range)
+            })
+            .inspect(|(fragment_span, fragment_range, sub_fragment_range)| {
+                let (fragment_span, fragment_range, sub_fragment_range) = (fragment_span.clone(), fragment_range.clone(), sub_fragment_range.clone());
+                log::trace!(target: "find_spans",
                     ">> fragment: span: {:?} => range: {:?} | sub: {:?} -> sub_fragment: {:?}",
                     &fragment_span,
                     &fragment_range,
@@ -170,40 +173,50 @@ impl CheckableChunk {
                     "[f]content;\n>{}<",
                     crate::util::sub_chars(self.as_str(), fragment_range.clone())
                 );
-
+            })
+            .filter_map(|(fragment_span, fragment_range, sub_fragment_range)| {
                 if sub_fragment_range.len() == 0 {
                     log::trace!(target: "find_spans","sub fragment is zero, dropping!");
                     return None;
                 }
-
                 if let Some(span_len) = fragment_span.one_line_len() {
                     debug_assert_eq!(span_len, fragment_range.len());
                 }
+                Some((fragment_span, fragment_range, sub_fragment_range))
+            })
+            .filter_map(|(fragment_span, fragment_range, sub_fragment_range)|{
                 // take the full fragment string, we need to count newlines before and after
-                let s = sub_chars(self.as_str(), fragment_range.clone());
+                let s = sub_char_range(self.as_str(), fragment_range.clone());
+
                 // relative to the range given / offset
                 let shift = sub_fragment_range.start - fragment_range.start;
+                // state
                 let mut sub_fragment_span = fragment_span.clone();
-                let state: LineColumn = fragment_span.start;
-                for (idx, c, cursor) in s.chars().enumerate().scan(state, |state, (idx, c)| {
-                    let x: (usize, char, LineColumn) = (idx, c, state.clone());
-                    // FIXME what about \n\r or \r\n or \r ?
-                    match c {
-                        '\n' => {
-                            state.line += 1;
-                            state.column = 0;
-                        }
-                        _ => state.column += 1,
-                    }
-                    Some(x)
-                }) {
+                let mut cursor: LineColumn = fragment_span.start;
+                let mut iter = s.chars().enumerate().peekable();
+                let mut started = true;
+                'w: while let Some((idx, c)) = iter.next() {
                     trace!(target: "find_spans", "char[{}]: {}", idx, c);
                     if idx == shift {
                         sub_fragment_span.start = cursor;
+                        started = true;
                     }
-                    sub_fragment_span.end = cursor; // always set, even if we never reach the end of fragment
                     if idx >= (sub_fragment_range.len() + shift - 1) {
-                        break;
+                        sub_fragment_span.end = cursor;
+                        break 'w;
+                    }
+                    if iter.peek().is_some() && started {
+                        sub_fragment_span.end = cursor;
+                    }
+                    // FIXME what about \n\r or \r\n or \r ?
+                    match c {
+                        '\n' => {
+                            cursor.line += 1;
+                            cursor.column = 0;
+                        }
+                        _ => {
+                            cursor.column += 1
+                        }
                     }
                 }
 
