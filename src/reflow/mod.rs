@@ -182,15 +182,47 @@ fn reflow_inner<'s>(
         if lines.next() == Some(&content) {
             reflow_applied = true;
         }
-        let pre = if let Some(indentation) = indents_iter.next() {
-            indentation
-        } else {
-            &last_indent
-        }
-        .to_string_but_skip_n(variant.prefix_len());
 
+        // avoid stray spaces after newlines due to a truely required indentation
+        // of 3 for `///` but practically, it's `/// ` (added space), which should be accounted for,
+        // since that is used for accounting for the skip covered by `///`,
+        // which is being removed by the transformation `s` to `s_absolute`
+        // that removes the leading space.
+        let (indentation_skip_n, space) = match variant {
+            CommentVariant::TripleSlash | CommentVariant::DoubleSlashEM => {
+                let n = variant.prefix_len();
+                (n + 1, " ")
+            }
+            _ => (variant.prefix_len(), ""),
+        };
+        let pre = if let Some(indentation) = indents_iter.next() {
+            // TODO FIXME a hack to always round to 4 (assuming this is the tab width)
+            let x = indentation.to_string();
+            let val = indentation.offset().saturating_sub(indentation_skip_n);
+            const ASSUMED_TAB_WIDTH: usize = 4usize;
+            const BITS: usize = ASSUMED_TAB_WIDTH - 1;
+            let skip = if val & BITS != 0 {
+                ((val & !BITS) + 1) * ASSUMED_TAB_WIDTH
+            } else {
+                val
+            };
+            crate::util::sub_char_range(x.as_str(), ..skip).to_owned()
+        } else {
+            last_indent.to_string_but_skip_n(indentation_skip_n)
+        };
+
+        log::trace!(target: "glue", "glue[shift={}]: acc = {:?} + {:?} + {:?} + {:?} + {:?} + {:?}",
+                indentation_skip_n,
+                &pre,
+                &variant.prefix_string(),
+                space,
+                &content,
+                &variant.suffix_string(),
+                line_delimiter
+        );
         acc.push_str(&pre);
         acc.push_str(&variant.prefix_string());
+        acc.push_str(space);
         acc.push_str(&content);
         acc.push_str(&variant.suffix_string());
         acc.push_str(line_delimiter);
@@ -248,13 +280,14 @@ impl<'s> Indentation<'s> {
         self.offset
     }
 
+    #[allow(unused)]
     /// Convert to a string but skip `n` chars
     pub(crate) fn to_string_but_skip_n(&self, n: usize) -> String {
-        dbg!(if let Some(s) = self.s {
+        if let Some(s) = self.s {
             crate::util::sub_char_range(s, 0..n).to_owned()
         } else {
-            " ".repeat(self.offset.saturating_sub(n))
-        })
+            " ".repeat(dbg!(self.offset).saturating_sub(n))
+        }
     }
 }
 
