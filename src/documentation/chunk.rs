@@ -750,19 +750,19 @@ Buchfink"#];
         const SOURCE: &'static str = fluff_up!(
             [
                 "ü×ä×ß",
-                "DEFGHIJ",
+                "DEF_HIJ",
                 "🐔🌗🐢"
             ] @ "       "
         );
         let set = dbg!(gen_literal_set(SOURCE));
         let chunk = dbg!(CheckableChunk::from_literalset(set));
         let s = chunk.as_str();
-        assert_eq!(s, " ü×ä×ß\n DEFGHIJ\n 🐔🌗🐢");
+        assert_eq!(s, " ü×ä×ß\n DEF_HIJ\n 🐔🌗🐢");
 
         const SPACES: usize = 7;
         const TRIPLE_SLASH_SPACE: usize = 4;
 
-        const CHUNK_RANGE_START: usize = 5 + 1;
+        const CHUNK_RANGE_START: usize = 5 + 1 + 1; // space + content + newline
         const CHUNK_RANGE_END: usize = CHUNK_RANGE_START + 8;
         const CHUNK_RANGE: Range = CHUNK_RANGE_START..CHUNK_RANGE_END;
 
@@ -773,7 +773,7 @@ Buchfink"#];
             },
             end: LineColumn {
                 line: 2,
-                column: SPACES + TRIPLE_SLASH_SPACE + 6, // inclusive
+                column: SPACES + TRIPLE_SLASH_SPACE - 1 + 7, // inclusive
             },
         }];
         dbg!(crate::util::sub_char_range(s, CHUNK_RANGE.clone()));
