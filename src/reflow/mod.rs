@@ -8,7 +8,9 @@ use anyhow::{anyhow, Result};
 use crate::checker::Checker;
 use crate::documentation::{CheckableChunk, Documentation};
 
-use crate::{CommentVariant, ContentOrigin, Detector, Range, Span, Suggestion, SuggestionSet};
+use crate::{
+    CommentVariant, ContentOrigin, Detector, LineColumn, Range, Span, Suggestion, SuggestionSet,
+};
 
 use indexmap::IndexMap;
 
@@ -167,8 +169,8 @@ fn reflow_inner<'s>(
         .ok_or_else(|| anyhow!("No line indentation present."))?;
 
     // First line has to be without indent and variant prefix.
-    // If there is nothing to reflow, just pretend there was no reflow
-    let (_, content, _) = match gluon.next() {
+    // If there is nothing to reflow, just pretend there was no reflow.
+    let (_lineno, content, _range) = match gluon.next() {
         Some(c) => c,
         None => return Ok(None),
     };
@@ -178,7 +180,7 @@ fn reflow_inner<'s>(
     let acc = content + &variant.suffix_string() + line_delimiter;
 
     // construct replacement string from prefix and Gluon iterations
-    let content = gluon.fold(acc, |mut acc, (_, content, _)| {
+    let content = gluon.fold(acc, |mut acc, (_lineno, content, _range)| {
         if lines.next() == Some(&content) {
             reflow_applied = true;
         }
@@ -188,7 +190,7 @@ fn reflow_inner<'s>(
         // since that is used for accounting for the skip covered by `///`,
         // which is being removed by the transformation `s` to `s_absolute`
         // that removes the leading space.
-        let (indentation_skip_n, space) = match variant {
+        let (indentation_skip_n, extra_space) = match variant {
             CommentVariant::TripleSlash | CommentVariant::DoubleSlashEM => {
                 let n = variant.prefix_len();
                 (n + 1, " ")
@@ -196,33 +198,24 @@ fn reflow_inner<'s>(
             _ => (variant.prefix_len(), ""),
         };
         let pre = if let Some(indentation) = indents_iter.next() {
-            // TODO FIXME a hack to always round to 4 (assuming this is the tab width)
-            let x = indentation.to_string();
-            let val = indentation.offset().saturating_sub(indentation_skip_n);
-            const ASSUMED_TAB_WIDTH: usize = 4usize;
-            const BITS: usize = ASSUMED_TAB_WIDTH - 1;
-            let skip = if val & BITS != 0 {
-                ((val & !BITS) + 1) * ASSUMED_TAB_WIDTH
-            } else {
-                val
-            };
-            crate::util::sub_char_range(x.as_str(), ..skip).to_owned()
+            indentation
         } else {
-            last_indent.to_string_but_skip_n(indentation_skip_n)
-        };
+            &last_indent
+        }
+        .to_string_but_skip_n(indentation_skip_n);
 
         log::trace!(target: "glue", "glue[shift={}]: acc = {:?} + {:?} + {:?} + {:?} + {:?} + {:?}",
                 indentation_skip_n,
                 &pre,
                 &variant.prefix_string(),
-                space,
+                extra_space,
                 &content,
                 &variant.suffix_string(),
                 line_delimiter
         );
         acc.push_str(&pre);
         acc.push_str(&variant.prefix_string());
-        acc.push_str(space);
+        acc.push_str(extra_space);
         acc.push_str(&content);
         acc.push_str(&variant.suffix_string());
         acc.push_str(line_delimiter);
@@ -284,14 +277,18 @@ impl<'s> Indentation<'s> {
     /// Convert to a string but skip `n` chars
     pub(crate) fn to_string_but_skip_n(&self, n: usize) -> String {
         if let Some(s) = self.s {
-            crate::util::sub_char_range(s, 0..n).to_owned()
+            dbg!(crate::util::sub_char_range(s, 0..dbg!(n)).to_owned())
         } else {
-            " ".repeat(dbg!(self.offset).saturating_sub(n))
+            dbg!(" ".repeat(dbg!(self.offset).saturating_sub(dbg!(n))))
         }
     }
 }
 
 /// Collect reflowed Paragraphs in a `Vec` of `Suggestions`.
+///
+/// Note: Leading spaces are skipped by the markdown parser,
+/// which implies for `///` and `//!`, the paragraph for the first
+/// line starting right after `/// ` (note the space here).
 fn store_suggestion<'s>(
     chunk: &'s CheckableChunk,
     origin: &ContentOrigin,
@@ -310,43 +307,68 @@ fn store_suggestion<'s>(
 
     #[cfg(debug_assertions)]
     log::trace!(
-        "reflow::store_suggestion[range]: {:?}",
-        crate::util::sub_char_range(s, range.clone())
+        "reflow::store_suggestion(chunk([{:?}]): {:?}",
+        &range,
+        crate::util::sub_char_range(s, range.clone()),
     );
 
+    /// with markdown, the initial paragraph for `/// `
+    /// might be shifted, so the start in those cases must be shifted back
+    /// to right after `///`, which is done by substracting one.
+    let adjustment = match chunk.variant() {
+        CommentVariant::DoubleSlashEM | CommentVariant::TripleSlash => 1usize,
+        _ => 0usize,
+    };
+
     let range2span = chunk.find_spans(range.clone());
-    let mut spans = range2span.iter().map(|(_range, span)| *span);
-    let span_start = if let Some(first) = spans.next() {
-        first
-    } else {
-        return Ok((paragraph, None));
+    let mut spans_iter = range2span.iter().map(|(_range, span)| *span);
+
+    let span = {
+        let Span { start, end: fallback_end} = if let Some(mut first) = spans_iter.next() {
+            first.start.column = first.start.column.saturating_sub(adjustment);
+            first
+        } else {
+            return Ok((paragraph, None));
+        };
+        let end = if let Some(last) = spans_iter.last() {
+            last.end
+        } else {
+            fallback_end
+        };
+
+        Span { start, end }
     };
-    let span_end = if let Some(last) = spans.last() {
-        last
-    } else {
-        span_start
-    };
-    let span = Span {
-        start: span_start.start,
-        end: span_end.end,
-    };
+
     #[cfg(debug_assertions)]
     log::trace!(
-        "reflow::store_suggestion[span]: {:?}",
+        "reflow::store_suggestion[source({:?})]: {:?}",
+        span.clone(),
         crate::util::load_span_from(sb, span).unwrap()
     );
 
     // Get indentation for each span, if a span covers multiple
     // lines, use same indentation for all lines
+    let mut first = true;
     let indentations = range2span
         .iter()
         .flat_map(|(_range, span)| {
+            #[cfg(debug_assertions)]
+            {
+                dbg!(_range);
+            }
             debug_assert!(span.start.line <= span.end.line);
 
             // TODO use crate::util::sub_char_range(s, range.clone())
             // TODO and `Indent::with_str(..)`
-            let indentation = Indentation::new(span.start.column);
-            vec![indentation; span.end.line.saturating_sub(span.start.line) + 1]
+
+            let col = span
+                .start
+                .column
+                .saturating_sub(dbg!(adjustment) * dbg!((first == true) as usize))
+                + adjustment;
+            let indentation = Indentation::new(col);
+            first = false;
+            vec![dbg!(indentation); dbg!(span.end.line.saturating_sub(span.start.line) + 1)]
         })
         .collect::<Vec<Indentation>>();
 
@@ -659,7 +681,7 @@ test our rewrapping algorithm. With emojis: 🚤w🌴x🌋y🍈z🍉0",
 
     #[test]
     fn reflow_into_suggestion() {
-        reflow!(44 break ["This module contains documentation thats \
+        reflow!(45 break ["This module contains documentation thats \
 is too long for one line and moreover, \
 it spans over mulitple lines such that \
 we can test our rewrapping algorithm. \
@@ -710,10 +732,9 @@ r#"This module contains documentation thats
     /// 🍁
     /// 🤔"#;
 
-
-    const CONFIG: ReflowConfig = ReflowConfig {
-        max_line_length: 9,
-    };
+        const CONFIG: ReflowConfig = ReflowConfig {
+            max_line_length: 10,
+        };
 
         let docs = Documentation::from((ContentOrigin::TestEntityRust, CONTENT));
         assert_eq!(docs.entry_count(), 1);
