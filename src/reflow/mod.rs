@@ -1040,4 +1040,35 @@ multiline. Fullstop."#,
             assert_eq!(extract_delimiter(input), Some(expected));
         }
     }
+
+    #[test]
+    fn reflow_check_span() {
+        const CONFIG: ReflowConfig = ReflowConfig {
+            max_line_length: 30,
+        };
+
+        const CONTENT: &'static str = "/// A comment as we have many here and we will always
+/// have.
+struct Fff;
+";
+
+        let docs = Documentation::from((ContentOrigin::TestEntityRust, CONTENT));
+        assert_eq!(docs.entry_count(), 1);
+        let chunks = docs
+            .get(&ContentOrigin::TestEntityRust)
+            .expect("Contains test data. qed");
+        assert_eq!(dbg!(chunks).len(), 1);
+        let chunk = chunks.first().unwrap();
+
+        let suggestion_set = reflow(&ContentOrigin::TestEntityRust, &chunk, &CONFIG)
+            .expect("Reflow is working. qed");
+        assert_eq!(suggestion_set.len(), 1);
+        let suggestion = suggestion_set.first().expect("Contains one suggestion. qed");
+
+        let expected_span = Span { start: LineColumn { line: 1, column: 4}, end: LineColumn { line: 2, column: 8 }};
+        let replacement = vec!["A comment as we have\n/// many here and we will always have".to_string()];
+
+        assert_eq!(suggestion.span, expected_span);
+        assert_eq!(suggestion.replacements, replacement);
+    }
 }
