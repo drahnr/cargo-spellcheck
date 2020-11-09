@@ -1043,13 +1043,18 @@ multiline. Fullstop."#,
     #[test]
     fn reflow_check_span() {
         const CONFIG: ReflowConfig = ReflowConfig {
-            max_line_length: 30,
+            max_line_length: 27,
         };
 
         const CONTENT: &'static str = "/// A comment as we have many here and we will always
 /// have.
 struct Fff;
 ";
+
+        const EXPECTED_REPLACEMENT: &[&'static str] = &["A comment as we have\n/// many here and we will\n/// always have."];
+
+        const EXPECTED_SPAN: Span = Span { start: LineColumn { line: 1, column: 4}, end: LineColumn { line: 2, column: 8 }};
+
 
         let docs = Documentation::from((ContentOrigin::TestEntityRust, CONTENT));
         assert_eq!(docs.entry_count(), 1);
@@ -1064,10 +1069,7 @@ struct Fff;
         assert_eq!(suggestion_set.len(), 1);
         let suggestion = suggestion_set.first().expect("Contains one suggestion. qed");
 
-        let expected_span = Span { start: LineColumn { line: 1, column: 4}, end: LineColumn { line: 2, column: 8 }};
-        let replacement = vec!["A comment as we have\n/// many here and we will always have".to_string()];
-
-        assert_eq!(suggestion.span, expected_span);
-        assert_eq!(suggestion.replacements, replacement);
+        assert_eq!(suggestion.span, EXPECTED_SPAN);
+        assert_eq!(suggestion.replacements.as_slice(), EXPECTED_REPLACEMENT);
     }
 }
