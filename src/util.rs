@@ -43,10 +43,10 @@ pub fn iter_with_line_column<'a>(
     iter_with_line_column_from(s, LineColumn { line: 1, column: 0 })
 }
 
-/// Extract `span` from a `Read`-able source as `String`
+/// Extract `span` from a `Read`-able source as `String`.
 ///
 /// # Errors
-/// Returns an Error if `span` describes a impossible range
+/// Returns an Error if `span` describes a impossible range.
 pub(crate) fn load_span_from<R>(mut source: R, span: Span) -> Result<String>
 where
     R: Read,

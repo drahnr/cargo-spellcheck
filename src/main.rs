@@ -2,10 +2,6 @@
 #![deny(missing_docs)]
 #![deny(unused_crate_dependencies)]
 #![warn(clippy::pedantic)]
-#![allow(clippy::too_many_lines)]
-#![allow(clippy::non_ascii_literal)]
-#![allow(clippy::missing_errors_doc)]
-#![allow(clippy::if_not_else)]
 
 //! cargo-spellcheck
 //!
