@@ -79,7 +79,7 @@ fn extract_delimiter_inner<'a>(
     }
 }
 
-/// Extract line delimiter of a string
+/// Extract line delimiter of a string.
 fn extract_delimiter<'s>(s: &'s str) -> Option<&'static str> {
     use regex::Regex;
 
@@ -125,7 +125,7 @@ fn extract_delimiter<'s>(s: &'s str) -> Option<&'static str> {
         .map(|x| x.newline)
 }
 
-/// Reflows a parsed commonmark paragraph contained in `s`
+/// Reflows a parsed commonmark paragraph contained in `s`.
 ///
 /// Returns the `Some(replacement)` string if a reflow has been performed and `None` otherwise.
 ///
