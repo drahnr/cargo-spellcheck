@@ -8,9 +8,7 @@ use anyhow::{anyhow, Result};
 use crate::checker::Checker;
 use crate::documentation::{CheckableChunk, Documentation};
 
-use crate::{
-    CommentVariant, ContentOrigin, Detector, Range, Span, Suggestion, SuggestionSet,
-};
+use crate::{CommentVariant, ContentOrigin, Detector, Range, Span, Suggestion, SuggestionSet};
 
 use indexmap::IndexMap;
 
@@ -323,7 +321,10 @@ fn store_suggestion<'s>(
     let mut spans_iter = range2span.iter().map(|(_range, span)| *span);
 
     let span = {
-        let Span { start, end: fallback_end} = if let Some(first) = spans_iter.next() {
+        let Span {
+            start,
+            end: fallback_end,
+        } = if let Some(first) = spans_iter.next() {
             first
         } else {
             return Ok((paragraph, None));
@@ -1051,10 +1052,13 @@ multiline. Fullstop."#,
 struct Fff;
 ";
 
-        const EXPECTED_REPLACEMENT: &[&'static str] = &["A comment as we have\n/// many here and we will\n/// always have."];
+        const EXPECTED_REPLACEMENT: &[&'static str] =
+            &["A comment as we have\n/// many here and we will\n/// always have."];
 
-        const EXPECTED_SPAN: Span = Span { start: LineColumn { line: 1, column: 4}, end: LineColumn { line: 2, column: 8 }};
-
+        const EXPECTED_SPAN: Span = Span {
+            start: LineColumn { line: 1, column: 4 },
+            end: LineColumn { line: 2, column: 8 },
+        };
 
         let docs = Documentation::from((ContentOrigin::TestEntityRust, CONTENT));
         assert_eq!(docs.entry_count(), 1);
@@ -1067,7 +1071,9 @@ struct Fff;
         let suggestion_set = reflow(&ContentOrigin::TestEntityRust, &chunk, &CONFIG)
             .expect("Reflow is working. qed");
         assert_eq!(suggestion_set.len(), 1);
-        let suggestion = suggestion_set.first().expect("Contains one suggestion. qed");
+        let suggestion = suggestion_set
+            .first()
+            .expect("Contains one suggestion. qed");
 
         assert_eq!(suggestion.span, EXPECTED_SPAN);
         assert_eq!(suggestion.replacements.as_slice(), EXPECTED_REPLACEMENT);
