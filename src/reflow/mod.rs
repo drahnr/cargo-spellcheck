@@ -325,7 +325,6 @@ fn store_suggestion<'s>(
 
     let span = {
         let Span { start, end: fallback_end} = if let Some(mut first) = spans_iter.next() {
-            first.start.column = first.start.column.saturating_sub(adjustment);
             first
         } else {
             return Ok((paragraph, None));
