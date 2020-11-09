@@ -380,8 +380,8 @@ With a second part that is fine"#
     };
 
     for (chunk, expect) in chunks.iter().zip(expected) {
-        let suggestion_set = reflow(&ContentOrigin::TestEntityRust, chunk, &cfg)
-            .expect("Reflow is working. qed");
+        let suggestion_set =
+            reflow(&ContentOrigin::TestEntityRust, chunk, &cfg).expect("Reflow is working. qed");
         let sug = suggestion_set
             .iter()
             .next()
@@ -480,8 +480,7 @@ multiline. Fullstop."#,
         .expect("Reflow is working. qed");
     assert_eq!(suggestion_set.len(), 2);
 
-    for (sug, &(expected_content, expected_span)) in suggestion_set.iter().zip(EXPECTED.iter())
-    {
+    for (sug, &(expected_content, expected_span)) in suggestion_set.iter().zip(EXPECTED.iter()) {
         dbg!(&sug.span);
         dbg!(&sug.range);
         assert_eq!(sug.replacements.len(), 1);
@@ -546,8 +545,8 @@ struct Fff;
     assert_eq!(dbg!(chunks).len(), 1);
     let chunk = chunks.first().unwrap();
 
-    let suggestion_set = reflow(&ContentOrigin::TestEntityRust, &chunk, &CONFIG)
-        .expect("Reflow is working. qed");
+    let suggestion_set =
+        reflow(&ContentOrigin::TestEntityRust, &chunk, &CONFIG).expect("Reflow is working. qed");
     assert_eq!(suggestion_set.len(), 1);
     let suggestion = suggestion_set
         .first()
