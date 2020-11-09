@@ -9,7 +9,7 @@ use crate::checker::Checker;
 use crate::documentation::{CheckableChunk, Documentation};
 
 use crate::{
-    CommentVariant, ContentOrigin, Detector, LineColumn, Range, Span, Suggestion, SuggestionSet,
+    CommentVariant, ContentOrigin, Detector, Range, Span, Suggestion, SuggestionSet,
 };
 
 use indexmap::IndexMap;
@@ -119,7 +119,7 @@ fn extract_delimiter<'s>(s: &'s str) -> Option<&'static str> {
         .filter_map(|x| x)
         .max_by(|b, a| {
             if a.count == b.count {
-                dbg!(a.first_appearance.cmp(&b.first_appearance))
+                a.first_appearance.cmp(&b.first_appearance)
             } else {
                 b.count.cmp(&a.count)
             }
@@ -273,13 +273,12 @@ impl<'s> Indentation<'s> {
         self.offset
     }
 
-    #[allow(unused)]
     /// Convert to a string but skip `n` chars
     pub(crate) fn to_string_but_skip_n(&self, n: usize) -> String {
         if let Some(s) = self.s {
-            dbg!(crate::util::sub_char_range(s, 0..dbg!(n)).to_owned())
+            crate::util::sub_char_range(s, 0..n).to_owned()
         } else {
-            dbg!(" ".repeat(dbg!(self.offset).saturating_sub(dbg!(n))))
+            " ".repeat(self.offset.saturating_sub(n))
         }
     }
 }
@@ -312,9 +311,9 @@ fn store_suggestion<'s>(
         crate::util::sub_char_range(s, range.clone()),
     );
 
-    /// with markdown, the initial paragraph for `/// `
-    /// might be shifted, so the start in those cases must be shifted back
-    /// to right after `///`, which is done by substracting one.
+    // with markdown, the initial paragraph for `/// `
+    // might be shifted, so the start in those cases must be shifted back
+    // to right after `///`, which is done by substracting one.
     let adjustment = match chunk.variant() {
         CommentVariant::DoubleSlashEM | CommentVariant::TripleSlash => 1usize,
         _ => 0usize,
@@ -324,7 +323,7 @@ fn store_suggestion<'s>(
     let mut spans_iter = range2span.iter().map(|(_range, span)| *span);
 
     let span = {
-        let Span { start, end: fallback_end} = if let Some(mut first) = spans_iter.next() {
+        let Span { start, end: fallback_end} = if let Some(first) = spans_iter.next() {
             first
         } else {
             return Ok((paragraph, None));
@@ -351,23 +350,24 @@ fn store_suggestion<'s>(
     let indentations = range2span
         .iter()
         .flat_map(|(_range, span)| {
-            #[cfg(debug_assertions)]
-            {
-                dbg!(_range);
-            }
             debug_assert!(span.start.line <= span.end.line);
 
             // TODO use crate::util::sub_char_range(s, range.clone())
             // TODO and `Indent::with_str(..)`
 
+            // Adjust the column by adding the adjustment to every line
+            // but the first. Necessary, since cmark swallows leading whitespace
+            // but the following leading whitespaces of literals in the same
+            // chunk are still present, yet they are not part of the prefix
+            // as defined by the `CommentVariant` for `///` and `//!`.
             let col = span
                 .start
                 .column
-                .saturating_sub(dbg!(adjustment) * dbg!((first == true) as usize))
+                .saturating_sub(adjustment * (first as usize))
                 + adjustment;
             let indentation = Indentation::new(col);
             first = false;
-            vec![dbg!(indentation); dbg!(span.end.line.saturating_sub(span.start.line) + 1)]
+            vec![indentation; span.end.line.saturating_sub(span.start.line) + 1]
         })
         .collect::<Vec<Indentation>>();
 
