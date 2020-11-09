@@ -76,7 +76,7 @@ mistakes are found instead of `0`.
 * [x] Ellipsize overly long statements with `...` [#42](https://github.com/drahnr/cargo-spellcheck/issues/42)
 * [ ] Learn topic lingo and filter false-positive-suggestions [#41](https://github.com/drahnr/cargo-spellcheck/issues/41)
 * [x] Handle cargo workspaces [#38](https://github.com/drahnr/cargo-spellcheck/issues/38)
-* [ ] Re-flow doc comments [#39](https://github.com/drahnr/cargo-spellcheck/issues/39)
+* [x] Re-flow doc comments [#39](https://github.com/drahnr/cargo-spellcheck/issues/39)
 
 `hunspell` and `languagetool` are currently the two supported featuresets.
 
