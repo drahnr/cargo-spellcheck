@@ -8,7 +8,7 @@ use std::convert::TryFrom;
 use std::fmt;
 use std::path::Path;
 
-use anyhow::{Error, Result};
+use anyhow::{Error, Result, bail};
 use indexmap::IndexMap;
 
 use crate::documentation::PlainOverlay;
@@ -67,7 +67,7 @@ impl fmt::Display for ContentOrigin {
     }
 }
 
-/// A chunk of documentation that is supposed to be checked
+/// A chunk of documentation that is supposed to be checked.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct CheckableChunk {
     /// Rendered contents of a literal set or just content of a markdown file, e.g. a comment of two lines is
@@ -77,7 +77,7 @@ pub struct CheckableChunk {
     /// `Span` referencing the location within the source file.
     /// For a markdown file i.e. this would become a single entry spanning from start to end.
     source_mapping: IndexMap<Range, Span>,
-    /// Track what kind of comment the chunk is
+    /// Track what kind of comment the chunk is.
     variant: CommentVariant,
 }
 
@@ -136,7 +136,7 @@ impl CheckableChunk {
     /// ```
     pub(crate) fn find_spans(&self, range: Range) -> IndexMap<Range, Span> {
         trace!(target: "find_spans",
-            "############################################ chunk find_span {:?}",
+            "Chunk find_span {:?}",
             &range
         );
 
@@ -287,7 +287,7 @@ impl CheckableChunk {
             })
     }
 
-    /// Yields a set of ranges covering all spanned lines (the full line)
+    /// Yields a set of ranges covering all spanned lines (the full line).
     pub fn find_covered_lines<'i>(&'i self, range: Range) -> Vec<Range> {
         // assumes the _mistake_ is within one line
         // if not we chop it down to the first line
@@ -342,7 +342,7 @@ impl CheckableChunk {
                     acc.push(span.start.column + line_range.len());
                     Ok(acc)
                 } else {
-                    anyhow::bail!("BUG: Found a range {}..{} which that does not exist in its own source mapping: {:?}", line_range.start, line_range.end, &self.source_mapping)
+                    bail!("BUG: Found a range {}..{} which that does not exist in its own source mapping: {:?}", line_range.start, line_range.end, &self.source_mapping)
                 }
             })?;
 
