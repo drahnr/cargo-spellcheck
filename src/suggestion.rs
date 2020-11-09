@@ -295,7 +295,7 @@ pub struct Suggestion<'s> {
     /// Range relative to the chunk the current suggestion is located.
     pub range: Range,
     /// Fix suggestions, might be words or the full sentence together with
-    /// leading withespaces
+    /// leading withespaces.
     pub replacements: Vec<String>,
     /// Descriptive reason for the suggestion.
     pub description: Option<String>,

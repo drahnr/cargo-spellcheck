@@ -1,9 +1,7 @@
 //! A mistake bandaid.
 //!
 //! A `BandAid` covers the mistake with a suggested
-//! replacement, as picked by the user. It only refers
-//! to suggestions on one line.
-//! Multi-line suggestions are collected in a `FirstAidKit`.
+//! replacement, as picked by the user.
 
 use crate::Span;
 
