@@ -29,10 +29,11 @@ pub struct Tokeneer<'s> {
     unbreakable_ranges: Vec<Range>,
     unbreakable_idx: usize,
 
+    /// Iterator over chars to keep track of position.
     inner: std::iter::Peekable<std::iter::Enumerate<std::str::CharIndices<'s>>>,
-    // in bytes
+    /// Offset from previous word in bytes
     previous_byte_offset: usize,
-    // in chars!
+    /// Offset from previous word in chars
     previous_char_offset: usize,
 }
 
