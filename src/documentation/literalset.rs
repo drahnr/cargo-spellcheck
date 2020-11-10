@@ -129,8 +129,7 @@ impl<'s> fmt::Display for LiteralSet {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    pub(crate) use super::super::literal::tests::annotated_literals;
-    pub(crate) use super::tests::annotated_literals;
+    pub(crate) use super::super::tests::annotated_literals;
     use super::*;
 
     /// A debug helper to print concatenated length of all items.
