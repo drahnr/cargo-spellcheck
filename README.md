@@ -126,6 +126,10 @@ allow_concatenation = true
 # And the counterpart, which accepts words with dashes, when the suggestion has
 # recommendations without the dashes. This is less common.
 allow_dashed = false
+
+[Reflow]
+# Reflows doc comments to adhere to adhere to a given maximum line width limit.
+max_line_length = 80
 ```
 
 To increase verbosity add `-v` (multiple) to increase verbosity.
