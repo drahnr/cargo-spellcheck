@@ -129,8 +129,9 @@ impl<'s> fmt::Display for LiteralSet {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    pub(crate) use super::super::tests::annotated_literals;
     use super::*;
+    use crate::util::load_span_from;
+    pub(crate) use super::super::tests::annotated_literals;
 
     /// A debug helper to print concatenated length of all items.
     #[macro_export]
@@ -328,8 +329,6 @@ struct Vikings;
     fn first_line_extract_1() {
         test_raw!(["+ 12 + x0"] ; 9..10, "0");
     }
-
-    use crate::util::load_span_from;
 
     #[test]
     fn literal_set_into_chunk() {

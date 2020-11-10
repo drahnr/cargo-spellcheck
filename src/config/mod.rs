@@ -425,8 +425,10 @@ impl Default for Config {
                 extra_dictionaries: Vec::new(),
                 quirks: Quirks::default(),
             }),
+            // disabled by default, it's still
+            // experimental and requires additional setup
             languagetool: None,
-            reflow: None,
+            reflow: Some(ReflowConfig::default()),
         }
     }
 }
@@ -588,5 +590,20 @@ search_dirs = ["/search/1", "/search/2"]
 
         #[cfg(target_os = "macos")]
         assert!(search_dirs.len() >= 3);
+    }
+
+    #[test]
+    fn partial_9() {
+        let cfg = Config::parse(
+            r#"
+[Reflow]
+max_line_length = 42
+"#,
+        )
+        .unwrap();
+        assert_eq!(
+            cfg.reflow.expect("Must contain reflow cfg").max_line_length,
+            42
+        );
     }
 }
