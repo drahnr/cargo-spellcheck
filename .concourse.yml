@@ -298,7 +298,7 @@ jobs:
               status: failure
 
         - task: validate-reflow
-          timeout: 7m
+          timeout: 5m
           image: env-glibc
           config:
             platform: linux
@@ -312,6 +312,8 @@ jobs:
               - -exc
               - |
                 export EXE="../binary/cargo-spellcheck-$(git rev-parse HEAD)"
+                sudo chown $(whoami): -f "${EXE}"
+                chmod +x "${EXE}"
                 "${EXE}" --version
                 "${EXE}" reflow demo/Cargo.toml
                 "${EXE}" reflow -vvvv demo/src/main.rs
@@ -541,7 +543,7 @@ jobs:
             - path: cargo
 
         - task: validate-reflow
-          timeout: 10m
+          timeout: 5m
           image: env-glibc
           config:
             platform: linux
@@ -555,6 +557,8 @@ jobs:
               - -exc
               - |
                 export EXE="../binary/cargo-spellcheck-$(git rev-parse HEAD)"
+                sudo chown $(whoami): -f "${EXE}"
+                chmod +x "${EXE}"
                 "${EXE}" --version
                 "${EXE}" reflow demo/Cargo.toml
                 "${EXE}" reflow -vvvv demo/src/main.rs
