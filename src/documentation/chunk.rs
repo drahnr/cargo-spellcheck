@@ -8,7 +8,7 @@ use std::convert::TryFrom;
 use std::fmt;
 use std::path::Path;
 
-use anyhow::{Error, Result, bail};
+use anyhow::{bail, Error, Result};
 use indexmap::IndexMap;
 
 use crate::documentation::PlainOverlay;

@@ -1575,4 +1575,5 @@ fn variant_consistency() {
             variant.suffix_string().chars().count(),
             variant.suffix_len()
         );
-    }}
+    }
+}
