@@ -99,7 +99,12 @@ jobs:
       - put: git-pull-request-resource
         params:
           path: git-pull-request-resource
-          context: run-check
+          context: validate-spellcheck
+          status: pending
+      - put: git-pull-request-resource
+        params:
+          path: git-pull-request-resource
+          context: validate-reflow
           status: pending
       - put: git-pull-request-resource
         params:
@@ -282,15 +287,53 @@ jobs:
             put: git-pull-request-resource
             params:
               path: git-pull-request-resource
-              context: run-check
+              context: validate-spellcheck
               status: success
 
           on_failure:
             put: git-pull-request-resource
             params:
               path: git-pull-request-resource
-              context: run-check
+              context: validate-spellcheck
               status: failure
+
+        - task: validate-reflow
+          timeout: 7m
+          image: env-glibc
+          config:
+            platform: linux
+            inputs:
+            - name: git-pull-request-resource
+            - name: binary
+            run:
+              # user: root
+              path: sh
+              args:
+              - -exc
+              - |
+                export EXE="../binary/cargo-spellcheck-$(git rev-parse HEAD)"
+                "${EXE}" --version
+                "${EXE}" reflow demo/Cargo.toml
+                "${EXE}" reflow -vvvv demo/src/main.rs
+                "${EXE}" reflow demo/
+                "${EXE}" reflow demo/README.md
+                "${EXE}"
+              dir: git-pull-request-resource
+
+          on_success:
+            put: git-pull-request-resource
+            params:
+              path: git-pull-request-resource
+              context: validate-reflow
+              status: success
+
+          on_failure:
+            put: git-pull-request-resource
+            params:
+              path: git-pull-request-resource
+              context: validate-reflow
+              status: failure
+
         - in_parallel:
           - put: git-pull-request-resource
             params:
@@ -469,8 +512,8 @@ jobs:
           - path: cargo
 
       - do:
-        - task: just-run
-          timeout: 15m
+        - task: validate-spellcheck
+          timeout: 10m
           image: env-glibc
           config:
             platform: linux
@@ -497,8 +540,30 @@ jobs:
             caches:
             - path: cargo
 
-        - in_parallel:
+        - task: validate-reflow
+          timeout: 10m
+          image: env-glibc
+          config:
+            platform: linux
+            inputs:
+            - name: git-repo
+            - name: binary
+            run:
+              # user: root
+              path: sh
+              args:
+              - -exc
+              - |
+                export EXE="../binary/cargo-spellcheck-$(git rev-parse HEAD)"
+                "${EXE}" --version
+                "${EXE}" reflow demo/Cargo.toml
+                "${EXE}" reflow -vvvv demo/src/main.rs
+                "${EXE}" reflow demo/
+                "${EXE}" reflow demo/README.md
+                "${EXE}"
+              dir: git-repo
 
+        - in_parallel:
           - task: test-on-spearow-juice
             timeout: 15m
             image: env-glibc
