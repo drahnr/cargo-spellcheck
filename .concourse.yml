@@ -253,7 +253,7 @@ jobs:
             status: failure
 
       - do:
-        - task: run-check
+        - task: validate-spellcheck
           timeout: 15m
           image: env-glibc
           config:
