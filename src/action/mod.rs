@@ -219,7 +219,7 @@ pub enum Action {
 
 impl Action {
     /// Apply bandaids to the file represented by content origin.
-    fn correction<'s>(
+    pub fn write_changes_to_disk(
         &self,
         origin: ContentOrigin,
         bandaids: impl IntoIterator<Item = BandAid>,
@@ -227,7 +227,6 @@ impl Action {
         match origin {
             ContentOrigin::CommonMarkFile(path) => self.correct_file(path, bandaids),
             ContentOrigin::RustSourceFile(path) => self.correct_file(path, bandaids),
-            //TODO bandaids are relative to the doc-test, so fix the span with the one provided
             ContentOrigin::RustDocTest(path, _span) => self.correct_file(path, bandaids),
             #[cfg(test)]
             ContentOrigin::TestEntityRust => unreachable!("Use a proper file"),
@@ -237,7 +236,7 @@ impl Action {
     }
 
     /// assumes suggestions are sorted by line number and column number and must be non overlapping
-    fn correct_file<'s>(
+    fn correct_file(
         &self,
         path: PathBuf,
         bandaids: impl IntoIterator<Item = BandAid>,
@@ -291,15 +290,15 @@ impl Action {
     ///
     /// **Attention**: Must be consuming, repeated usage causes shifts in spans and
     /// would destroy the file structure!
-    pub fn write_changes_to_disk(
+    pub fn write_user_pick_changes_to_disk(
         &self,
         userpicked: interactive::UserPicked,
         _config: &Config,
     ) -> Result<()> {
         if userpicked.total_count() > 0 {
             debug!("Writing changes back to disk");
-            for (path, bandaids) in userpicked.bandaids.into_iter() {
-                self.correction(path, bandaids.into_iter())?;
+            for (origin, bandaids) in userpicked.bandaids.into_iter() {
+                self.write_changes_to_disk(origin, bandaids.into_iter())?;
             }
         } else {
             debug!("No band aids to apply");
@@ -323,14 +322,34 @@ impl Action {
     pub fn run(self, suggestions: SuggestionSet, config: &Config) -> Result<Finish> {
         match self {
             Self::Check => self.check(suggestions, config),
-            Self::Fix | Self::Reflow => {
+            Self::Reflow => {
+                let n = suggestions.len();
+
+                for (origin, suggestions) in suggestions {
+                    let bandaids = suggestions
+                        .into_iter()
+                        .filter_map(|suggestion| {
+                            suggestion.replacements.first().map(|replacement| {
+                                let bandaid = super::BandAid::from((
+                                    replacement.to_owned(),
+                                    &suggestion.span,
+                                ));
+                                bandaid
+                            })
+                        })
+                        .collect::<Vec<_>>();
+                    self.write_changes_to_disk(origin, bandaids)?;
+                }
+                Ok(Finish::MistakeCount(n))
+            }
+            Self::Fix => {
                 let (picked, user_sel) =
                     interactive::UserPicked::select_interactive(suggestions, config)?;
                 if user_sel == interactive::UserSelection::Abort {
                     Ok(Finish::Abort)
                 } else {
                     let n = picked.total_count();
-                    self.write_changes_to_disk(picked, config)?;
+                    self.write_user_pick_changes_to_disk(picked, config)?;
                     Ok(Finish::MistakeCount(n))
                 }
             }
