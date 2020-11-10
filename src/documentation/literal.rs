@@ -462,4 +462,3 @@ impl<'a> fmt::Display for TrimmedLiteralDisplay<'a> {
         write!(formatter, "{}{}{}{}{}", pre, ctx1, highlight, ctx2, post)
     }
 }
-
