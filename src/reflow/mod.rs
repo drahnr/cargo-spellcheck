@@ -403,6 +403,7 @@ fn reflow<'s>(
     chunk: &'s CheckableChunk,
     cfg: &ReflowConfig,
 ) -> Result<Vec<Suggestion<'s>>> {
+    log::debug!("Reflowing {:?}", origin);
     let parser = Parser::new_ext(chunk.as_str(), Options::all());
 
     let mut paragraph = 0_usize;
@@ -455,8 +456,8 @@ fn reflow<'s>(
                         if unbreakable_stack.len() == 1 {
                             unbreakables.push(cover);
                         } else if let Some(parent) = unbreakable_stack.last() {
-                            debug_assert!(parent.contains(&cover.start));
-                            debug_assert!(parent.contains(&(cover.end - 1)));
+                            debug_assert!(dbg!(parent).contains(dbg!(&cover.start)));
+                            debug_assert!(dbg!(parent).contains(dbg!(&(cover.end - 1))));
                         }
                     }
                     Tag::Paragraph => {
