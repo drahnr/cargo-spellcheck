@@ -180,9 +180,10 @@ fn parse_args(mut argv_iter: impl Iterator<Item = String>) -> Result<Args, docop
 
 /// The inner main.
 fn run() -> anyhow::Result<ExitCode> {
-
     #[cfg(debug_assertions)]
-    let _ = ::rayon::ThreadPoolBuilder::new().num_threads(1).build_global();
+    let _ = ::rayon::ThreadPoolBuilder::new()
+        .num_threads(1)
+        .build_global();
 
     let args = parse_args(std::env::args()).unwrap_or_else(|e| e.exit());
 
