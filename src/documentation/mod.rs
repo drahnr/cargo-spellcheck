@@ -29,6 +29,7 @@ pub type Range = core::ops::Range<usize>;
 
 mod chunk;
 mod cluster;
+mod developer;
 mod literal;
 pub(crate) mod literalset;
 mod markdown;
