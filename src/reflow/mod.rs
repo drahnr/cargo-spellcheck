@@ -427,12 +427,24 @@ fn reflow<'s>(
     let parser = Parser::new_ext(chunk.as_str(), Options::all());
 
     let mut paragraph = 0_usize;
+    // nested unbreakables are tracked via a stack approach
     let mut unbreakable_stack: Vec<Range> = Vec::with_capacity(16); // no more than 16 items will be nested, commonly it's 2 or 3
-    let mut unbreakables = Vec::with_capacity(1024);
+                                                                    // the true unbreakables (without inner nested items)
+                                                                    // to be used for reflowing
+    let mut unbreakables = Vec::with_capacity(256);
 
-    let mut acc = Vec::with_capacity(256);
+    let mut acc = Vec::with_capacity(128);
 
     for (event, cover) in parser.into_offset_iter() {
+        let (event, cover) = dbg!((event, cover));
+        #[cfg(debug_assertions)]
+        {
+            log::trace!(
+                "Current segment {:?}: {:?}",
+                cover,
+                &chunk.as_str()[cover.clone()]
+            );
+        }
         match event {
             Event::Start(tag) => {
                 match tag {
@@ -453,7 +465,7 @@ fn reflow<'s>(
                             origin,
                             paragraph,
                             paragraph,
-                            unbreakable_stack.as_slice(),
+                            unbreakables.as_slice(),
                             cfg.max_line_length,
                         )?;
                         paragraph = p;
@@ -479,6 +491,7 @@ fn reflow<'s>(
                             debug_assert!(dbg!(parent).contains(dbg!(&cover.start)));
                             debug_assert!(dbg!(parent).contains(dbg!(&(cover.end - 1))));
                         }
+                        let _ = unbreakable_stack.pop();
                     }
                     Tag::Paragraph => {
                         // regular end of paragraph
@@ -487,7 +500,7 @@ fn reflow<'s>(
                             origin,
                             paragraph,
                             cover.end,
-                            unbreakable_stack.as_slice(),
+                            unbreakables.as_slice(),
                             cfg.max_line_length,
                         )?;
                         paragraph = p;
@@ -502,8 +515,12 @@ fn reflow<'s>(
                 }
             }
             Event::Text(_s) => {}
-            Event::Code(_s) => {}
+            Event::Code(_s) => {
+                // always make code unbreakable
+                unbreakables.push(cover);
+            }
             Event::Html(_s) => {
+                unbreakables.push(cover);
                 // TODO verify this does not interfere with paragraphs
             }
             Event::FootnoteReference(_s) => {
@@ -518,7 +535,7 @@ fn reflow<'s>(
                     origin,
                     paragraph,
                     cover.end,
-                    unbreakable_stack.as_slice(),
+                    unbreakables.as_slice(),
                     cfg.max_line_length,
                 )?;
                 paragraph = p;
