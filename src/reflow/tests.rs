@@ -557,9 +557,15 @@ struct Fff;
 }
 
 #[test]
-fn readme() {
+fn reflow_readme() {
     // TODO reduce this to the minimal failing test case
     const README: &'static str = include_str!("../../README.md");
 
     reflow_content!(80usize break ContentOrigin::TestEntityCommonMark, README => ok);
+}
+
+
+#[test]
+fn reflow_cmark_nested_link_types() {
+    reflow_content!(80usize break ContentOrigin::TestEntityCommonMark, "[![yada](image_url)](link_url)" => ok);
 }
