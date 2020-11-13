@@ -305,11 +305,6 @@ fn store_suggestion<'s>(
     #[cfg(debug_assertions)]
     let sb = s.as_bytes();
 
-    // TODO we know these are all non-overlapping by definition
-    // TODO so this would require only one traversal of `s`
-    // let unbreakable_ranges: Vec<_> = bytes_unbreakable_ranges.into_iter().filter_map(|b_range| {
-    //     crate::util::byte_range_to_char_range(s, b_range.clone())
-    // }).collect();
     let unbreakable_ranges =
         crate::util::byte_range_to_char_range_many(s, bytes_unbreakable_ranges);
     let unbreakable_ranges = unbreakable_ranges.as_slice();
