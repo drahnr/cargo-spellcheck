@@ -1,6 +1,5 @@
 # cargo-spellcheck
 
-
 [![crates.io](https://img.shields.io/crates/v/cargo_spellcheck.svg)](https://crates.io/crates/cargo-spellcheck)
 [![CI](https://ci.spearow.io/api/v1/teams/main/pipelines/cargo-spellcheck/jobs/master-validate/badge)](https://ci.spearow.io/teams/main/pipelines/cargo-spellcheck/jobs/master-validate)
 ![commits-since](https://img.shields.io/github/commits-since/drahnr/cargo-spellcheck/latest.svg)
@@ -12,6 +11,7 @@ Run `cargo spellcheck --fix` or `cargo spellcheck fix` to fix all your
 documentation comments in order to avoid narsty typos all over your source tree.
 Meant as a helper simplifying review as well as improving CI checks after a
 learning phase for custom/topic specifc lingo.
+
 ### Check For Spelling and/or Grammar Mistakes
 
 ```zsh
@@ -55,6 +55,7 @@ cargo spellcheck fix
 
 `cargo spellcheck` can be configured with `-m <code>` to return a non-zero
 return code if mistakes are found instead of `0`.
+
 ## Implemented Features + Roadmap
 
 * [x] Parse doc comments from arbitrary files
@@ -143,23 +144,28 @@ Available checker support
 
 Requires a C++ compiler to compile the hunspell CXX source files which are part
 of `hunspell-sys`
+
 ##### Fedora 30+
+
 ```sh
 dnf install -y clang
 ```
 
 ##### Ubuntu 19.10+
+
 ```sh
 apt install -y clang
 ```
 
 ##### Mac OS X
-```
+
+```sh
 brew install llvm
 ```
 
 The environment variable `LLVM_CONFIG_PATH` needs to point to `llvm-config`, to
 do so:
+
 ```sh
 export LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config
 ```
