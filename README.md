@@ -1,19 +1,17 @@
 # cargo-spellcheck
 
+
 [![crates.io](https://img.shields.io/crates/v/cargo_spellcheck.svg)](https://crates.io/crates/cargo-spellcheck)
 [![CI](https://ci.spearow.io/api/v1/teams/main/pipelines/cargo-spellcheck/jobs/master-validate/badge)](https://ci.spearow.io/teams/main/pipelines/cargo-spellcheck/jobs/master-validate)
 ![commits-since](https://img.shields.io/github/commits-since/drahnr/cargo-spellcheck/latest.svg)
-
 Check your spelling with `hunspell` and/or `languagetool`.
 
 ## Use Cases
 
-Run `cargo spellcheck --fix` or `cargo spellcheck fix` to fix all your documentation comments
-in order to avoid narsty typos all over your source tree.
-
-Meant as a helper simplifying review as well as improving CI checks
-after a learning phase for custom/topic specifc lingo.
-
+Run `cargo spellcheck --fix` or `cargo spellcheck fix` to fix all your
+documentation comments in order to avoid narsty typos all over your source tree.
+Meant as a helper simplifying review as well as improving CI checks after a
+learning phase for custom/topic specifc lingo.
 ### Check For Spelling and/or Grammar Mistakes
 
 ```zsh
@@ -55,9 +53,8 @@ cargo spellcheck fix
 
 ### Continuous Integration / CI
 
-`cargo spellcheck` can be configured with `-m <code>` to return a non-zero return code if
-mistakes are found instead of `0`.
-
+`cargo spellcheck` can be configured with `-m <code>` to return a non-zero
+return code if mistakes are found instead of `0`.
 ## Implemented Features + Roadmap
 
 * [x] Parse doc comments from arbitrary files
@@ -144,8 +141,8 @@ Available checker support
 
 #### Hunspell
 
-Requires a C++ compiler to compile the hunspell CXX source files which are part of `hunspell-sys`
-
+Requires a C++ compiler to compile the hunspell CXX source files which are part
+of `hunspell-sys`
 ##### Fedora 30+
 ```sh
 dnf install -y clang
@@ -161,12 +158,13 @@ apt install -y clang
 brew install llvm
 ```
 
-The environment variable `LLVM_CONFIG_PATH` needs to point to `llvm-config`, to do so:
-
+The environment variable `LLVM_CONFIG_PATH` needs to point to `llvm-config`, to
+do so:
 ```sh
 export LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config
 ```
 
 #### LanguageTool
 
-Run an instance of the [LanguageTool server i.e. as container](https://hub.docker.com/r/erikvl87/languagetool).
+Run an instance of the [LanguageTool server i.e. as
+container](https://hub.docker.com/r/erikvl87/languagetool).
