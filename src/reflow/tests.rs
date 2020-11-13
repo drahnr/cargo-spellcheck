@@ -589,3 +589,30 @@ shell
 Yada
 "###### => ok);
 }
+
+#[test]
+fn reflow_minified_readme() {
+    // FIXME the replacement lacks trailing newlines.
+    // FIXME take a look at the replacements
+    reflow_content!(30usize break ContentOrigin::TestEntityCommonMark,
+r###"# cargo-spellcheck
+
+[![crates.io](https://img.source/cargo_spellcheck.svg)](https://crates.io)
+
+<pre>
+<font color="#CC0000"><b>error</b></font>
+</pre>
+
+## Continuous Integration / CI
+
+`cargo spellcheck` can be configured with `-m <code>` to return a non-zero
+return code if mistakes are found instead of `0`.
+
+## Implemented Features + Roadmap
+
+* [x] Parse doc comments from arbitrary files
+* [x] Decent error printing
+
+"###
+    => ok); // it's obviously not ok
+}

@@ -482,7 +482,13 @@ impl<'s> fmt::Display for Suggestion<'s> {
 impl<'s> fmt::Debug for Suggestion<'s> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match crate::documentation::ChunkDisplay::try_from((self.chunk, self.span)) {
-            Ok(printable) => write!(formatter, "({}, {:?})", &printable, printable.1),
+            Ok(printable) => write!(
+                formatter,
+                "({}, {:?}, {:?})",
+                &printable,
+                printable.1,
+                self.replacements.as_slice()
+            ),
             Err(e) => {
                 writeln!(formatter, "> span={:?}", self.span)?;
                 writeln!(
