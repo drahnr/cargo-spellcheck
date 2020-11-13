@@ -286,27 +286,42 @@ impl<'s> Indentation<'s> {
 /// Note: Leading spaces are skipped by the markdown parser,
 /// which implies for `///` and `//!`, the paragraph for the first
 /// line starting right after `/// ` (note the space here).
+///
+///
+/// Returns: TODO FIXME ??
 fn store_suggestion<'s>(
     chunk: &'s CheckableChunk,
     origin: &ContentOrigin,
-    paragraph: usize,
-    end: usize,
-    unbreakable_ranges: &[Range],
+    bytes_paragraph: usize,
+    bytes_end: usize,
+    bytes_unbreakable_ranges: &[Range],
     max_line_width: usize,
 ) -> Result<(usize, Option<Suggestion<'s>>)> {
-    let range = Range {
-        start: paragraph,
-        end,
+    let bytes_range = Range {
+        start: bytes_paragraph,
+        end: bytes_end,
     };
     let s = chunk.as_str();
     #[cfg(debug_assertions)]
     let sb = s.as_bytes();
 
+    // TODO we know these are all non-overlapping by definition
+    // TODO so this would require only one traversal of `s`
+    // let unbreakable_ranges: Vec<_> = bytes_unbreakable_ranges.into_iter().filter_map(|b_range| {
+    //     crate::util::byte_range_to_char_range(s, b_range.clone())
+    // }).collect();
+    let unbreakable_ranges =
+        crate::util::byte_range_to_char_range_many(s, bytes_unbreakable_ranges);
+    let unbreakable_ranges = unbreakable_ranges.as_slice();
+
+    let range = crate::util::byte_range_to_char_range(s, bytes_range.clone())
+        .expect("Must have alignment to byte boundaries. qed");
+
     #[cfg(debug_assertions)]
     log::trace!(
         "reflow::store_suggestion(chunk([{:?}]): {:?}",
         &range,
-        crate::util::sub_char_range(s, range.clone()),
+        &s[bytes_range.clone()],
     );
 
     // with markdown, the initial paragraph for `/// `
@@ -316,6 +331,11 @@ fn store_suggestion<'s>(
         CommentVariant::DoubleSlashEM | CommentVariant::TripleSlash => 1usize,
         _ => 0usize,
     };
+
+    debug_assert_eq!(
+        &s[bytes_range],
+        crate::util::sub_char_range(s, range.clone())
+    );
 
     let range2span = chunk.find_spans(range.clone());
     let mut spans_iter = range2span.iter().map(|(_range, span)| *span);
@@ -327,7 +347,7 @@ fn store_suggestion<'s>(
         } = if let Some(first) = spans_iter.next() {
             first
         } else {
-            return Ok((paragraph, None));
+            return Ok((bytes_paragraph, None));
         };
         let end = if let Some(last) = spans_iter.last() {
             last.end
@@ -373,7 +393,7 @@ fn store_suggestion<'s>(
         .collect::<Vec<Indentation>>();
 
     Ok((
-        end,
+        bytes_end,
         reflow_inner(
             chunk.as_str(),
             range.clone(),

@@ -564,7 +564,6 @@ fn reflow_readme() {
     reflow_content!(80usize break ContentOrigin::TestEntityCommonMark, README => ok);
 }
 
-
 #[test]
 fn reflow_cmark_nested_link_types() {
     reflow_content!(80usize break ContentOrigin::TestEntityCommonMark, "[![yada](image_url)](link_url)" => ok);

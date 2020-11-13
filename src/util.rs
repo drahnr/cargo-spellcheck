@@ -113,6 +113,112 @@ pub fn sub_chars(s: &str, range: Range) -> String {
 
 use core::ops::{Bound, RangeBounds};
 
+/// Convert a given byte range of a string, that is known to be
+/// at valid char bounds, to a character range.
+///
+/// If the bounds are not bounded by a character, it will take the
+/// bounding characters that are intersected inclusive.
+pub fn byte_range_to_char_range<R>(s: &str, byte_range: R) -> Option<Range>
+where
+    R: RangeBounds<usize>,
+{
+    let mut peekable = s.char_indices().enumerate().peekable();
+    let mut range = Range { start: 0, end: 0 };
+    let mut started = false;
+    while let Some((idx, (byte_offset, _c))) = peekable.next() {
+        match byte_range.start_bound() {
+            Bound::Included(&start) if byte_offset == start => {
+                started = true;
+                range.start = idx;
+            }
+            Bound::Included(&start) if byte_offset > start && !started => {
+                started = true;
+                range.start = idx.saturating_sub(1);
+            }
+            Bound::Excluded(_start) => {
+                unreachable!("Exclusive start bounds do not exist. qed");
+            }
+            _ => {}
+        }
+
+        match byte_range.end_bound() {
+            Bound::Included(&end) if byte_offset > end => {
+                range.end = idx;
+                return Some(range);
+            }
+            Bound::Excluded(&end) if byte_offset >= end => {
+                range.end = idx;
+                return Some(range);
+            }
+            _ => {}
+        }
+        if peekable.peek().is_none() {
+            if started {
+                range.end = idx + 1;
+                return Some(range);
+            }
+        }
+    }
+    None
+}
+
+/// Convert many byte ranges to character ranges.
+///
+/// Attention: All byte ranges most NOT overlap and be relative to the same `s`.
+pub fn byte_range_to_char_range_many<R>(s: &str, byte_ranges: &[R]) -> Vec<Range>
+where
+    R: std::ops::RangeBounds<usize> + std::fmt::Debug,
+{
+    let mut peekable = s.char_indices().enumerate().peekable();
+    let mut cursor = 0usize;
+    let mut acc = Vec::with_capacity(byte_ranges.len());
+    for byte_range in dbg!(byte_ranges) {
+        let mut range = Range { start: 0, end: 0 };
+        let mut started = false;
+        'inner: while let Some((idx, (byte_offset, _c))) = peekable.peek() {
+            cursor = *idx;
+            let byte_offset = *byte_offset;
+            match byte_range.start_bound() {
+                Bound::Included(&start) if byte_offset == start => {
+                    started = true;
+                    range.start = cursor;
+                }
+                Bound::Included(&start) if byte_offset > start && !started => {
+                    started = true;
+                    range.start = cursor.saturating_sub(1);
+                }
+                Bound::Excluded(_start) => {
+                    unreachable!("Exclusive start bounds do not exist. qed");
+                }
+                _ => {}
+            }
+
+            match byte_range.end_bound() {
+                Bound::Included(&end) if byte_offset > end => {
+                    range.end = cursor;
+                    acc.push(range.clone());
+                    started = false;
+                    break 'inner;
+                }
+                Bound::Excluded(&end) if byte_offset >= end => {
+                    range.end = cursor;
+                    acc.push(range.clone());
+                    started = false;
+                    break 'inner;
+                }
+                _ => {}
+            }
+
+            let _ = peekable.next();
+        }
+        if started {
+            range.end = cursor + 1;
+            acc.push(range);
+        }
+    }
+    acc
+}
+
 /// Extract a subset of chars by iterating.
 /// Range must be in characters.
 pub fn sub_char_range<'s, R>(s: &'s str, range: R) -> &'s str
@@ -279,5 +385,28 @@ Schlupfwespe,
 
         assert_eq!(sub_char_range(B, 10..), B_EXPECTED);
         assert_eq!(sub_char_range(B, 15..16), B_EXPECTED);
+    }
+
+    #[test]
+    fn range_bytes_to_chars() {
+        // 4 3 4
+        assert_eq!(byte_range_to_char_range("🕱™🐡", 4..7), Some(1..2));
+        // 4 1 1 3 4
+        assert_eq!(byte_range_to_char_range("🕱12™🐡", 6..13), Some(3..5));
+        assert_eq!(byte_range_to_char_range("🕱12™🐡", 0..0), Some(0..0));
+        assert_eq!(byte_range_to_char_range("🕱12™🐡", 25..26), None);
+    }
+
+    #[test]
+    fn range_bytes_to_chars_many() {
+        // 4 3 4
+        assert_eq!(
+            byte_range_to_char_range_many("🕱™🐡", &[4..7, 7..11]),
+            vec![1..2, 2..3]
+        );
+        assert_eq!(
+            byte_range_to_char_range_many("🕱™🐡", &[0..0, 4..11]),
+            vec![0..0, 1..3]
+        );
     }
 }
