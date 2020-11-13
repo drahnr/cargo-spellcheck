@@ -89,10 +89,13 @@ macro_rules! reflow_content {
         assert_eq!(dbg!(chunks).len(), 1);
         let chunk = &chunks[0];
         let _plain = chunk.erase_cmark();
-        println!("reflow content:\n {:?}", $content);
         let suggestions = reflow(&$content_type, chunk, &CFG).expect("Reflow is working. qed");
 
-        assert_eq!(suggestions.len(), 0);
+        assert_eq!(
+            dbg!(suggestions).len(),
+            0,
+            "The content is known to be ok, not in need of a reflow."
+        );
     };
     ($max_line_width:literal break $content_type:expr, $content:expr => $expected:literal) => {
         const CFG: ReflowConfig = ReflowConfig {
@@ -567,4 +570,22 @@ fn reflow_readme() {
 #[test]
 fn reflow_cmark_nested_link_types() {
     reflow_content!(80usize break ContentOrigin::TestEntityCommonMark, "[![yada](image_url)](link_url)" => ok);
+}
+
+#[test]
+fn reflow_cmark_headlines() {
+    reflow_content!(80usize break ContentOrigin::TestEntityCommonMark, 
+        r######"
+# 🔒😑
+
+Something is 🐡.
+
+```sh
+shell
+```
+
+## 🥁 second
+
+Yada
+"###### => ok);
 }
