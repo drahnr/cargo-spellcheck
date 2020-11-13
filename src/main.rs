@@ -397,7 +397,11 @@ fn run() -> anyhow::Result<ExitCode> {
 
 #[allow(missing_docs)]
 fn main() -> anyhow::Result<()> {
-    std::process::exit(run()?.as_u8() as i32)
+    let val = run()?.as_u8();
+    if val != 0 {
+        std::process::exit(val as i32)
+    }
+    Ok(())
 }
 
 #[cfg(test)]
