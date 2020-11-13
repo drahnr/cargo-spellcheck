@@ -3,9 +3,6 @@ use crate::{chyrp_up, fluff_up};
 use crate::{LineColumn, Span};
 
 macro_rules! verify_reflow_inner {
-    ([ $( $line:literal ),+ $(,)?] => $expected:literal) => {
-        verify_reflow_inner!(80usize break [ $( $line ),+ ] => $expected);
-    };
     ($n:literal break [ $( $line:literal ),+ $(,)?] => $expected:literal) => {
 
         let _ = env_logger::Builder::new()
@@ -43,9 +40,6 @@ macro_rules! verify_reflow_inner {
             }
         }
     };
-    ($line:literal => $expected:literal) => {
-        verify_reflow_inner!([$line] => $expected);
-    };
 }
 
 #[test]
@@ -74,92 +68,101 @@ fn reflow_inner_not_required() {
     }
 }
 
-/// Run reflow on a set of lines that are `fluff_up`ed
-/// and match the resulting `Patch`s replacment with
-/// an `expected`.
-macro_rules! reflow {
-    ([ $( $line:literal ),+ $(,)?] => $expected:literal, $no_reflow:expr) => {
-        reflow!(80usize break [ $( $line ),+ ] => $expected, $no_reflow:expr);
-    };
-    ($n:literal break [ $( $line:literal ),+ $(,)?] => $expected:literal, $no_reflow:expr) => {
+macro_rules! test_setup_reflow {
+    ($max_line_length:literal, $content_type:expr, $content:literal) => {};
+}
+
+macro_rules! reflow_content {
+    ($max_line_width:literal break $content_type:expr, $content:expr => ok) => {
+        const CFG: ReflowConfig = ReflowConfig {
+            max_line_length: $max_line_width,
+        };
+
         let _ = env_logger::Builder::new()
-            .filter(None, log::LevelFilter::Debug)
+            .filter(None, log::LevelFilter::Trace)
             .is_test(true)
             .try_init();
 
-        const CONTENT:&'static str = fluff_up!($( $line ),+);
-        let docs = Documentation::from((ContentOrigin::TestEntityRust, CONTENT));
+        let docs = Documentation::from(($content_type, $content));
         assert_eq!(docs.entry_count(), 1);
-        let chunks = docs.get(&ContentOrigin::TestEntityRust).expect("Contains test data. qed");
+        let chunks = docs.get(&$content_type).expect("Contains test data. qed");
         assert_eq!(dbg!(chunks).len(), 1);
         let chunk = &chunks[0];
         let _plain = chunk.erase_cmark();
-        println!("{}", CONTENT);
+        println!("reflow content:\n {:?}", $content);
+        let suggestions = reflow(&$content_type, chunk, &CFG).expect("Reflow is working. qed");
 
-        let cfg = ReflowConfig {
-            max_line_length: $n,
-        };
-        let suggestion_set = reflow(&ContentOrigin::TestEntityRust, chunk, &cfg).expect("Reflow is working. qed");
-        if $no_reflow {
-            assert_eq!(suggestion_set.len(), 0);
-        } else {
-            let suggestions = suggestion_set
-                .iter()
-                .next()
-                .expect("Contains one suggestion. qed");
-
-                let replacement = suggestions.replacements.iter().next().expect("There exists a replacement. qed");
-                log::info!("Replacement {:?}", replacement);
-                assert_eq!(replacement.as_str(), $expected);
-        }
+        assert_eq!(suggestions.len(), 0);
     };
-    ($line:literal => $expected:literal, $no_reflow:expr) => {
-        reflow!([$line] => $expected, $no_reflow:expr);
+    ($max_line_width:literal break $content_type:expr, $content:expr => $expected:literal) => {
+        const CFG: ReflowConfig = ReflowConfig {
+            max_line_length: $max_line_width,
+        };
+
+        let _ = env_logger::Builder::new()
+            .filter(None, log::LevelFilter::Trace)
+            .is_test(true)
+            .try_init();
+
+        let docs = Documentation::from(($content_type, $content));
+        assert_eq!(docs.entry_count(), 1);
+        let chunks = docs.get(&$content_type).expect("Contains test data. qed");
+        assert_eq!(dbg!(chunks).len(), 1);
+        let chunk = &chunks[0];
+        let _plain = chunk.erase_cmark();
+        println!("reflow content:\n {:?}", $content);
+        let suggestions = reflow(&$content_type, chunk, &CFG).expect("Reflow is working. qed");
+
+        let suggestions = suggestions
+            .iter()
+            .next()
+            .expect("Contains one suggestion. qed");
+
+        let replacement = suggestions
+            .replacements
+            .iter()
+            .next()
+            .expect("There exists a replacement. qed");
+        log::info!("Replacement {:?}", replacement);
+        assert_eq!(replacement.as_str(), $expected);
+    };
+}
+
+/// Run reflow on a set of lines that are `fluff_up`ed
+/// and match the resulting `Patch`s replacment with
+/// an `expected` (a single literal, TODO allow multiple).
+macro_rules! reflow_fluff {
+    ($n:literal break [ $( $line:literal ),+ $(,)?] => $expected:literal) => {
+        const CONTENT:&'static str = fluff_up!($( $line ),+);
+
+        reflow_content!($n break ContentOrigin::TestEntityRust, CONTENT => $expected);
+    };
+
+    ($n:literal break [ $( $line:literal ),+ $(,)?] => ok) => {
+        const CONTENT:&'static str = fluff_up!($( $line ),+);
+
+        reflow_content!($n break ContentOrigin::TestEntityRust, CONTENT => ok);
     };
 }
 
 macro_rules! reflow_chyrp {
-    ([ $( $line:literal ),+ $(,)?] => $expected:literal, $no_reflow:expr) => {
-        reflow_chyrp!(80usize break [ $( $line ),+ ] => $expected, $no_reflow:expr);
-    };
-    ($n:literal break [ $( $line:literal ),+ $(,)?] => $expected:literal, $no_reflow:expr) => {
-        let _ = env_logger::Builder::new()
-            .filter(None, log::LevelFilter::Debug)
-            .is_test(true)
-            .try_init();
+    ($n:literal break [ $( $line:literal ),+ $(,)?] => $expected:literal) => {
 
         const CONTENT:&'static str = chyrp_up!($( $line ),+);
-        let docs = Documentation::from((ContentOrigin::TestEntityRust, dbg!(CONTENT)));
-        assert_eq!(docs.entry_count(), 1);
-        let chunks = docs.get(&ContentOrigin::TestEntityRust).expect("Contains test data. qed");
-        assert_eq!(dbg!(chunks).len(), 1);
-        let chunk = &chunks[0];
-        let _plain = chunk.erase_cmark();
 
-        let cfg = ReflowConfig {
-            max_line_length: $n,
-        };
-        let suggestion_set = reflow(&ContentOrigin::TestEntityRust, chunk, &cfg).expect("Reflow is working. qed");
-        if $no_reflow {
-            assert_eq!(suggestion_set.len(), 0);
-        } else {
-            let suggestions = suggestion_set
-                .iter()
-                .next()
-                .expect("Contains one suggestion. qed");
-
-                let replacement = suggestions.replacements.iter().next().expect("There exists a replacement. qed");
-                assert_eq!(replacement.as_str(), $expected);
-        }
+        reflow_content!($n break ContentOrigin::TestEntityRust, CONTENT => $expected);
     };
-    ($line:literal => $expected:literal, $no_reflow:expr) => {
-        reflow_chyrp!([$line] => $expected, $no_reflow:expr);
+    ($n:literal break [ $( $line:literal ),+ $(,)?] => ok) => {
+
+        const CONTENT:&'static str = chyrp_up!($( $line ),+);
+
+        reflow_content!($n break ContentOrigin::TestEntityRust, CONTENT => ok);
     };
 }
 
 #[test]
 fn reflow_into_suggestion() {
-    reflow!(45 break ["This module contains documentation thats \
+    reflow_fluff!(45 break ["This module contains documentation thats \
 is too long for one line and moreover, \
 it spans over mulitple lines such that \
 we can test our rewrapping algorithm. \
@@ -177,22 +180,21 @@ r#"This module contains documentation thats
 /// blanket text without any meaning. But
 /// lets also see what happens if there are
 /// two consecutive newlines in one connected
-/// documentation span."#, false);
+/// documentation span."#);
 }
 
 #[test]
 fn reflow_shorter_than_limit() {
-    reflow!(80 break ["This module contains documentation that is ok for one line"] =>
-            "", true);
+    reflow_fluff!(80 break ["This module contains documentation that is ok for one line"] => ok);
 }
 
 #[test]
 fn reflow_multiple_lines() {
-    reflow!(43 break ["This module contains documentation that is broken",
+    reflow_fluff!(43 break ["This module contains documentation that is broken",
                         "into multiple short lines resulting in multiple spans."] =>
             r#"This module contains documentation that
 /// is broken into multiple short lines
-/// resulting in multiple spans."#, false);
+/// resulting in multiple spans."#);
 }
 #[test]
 fn reflow_indentations() {
@@ -281,31 +283,29 @@ fn reflow_doc_indentations() {
 
 #[test]
 fn reflow_markdown() {
-    reflow!(60 break ["Possible **ways** to run __rustc__ and request various parts of LTO.",
+    reflow_fluff!(60 break ["Possible **ways** to run __rustc__ and request various parts of LTO.",
                         " `markdown` syntax which leads to __unbreakables__?  With emojis: 🚤w🌴x🌋y🍈z🍉0."] =>
         r#"Possible **ways** to run __rustc__ and request various
 /// parts of LTO. `markdown` syntax which leads to
-/// __unbreakables__? With emojis: 🚤w🌴x🌋y🍈z🍉0."#, false);
+/// __unbreakables__? With emojis: 🚤w🌴x🌋y🍈z🍉0."#);
 }
 
 #[test]
 fn reflow_two_paragraphs_not_required() {
-    reflow!(80 break ["A short paragraph followed by another one.", "", "Surprise, we have another parapgrah."]
-            => "", true);
+    reflow_fluff!(80 break ["A short paragraph followed by another one.", "", "Surprise, we have another parapgrah."]
+            => ok);
 }
 
 #[test]
 fn reflow_fold_two_to_one() {
-    reflow!(20 break ["A 🚤>", "<To 🌴/🍉&🍈"]
-            => "A 🚤> <To 🌴/🍉&🍈",
-            false);
+    reflow_fluff!(20 break ["A 🚤>", "<To 🌴/🍉&🍈"]
+            => "A 🚤> <To 🌴/🍉&🍈");
 }
 
 #[test]
 fn reflow_split_one_into_three() {
-    reflow!(9 break ["A 🌴xX 🍉yY 🍈zZ"]
-            => "A 🌴xX\n/// 🍉yY\n/// 🍈zZ",
-            false);
+    reflow_fluff!(9 break ["A 🌴xX 🍉yY 🍈zZ"]
+            => "A 🌴xX\n/// 🍉yY\n/// 🍈zZ");
 }
 
 #[test]
@@ -397,14 +397,14 @@ With a second part that is fine"#
 
 #[test]
 fn reflow_doc_short() {
-    reflow_chyrp!(40 break ["a", "b", "c"] => r#"a b c"#, false);
+    reflow_chyrp!(40 break ["a", "b", "c"] => r#"a b c"#);
 }
 
 #[test]
 fn reflow_doc_indent_middle() {
     reflow_chyrp!(28 break ["First line", "     Second line", "         third line"]
         => r##"First line Second"#]
-#[doc=r#"line third line"##, false);
+#[doc=r#"line third line"##);
 }
 
 #[test]
@@ -412,7 +412,7 @@ fn reflow_doc_long() {
     reflow_chyrp!(40 break ["One line which is quite long and needs to be reflown in another line."]
         => r##"One line which is quite long"#]
 #[doc=r#"and needs to be reflown in"#]
-#[doc=r#"another line."##, false);
+#[doc=r#"another line."##);
 }
 
 #[test]
@@ -554,4 +554,12 @@ struct Fff;
 
     assert_eq!(suggestion.span, EXPECTED_SPAN);
     assert_eq!(suggestion.replacements.as_slice(), EXPECTED_REPLACEMENT);
+}
+
+#[test]
+fn readme() {
+    // TODO reduce this to the minimal failing test case
+    const README: &'static str = include_str!("../../README.md");
+
+    reflow_content!(80usize break ContentOrigin::TestEntityCommonMark, README => ok);
 }
