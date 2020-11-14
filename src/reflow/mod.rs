@@ -156,7 +156,7 @@ fn reflow_inner<'s>(
     // now if the last character is a newline, we spare it, since it would be
     // annihilated by the `Tokeneer` without replacement.
     let mut sit = s.chars();
-    let first_char_is_newline = sit.next().map(|c| c == '\n').unwrap_or_default();
+    let _first_char_is_newline = sit.next().map(|c| c == '\n').unwrap_or_default();
     // make sure we do not double count the \n in case of a single `\n` in `s`
     // by re-use of a single  iterator
     let last_char_is_newline = sit.last().map(|c| c == '\n').unwrap_or_default();
@@ -200,7 +200,6 @@ fn reflow_inner<'s>(
     //     acc.push_str(line_delimiter);
     // }
     // let acc = acc;
-    
 
     // construct replacement string from prefix and Gluon iterations
     let content = gluon.fold(acc, |mut acc, (_lineno, content, _range)| {
