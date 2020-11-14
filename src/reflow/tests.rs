@@ -296,7 +296,7 @@ fn reflow_indentations() {
         .next()
         .expect("Contains one suggestion. qed");
 
-    dbg!(crate::util::load_span_from(&mut CONTENT.as_bytes(), suggestion.span).unwrap());
+    dbg!(load_span_from(&mut CONTENT.as_bytes(), suggestion.span).unwrap());
 
     let replacement = suggestion
         .replacements

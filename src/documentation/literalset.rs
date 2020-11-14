@@ -132,6 +132,7 @@ pub(crate) mod tests {
     pub(crate) use super::super::tests::annotated_literals;
     use super::*;
     use crate::util::load_span_from;
+    use crate::util::sub_chars;
 
     /// A debug helper to print concatenated length of all items.
     #[macro_export]
@@ -348,13 +349,13 @@ struct Vikings;
             }
             assert_eq!(
                 load_span_from(RAW.as_bytes(), span.clone()).expect("Span extraction must work"),
-                crate::util::sub_chars(chunk.as_str(), range.clone())
+                sub_chars(chunk.as_str(), range.clone())
             );
 
             let r: Range = span.to_content_range(&chunk).expect("Should work");
             // the range for raw str contains an offset of 3 when used with `///`
             assert_eq!(
-                crate::util::sub_chars(chunk.as_str(), range.clone()),
+                sub_chars(chunk.as_str(), range.clone()),
                 s.as_str().to_owned()
             );
             assert_eq!(&r, range);

@@ -4,12 +4,11 @@
 
 use super::*;
 
+use anyhow::{bail, Error, Result};
+use indexmap::IndexMap;
 use std::convert::TryFrom;
 use std::fmt;
 use std::path::Path;
-
-use anyhow::{bail, Error, Result};
-use indexmap::IndexMap;
 
 use crate::documentation::PlainOverlay;
 use crate::{util::sub_chars, Range, Span};
@@ -179,7 +178,7 @@ impl CheckableChunk {
                 );
                 log::trace!(target: "find_spans",
                     "[f]content;\n>{}<",
-                    crate::util::sub_chars(self.as_str(), fragment_range.clone())
+                    sub_chars(self.as_str(), fragment_range.clone())
                 );
             })
             .filter_map(|(fragment_span, fragment_range, sub_fragment_range)| {
