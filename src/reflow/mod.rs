@@ -288,7 +288,7 @@ impl<'s> Indentation<'s> {
 /// line starting right after `/// ` (note the space here).
 ///
 ///
-/// Returns: TODO FIXME ??
+/// Returns: end of processed range and Suggestion, if reflow happened
 fn store_suggestion<'s>(
     chunk: &'s CheckableChunk,
     origin: &ContentOrigin,
