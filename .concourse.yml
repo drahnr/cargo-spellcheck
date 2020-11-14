@@ -313,6 +313,7 @@ jobs:
               - |
                 export EXE="../binary/cargo-spellcheck-$(git rev-parse HEAD)"
                 sudo chown $(whoami): -f "${EXE}"
+                sudo chown $(whoami): -Rf ./
                 chmod +x "${EXE}"
                 "${EXE}" --version
                 "${EXE}" reflow demo/Cargo.toml
