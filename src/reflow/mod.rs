@@ -153,9 +153,6 @@ fn reflow_inner<'s>(
 
     // extract the relevant part from the entire `chunk`, that will be our working set.
     let s_absolute = sub_char_range(s, range.clone());
-    // now if the last character is a newline, we spare it, since it would be
-    // annihilated by the `Tokeneer` without replacement.
-    let last_char_is_newline = s.chars().last().map(|c| c == '\n').unwrap_or_default();
 
     let unbreakables = unbreakable_ranges
         .iter()
@@ -235,13 +232,10 @@ fn reflow_inner<'s>(
 
     Ok(if reflow_applied {
         // for MacroDocEq comments, we also have to remove the last closing delimiter
-        let mut content = content
+        let content = content
             .strip_suffix(&variant.suffix_string())
             .map(|content| content.to_owned())
             .unwrap_or_else(|| content);
-        if &CommentVariant::CommonMark == variant && last_char_is_newline {
-            content.push_str(line_delimiter)
-        }
         Some(content)
     } else {
         None
