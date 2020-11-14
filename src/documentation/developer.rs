@@ -61,7 +61,6 @@ pub fn calculate_column(fragment: &str) -> usize {
 #[cfg(test)]
 mod tests {
   use crate::documentation::developer::*;
-  use ra_ap_syntax::tokenize;
 
   #[test]
   fn test_count_lines_correctly_counts_lines() {
