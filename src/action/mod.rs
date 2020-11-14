@@ -82,7 +82,7 @@ impl From<BandAid> for Patch {
 ///
 /// This function is not concerend with _any_ semantics or comments or
 /// whatsoever at all, it blindly replaces what is given to it.
-fn apply_patches<'s, II, I>(patches: II, source_buffer: String, mut sink: impl Write) -> Result<()>
+pub(crate) fn apply_patches<'s, II, I>(patches: II, source_buffer: &str, mut sink: impl Write) -> Result<()>
 where
     II: IntoIterator<IntoIter = I, Item = Patch>,
     I: Iterator<Item = Patch>,
@@ -90,7 +90,7 @@ where
     let mut patches = patches.into_iter().peekable();
 
     let mut source_iter =
-        iter_with_line_column_from(source_buffer.as_str(), LineColumn { line: 1, column: 0 })
+        iter_with_line_column_from(source_buffer, LineColumn { line: 1, column: 0 })
             .peekable();
 
     const TARGET: &str = "patch";
@@ -275,7 +275,7 @@ impl Action {
 
         apply_patches(
             bandaids.into_iter().map(|x| Patch::from(x)),
-            content, // FIXME for efficiency, correct_lines should integrate with `BufRead` instead of a `String` buffer
+            content.as_str(), // FIXME for efficiency, correct_lines should integrate with `BufRead` instead of a `String` buffer
             &mut writer,
         )?;
 
@@ -368,7 +368,7 @@ mod tests {
 
             apply_patches(
                 $bandaids.into_iter().map(|bandaid| Patch::from(bandaid)),
-                $text.to_owned(),
+                $text,
                 &mut sink,
             )
             .expect("Line correction must work in unit test!");
