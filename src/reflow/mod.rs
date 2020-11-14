@@ -9,7 +9,6 @@ use crate::checker::Checker;
 use crate::documentation::{CheckableChunk, Documentation};
 use crate::util::{
     byte_range_to_char_range, byte_range_to_char_range_many, load_span_from, sub_char_range,
-    sub_chars,
 };
 use crate::{CommentVariant, ContentOrigin, Detector, Range, Span, Suggestion, SuggestionSet};
 
@@ -153,12 +152,13 @@ fn reflow_inner<'s>(
     });
 
     // extract the relevant part from the entire `chunk`, that will be our working set.
-    let s_absolute = sub_chars(s, range.clone());
+    let s_absolute = sub_char_range(s, range.clone());
+
     let unbreakables = unbreakable_ranges
         .iter()
         .map(|r| (r.start.saturating_sub(range.start))..(r.end.saturating_sub(range.start)));
 
-    let mut gluon = Gluon::new(&s_absolute, max_line_width, &indentations);
+    let mut gluon = Gluon::new(s_absolute, max_line_width, &indentations);
     gluon.add_unbreakables(unbreakables);
 
     let mut reflow_applied = false;
