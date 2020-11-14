@@ -60,11 +60,11 @@ pub fn calculate_column(fragment: &str) -> usize {
 
 fn retain_only_developer_comments(tokens: Vec<TokenWithLineColumn>) -> Vec<TokenWithLineColumn> {
   let block_comment = Regex::new(r"^/\*(?P<content>.*)\*/$").unwrap();
-  let line_comment = Regex::new(r"^//([^/].*)$").unwrap();
+  let line_comment = Regex::new(r"^//([^[/|!]].*)$").unwrap();
   tokens.into_iter()
-    .filter(|t| block_comment.is_match(&t.content)
-      || line_comment.is_match(&t.content))
-    .collect()
+      .filter(|t| block_comment.is_match(&t.content)
+          || line_comment.is_match(&t.content))
+      .collect()
 }
 
 #[cfg(test)]
@@ -182,7 +182,7 @@ mod tests {
   }
 
   #[test]
-  fn retain_only_developer_comments_removes_other_tokens() {
+  fn retain_only_developer_comments_removes_non_comment_tokens() {
     let block_comment = "/* A block comment */";
     let line_comment = "// A line comment";
     let function_keyword = "fn";
@@ -205,6 +205,28 @@ mod tests {
 
     let should_be_excluded = vec!(function_keyword, function_name, left_bracket, newline,
         right_bracket, left_brace, right_brace, left_add, plus, right_add, whitespace, semicolon);
+
+    let tokens = source_to_tokens_with_location(&source);
+    let tokens = tokens_with_location_to_tokens_with_line_and_column(&source, tokens);
+    let filtered = retain_only_developer_comments(tokens);
+    for token in filtered {
+      for content in &should_be_excluded {
+        assert_ne!(&token.content, content);
+      }
+    }
+  }
+
+  #[test]
+  fn retain_only_developer_comments_removes_documentation_comment_tokens() {
+    let block_comment = "/* A block comment */";
+    let line_comment = "// A line comment";
+    let inner_documentation_comment = "//! An inner documentation comment";
+    let outer_documentation_comment = "/// An outer documentation comment";
+    let newline = "\n";
+    let source = format!("{}{}{}{}{}{}{}{}", block_comment, newline, line_comment, newline,
+        outer_documentation_comment, newline, inner_documentation_comment, newline);
+
+    let should_be_excluded = vec!(outer_documentation_comment, inner_documentation_comment);
 
     let tokens = source_to_tokens_with_location(&source);
     let tokens = tokens_with_location_to_tokens_with_line_and_column(&source, tokens);
