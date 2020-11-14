@@ -179,14 +179,14 @@ macro_rules! reflow_content {
         let expected_n = expected.len();
         // it yields more info if we try to match as many as we can first
         for (idx, (patch, expected)) in patches.into_iter().zip(expected.into_iter()).enumerate() {
-            log::info!("Patch {:?}", patch);
+            log::info!("Patch #{} {:?}", idx, patch);
             assert_matches::assert_matches!(patch, crate::Patch::Replace {
                 replacement,
                 replace_span,
             } => {
                 let mut content: &'static str = $content;
                 let to_be_replaced = load_span_from(&mut content.as_bytes(), replace_span).expect("Test cases are well defined and do not cause out of bounds access. qed");
-                log::info!("Replace {:?} => {:?}", to_be_replaced, replacement);
+                log::info!("Patch #{} replaces {:?} => {:?}", idx, to_be_replaced, replacement);
                 assert_eq!(replacement.as_str(), expected, "Patch #{}", idx);
             })
         }
