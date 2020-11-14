@@ -186,20 +186,10 @@ fn reflow_inner<'s>(
         reflow_applied = true;
     }
 
-    // let content = if &CommentVariant::CommonMark == variant && first_char_is_newline {
-    //     &content[1..]
-    // } else {
-    //     &content[..]
-    // };
-
     let mut acc = content.to_owned() + &variant.suffix_string();
     if !acc.is_empty() {
         acc.push_str(line_delimiter);
     }
-    // if &CommentVariant::CommonMark != variant {
-    //     acc.push_str(line_delimiter);
-    // }
-    // let acc = acc;
 
     // construct replacement string from prefix and Gluon iterations
     let content = gluon.fold(acc, |mut acc, (_lineno, content, _range)| {
@@ -325,7 +315,7 @@ impl<'s> Indentation<'s> {
 /// line starting right after `/// ` (note the space here).
 ///
 ///
-/// Returns: end of processed range and Suggestion, if reflow happened
+/// Returns: end of processed range and Suggestion, if reflow happened.
 fn store_suggestion<'s>(
     chunk: &'s CheckableChunk,
     origin: &ContentOrigin,
@@ -394,7 +384,7 @@ fn store_suggestion<'s>(
     );
 
     // Get indentation for each span, if a span covers multiple
-    // lines, use same indentation for all lines
+    // lines, use same indentation for all lines.
     let mut first = true;
     let indentations = range2span
         .iter()
@@ -445,7 +435,7 @@ fn store_suggestion<'s>(
     ))
 }
 
-/// Parses a `CheckableChunk` and performs the rewrapping on contained paragraphs
+/// Parses a `CheckableChunk` and performs the rewrapping on contained paragraphs.
 fn reflow<'s>(
     origin: &ContentOrigin,
     chunk: &'s CheckableChunk,
@@ -516,8 +506,8 @@ fn reflow<'s>(
                         if unbreakable_stack.len() == 1 {
                             unbreakables.push(cover);
                         } else if let Some(parent) = unbreakable_stack.last() {
-                            debug_assert!(dbg!(parent).contains(dbg!(&cover.start)));
-                            debug_assert!(dbg!(parent).contains(dbg!(&(cover.end - 1))));
+                            debug_assert!(parent.contains(&cover.start));
+                            debug_assert!(parent.contains(&(cover.end - 1)));
                         }
                         let _ = unbreakable_stack.pop();
                     }
