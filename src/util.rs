@@ -172,7 +172,7 @@ where
     let mut peekable = s.char_indices().enumerate().peekable();
     let mut cursor = 0usize;
     let mut acc = Vec::with_capacity(byte_ranges.len());
-    for byte_range in dbg!(byte_ranges) {
+    for byte_range in byte_ranges {
         let mut range = Range { start: 0, end: 0 };
         let mut started = false;
         'inner: while let Some((idx, (byte_offset, _c))) = peekable.peek() {
