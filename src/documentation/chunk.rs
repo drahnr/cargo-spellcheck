@@ -204,7 +204,6 @@ impl CheckableChunk {
                 let mut iter = s.chars().enumerate().peekable();
                 let mut started = true;
                 'w: while let Some((idx, c)) = iter.next() {
-                    // trace!(target: "find_spans", "char[{}]: {}", idx, c);
                     if idx == shift {
                         sub_fragment_span.start = cursor;
                         started = true;
