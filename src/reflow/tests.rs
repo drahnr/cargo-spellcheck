@@ -1,6 +1,6 @@
 use super::*;
 use crate::{chyrp_up, fluff_up};
-use crate::{LineColumn, Span};
+use crate::{LineColumn, Span, Patch};
 
 macro_rules! verify_reflow_inner {
     ($n:literal break [ $( $line:literal ),+ $(,)?] => $expected:literal) => {
@@ -68,11 +68,49 @@ fn reflow_inner_not_required() {
     }
 }
 
-macro_rules! test_setup_reflow {
-    ($max_line_length:literal, $content_type:expr, $content:literal) => {};
-}
-
 macro_rules! reflow_content {
+    ($max_line_width:literal break $content_type:expr, $content:expr => applied $expected:literal) => {
+        const CFG: ReflowConfig = ReflowConfig {
+            max_line_length: $max_line_width,
+        };
+
+        let _ = env_logger::Builder::new()
+            .filter(None, log::LevelFilter::Trace)
+            .is_test(true)
+            .try_init();
+
+        let docs = Documentation::from(($content_type, $content));
+        assert_eq!(docs.entry_count(), 1);
+        let chunks = docs.get(&$content_type).expect("Contains test data. qed");
+        assert_eq!(dbg!(chunks).len(), 1);
+        let chunk = &chunks[0];
+        let _plain = chunk.erase_cmark();
+        let suggestions = reflow(&$content_type, chunk, &CFG).expect("Reflow is working. qed");
+
+        let patches = suggestions
+            .into_iter()
+            .filter_map(|suggestion| {
+                suggestion.replacements.first()
+                    .map(|replacement| {
+                        let bandaid = crate::BandAid::from((
+                            replacement.to_owned(),
+                            &suggestion.span,
+                        ));
+                        bandaid
+                    })
+            })
+            .map(|x| crate::Patch::from(x))
+            .collect::<Vec<crate::Patch>>();
+
+        let mut dest = Vec::with_capacity($content.len() * 3 / 2);
+        crate::action::apply_patches(
+            patches.into_iter(),
+            $content,
+            &mut dest,
+        ).expect("Patches always apply nicely. qed");
+        let s = std::string::String::from_utf8_lossy(&dest);
+        assert_eq!(s, $expected, "Applied patches mismatch expected result");
+    };
     ($max_line_width:literal break $content_type:expr, $content:expr => ok) => {
         const CFG: ReflowConfig = ReflowConfig {
             max_line_length: $max_line_width,
@@ -614,5 +652,27 @@ return code if mistakes are found instead of `0`.
 * [x] Decent error printing
 
 "###
-    => ok); // it's obviously not ok
+    => applied
+r###"# cargo-spellcheck
+
+[![crates.io](https://img.source/cargo_spellcheck.svg)](https://crates.io)
+
+<pre>
+<font color="#CC0000"><b>error</b></font>
+</pre>
+
+## Continuous Integration / CI
+
+`cargo spellcheck` can be
+configured with `-m <code>`
+to return a non-zero return
+code if mistakes are found
+instead of `0`.
+
+## Implemented Features + Roadmap
+
+* [x] Parse doc comments from arbitrary files
+* [x] Decent error printing
+
+"###);
 }
