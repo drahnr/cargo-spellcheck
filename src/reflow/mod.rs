@@ -431,9 +431,12 @@ fn reflow<'s>(
     let mut acc = Vec::with_capacity(128);
 
     for (event, cover) in parser.into_offset_iter() {
-        let (event, cover) = dbg!((event, cover));
         #[cfg(debug_assertions)]
         {
+            log::trace!(
+                "CMark Token: {:?}",
+                &event
+            );
             log::trace!(
                 "Current segment {:?}: {:?}",
                 cover,
