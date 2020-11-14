@@ -7,7 +7,10 @@ use anyhow::{anyhow, Result};
 
 use crate::checker::Checker;
 use crate::documentation::{CheckableChunk, Documentation};
-
+use crate::util::{
+    byte_range_to_char_range, byte_range_to_char_range_many, load_span_from, sub_char_range,
+    sub_chars,
+};
 use crate::{CommentVariant, ContentOrigin, Detector, Range, Span, Suggestion, SuggestionSet};
 
 use indexmap::IndexMap;
@@ -150,7 +153,7 @@ fn reflow_inner<'s>(
     });
 
     // extract the relevant part from the entire `chunk`, that will be our working set.
-    let s_absolute = crate::util::sub_chars(s, range.clone());
+    let s_absolute = sub_chars(s, range.clone());
     let unbreakables = unbreakable_ranges
         .iter()
         .map(|r| (r.start.saturating_sub(range.start))..(r.end.saturating_sub(range.start)));
@@ -274,7 +277,7 @@ impl<'s> Indentation<'s> {
     /// Convert to a string but skip `n` chars
     pub(crate) fn to_string_but_skip_n(&self, n: usize) -> String {
         if let Some(s) = self.s {
-            crate::util::sub_char_range(s, 0..n).to_owned()
+            sub_char_range(s, 0..n).to_owned()
         } else {
             " ".repeat(self.offset.saturating_sub(n))
         }
@@ -305,11 +308,10 @@ fn store_suggestion<'s>(
     #[cfg(debug_assertions)]
     let sb = s.as_bytes();
 
-    let unbreakable_ranges =
-        crate::util::byte_range_to_char_range_many(s, bytes_unbreakable_ranges);
+    let unbreakable_ranges = byte_range_to_char_range_many(s, bytes_unbreakable_ranges);
     let unbreakable_ranges = unbreakable_ranges.as_slice();
 
-    let range = crate::util::byte_range_to_char_range(s, bytes_range.clone())
+    let range = byte_range_to_char_range(s, bytes_range.clone())
         .expect("Must have alignment to byte boundaries. qed");
 
     #[cfg(debug_assertions)]
@@ -327,10 +329,7 @@ fn store_suggestion<'s>(
         _ => 0usize,
     };
 
-    debug_assert_eq!(
-        &s[bytes_range],
-        crate::util::sub_char_range(s, range.clone())
-    );
+    debug_assert_eq!(&s[bytes_range], sub_char_range(s, range.clone()));
 
     let range2span = chunk.find_spans(range.clone());
     let mut spans_iter = range2span.iter().map(|(_range, span)| *span);
@@ -357,7 +356,7 @@ fn store_suggestion<'s>(
     log::trace!(
         "reflow::store_suggestion[source({:?})]: {:?}",
         span.clone(),
-        crate::util::load_span_from(sb, span).unwrap()
+        load_span_from(sb, span).unwrap()
     );
 
     // Get indentation for each span, if a span covers multiple
@@ -368,7 +367,7 @@ fn store_suggestion<'s>(
         .flat_map(|(_range, span)| {
             debug_assert!(span.start.line <= span.end.line);
 
-            // TODO use crate::util::sub_char_range(s, range.clone())
+            // TODO use `sub_char_range(s, range.clone())`
             // TODO and `Indent::with_str(..)`
 
             // Adjust the column by adding the adjustment to every line
@@ -433,10 +432,7 @@ fn reflow<'s>(
     for (event, cover) in parser.into_offset_iter() {
         #[cfg(debug_assertions)]
         {
-            log::trace!(
-                "CMark Token: {:?}",
-                &event
-            );
+            log::trace!("CMark Token: {:?}", &event);
             log::trace!(
                 "Current segment {:?}: {:?}",
                 cover,

@@ -14,6 +14,7 @@
 
 use super::*;
 
+use crate::util::load_span_from;
 use anyhow::{anyhow, Result};
 use indexmap::IndexMap;
 use log::trace;
@@ -173,9 +174,7 @@ impl From<(ContentOrigin, &str)> for Documentation {
 
         match &origin {
             ContentOrigin::RustDocTest(_path, span) => {
-                if let Ok(excerpt) =
-                    crate::util::load_span_from(&mut content.as_bytes(), span.clone())
-                {
+                if let Ok(excerpt) = load_span_from(&mut content.as_bytes(), span.clone()) {
                     docs.add_rust(origin.clone(), excerpt.as_str())
                 } else {
                     // TODO

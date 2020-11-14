@@ -1,7 +1,7 @@
 use super::literalset::tests::gen_literal_set;
-use super::util::load_span_from;
 use super::*;
 use crate::checker::Checker;
+use crate::util::{load_span_from, sub_char_range, sub_chars};
 use crate::{chyrp_up, fluff_up};
 
 use std::convert::From;
@@ -219,7 +219,7 @@ mod e2e {
                 );
 
                 log::info!("Checking word boundaries of >{}< against the chunk/range", word);
-                assert_eq!(word, crate::util::sub_chars(chunk.as_str(), range));
+                assert_eq!(word, sub_chars(chunk.as_str(), range));
 
                 log::info!("Checking word boundaries of >{}< against the source/span", word);
                 let alternative = load_span_from($source.as_bytes(), suggestion.span.clone())
@@ -681,17 +681,17 @@ fn find_spans_and_coverage_integrity() -> Result<()> {
             column: SPACES + TRIPLE_SLASH_SPACE - 1 + 7, // inclusive
         },
     }];
-    dbg!(crate::util::sub_char_range(s, CHUNK_RANGE.clone()));
+    dbg!(sub_char_range(s, CHUNK_RANGE.clone()));
     let coverage = chunk.find_covered_spans(CHUNK_RANGE.clone());
     let mapping = chunk.find_spans(CHUNK_RANGE.clone());
 
     for (coverage_span, (find_range, find_span), expected) in
         itertools::cons_tuples(coverage.zip(mapping.iter()).zip(EXPECTED_SPANS))
     {
-        let cs = crate::util::load_span_from(SOURCE.as_bytes(), coverage_span.clone())?;
-        let fs = crate::util::load_span_from(SOURCE.as_bytes(), find_span.clone())?;
-        let fr = crate::util::sub_char_range(chunk.as_str(), find_range.clone());
-        let x = crate::util::load_span_from(SOURCE.as_bytes(), expected.clone())?;
+        let cs = load_span_from(SOURCE.as_bytes(), coverage_span.clone())?;
+        let fs = load_span_from(SOURCE.as_bytes(), find_span.clone())?;
+        let fr = sub_char_range(chunk.as_str(), find_range.clone());
+        let x = load_span_from(SOURCE.as_bytes(), expected.clone())?;
         log::trace!("[find]chunk[range]: {:?}", fr);
         log::trace!("[find]excerpt(true): {:?}", fs);
         log::trace!("[cove]excerpt(true): {:?}", cs);
@@ -970,8 +970,8 @@ fn cmark_reduction_test(input: &'static str, expected: &'static str, expected_ma
     assert_eq!(dbg!(&mapping).len(), expected_mapping_len);
     for (reduced_range, markdown_range) in mapping.iter() {
         assert_eq!(
-            dbg!(crate::util::sub_chars(&plain, reduced_range.clone())),
-            dbg!(crate::util::sub_chars(&input, markdown_range.clone()))
+            dbg!(sub_chars(&plain, reduced_range.clone())),
+            dbg!(sub_chars(&input, markdown_range.clone()))
         );
     }
 }
