@@ -1,6 +1,6 @@
 use super::*;
 use crate::{chyrp_up, fluff_up};
-use crate::{LineColumn, Span, Patch};
+use crate::{LineColumn, Span};
 
 macro_rules! verify_reflow_inner {
     ($n:literal break [ $( $line:literal ),+ $(,)?] => $expected:literal) => {
