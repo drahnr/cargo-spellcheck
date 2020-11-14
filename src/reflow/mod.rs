@@ -258,7 +258,7 @@ fn reflow_inner<'s>(
             .strip_suffix(&variant.suffix_string())
             .map(|content| content.to_owned())
             .unwrap_or_else(|| content);
-        if &CommentVariant::CommonMark == variant && last_char_is_newline {
+        if &CommentVariant::CommonMark == variant && last_char_is_newline && !content.is_empty() {
             content.push_str(line_delimiter)
         }
 
