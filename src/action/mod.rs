@@ -82,7 +82,11 @@ impl From<BandAid> for Patch {
 ///
 /// This function is not concerend with _any_ semantics or comments or
 /// whatsoever at all, it blindly replaces what is given to it.
-pub(crate) fn apply_patches<'s, II, I>(patches: II, source_buffer: &str, mut sink: impl Write) -> Result<()>
+pub(crate) fn apply_patches<'s, II, I>(
+    patches: II,
+    source_buffer: &str,
+    mut sink: impl Write,
+) -> Result<()>
 where
     II: IntoIterator<IntoIter = I, Item = Patch>,
     I: Iterator<Item = Patch>,
@@ -90,8 +94,7 @@ where
     let mut patches = patches.into_iter().peekable();
 
     let mut source_iter =
-        iter_with_line_column_from(source_buffer, LineColumn { line: 1, column: 0 })
-            .peekable();
+        iter_with_line_column_from(source_buffer, LineColumn { line: 1, column: 0 }).peekable();
 
     const TARGET: &str = "patch";
     let mut write_to_sink = |topic: &str, data: &str| -> Result<()> {
