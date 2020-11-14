@@ -68,6 +68,11 @@ fn reflow_inner_not_required() {
     }
 }
 
+/// With all patches applied.
+///
+/// Nothing todo, there is no line in need of a reflow.
+///
+/// Verify the individual patches are as expected.
 macro_rules! reflow_content {
     ($max_line_width:literal break $content_type:expr, $content:expr => applied $expected:literal) => {
         const CFG: ReflowConfig = ReflowConfig {
@@ -75,7 +80,7 @@ macro_rules! reflow_content {
         };
 
         let _ = env_logger::Builder::new()
-            .filter(None, log::LevelFilter::Trace)
+            .filter(None, log::LevelFilter::Debug)
             .is_test(true)
             .try_init();
 
@@ -117,7 +122,7 @@ macro_rules! reflow_content {
         };
 
         let _ = env_logger::Builder::new()
-            .filter(None, log::LevelFilter::Trace)
+            .filter(None, log::LevelFilter::Debug)
             .is_test(true)
             .try_init();
 
@@ -135,13 +140,13 @@ macro_rules! reflow_content {
             "The content is known to be ok, not in need of a reflow."
         );
     };
-    ($max_line_width:literal break $content_type:expr, $content:expr => $expected:literal) => {
+    ($max_line_width:literal break $content_type:expr, $content:expr => patches [ $( $expected:literal ),+ $(,)?]) => {
         const CFG: ReflowConfig = ReflowConfig {
             max_line_length: $max_line_width,
         };
 
         let _ = env_logger::Builder::new()
-            .filter(None, log::LevelFilter::Trace)
+            .filter(None, log::LevelFilter::Debug)
             .is_test(true)
             .try_init();
 
@@ -153,19 +158,37 @@ macro_rules! reflow_content {
         let _plain = chunk.erase_cmark();
         println!("reflow content:\n {:?}", $content);
         let suggestions = reflow(&$content_type, chunk, &CFG).expect("Reflow is working. qed");
+        let patches = suggestions
+            .into_iter()
+            .filter_map(|suggestion| {
+                suggestion.replacements.first()
+                    .map(|replacement| {
+                        let bandaid = crate::BandAid::from((
+                            replacement.to_owned(),
+                            &suggestion.span,
+                        ));
+                        bandaid
+                    })
+            })
+            .map(|x| crate::Patch::from(x))
+            .collect::<Vec<crate::Patch>>();
+        let expected: Vec<&'static str> = vec![$( $expected ),+];
 
-        let suggestions = suggestions
-            .iter()
-            .next()
-            .expect("Contains one suggestion. qed");
+        // defer this check to later
+        let patches_n = patches.len();
+        let expected_n = expected.len();
+        // it yields more info if we try to match as many as we can first
+        for (idx, (patch, expected)) in patches.into_iter().zip(expected.into_iter()).enumerate() {
+            log::info!("Patch {:?}", patch);
+            assert_matches::assert_matches!(patch, crate::Patch::Replace {
+                replacement,
+                ..
+            } => {
+                assert_eq!(replacement.as_str(), expected, "Patch #{}", idx);
+            })
 
-        let replacement = suggestions
-            .replacements
-            .iter()
-            .next()
-            .expect("There exists a replacement. qed");
-        log::info!("Replacement {:?}", replacement);
-        assert_eq!(replacement.as_str(), $expected);
+        }
+        assert_eq!(patches_n, expected_n, "Number of suggestions mismatches expected patches");
     };
 }
 
@@ -173,10 +196,10 @@ macro_rules! reflow_content {
 /// and match the resulting `Patch`s replacment with
 /// an `expected` (a single literal, TODO allow multiple).
 macro_rules! reflow_fluff {
-    ($n:literal break [ $( $line:literal ),+ $(,)?] => $expected:literal) => {
+    ($n:literal break [ $( $line:literal ),+ $(,)?] => $( $expected:literal ),+ $(,)?) => {
         const CONTENT:&'static str = fluff_up!($( $line ),+);
 
-        reflow_content!($n break ContentOrigin::TestEntityRust, CONTENT => $expected);
+        reflow_content!($n break ContentOrigin::TestEntityRust, CONTENT => patches [ $( $expected ),+ ]);
     };
 
     ($n:literal break [ $( $line:literal ),+ $(,)?] => ok) => {
@@ -187,11 +210,11 @@ macro_rules! reflow_fluff {
 }
 
 macro_rules! reflow_chyrp {
-    ($n:literal break [ $( $line:literal ),+ $(,)?] => $expected:literal) => {
+    ($n:literal break [ $( $line:literal ),+ $(,)?] => $( $expected:literal ),+ $(,)?) => {
 
         const CONTENT:&'static str = chyrp_up!($( $line ),+);
 
-        reflow_content!($n break ContentOrigin::TestEntityRust, CONTENT => $expected);
+        reflow_content!($n break ContentOrigin::TestEntityRust, CONTENT => patches [ $( $expected ),+ ]);
     };
     ($n:literal break [ $( $line:literal ),+ $(,)?] => ok) => {
 
@@ -612,11 +635,11 @@ fn reflow_cmark_nested_link_types() {
 
 #[test]
 fn reflow_cmark_headlines() {
-    reflow_content!(80usize break ContentOrigin::TestEntityCommonMark, 
+    reflow_content!(20usize break ContentOrigin::TestEntityCommonMark, 
         r######"
 # 🔒😑
 
-Something is 🐡.
+It is too damn long 🐡.
 
 ```sh
 shell
@@ -625,7 +648,8 @@ shell
 ## 🥁 second
 
 Yada
-"###### => ok);
+"###### => patches [ r#"It is too damn long
+🐡."# ] );
 }
 
 #[test]
