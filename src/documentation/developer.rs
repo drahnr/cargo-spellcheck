@@ -58,6 +58,15 @@ pub fn calculate_column(fragment: &str) -> usize {
   }
 }
 
+fn retain_only_developer_comments(tokens: Vec<TokenWithLineColumn>) -> Vec<TokenWithLineColumn> {
+  let block_comment = Regex::new(r"^/\*(?P<content>.*)\*/$").unwrap();
+  let line_comment = Regex::new(r"^//([^/].*)$").unwrap();
+  tokens.into_iter()
+    .filter(|t| block_comment.is_match(&t.content)
+      || line_comment.is_match(&t.content))
+    .collect()
+}
+
 #[cfg(test)]
 mod tests {
   use crate::documentation::developer::*;
@@ -169,6 +178,76 @@ mod tests {
       assert_eq!(tokens.get(10).unwrap().column, 7);
       assert_eq!(tokens.get(11).unwrap().line, 3); // Close curly bracket
       assert_eq!(tokens.get(11).unwrap().column, 8);
+    }
+  }
+
+  #[test]
+  fn retain_only_developer_comments_removes_other_tokens() {
+    let block_comment = "/* A block comment */";
+    let line_comment = "// A line comment";
+    let function_keyword = "fn";
+    let function_name = "func中";
+    let left_bracket = "(";
+    let right_bracket = ")";
+    let left_brace = "{";
+    let right_brace = "}";
+    let left_add = "1";
+    let right_add = "2";
+    let plus = "+";
+    let semicolon = ";";
+    let newline = "\n";
+    let whitespace = " ";
+    let source = format!("{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}",
+        block_comment, newline,
+        function_keyword, whitespace, function_name, left_bracket, right_bracket, whitespace,
+        left_brace, newline, whitespace, whitespace, line_comment, newline, whitespace, whitespace,
+        left_add, whitespace, plus, whitespace, right_add, semicolon, newline, right_brace);
+
+    let should_be_excluded = vec!(function_keyword, function_name, left_bracket, newline,
+        right_bracket, left_brace, right_brace, left_add, plus, right_add, whitespace, semicolon);
+
+    let tokens = source_to_tokens_with_location(&source);
+    let tokens = tokens_with_location_to_tokens_with_line_and_column(&source, tokens);
+    let filtered = retain_only_developer_comments(tokens);
+    for token in filtered {
+      for content in &should_be_excluded {
+        assert_ne!(&token.content, content);
+      }
+    }
+  }
+
+  #[test]
+  fn retain_only_developer_comments_keeps_developer_comment_tokens() {
+    let block_comment = "/* A block comment */";
+    let line_comment = "// A line comment";
+    let function_keyword = "fn";
+    let function_name = "func中";
+    let left_bracket = "(";
+    let right_bracket = ")";
+    let left_brace = "{";
+    let right_brace = "}";
+    let left_add = "1";
+    let right_add = "2";
+    let plus = "+";
+    let semicolon = ";";
+    let newline = "\n";
+    let whitespace = " ";
+    let source = format!("{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}",
+        block_comment, newline,
+        function_keyword, whitespace, function_name, left_bracket, right_bracket, whitespace,
+        left_brace, newline, whitespace, whitespace, line_comment, newline, whitespace, whitespace,
+        left_add, whitespace, plus, whitespace, right_add, semicolon, newline, right_brace);
+
+    let should_be_included = vec!(block_comment, line_comment);
+
+    let tokens = source_to_tokens_with_location(&source);
+    let tokens = tokens_with_location_to_tokens_with_line_and_column(&source, tokens);
+    let filtered = retain_only_developer_comments(tokens);
+    for content in should_be_included {
+      let matches: Vec<&TokenWithLineColumn> = filtered.iter()
+          .filter(|t| t.content == content)
+          .collect();
+      assert!(matches.len() > 0);
     }
   }
 }
