@@ -54,6 +54,7 @@ languagetool-rs = { version = "0.1", package = "languagetool", optional = true }
 [dev-dependencies]
 # for stripping ansi color codes
 console = "0.13"
+assert_matches = "1"
 
 [features]
 default = ["hunspell"]
