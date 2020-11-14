@@ -153,6 +153,13 @@ fn reflow_inner<'s>(
 
     // extract the relevant part from the entire `chunk`, that will be our working set.
     let s_absolute = sub_char_range(s, range.clone());
+    // now if the last character is a newline, we spare it, since it would be
+    // annihilated by the `Tokeneer` without replacement.
+    let mut sit = s.chars();
+    let first_char_is_newline = sit.next().map(|c| c == '\n').unwrap_or_default();
+    // make sure we do not double count the \n in case of a single `\n` in `s`
+    // by re-use of a single  iterator
+    let last_char_is_newline = sit.last().map(|c| c == '\n').unwrap_or_default();
 
     let unbreakables = unbreakable_ranges
         .iter()
@@ -178,7 +185,22 @@ fn reflow_inner<'s>(
     if lines.next() != Some(&content) {
         reflow_applied = true;
     }
-    let acc = content + &variant.suffix_string() + line_delimiter;
+
+    // let content = if &CommentVariant::CommonMark == variant && first_char_is_newline {
+    //     &content[1..]
+    // } else {
+    //     &content[..]
+    // };
+
+    let mut acc = content.to_owned() + &variant.suffix_string();
+    if !acc.is_empty() {
+        acc.push_str(line_delimiter);
+    }
+    // if &CommentVariant::CommonMark != variant {
+    //     acc.push_str(line_delimiter);
+    // }
+    // let acc = acc;
+    
 
     // construct replacement string from prefix and Gluon iterations
     let content = gluon.fold(acc, |mut acc, (_lineno, content, _range)| {
@@ -232,11 +254,24 @@ fn reflow_inner<'s>(
 
     Ok(if reflow_applied {
         // for MacroDocEq comments, we also have to remove the last closing delimiter
-        let content = content
+        let mut content = content
             .strip_suffix(&variant.suffix_string())
             .map(|content| content.to_owned())
             .unwrap_or_else(|| content);
-        Some(content)
+        if &CommentVariant::CommonMark == variant && last_char_is_newline {
+            content.push_str(line_delimiter)
+        }
+
+        // we might be constrained by the unbreakable in a way
+        // that we cannot resolve the too long lines
+        // and as such the reconstruncted content might be identical
+        // in which case we don't want to bother with it any longer
+        if content != s_absolute {
+            log::debug!("Constraints of unbreakable sequences could not resolve too long lines");
+            Some(content)
+        } else {
+            None
+        }
     } else {
         None
     })

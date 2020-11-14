@@ -6,7 +6,8 @@ macro_rules! verify_reflow_inner {
     ($n:literal break [ $( $line:literal ),+ $(,)?] => $expected:literal) => {
 
         let _ = env_logger::Builder::new()
-            .filter(None, log::LevelFilter::Debug)
+            .filter_level(log::LevelFilter::Debug)
+            .filter(Some("reflow"), log::LevelFilter::Trace)
             .is_test(true)
             .try_init();
 
@@ -80,7 +81,8 @@ macro_rules! reflow_content {
         };
 
         let _ = env_logger::Builder::new()
-            .filter(None, log::LevelFilter::Debug)
+            .filter_level(log::LevelFilter::Debug)
+            .filter(Some("reflow"), log::LevelFilter::Trace)
             .is_test(true)
             .try_init();
 
@@ -122,7 +124,8 @@ macro_rules! reflow_content {
         };
 
         let _ = env_logger::Builder::new()
-            .filter(None, log::LevelFilter::Debug)
+            .filter_level(log::LevelFilter::Debug)
+            .filter(Some("reflow"), log::LevelFilter::Trace)
             .is_test(true)
             .try_init();
 
@@ -146,7 +149,8 @@ macro_rules! reflow_content {
         };
 
         let _ = env_logger::Builder::new()
-            .filter(None, log::LevelFilter::Debug)
+            .filter_level(log::LevelFilter::Debug)
+            .filter(Some("reflow"), log::LevelFilter::Trace)
             .is_test(true)
             .try_init();
 
@@ -184,7 +188,7 @@ macro_rules! reflow_content {
                 replacement,
                 replace_span,
             } => {
-                let mut content: &'static str = $content;
+                let content: &'static str = $content;
                 let to_be_replaced = load_span_from(&mut content.as_bytes(), replace_span).expect("Test cases are well defined and do not cause out of bounds access. qed");
                 log::info!("Patch #{} replaces {:?} => {:?}", idx, to_be_replaced, replacement);
                 assert_eq!(replacement.as_str(), expected, "Patch #{}", idx);
@@ -389,7 +393,7 @@ fn reflow_markdown_two_paragraphs() {
     ];
 
     let _ = env_logger::Builder::new()
-        .filter(None, log::LevelFilter::Debug)
+        .filter(None, log::LevelFilter::Trace)
         .is_test(true)
         .try_init();
 
@@ -530,7 +534,7 @@ multiline. Fullstop."#,
     ];
 
     let _ = env_logger::Builder::new()
-        .filter(None, log::LevelFilter::Debug)
+        .filter(None, log::LevelFilter::Trace)
         .is_test(true)
         .try_init();
 
@@ -651,7 +655,8 @@ shell
 
 Yada
 "###### => patches [ r#"It is too damn long
-🐡."# ] );
+🐡.
+"# ] );
 }
 
 const MINIFIED_README: &'static str = r###"# cargo-spellcheck
@@ -677,11 +682,11 @@ return code if mistakes are found instead of `0`.
 fn reflow_minified_readme_patches() {
     reflow_content!(30usize break ContentOrigin::TestEntityCommonMark, MINIFIED_README
     => patches [
-                r##"`cargo spellcheck` can be
-configured with `-m <code>`
-to return a non-zero return
-code if mistakes are found
-instead of `0`.
+r##"`cargo spellcheck` can be
+configured with `-m <code>` to
+return a non-zero return code
+if mistakes are found instead
+of `0`.
 "##
     ]);
 }
@@ -701,10 +706,10 @@ fn reflow_minified_readme_applied() {
 ## Continuous Integration / CI
 
 `cargo spellcheck` can be
-configured with `-m <code>`
-to return a non-zero return
-code if mistakes are found
-instead of `0`.
+configured with `-m <code>` to
+return a non-zero return code
+if mistakes are found instead
+of `0`.
 
 ## Implemented Features + Roadmap
 
