@@ -269,7 +269,8 @@ jobs:
               - -exc
               - |
                 export CARGO_HOME="$(pwd)/../cargo"
-                sudo chown $(whoami): -Rf ${CARGO_HOME} .
+                export CARGO_TARGET_DIR="$(pwd)/../target"
+                sudo chown $(whoami): -Rf ${CARGO_HOME} ${CARGO_TARGET_DIR} .
                 cargo +stable run --release -- --version
                 cargo +stable run --release -- spellcheck demo/Cargo.toml || echo "$? - Found some errors"
                 cargo +stable run --release -- spellcheck demo/src/main.rs || echo "$? - Found some errors"
@@ -278,10 +279,11 @@ jobs:
                 cargo +stable run --release -- spellcheck | grep -C 10 "F"
                 cargo +stable run --release -- spellcheck > dump
 
-                sudo cp -vf target/release/cargo-spellcheck ../binary/cargo-spellcheck-$(git rev-parse HEAD)
+                sudo cp -vf ../target/release/cargo-spellcheck ../binary/cargo-spellcheck-$(git rev-parse HEAD)
               dir: git-pull-request-resource
             caches:
             - path: cargo
+            - path: target
 
           on_success:
             put: git-pull-request-resource
