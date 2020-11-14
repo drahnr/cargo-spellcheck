@@ -182,11 +182,13 @@ macro_rules! reflow_content {
             log::info!("Patch {:?}", patch);
             assert_matches::assert_matches!(patch, crate::Patch::Replace {
                 replacement,
-                ..
+                replace_span,
             } => {
+                let mut content: &'static str = $content;
+                let to_be_replaced = load_span_from(&mut content.as_bytes(), replace_span).expect("Test cases are well defined and do not cause out of bounds access. qed");
+                log::info!("Replace {:?} => {:?}", to_be_replaced, replacement);
                 assert_eq!(replacement.as_str(), expected, "Patch #{}", idx);
             })
-
         }
         assert_eq!(patches_n, expected_n, "Number of suggestions mismatches expected patches");
     };
@@ -635,7 +637,7 @@ fn reflow_cmark_nested_link_types() {
 
 #[test]
 fn reflow_cmark_headlines() {
-    reflow_content!(20usize break ContentOrigin::TestEntityCommonMark, 
+    reflow_content!(20usize break ContentOrigin::TestEntityCommonMark,
         r######"
 # 🔒😑
 
@@ -652,12 +654,7 @@ Yada
 🐡."# ] );
 }
 
-#[test]
-fn reflow_minified_readme() {
-    // FIXME the replacement lacks trailing newlines.
-    // FIXME take a look at the replacements
-    reflow_content!(30usize break ContentOrigin::TestEntityCommonMark,
-r###"# cargo-spellcheck
+const MINIFIED_README: &'static str = r###"# cargo-spellcheck
 
 [![crates.io](https://img.source/cargo_spellcheck.svg)](https://crates.io)
 
@@ -675,9 +672,25 @@ return code if mistakes are found instead of `0`.
 * [x] Parse doc comments from arbitrary files
 * [x] Decent error printing
 
-"###
-    => applied
-r###"# cargo-spellcheck
+"###;
+#[test]
+fn reflow_minified_readme_patches() {
+    reflow_content!(30usize break ContentOrigin::TestEntityCommonMark, MINIFIED_README
+    => patches [
+                r##"`cargo spellcheck` can be
+configured with `-m <code>`
+to return a non-zero return
+code if mistakes are found
+instead of `0`.
+"##
+    ]);
+}
+
+#[test]
+fn reflow_minified_readme_applied() {
+    reflow_content!(30usize break ContentOrigin::TestEntityCommonMark, MINIFIED_README
+        => applied
+        r###"# cargo-spellcheck
 
 [![crates.io](https://img.source/cargo_spellcheck.svg)](https://crates.io)
 
@@ -698,5 +711,6 @@ instead of `0`.
 * [x] Parse doc comments from arbitrary files
 * [x] Decent error printing
 
-"###);
+"###
+    );
 }
