@@ -19,6 +19,48 @@ pub struct TokenWithLineColumn {
   column: usize
 }
 
+#[derive(Debug, Eq, PartialEq)]
+enum TokenType {
+  BlockComment,
+  LineComment,
+  Other
+}
+
+#[derive(Debug)]
+pub struct TokenWithType {
+  kind: TokenType,
+  content: String,
+  line: usize,
+  column: usize,
+}
+
+impl TokenWithType {
+  fn block_comment(token: TokenWithLineColumn) -> Self {
+    Self {
+      kind: TokenType::BlockComment,
+      content: token.content,
+      line: token.line,
+      column: token.column
+    }
+  }
+  fn line_comment(token: TokenWithLineColumn) -> Self {
+    Self {
+      kind: TokenType::LineComment,
+      content: token.content,
+      line: token.line,
+      column: token.column
+    }
+  }
+  fn other(token: TokenWithLineColumn) -> Self {
+    Self {
+      kind: TokenType::Other,
+      content: token.content,
+      line: token.line,
+      column: token.column
+    }
+  }
+}
+
 pub fn source_to_tokens_with_location(source: &str) -> Vec<TokenWithLocation> {
   let ra_tokens = tokenize(source).0;
   let mut tokens = vec!();
@@ -58,12 +100,26 @@ pub fn calculate_column(fragment: &str) -> usize {
   }
 }
 
-fn retain_only_developer_comments(tokens: Vec<TokenWithLineColumn>) -> Vec<TokenWithLineColumn> {
-  let block_comment = Regex::new(r"^/\*(?P<content>.*)\*/$").unwrap();
+fn identify_token_type(token: TokenWithLineColumn) -> TokenWithType {
+  let block_comment = Regex::new(r"^/\*(?s)(?P<content>.*)\*/$").unwrap();
   let line_comment = Regex::new(r"^//([^[/|!]].*)$").unwrap();
+  if block_comment.is_match(&token.content) {
+    TokenWithType::block_comment(token)
+  } else if line_comment.is_match(&token.content) {
+    TokenWithType::line_comment(token)
+  } else {
+    TokenWithType::other(token)
+  }
+}
+
+fn token_with_line_column_to_token_with_type(tokens_in: Vec<TokenWithLineColumn>)
+    -> Vec<TokenWithType> {
+  tokens_in.into_iter().map(|t| identify_token_type(t)).collect()
+}
+
+fn retain_only_developer_comments(tokens: Vec<TokenWithType>) -> Vec<TokenWithType> {
   tokens.into_iter()
-      .filter(|t| block_comment.is_match(&t.content)
-          || line_comment.is_match(&t.content))
+      .filter(|t| t.kind != TokenType::Other)
       .collect()
 }
 
@@ -182,6 +238,103 @@ mod tests {
   }
 
   #[test]
+  fn test_identify_token_type_assigns_block_comment_type_to_block_comments() {
+    let block_comments = vec!(
+        TokenWithLineColumn {
+          content: "/* Block Comment */".to_string(),
+          line: 0,
+          column: 0
+        },
+        TokenWithLineColumn {
+          content: "/* Multiple Line\nBlock Comment */".to_string(),
+          line: 0,
+          column: 0
+        }
+    );
+    for token in block_comments {
+      assert_eq!(identify_token_type(token).kind, TokenType::BlockComment);
+    }
+  }
+
+  #[test]
+  fn test_identify_token_type_assigns_line_comment_type_to_line_comments() {
+    let line_comments = vec!(
+      TokenWithLineColumn {
+        content: "// Line Comment ".to_string(),
+        line: 0,
+        column: 0
+      }
+    );
+    for token in line_comments {
+      assert_eq!(identify_token_type(token).kind, TokenType::LineComment);
+    }
+  }
+
+  #[test]
+  fn test_identify_token_type_assigns_other_type_to_non_developer_comments() {
+    let not_developer_comments = vec!(
+      TokenWithLineColumn {
+        content: "fn".to_string(),
+        line: 0,
+        column: 0
+      },
+      TokenWithLineColumn {
+        content: " ".to_string(),
+        line: 0,
+        column: 0
+      },
+      TokenWithLineColumn {
+        content: "\n".to_string(),
+        line: 0,
+        column: 0
+      },
+      TokenWithLineColumn {
+        content: "function_name".to_string(),
+        line: 0,
+        column: 0
+      },
+      TokenWithLineColumn {
+        content: "(".to_string(),
+        line: 0,
+        column: 0
+      },
+      TokenWithLineColumn {
+        content: ")".to_string(),
+        line: 0,
+        column: 0
+      },
+      TokenWithLineColumn {
+        content: ";".to_string(),
+        line: 0,
+        column: 0
+      },
+      TokenWithLineColumn {
+        content: "{".to_string(),
+        line: 0,
+        column: 0
+      },
+      TokenWithLineColumn {
+        content: "}".to_string(),
+        line: 0,
+        column: 0
+      },
+      TokenWithLineColumn {
+        content: "/// Outer documentation comment".to_string(),
+        line: 0,
+        column: 0
+      },
+      TokenWithLineColumn {
+        content: "//! Inner documentation comment".to_string(),
+        line: 0,
+        column: 0
+      }
+    );
+    for token in not_developer_comments {
+      assert_eq!(identify_token_type(token).kind, TokenType::Other);
+    }
+  }
+
+  #[test]
   fn retain_only_developer_comments_removes_non_comment_tokens() {
     let block_comment = "/* A block comment */";
     let line_comment = "// A line comment";
@@ -208,6 +361,7 @@ mod tests {
 
     let tokens = source_to_tokens_with_location(&source);
     let tokens = tokens_with_location_to_tokens_with_line_and_column(&source, tokens);
+    let tokens = token_with_line_column_to_token_with_type(tokens);
     let filtered = retain_only_developer_comments(tokens);
     for token in filtered {
       for content in &should_be_excluded {
@@ -230,6 +384,7 @@ mod tests {
 
     let tokens = source_to_tokens_with_location(&source);
     let tokens = tokens_with_location_to_tokens_with_line_and_column(&source, tokens);
+    let tokens = token_with_line_column_to_token_with_type(tokens);
     let filtered = retain_only_developer_comments(tokens);
     for token in filtered {
       for content in &should_be_excluded {
@@ -264,9 +419,10 @@ mod tests {
 
     let tokens = source_to_tokens_with_location(&source);
     let tokens = tokens_with_location_to_tokens_with_line_and_column(&source, tokens);
+    let tokens = token_with_line_column_to_token_with_type(tokens);
     let filtered = retain_only_developer_comments(tokens);
     for content in should_be_included {
-      let matches: Vec<&TokenWithLineColumn> = filtered.iter()
+      let matches: Vec<&TokenWithType> = filtered.iter()
           .filter(|t| t.content == content)
           .collect();
       assert!(matches.len() > 0);
