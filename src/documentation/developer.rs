@@ -29,9 +29,9 @@ enum TokenType {
 #[derive(Debug)]
 pub struct TokenWithType {
   kind: TokenType,
-  content: String,
-  line: usize,
-  column: usize,
+  pub content: String,
+  pub line: usize,
+  pub column: usize,
 }
 
 impl TokenWithType {
@@ -121,6 +121,39 @@ fn retain_only_developer_comments(tokens: Vec<TokenWithType>) -> Vec<TokenWithTy
   tokens.into_iter()
       .filter(|t| t.kind != TokenType::Other)
       .collect()
+}
+
+fn literal_set_from_block_comment(token: TokenWithType) -> Option<LiteralSet> {
+  let block_comment = Regex::new(r"^/\*(?s)(?P<content>.*)\*/$").unwrap();
+  if token.kind != TokenType::BlockComment {
+    return None;
+  }
+  let content = match block_comment.captures(&token.content) {
+    None => return None,
+    Some(c) => match c.get(1) {
+      None => return None,
+      Some(m) => m.as_str().to_string()
+    }
+  };
+  let number_of_lines = content.split("\n").count();
+  let mut lines = content.split("\n");
+  if number_of_lines == 1 {
+    Some(LiteralSet::from(TrimmedLiteral::from(&token.content, token.line, token.column, 2, 2).unwrap()))
+  } else {
+    let next_line = lines.next().unwrap();
+    let mut literal_set = LiteralSet::from(
+        TrimmedLiteral::from(next_line, 2, 0, token.line, token.column).unwrap());
+    let mut line_number = token.line;
+    while let Some(next_line) = lines.next() {
+      line_number += 1;
+      let post = if next_line.ends_with("*/") { 2 } else { 0 };
+      match literal_set.add_adjacent(TrimmedLiteral::from(next_line, 0, post, line_number, 0).unwrap()) {
+        Ok(_) => (),
+        Err(e) => return None // TODO LOG
+      }
+    }
+    Some(literal_set)
+  }
 }
 
 #[cfg(test)]

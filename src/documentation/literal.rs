@@ -5,6 +5,9 @@ use anyhow::{bail, Result};
 use fancy_regex::Regex;
 use std::convert::TryFrom;
 use std::fmt;
+use std::error::Error;
+use crate::documentation::developer::{TokenWithLineColumn, TokenWithType};
+use proc_macro2::LineColumn;
 
 /// Track what kind of comment the literal is
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
@@ -277,6 +280,38 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
             post,
         };
         Ok(literal)
+    }
+}
+
+impl TrimmedLiteral {
+    /// Creates a new (single line) literal from the variant, the content, the size of the
+    /// pre & post and the line/column on which it starts. Fails if provided with multiline content
+    /// (i.e if the content contains a linebreak).
+    pub fn from(variant: CommentVariant, content: &str, pre: usize, post: usize, line: usize,
+            column: usize) -> Result<TrimmedLiteral, String> {
+        if content.contains("\n") {
+            return Err("Cannot create a multiline trimmed literal".to_string())
+        }
+        let pre_text = &content[..pre];
+        let post_text = &content[content.len() - post..];
+        Ok(TrimmedLiteral {
+            variant,
+            span: Span {
+                start: LineColumn {
+                    line,
+                    column: column + pre_text.chars().count()
+                },
+                end: LineColumn {
+                    line,
+                    column: column + content.chars().count() - post_text.chars().count()
+                }
+            },
+            rendered: content.to_string(),
+            pre,
+            post,
+            len_in_chars: content.chars().count() - pre_text.chars().count() - post_text.chars().count(),
+            len_in_bytes: content.len() - pre - post
+        })
     }
 }
 
