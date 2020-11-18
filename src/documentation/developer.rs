@@ -128,17 +128,13 @@ fn literal_set_from_block_comment(token: TokenWithType) -> Option<LiteralSet> {
   if token.kind != TokenType::BlockComment {
     return None;
   }
-  let content = match block_comment.captures(&token.content) {
-    None => return None,
-    Some(c) => match c.get(1) {
-      None => return None,
-      Some(m) => m.as_str().to_string()
-    }
-  };
-  let number_of_lines = content.split("\n").count();
-  let mut lines = content.split("\n");
+  if !block_comment.is_match(&token.content) {
+    return None;
+  }
+  let number_of_lines = token.content.split("\n").count();
+  let mut lines = token.content.split("\n");
   if number_of_lines == 1 {
-    Some(LiteralSet::from(TrimmedLiteral::from(&token.content, token.line, token.column, 2, 2).unwrap()))
+    Some(LiteralSet::from(TrimmedLiteral::from(&token.content, 2, 2, token.line, token.column).unwrap()))
   } else {
     let next_line = lines.next().unwrap();
     let mut literal_set = LiteralSet::from(
@@ -459,6 +455,118 @@ mod tests {
           .filter(|t| t.content == content)
           .collect();
       assert!(matches.len() > 0);
+    }
+  }
+
+  #[test]
+  fn test_single_line_block_comment_literal_correctly_created() {
+    let source = "/* block 种 comment */";
+    let tokens = source_to_tokens_with_location(source);
+    let tokens = tokens_with_location_to_tokens_with_line_and_column(source, tokens);
+    let tokens = token_with_line_column_to_token_with_type(tokens);
+    assert_eq!(tokens.len(), 1);
+    let token = tokens.into_iter().last().unwrap();
+    let literal_set = literal_set_from_block_comment(token);
+    assert!(literal_set.is_some());
+    let literal_set = literal_set.unwrap();
+    assert_eq!(literal_set.len(), 1);
+    let literal = literal_set.literals().into_iter().last().unwrap();
+    assert_eq!(literal.pre(), 2);
+    assert_eq!(literal.post(), 2);
+    assert_eq!(literal.len_in_chars(), source.chars().count() - 4);
+    assert_eq!(literal.len(), source.len() - 4);
+    let span = &literal.span();
+    assert_eq!(span.start.line, 1);
+    assert_eq!(span.start.column, 2);
+    assert_eq!(span.end.line, 1);
+    assert_eq!(span.end.column, source.chars().count() - 2);
+  }
+
+  #[test]
+  fn test_single_line_indented_block_comment_literal_correctly_created() {
+    let source = "    /* block 种 comment */";
+    let tokens = source_to_tokens_with_location(source);
+    let tokens = tokens_with_location_to_tokens_with_line_and_column(source, tokens);
+    let tokens = token_with_line_column_to_token_with_type(tokens);
+    assert!(tokens.len() > 0);
+    let token = tokens.into_iter().last().unwrap();
+    let literal_set = literal_set_from_block_comment(token);
+    assert!(literal_set.is_some());
+    let literal_set = literal_set.unwrap();
+    assert_eq!(literal_set.len(), 1);
+    let literal = literal_set.literals().into_iter().last().unwrap();
+    let indent_size = "    ".len(); // Also chars, because ASCII
+    assert_eq!(literal.pre(), 2);
+    assert_eq!(literal.post(), 2);
+    assert_eq!(literal.len_in_chars(), source.chars().count() - indent_size - 4);
+    assert_eq!(literal.len(), source.len() - indent_size - 4);
+    let span = &literal.span();
+    assert_eq!(span.start.line, 1);
+    assert_eq!(span.start.column, indent_size + 2);
+    assert_eq!(span.end.line, 1);
+    assert_eq!(span.end.column, source.chars().count() - 2);
+  }
+
+  #[test]
+  fn test_multi_line_block_comment_literal_correctly_created() {
+    let source = "/* block\n 种 \ncomment */";
+    let tokens = source_to_tokens_with_location(source);
+    let tokens = tokens_with_location_to_tokens_with_line_and_column(source, tokens);
+    let tokens = token_with_line_column_to_token_with_type(tokens);
+    assert_eq!(tokens.len(), 1);
+    let token = tokens.into_iter().last().unwrap();
+    let literal_set = literal_set_from_block_comment(token);
+    assert!(literal_set.is_some());
+    let literal_set = literal_set.unwrap();
+    assert_eq!(literal_set.len(), 3);
+    let literals = literal_set.literals();
+    {
+      let literal = literals.get(0).unwrap();
+      assert_eq!(literal.pre(), "/*".chars().count());
+      assert_eq!(literal.post(), "".chars().count());
+      assert_eq!(literal.len_in_chars(), " block".chars().count());
+      assert_eq!(literal.len(), " block".len());
+      let span = &literal.span();
+      assert_eq!(span.start.line, 1);
+      assert_eq!(span.start.column, 2);
+      assert_eq!(span.end.line, 1);
+      assert_eq!(span.end.column, "/* block".chars().count());
+    }
+    {
+      let literal = literals.get(1).unwrap();
+      assert_eq!(literal.pre(), "".chars().count());
+      assert_eq!(literal.post(), "".chars().count());
+      assert_eq!(literal.len_in_chars(), " 种 ".chars().count());
+      assert_eq!(literal.len(), " 种 ".len());
+      let span = &literal.span();
+      assert_eq!(span.start.line, 2);
+      assert_eq!(span.start.column, 0);
+      assert_eq!(span.end.line, 2);
+      assert_eq!(span.end.column, " 种 ".chars().count());
+    }
+    {
+      let literal = literals.get(2).unwrap();
+      assert_eq!(literal.pre(), "".chars().count());
+      assert_eq!(literal.post(), "*/".chars().count());
+      assert_eq!(literal.len_in_chars(), "comment ".chars().count());
+      assert_eq!(literal.len(), "comment ".len());
+      let span = &literal.span();
+      assert_eq!(span.start.line, 3);
+      assert_eq!(span.start.column, 0);
+      assert_eq!(span.end.line, 3);
+      assert_eq!(span.end.column, "comment ".chars().count());
+    }
+  }
+
+  #[test]
+  fn test_not_developer_comments_block_comment_converter_does_not_create_literals() {
+    let source = "// line comment\n/// Outer documentation\nfn test(){\n \
+        //! Inner documentation\n\tlet i = 1 + 2;\n}";
+    let tokens = source_to_tokens_with_location(source);
+    let tokens = tokens_with_location_to_tokens_with_line_and_column(source, tokens);
+    let tokens = token_with_line_column_to_token_with_type(tokens);
+    for token in tokens {
+      assert!(literal_set_from_block_comment(token).is_none());
     }
   }
 }
