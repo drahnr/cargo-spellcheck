@@ -152,6 +152,39 @@ fn literal_set_from_block_comment(token: TokenWithType) -> Option<LiteralSet> {
   }
 }
 
+fn literal_from_line_comment(token: TokenWithType) -> Option<TrimmedLiteral> {
+  match token.kind {
+    TokenType::LineComment => match TrimmedLiteral::from(&token.content, 2, 0, token.line, token.column) {
+      Ok(l) => Some(l),
+      Err(_) => None // TODO: log
+    },
+    _ => None
+  }
+}
+
+fn literal_sets_from_line_comments(tokens: Vec<TokenWithType>) -> Vec<LiteralSet> {
+  let mut sets = vec!();
+  for token in tokens {
+    if token.kind != TokenType::LineComment {
+      continue;
+    }
+    let literal = match literal_from_line_comment(token) {
+      None => continue,
+      Some(l) => l
+    };
+    match sets.pop() {
+      None => sets.push(LiteralSet::from(literal)),
+      Some(mut s) => {
+        match s.add_adjacent(literal) {
+          Err(literal) => sets.push(LiteralSet::from(literal)),
+          Ok(_) => ()
+        }
+      }
+    }
+  }
+  sets
+}
+
 #[cfg(test)]
 mod tests {
   use crate::documentation::developer::*;
