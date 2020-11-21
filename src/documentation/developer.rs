@@ -188,6 +188,8 @@ fn literal_sets_from_line_comments(tokens: Vec<TokenWithType>) -> Vec<LiteralSet
 #[cfg(test)]
 mod tests {
   use crate::documentation::developer::*;
+  use regex::internal::Input;
+  use syn::spanned::Spanned;
 
   #[test]
   fn test_count_lines_correctly_counts_lines() {
@@ -600,6 +602,69 @@ mod tests {
     let tokens = token_with_line_column_to_token_with_type(tokens);
     for token in tokens {
       assert!(literal_set_from_block_comment(token).is_none());
+    }
+  }
+
+  #[test]
+  fn test_non_line_comment_tokens_line_comment_to_literal_does_not_create_literals() {
+    let source = "/* Block comment */\nfn test(i: usize) {\n  let j = 1 + i;\n  j\n}";
+    let tokens = source_to_tokens_with_location(source);
+    let tokens = tokens_with_location_to_tokens_with_line_and_column(source, tokens);
+    let tokens = token_with_line_column_to_token_with_type(tokens);
+    for token in tokens {
+      assert!(literal_from_line_comment(token).is_none());
+    }
+  }
+
+  #[test]
+  fn test_documentation_line_comment_tokens_line_comment_to_literal_does_not_create_literals() {
+    let source = "/// Outer \nfn(){\n//! Inner \n}";
+    let tokens = source_to_tokens_with_location(source);
+    let tokens = tokens_with_location_to_tokens_with_line_and_column(source, tokens);
+    let tokens = token_with_line_column_to_token_with_type(tokens);
+    for token in tokens {
+      assert!(literal_from_line_comment(token).is_none());
+    }
+  }
+
+  #[test]
+  fn test_developer_line_comment_tokens_line_comment_to_literal_create_literals_with_correct_data() {
+    let source = "// First line comment\nconst ZERO: usize = 0; // A constant ";
+    let tokens = source_to_tokens_with_location(source);
+    let tokens = tokens_with_location_to_tokens_with_line_and_column(source, tokens);
+    let tokens = token_with_line_column_to_token_with_type(tokens);
+    let filtered = retain_only_developer_comments(tokens);
+    assert_eq!(filtered.len(), 2);
+    let literals : Vec<Option<TrimmedLiteral>>= filtered.into_iter()
+        .map(|t| literal_from_line_comment(t))
+        .collect();
+    {
+      let literal= literals.get(0).unwrap();
+      assert!(literal.is_some());
+      let literal = literal.as_ref().unwrap();
+      assert_eq!(literal.pre(), "//".chars().count());
+      assert_eq!(literal.post(), "".chars().count());
+      assert_eq!(literal.len_in_chars(), " First line comment".chars().count());
+      assert_eq!(literal.len(), " First line comment".len());
+      let span = &literal.span();
+      assert_eq!(span.start.line, 1);
+      assert_eq!(span.start.column, 2);
+      assert_eq!(span.end.line, 1);
+      assert_eq!(span.end.column, 2 + " First line comment".chars().count());
+    }
+    {
+      let literal= literals.get(1).unwrap();
+      assert!(literal.is_some());
+      let literal = literal.as_ref().unwrap();
+      assert_eq!(literal.pre(), "//".chars().count());
+      assert_eq!(literal.post(), "".chars().count());
+      assert_eq!(literal.len_in_chars(), " A constant ".chars().count());
+      assert_eq!(literal.len(), " A constant ".len());
+      let span = &literal.span();
+      assert_eq!(span.start.line, 2);
+      assert_eq!(span.start.column, 25);
+      assert_eq!(span.end.line, 2);
+      assert_eq!(span.end.column, 25 + " A constant ".chars().count());
     }
   }
 }
