@@ -177,7 +177,7 @@ fn literal_sets_from_line_comments(tokens: Vec<TokenWithType>) -> Vec<LiteralSet
       Some(mut s) => {
         match s.add_adjacent(literal) {
           Err(literal) => sets.push(LiteralSet::from(literal)),
-          Ok(_) => ()
+          Ok(_) => sets.push(s)
         }
       }
     }
@@ -635,11 +635,11 @@ mod tests {
     let tokens = token_with_line_column_to_token_with_type(tokens);
     let filtered = retain_only_developer_comments(tokens);
     assert_eq!(filtered.len(), 2);
-    let literals : Vec<Option<TrimmedLiteral>>= filtered.into_iter()
-        .map(|t| literal_from_line_comment(t))
-        .collect();
+    let literals: Vec<Option<TrimmedLiteral>> = filtered.into_iter()
+      .map(|t| literal_from_line_comment(t))
+      .collect();
     {
-      let literal= literals.get(0).unwrap();
+      let literal = literals.get(0).unwrap();
       assert!(literal.is_some());
       let literal = literal.as_ref().unwrap();
       assert_eq!(literal.pre(), "//".chars().count());
@@ -653,7 +653,7 @@ mod tests {
       assert_eq!(span.end.column, 2 + " First line comment".chars().count());
     }
     {
-      let literal= literals.get(1).unwrap();
+      let literal = literals.get(1).unwrap();
       assert!(literal.is_some());
       let literal = literal.as_ref().unwrap();
       assert_eq!(literal.pre(), "//".chars().count());
@@ -665,6 +665,74 @@ mod tests {
       assert_eq!(span.start.column, 25);
       assert_eq!(span.end.line, 2);
       assert_eq!(span.end.column, 25 + " A constant ".chars().count());
+    }
+  }
+  #[test]
+  fn test_single_line_comment_put_in_one_literal_set() {
+    let content = " line comment";
+    let source = format!("//{}", content);
+    let tokens = retain_only_developer_comments(
+        token_with_line_column_to_token_with_type(
+            tokens_with_location_to_tokens_with_line_and_column(&source,
+              source_to_tokens_with_location(&source))));
+    let literal_sets = literal_sets_from_line_comments(tokens);
+    assert_eq!(literal_sets.len(), 1);
+    let literal_set = literal_sets.get(0).unwrap();
+    let all_literals = literal_set.literals();
+    let literal = all_literals.get(0);
+    assert!(literal.is_some());
+    let literal = literal.unwrap();
+    assert!(literal.as_str().contains(content));
+  }
+
+  #[test]
+  fn test_adjacent_line_comments_put_in_same_literal_set() {
+    let content_1 = " line comment 1 ";
+    let content_2 = " line comment 2 ";
+    let source = format!("//{}\n//{}", content_1, content_2);
+    let tokens = retain_only_developer_comments(
+        token_with_line_column_to_token_with_type(
+            tokens_with_location_to_tokens_with_line_and_column(&source,
+                source_to_tokens_with_location(&source))));
+    let literal_sets = literal_sets_from_line_comments(tokens);
+    assert_eq!(literal_sets.len(), 1);
+    let literal_set = literal_sets.get(0).unwrap();
+    let all_literals = literal_set.literals();
+    assert_eq!(all_literals.len(), 2);
+    {
+      let literal = all_literals.get(0).unwrap();
+      assert!(literal.as_str().contains(content_1));
+    }
+    {
+      let literal = all_literals.get(1).unwrap();
+      assert!(literal.as_str().contains(content_2));
+    }
+  }
+
+  #[test]
+  fn test_non_adjacent_line_comments_put_in_different_literal_sets() {
+    let content_1 = " line comment 1 ";
+    let content_2 = " line comment 2 ";
+    let source = format!("//{}\nfn(){{}}\n//{}", content_1, content_2);
+    let tokens = retain_only_developer_comments(
+      token_with_line_column_to_token_with_type(
+          tokens_with_location_to_tokens_with_line_and_column(&source,
+              source_to_tokens_with_location(&source))));
+    let literal_sets = literal_sets_from_line_comments(tokens);
+    assert_eq!(literal_sets.len(), 2);
+    {
+      let literal_set = literal_sets.get(0).unwrap();
+      let all_literals = literal_set.literals();
+      assert_eq!(all_literals.len(), 1);
+      let literal = all_literals.get(0).unwrap();
+      assert!(literal.as_str().contains(content_1));
+    }
+    {
+      let literal_set = literal_sets.get(1).unwrap();
+      let all_literals = literal_set.literals();
+      assert_eq!(all_literals.len(), 1);
+      let literal = all_literals.get(0).unwrap();
+      assert!(literal.as_str().contains(content_2));
     }
   }
 }
