@@ -1,6 +1,7 @@
 //! Cluster `proc_macro2::Literal`s into `LiteralSets`
 
 use super::{trace, LiteralSet, Spacing, TokenTree, TrimmedLiteral, TryInto};
+use crate::documentation::developer::extract_developer_comments;
 use crate::documentation::Range;
 use crate::Span;
 use anyhow::{anyhow, Error, Result};
@@ -93,6 +94,13 @@ impl Clusters {
         }
         Ok(())
     }
+
+    fn parse_developer_comments(&mut self, source: &str) {
+        let developer_comments = extract_developer_comments(source);
+        for comment in developer_comments {
+            self.set.push(comment);
+        }
+    }
 }
 
 impl TryFrom<&str> for Clusters {
@@ -104,6 +112,7 @@ impl TryFrom<&str> for Clusters {
         let stream = syn::parse_str::<proc_macro2::TokenStream>(source)
             .map_err(|e| anyhow!("Failed to parse content to stream").context(e))?;
         chunk.parse_token_tree(source, stream)?;
+        chunk.parse_developer_comments(source);
         Ok(chunk)
     }
 }

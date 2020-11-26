@@ -1,5 +1,5 @@
 
-use ra_ap_syntax::{SyntaxNode, SourceFile, tokenize, Token};
+use ra_ap_syntax::tokenize;
 use regex::Regex;
 
 use super::*;
@@ -61,6 +61,28 @@ impl TokenWithType {
   }
 }
 
+pub fn extract_developer_comments(source: &str) -> Vec<LiteralSet> {
+  let tokens = retain_only_developer_comments(
+        token_with_line_column_to_token_with_type(
+          tokens_with_location_to_tokens_with_line_and_column(
+              source, source_to_tokens_with_location(source))));
+  let mut literal_sets = vec!();
+  let block_comments: Vec<&TokenWithType> = tokens.iter()
+      .filter(|t| t.kind == TokenType::BlockComment).collect();
+  let line_comments: Vec<&TokenWithType> = tokens.iter()
+      .filter(|t| t.kind == TokenType::LineComment).collect();
+  for set in literal_sets_from_line_comments(line_comments) {
+    literal_sets.push(set);
+  }
+  for comment in block_comments {
+    match literal_set_from_block_comment(comment) {
+      Some(ls) => literal_sets.push(ls),
+      None => () // TODO: LOG
+    }
+  }
+  literal_sets
+}
+
 pub fn source_to_tokens_with_location(source: &str) -> Vec<TokenWithLocation> {
   let ra_tokens = tokenize(source).0;
   let mut tokens = vec!();
@@ -77,7 +99,7 @@ pub fn source_to_tokens_with_location(source: &str) -> Vec<TokenWithLocation> {
 }
 
 pub fn tokens_with_location_to_tokens_with_line_and_column
-(source: &str, tokens_in: Vec<TokenWithLocation>) -> Vec<TokenWithLineColumn> {
+    (source: &str, tokens_in: Vec<TokenWithLocation>) -> Vec<TokenWithLineColumn> {
   let mut tokens_out = vec!();
   for token in tokens_in {
     tokens_out.push(TokenWithLineColumn{
@@ -123,7 +145,7 @@ fn retain_only_developer_comments(tokens: Vec<TokenWithType>) -> Vec<TokenWithTy
       .collect()
 }
 
-fn literal_set_from_block_comment(token: TokenWithType) -> Option<LiteralSet> {
+fn literal_set_from_block_comment(token: &TokenWithType) -> Option<LiteralSet> {
   let block_comment = Regex::new(r"^/\*(?s)(?P<content>.*)\*/$").unwrap();
   if token.kind != TokenType::BlockComment {
     return None;
@@ -134,27 +156,30 @@ fn literal_set_from_block_comment(token: TokenWithType) -> Option<LiteralSet> {
   let number_of_lines = token.content.split("\n").count();
   let mut lines = token.content.split("\n");
   if number_of_lines == 1 {
-    Some(LiteralSet::from(TrimmedLiteral::from(&token.content, 2, 2, token.line, token.column).unwrap()))
+    Some(LiteralSet::from(TrimmedLiteral::from(
+        CommentVariant::Unknown, &token.content, 2, 2, token.line, token.column).unwrap()))
   } else {
     let next_line = lines.next().unwrap();
-    let mut literal_set = LiteralSet::from(
-        TrimmedLiteral::from(next_line, 2, 0, token.line, token.column).unwrap());
+    let mut literal_set = LiteralSet::from(TrimmedLiteral::from(
+        CommentVariant::Unknown, next_line, 2, 0, token.line, token.column).unwrap());
     let mut line_number = token.line;
     while let Some(next_line) = lines.next() {
       line_number += 1;
       let post = if next_line.ends_with("*/") { 2 } else { 0 };
-      match literal_set.add_adjacent(TrimmedLiteral::from(next_line, 0, post, line_number, 0).unwrap()) {
+      match literal_set.add_adjacent(TrimmedLiteral::from(
+          CommentVariant::Unknown, next_line, 0, post, line_number, 0).unwrap()) {
         Ok(_) => (),
-        Err(e) => return None // TODO LOG
+        Err(_) => return None // TODO LOG
       }
     }
     Some(literal_set)
   }
 }
 
-fn literal_from_line_comment(token: TokenWithType) -> Option<TrimmedLiteral> {
+fn literal_from_line_comment(token: &TokenWithType) -> Option<TrimmedLiteral> {
   match token.kind {
-    TokenType::LineComment => match TrimmedLiteral::from(&token.content, 2, 0, token.line, token.column) {
+    TokenType::LineComment => match TrimmedLiteral::from(
+        CommentVariant::Unknown, &token.content, 2, 0, token.line, token.column) {
       Ok(l) => Some(l),
       Err(_) => None // TODO: log
     },
@@ -162,7 +187,7 @@ fn literal_from_line_comment(token: TokenWithType) -> Option<TrimmedLiteral> {
   }
 }
 
-fn literal_sets_from_line_comments(tokens: Vec<TokenWithType>) -> Vec<LiteralSet> {
+fn literal_sets_from_line_comments(tokens: Vec<&TokenWithType>) -> Vec<LiteralSet> {
   let mut sets = vec!();
   for token in tokens {
     if token.kind != TokenType::LineComment {
@@ -188,8 +213,6 @@ fn literal_sets_from_line_comments(tokens: Vec<TokenWithType>) -> Vec<LiteralSet
 #[cfg(test)]
 mod tests {
   use crate::documentation::developer::*;
-  use regex::internal::Input;
-  use syn::spanned::Spanned;
 
   #[test]
   fn test_count_lines_correctly_counts_lines() {
@@ -501,7 +524,7 @@ mod tests {
     let tokens = token_with_line_column_to_token_with_type(tokens);
     assert_eq!(tokens.len(), 1);
     let token = tokens.into_iter().last().unwrap();
-    let literal_set = literal_set_from_block_comment(token);
+    let literal_set = literal_set_from_block_comment(&token);
     assert!(literal_set.is_some());
     let literal_set = literal_set.unwrap();
     assert_eq!(literal_set.len(), 1);
@@ -525,7 +548,7 @@ mod tests {
     let tokens = token_with_line_column_to_token_with_type(tokens);
     assert!(tokens.len() > 0);
     let token = tokens.into_iter().last().unwrap();
-    let literal_set = literal_set_from_block_comment(token);
+    let literal_set = literal_set_from_block_comment(&token);
     assert!(literal_set.is_some());
     let literal_set = literal_set.unwrap();
     assert_eq!(literal_set.len(), 1);
@@ -550,7 +573,7 @@ mod tests {
     let tokens = token_with_line_column_to_token_with_type(tokens);
     assert_eq!(tokens.len(), 1);
     let token = tokens.into_iter().last().unwrap();
-    let literal_set = literal_set_from_block_comment(token);
+    let literal_set = literal_set_from_block_comment(&token);
     assert!(literal_set.is_some());
     let literal_set = literal_set.unwrap();
     assert_eq!(literal_set.len(), 3);
@@ -601,7 +624,7 @@ mod tests {
     let tokens = tokens_with_location_to_tokens_with_line_and_column(source, tokens);
     let tokens = token_with_line_column_to_token_with_type(tokens);
     for token in tokens {
-      assert!(literal_set_from_block_comment(token).is_none());
+      assert!(literal_set_from_block_comment(&token).is_none());
     }
   }
 
@@ -612,7 +635,7 @@ mod tests {
     let tokens = tokens_with_location_to_tokens_with_line_and_column(source, tokens);
     let tokens = token_with_line_column_to_token_with_type(tokens);
     for token in tokens {
-      assert!(literal_from_line_comment(token).is_none());
+      assert!(literal_from_line_comment(&token).is_none());
     }
   }
 
@@ -623,7 +646,7 @@ mod tests {
     let tokens = tokens_with_location_to_tokens_with_line_and_column(source, tokens);
     let tokens = token_with_line_column_to_token_with_type(tokens);
     for token in tokens {
-      assert!(literal_from_line_comment(token).is_none());
+      assert!(literal_from_line_comment(&token).is_none());
     }
   }
 
@@ -636,7 +659,7 @@ mod tests {
     let filtered = retain_only_developer_comments(tokens);
     assert_eq!(filtered.len(), 2);
     let literals: Vec<Option<TrimmedLiteral>> = filtered.into_iter()
-      .map(|t| literal_from_line_comment(t))
+      .map(|t| literal_from_line_comment(&t))
       .collect();
     {
       let literal = literals.get(0).unwrap();
@@ -675,7 +698,7 @@ mod tests {
         token_with_line_column_to_token_with_type(
             tokens_with_location_to_tokens_with_line_and_column(&source,
               source_to_tokens_with_location(&source))));
-    let literal_sets = literal_sets_from_line_comments(tokens);
+    let literal_sets = literal_sets_from_line_comments(tokens.iter().collect());
     assert_eq!(literal_sets.len(), 1);
     let literal_set = literal_sets.get(0).unwrap();
     let all_literals = literal_set.literals();
@@ -694,7 +717,7 @@ mod tests {
         token_with_line_column_to_token_with_type(
             tokens_with_location_to_tokens_with_line_and_column(&source,
                 source_to_tokens_with_location(&source))));
-    let literal_sets = literal_sets_from_line_comments(tokens);
+    let literal_sets = literal_sets_from_line_comments(tokens.iter().collect());
     assert_eq!(literal_sets.len(), 1);
     let literal_set = literal_sets.get(0).unwrap();
     let all_literals = literal_set.literals();
@@ -718,7 +741,7 @@ mod tests {
       token_with_line_column_to_token_with_type(
           tokens_with_location_to_tokens_with_line_and_column(&source,
               source_to_tokens_with_location(&source))));
-    let literal_sets = literal_sets_from_line_comments(tokens);
+    let literal_sets = literal_sets_from_line_comments(tokens.iter().collect());
     assert_eq!(literal_sets.len(), 2);
     {
       let literal_set = literal_sets.get(0).unwrap();
