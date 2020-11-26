@@ -101,6 +101,10 @@ impl Clusters {
             self.set.push(comment);
         }
     }
+
+    fn ensure_sorted(&mut self) {
+        self.set.sort_by(|ls1, ls2| ls1.coverage.cmp(&ls2.coverage));
+    }
 }
 
 impl TryFrom<&str> for Clusters {
@@ -113,6 +117,7 @@ impl TryFrom<&str> for Clusters {
             .map_err(|e| anyhow!("Failed to parse content to stream").context(e))?;
         chunk.parse_token_tree(source, stream)?;
         chunk.parse_developer_comments(source);
+        chunk.ensure_sorted();
         Ok(chunk)
     }
 }
