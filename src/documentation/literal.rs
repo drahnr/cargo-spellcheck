@@ -301,7 +301,7 @@ impl TrimmedLiteral {
                 },
                 end: LineColumn {
                     line,
-                    column: column + content.chars().count() - post_text.chars().count()
+                    column: column + content.chars().count() - post_text.chars().count() - 1
                 }
             },
             rendered: content.to_string(),

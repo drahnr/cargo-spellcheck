@@ -537,7 +537,7 @@ mod tests {
     assert_eq!(span.start.line, 1);
     assert_eq!(span.start.column, 2);
     assert_eq!(span.end.line, 1);
-    assert_eq!(span.end.column, source.chars().count() - 2);
+    assert_eq!(span.end.column, source.chars().count() - 2 - 1);
   }
 
   #[test]
@@ -562,7 +562,7 @@ mod tests {
     assert_eq!(span.start.line, 1);
     assert_eq!(span.start.column, indent_size + 2);
     assert_eq!(span.end.line, 1);
-    assert_eq!(span.end.column, source.chars().count() - 2);
+    assert_eq!(span.end.column, source.chars().count() - 2 - 1);
   }
 
   #[test]
@@ -588,7 +588,7 @@ mod tests {
       assert_eq!(span.start.line, 1);
       assert_eq!(span.start.column, 2);
       assert_eq!(span.end.line, 1);
-      assert_eq!(span.end.column, "/* block".chars().count());
+      assert_eq!(span.end.column, "/* block".chars().count() - 1);
     }
     {
       let literal = literals.get(1).unwrap();
@@ -600,7 +600,7 @@ mod tests {
       assert_eq!(span.start.line, 2);
       assert_eq!(span.start.column, 0);
       assert_eq!(span.end.line, 2);
-      assert_eq!(span.end.column, " 种 ".chars().count());
+      assert_eq!(span.end.column, " 种 ".chars().count() - 1);
     }
     {
       let literal = literals.get(2).unwrap();
@@ -612,7 +612,7 @@ mod tests {
       assert_eq!(span.start.line, 3);
       assert_eq!(span.start.column, 0);
       assert_eq!(span.end.line, 3);
-      assert_eq!(span.end.column, "comment ".chars().count());
+      assert_eq!(span.end.column, "comment ".chars().count() - 1);
     }
   }
 
@@ -673,7 +673,7 @@ mod tests {
       assert_eq!(span.start.line, 1);
       assert_eq!(span.start.column, 2);
       assert_eq!(span.end.line, 1);
-      assert_eq!(span.end.column, 2 + " First line comment".chars().count());
+      assert_eq!(span.end.column, 2 + " First line comment".chars().count() - 1);
     }
     {
       let literal = literals.get(1).unwrap();
@@ -687,7 +687,7 @@ mod tests {
       assert_eq!(span.start.line, 2);
       assert_eq!(span.start.column, 25);
       assert_eq!(span.end.line, 2);
-      assert_eq!(span.end.column, 25 + " A constant ".chars().count());
+      assert_eq!(span.end.column, 25 + " A constant ".chars().count() - 1);
     }
   }
   #[test]
