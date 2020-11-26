@@ -5,8 +5,6 @@ use anyhow::{bail, Result};
 use fancy_regex::Regex;
 use std::convert::TryFrom;
 use std::fmt;
-use std::error::Error;
-use crate::documentation::developer::{TokenWithLineColumn, TokenWithType};
 use proc_macro2::LineColumn;
 
 /// Track what kind of comment the literal is
