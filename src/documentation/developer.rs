@@ -4,6 +4,11 @@ use regex::Regex;
 
 use super::*;
 
+lazy_static::lazy_static! {
+  static ref BLOCK_COMMENT: Regex = Regex::new(r"^/\*(?s)(?P<content>.*)\*/$").unwrap();
+  static ref LINE_COMMENT: Regex = Regex::new(r"^//([^[/|!]].*)$").unwrap();
+}
+
 /// A string token from a source string with the location at which it occurs in the source string
 /// in 0 indexed bytes
 #[derive(Debug)]
@@ -151,11 +156,9 @@ pub fn calculate_column(fragment: &str) -> usize {
 /// Determines whether the string content of a token represents a closed developer block comment,
 /// a developer line comment or something else
 fn identify_token_type(token: TokenWithLineColumn) -> TokenWithType {
-  let block_comment = Regex::new(r"^/\*(?s)(?P<content>.*)\*/$").unwrap();
-  let line_comment = Regex::new(r"^//([^[/|!]].*)$").unwrap();
-  if block_comment.is_match(&token.content) {
+  if BLOCK_COMMENT.is_match(&token.content) {
     TokenWithType::block_comment(token)
-  } else if line_comment.is_match(&token.content) {
+  } else if LINE_COMMENT.is_match(&token.content) {
     TokenWithType::line_comment(token)
   } else {
     TokenWithType::other(token)
@@ -179,11 +182,10 @@ fn retain_only_developer_comments(tokens: Vec<TokenWithType>) -> Vec<TokenWithTy
 /// the token kind is not `TokenKind::BlockComment`, if the token content does not match the
 /// block comment regex, or if any line cannot be added by `LiteralSet::add_adjacent`
 fn literal_set_from_block_comment(token: &TokenWithType) -> Option<LiteralSet> {
-  let block_comment = Regex::new(r"^/\*(?s)(?P<content>.*)\*/$").unwrap();
   if token.kind != TokenType::BlockComment {
     return None;
   }
-  if !block_comment.is_match(&token.content) {
+  if !BLOCK_COMMENT.is_match(&token.content) {
     return None;
   }
   let number_of_lines = token.content.split("\n").count();
