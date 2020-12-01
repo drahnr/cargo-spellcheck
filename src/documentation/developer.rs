@@ -119,7 +119,9 @@ pub fn extract_developer_comments(source: &str) -> Vec<LiteralSet> {
   for comment in block_comments {
     match literal_set_from_block_comment(comment) {
       Ok(ls) => literal_sets.push(ls),
-      Err(_) => () // TODO: LOG
+      Err(s) => log::trace!(
+          "Failed to create literal set from token with content \"{}\" due to \"{}\"",
+          comment.content, s)
     }
   }
   literal_sets
@@ -227,7 +229,8 @@ fn literal_set_from_block_comment(token: &TokenWithType) -> Result<LiteralSet, S
     };
     let literal = match TrimmedLiteral::from(
         CommentVariant::Unknown, next_line, 2, 0, token.line, token.column) {
-      Err(s) => return Err(format!("Failed to create literal from content \"{}\" due to error \"{}\"",
+      Err(s) => return Err(format!("Failed to create literal from block comment with content \"{}\" \
+          due to error \"{}\"",
           next_line, s)),
       Ok(l) => l
     };
@@ -253,14 +256,11 @@ fn literal_set_from_block_comment(token: &TokenWithType) -> Result<LiteralSet, S
 
 /// Attempt to create a literal from a developer line comment token. Returns `None` if the token's
 /// kind is not `TokenType::LineComment` or if the call to `TrimmedLiteral::from` fails.
-fn literal_from_line_comment(token: &TokenWithType) -> Option<TrimmedLiteral> {
+fn literal_from_line_comment(token: &TokenWithType) -> Result<TrimmedLiteral, String> {
   match token.kind {
-    TokenType::LineComment => match TrimmedLiteral::from(
-        CommentVariant::Unknown, &token.content, 2, 0, token.line, token.column) {
-      Ok(l) => Some(l),
-      Err(_) => None // TODO: log
-    },
-    _ => None
+    TokenType::LineComment => TrimmedLiteral::from(
+        CommentVariant::Unknown, &token.content, 2, 0, token.line, token.column),
+    _ => Err(format!("Expected a token of type {}, got {}", TokenType::LineComment, token.kind))
   }
 }
 
@@ -274,8 +274,12 @@ fn literal_sets_from_line_comments(tokens: Vec<&TokenWithType>) -> Vec<LiteralSe
       continue;
     }
     let literal = match literal_from_line_comment(token) {
-      None => continue,
-      Some(l) => l
+      Err(s) => {
+        log::trace!("Failed to create literal from line comment with content \"{}\" due to \"{}\"",
+            token.content, s);
+        continue;
+      },
+      Ok(l) => l
     };
     match sets.pop() {
       None => sets.push(LiteralSet::from(literal)),
@@ -715,7 +719,7 @@ mod tests {
     let tokens = tokens_with_location_to_tokens_with_line_and_column(source, tokens);
     let tokens = token_with_line_column_to_token_with_type(tokens);
     for token in tokens {
-      assert!(literal_from_line_comment(&token).is_none());
+      assert!(literal_from_line_comment(&token).is_err());
     }
   }
 
@@ -726,7 +730,7 @@ mod tests {
     let tokens = tokens_with_location_to_tokens_with_line_and_column(source, tokens);
     let tokens = token_with_line_column_to_token_with_type(tokens);
     for token in tokens {
-      assert!(literal_from_line_comment(&token).is_none());
+      assert!(literal_from_line_comment(&token).is_err());
     }
   }
 
@@ -738,12 +742,12 @@ mod tests {
     let tokens = token_with_line_column_to_token_with_type(tokens);
     let filtered = retain_only_developer_comments(tokens);
     assert_eq!(filtered.len(), 2);
-    let literals: Vec<Option<TrimmedLiteral>> = filtered.into_iter()
+    let literals: Vec<Result<TrimmedLiteral, String>> = filtered.into_iter()
       .map(|t| literal_from_line_comment(&t))
       .collect();
     {
       let literal = literals.get(0).unwrap();
-      assert!(literal.is_some());
+      assert!(literal.is_ok());
       let literal = literal.as_ref().unwrap();
       assert_eq!(literal.pre(), "//".chars().count());
       assert_eq!(literal.post(), "".chars().count());
@@ -757,7 +761,7 @@ mod tests {
     }
     {
       let literal = literals.get(1).unwrap();
-      assert!(literal.is_some());
+      assert!(literal.is_ok());
       let literal = literal.as_ref().unwrap();
       assert_eq!(literal.pre(), "//".chars().count());
       assert_eq!(literal.post(), "".chars().count());
