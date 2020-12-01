@@ -6,8 +6,13 @@ mod simple;
 
 mod enumerate;
 
+// Shud be chcked now
+// Verify **some** _super_ *duper* [markdown](https://ahoi.io/).
 struct X;
 
+/*
+ * Also check thiz one
+ */
 impl X {
 	/// New, as in new. But also not.
 	///
@@ -23,7 +28,3 @@ impl X {
 		unimplemented!()
 	}
 }
-
-
-// Should not be checked for now
-// Verify **some** _super_ *duper* [markdown](https://ahoi.io/).
