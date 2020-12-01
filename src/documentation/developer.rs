@@ -8,8 +8,12 @@ use regex::Regex;
 use super::*;
 
 lazy_static::lazy_static! {
-  static ref BLOCK_COMMENT: Regex = Regex::new(r"^/\*(?s)(?P<content>.*)\*/$").unwrap();
-  static ref LINE_COMMENT: Regex = Regex::new(r"^//([^[/|!]].*)$").unwrap();
+  static ref BLOCK_COMMENT: Regex = Regex::new(r"^/\*(?s)(?P<content>.*)\*/$")
+      .expect("Failed to create regular expression to identify (closed) developer block comments. \
+          Please check this regex!");
+  static ref LINE_COMMENT: Regex = Regex::new(r"^//([^[/|!]].*)$")
+      .expect("Failed to create regular expression to identify developer line comments. \
+          Please check this regex!");
 }
 
 /// A string token from a source string with the location at which it occurs in the source string
@@ -207,18 +211,38 @@ fn literal_set_from_block_comment(token: &TokenWithType) -> Result<LiteralSet, S
   let number_of_lines = token.content.split("\n").count();
   let mut lines = token.content.split("\n");
   if number_of_lines == 1 {
-    Ok(LiteralSet::from(TrimmedLiteral::from(
-        CommentVariant::Unknown, &token.content, 2, 2, token.line, token.column).unwrap()))
+    let literal = match TrimmedLiteral::from(
+        CommentVariant::Unknown, &token.content, 2, 2, token.line, token.column) {
+      Err(s) => return Err(format!(
+          "Failed to create literal from single line block comment, content \"{}\" - caused by \"{}\"",
+          token.content, s)),
+      Ok(l) => l
+    };
+    Ok(LiteralSet::from(literal))
   } else {
-    let next_line = lines.next().unwrap();
-    let mut literal_set = LiteralSet::from(TrimmedLiteral::from(
-        CommentVariant::Unknown, next_line, 2, 0, token.line, token.column).unwrap());
+    let next_line = match lines.next() {
+      None => return Err(format!(
+        "BUG! Expected block comment \"{}\" to have at least two lines", token.content)),
+      Some(l) => l
+    };
+    let literal = match TrimmedLiteral::from(
+        CommentVariant::Unknown, next_line, 2, 0, token.line, token.column) {
+      Err(s) => return Err(format!("Failed to create literal from content \"{}\" due to error \"{}\"",
+          next_line, s)),
+      Ok(l) => l
+    };
+    let mut literal_set = LiteralSet::from(literal);
     let mut line_number = token.line;
     while let Some(next_line) = lines.next() {
       line_number += 1;
       let post = if next_line.ends_with("*/") { 2 } else { 0 };
-      match literal_set.add_adjacent(TrimmedLiteral::from(
-          CommentVariant::Unknown, next_line, 0, post, line_number, 0).unwrap()) {
+      let literal = match TrimmedLiteral::from(
+          CommentVariant::Unknown, next_line, 0, post, line_number, 0) {
+        Err(s) => return Err(format!("Failed to create literal from content \"{}\" due to error \"{}\"",
+            next_line, s)),
+        Ok(l) => l
+      };
+      match literal_set.add_adjacent(literal) {
         Ok(_) => (),
         Err(_) => return Err(format!("Failed to add line with content {} to literal set", next_line))
       }
@@ -581,7 +605,7 @@ mod tests {
     assert_eq!(tokens.len(), 1);
     let token = tokens.into_iter().last().unwrap();
     let literal_set = literal_set_from_block_comment(&token);
-    assert!(literal_set.is_some());
+    assert!(literal_set.is_ok());
     let literal_set = literal_set.unwrap();
     assert_eq!(literal_set.len(), 1);
     let literal = literal_set.literals().into_iter().last().unwrap();
@@ -605,7 +629,7 @@ mod tests {
     assert!(tokens.len() > 0);
     let token = tokens.into_iter().last().unwrap();
     let literal_set = literal_set_from_block_comment(&token);
-    assert!(literal_set.is_some());
+    assert!(literal_set.is_ok());
     let literal_set = literal_set.unwrap();
     assert_eq!(literal_set.len(), 1);
     let literal = literal_set.literals().into_iter().last().unwrap();
@@ -630,7 +654,7 @@ mod tests {
     assert_eq!(tokens.len(), 1);
     let token = tokens.into_iter().last().unwrap();
     let literal_set = literal_set_from_block_comment(&token);
-    assert!(literal_set.is_some());
+    assert!(literal_set.is_ok());
     let literal_set = literal_set.unwrap();
     assert_eq!(literal_set.len(), 3);
     let literals = literal_set.literals();
@@ -680,7 +704,7 @@ mod tests {
     let tokens = tokens_with_location_to_tokens_with_line_and_column(source, tokens);
     let tokens = token_with_line_column_to_token_with_type(tokens);
     for token in tokens {
-      assert!(literal_set_from_block_comment(&token).is_none());
+      assert!(literal_set_from_block_comment(&token).is_err());
     }
   }
 
