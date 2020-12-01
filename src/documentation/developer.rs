@@ -1,4 +1,7 @@
 
+use std::fmt;
+use std::fmt::{Display, Formatter};
+
 use ra_ap_syntax::tokenize;
 use regex::Regex;
 
@@ -37,6 +40,17 @@ enum TokenType {
   BlockComment,
   LineComment,
   Other
+}
+
+impl Display for TokenType {
+  fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    let kind = match self {
+      TokenType::BlockComment => "developer block comment",
+      TokenType::LineComment => "developer line comment",
+      TokenType::Other => "not a developer comment"
+    };
+    write!(f, "{}", kind)
+  }
 }
 
 /// A token from a source string with its variant (TokenType) and the line and column on which it
@@ -100,8 +114,8 @@ pub fn extract_developer_comments(source: &str) -> Vec<LiteralSet> {
   }
   for comment in block_comments {
     match literal_set_from_block_comment(comment) {
-      Some(ls) => literal_sets.push(ls),
-      None => () // TODO: LOG
+      Ok(ls) => literal_sets.push(ls),
+      Err(_) => () // TODO: LOG
     }
   }
   literal_sets
@@ -181,17 +195,19 @@ fn retain_only_developer_comments(tokens: Vec<TokenWithType>) -> Vec<TokenWithTy
 /// Attempts to create a `LiteralSet` from a token assuming it is block comment. Returns `None` if
 /// the token kind is not `TokenKind::BlockComment`, if the token content does not match the
 /// block comment regex, or if any line cannot be added by `LiteralSet::add_adjacent`
-fn literal_set_from_block_comment(token: &TokenWithType) -> Option<LiteralSet> {
+fn literal_set_from_block_comment(token: &TokenWithType) -> Result<LiteralSet, String> {
   if token.kind != TokenType::BlockComment {
-    return None;
+    return Err(format!("Got token of type {}, need {}", token.kind, TokenType::BlockComment));
   }
   if !BLOCK_COMMENT.is_match(&token.content) {
-    return None;
+    return Err(format!(
+        "Token claimed to be of type {}, but improperly delimited - actual content \"{}\"",
+        TokenType::BlockComment, token.content));
   }
   let number_of_lines = token.content.split("\n").count();
   let mut lines = token.content.split("\n");
   if number_of_lines == 1 {
-    Some(LiteralSet::from(TrimmedLiteral::from(
+    Ok(LiteralSet::from(TrimmedLiteral::from(
         CommentVariant::Unknown, &token.content, 2, 2, token.line, token.column).unwrap()))
   } else {
     let next_line = lines.next().unwrap();
@@ -204,10 +220,10 @@ fn literal_set_from_block_comment(token: &TokenWithType) -> Option<LiteralSet> {
       match literal_set.add_adjacent(TrimmedLiteral::from(
           CommentVariant::Unknown, next_line, 0, post, line_number, 0).unwrap()) {
         Ok(_) => (),
-        Err(_) => return None // TODO LOG
+        Err(_) => return Err(format!("Failed to add line with content {} to literal set", next_line))
       }
     }
-    Some(literal_set)
+    Ok(literal_set)
   }
 }
 
