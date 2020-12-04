@@ -72,32 +72,19 @@ pub struct TokenWithType {
 }
 
 impl TokenWithType {
-  /// Create a new block comment `TokenWithType` (`kind == TokenType::BlockComment`)
-  fn block_comment(token: TokenWithLineColumn) -> Self {
-    Self {
-      kind: TokenType::BlockComment,
-      content: token.content,
-      line: token.line,
-      column: token.column
-    }
-  }
-  /// Create a new line comment `TokenWithType` (`kind == TokenType::LineComment`)
-  fn line_comment(token: TokenWithLineColumn) -> Self {
-    Self {
-      kind: TokenType::LineComment,
-      content: token.content,
-      line: token.line,
-      column: token.column
-    }
-  }
-  /// Create a new non-developer-comment `TokenWithType` (`kind == TokenType::Other`)
-  fn other(token: TokenWithLineColumn) -> Self {
-    Self {
-      kind: TokenType::Other,
-      content: token.content,
-      line: token.line,
-      column: token.column
-    }
+  /// Convert a `TokenWithLineColumn` to a `TokenWithType`. The kind is worked out from the content
+  /// by checking against the developer block comment & line comment regexes.
+  fn from (token: TokenWithLineColumn) -> Self {
+    let kind = {
+      if BLOCK_COMMENT.is_match(&token.content) {
+        TokenType::BlockComment
+      } else if LINE_COMMENT.is_match(&token.content) {
+        TokenType::LineComment
+      } else {
+        TokenType::Other
+      }
+    };
+    Self { kind, content: token.content, line: token.line, column: token.column }
   }
 }
 
@@ -173,22 +160,10 @@ pub fn calculate_column(fragment: &str) -> usize {
   }
 }
 
-/// Determines whether the string content of a token represents a closed developer block comment,
-/// a developer line comment or something else
-fn identify_token_type(token: TokenWithLineColumn) -> TokenWithType {
-  if BLOCK_COMMENT.is_match(&token.content) {
-    TokenWithType::block_comment(token)
-  } else if LINE_COMMENT.is_match(&token.content) {
-    TokenWithType::line_comment(token)
-  } else {
-    TokenWithType::other(token)
-  }
-}
-
 /// Converts a series of `TokenWithLineColumn`s to `TokenWithType`s
 fn token_with_line_column_to_token_with_type(tokens_in: Vec<TokenWithLineColumn>)
     -> Vec<TokenWithType> {
-  tokens_in.into_iter().map(|t| identify_token_type(t)).collect()
+  tokens_in.into_iter().map(|t| TokenWithType::from(t)).collect()
 }
 
 /// Returns a vector containing only the tokens from the input vector which are developer comments
