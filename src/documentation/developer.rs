@@ -450,7 +450,7 @@ mod tests {
         }
     );
     for token in block_comments {
-      assert_eq!(identify_token_type(token).kind, TokenType::BlockComment);
+      assert_eq!(TokenWithType::from(token).kind, TokenType::BlockComment);
     }
   }
 
@@ -464,7 +464,7 @@ mod tests {
       }
     );
     for token in line_comments {
-      assert_eq!(identify_token_type(token).kind, TokenType::LineComment);
+      assert_eq!(TokenWithType::from(token).kind, TokenType::LineComment);
     }
   }
 
@@ -528,7 +528,7 @@ mod tests {
       }
     );
     for token in not_developer_comments {
-      assert_eq!(identify_token_type(token).kind, TokenType::Other);
+      assert_eq!(TokenWithType::from(token).kind, TokenType::Other);
     }
   }
 
