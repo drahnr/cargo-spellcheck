@@ -7,6 +7,24 @@ use regex::Regex;
 
 use super::*;
 
+/// Prefix string for a developer block comment
+const BLOCK_COMMENT_PREFIX: &str = "/*";
+
+/// Prefix string for a developer line comment
+const LINE_COMMENT_PREFIX: &str = "//";
+
+/// Prefix string for any other token type (i.e. we don't care)
+const OTHER_PREFIX: &str = "";
+
+/// Postfix string for a developer block comment
+const BLOCK_COMMENT_POSTFIX: &str = "*/";
+
+/// Postfix string for a developer line comment
+const LINE_COMMENT_POSTFIX: &str = "";
+
+/// Postfix string for any other token type (i.e. we don't care)
+const OTHER_POSTFIX: &str = "";
+
 lazy_static::lazy_static! {
   static ref BLOCK_COMMENT: Regex = Regex::new(r"^/\*(?s)(?P<content>.*)\*/$")
       .expect("Failed to create regular expression to identify (closed) developer block comments. \
@@ -54,6 +72,33 @@ impl Display for TokenType {
       TokenType::Other => "not a developer comment"
     };
     write!(f, "{}", kind)
+  }
+}
+
+impl TokenType {
+  /// The prefix string for this type of token
+  fn pre(&self) -> &str {
+    match self {
+      TokenType::BlockComment => BLOCK_COMMENT_PREFIX,
+      TokenType::LineComment => LINE_COMMENT_PREFIX,
+      TokenType::Other => OTHER_PREFIX
+    }
+  }
+  /// The postfix string for this type of token
+  fn post(&self) -> &str {
+    match self {
+      TokenType::BlockComment => BLOCK_COMMENT_POSTFIX,
+      TokenType::LineComment => LINE_COMMENT_POSTFIX,
+      TokenType::Other => OTHER_POSTFIX
+    }
+  }
+  /// The length of the prefix for the token in characters
+  fn pre_in_chars(&self) -> usize {
+    self.pre().chars().count()
+  }
+  /// The length of the postfix for the token in characters
+  fn post_in_chars(&self) -> usize {
+    self.post().chars().count()
   }
 }
 
@@ -189,7 +234,8 @@ fn literal_set_from_block_comment(token: &TokenWithType) -> Result<LiteralSet, S
   let mut lines = token.content.split("\n");
   if number_of_lines == 1 {
     let literal = match TrimmedLiteral::from(
-        CommentVariant::Unknown, &token.content, 2, 2, token.line, token.column) {
+        CommentVariant::Unknown, &token.content, token.kind.pre_in_chars(),
+        token.kind.post_in_chars(), token.line, token.column) {
       Err(s) => return Err(format!(
           "Failed to create literal from single line block comment, content \"{}\" - caused by \"{}\"",
           token.content, s)),
@@ -203,7 +249,8 @@ fn literal_set_from_block_comment(token: &TokenWithType) -> Result<LiteralSet, S
       Some(l) => l
     };
     let literal = match TrimmedLiteral::from(
-        CommentVariant::Unknown, next_line, 2, 0, token.line, token.column) {
+        CommentVariant::Unknown, next_line, token.kind.pre_in_chars(), 0,
+        token.line, token.column) {
       Err(s) => return Err(format!("Failed to create literal from block comment with content \"{}\" \
           due to error \"{}\"",
           next_line, s)),
@@ -213,7 +260,11 @@ fn literal_set_from_block_comment(token: &TokenWithType) -> Result<LiteralSet, S
     let mut line_number = token.line;
     while let Some(next_line) = lines.next() {
       line_number += 1;
-      let post = if next_line.ends_with("*/") { 2 } else { 0 };
+      let post = if next_line.ends_with(BLOCK_COMMENT_POSTFIX) {
+        TokenType::BlockComment.post_in_chars()
+      } else {
+        0
+      };
       let literal = match TrimmedLiteral::from(
           CommentVariant::Unknown, next_line, 0, post, line_number, 0) {
         Err(s) => return Err(format!("Failed to create literal from content \"{}\" due to error \"{}\"",
@@ -234,7 +285,8 @@ fn literal_set_from_block_comment(token: &TokenWithType) -> Result<LiteralSet, S
 fn literal_from_line_comment(token: &TokenWithType) -> Result<TrimmedLiteral, String> {
   match token.kind {
     TokenType::LineComment => TrimmedLiteral::from(
-        CommentVariant::Unknown, &token.content, 2, 0, token.line, token.column),
+        CommentVariant::Unknown, &token.content, token.kind.pre_in_chars(),
+        token.kind.post_in_chars(), token.line, token.column),
     _ => Err(format!("Expected a token of type {}, got {}", TokenType::LineComment, token.kind))
   }
 }
@@ -588,8 +640,8 @@ mod tests {
     let literal_set = literal_set.unwrap();
     assert_eq!(literal_set.len(), 1);
     let literal = literal_set.literals().into_iter().last().unwrap();
-    assert_eq!(literal.pre(), 2);
-    assert_eq!(literal.post(), 2);
+    assert_eq!(literal.pre(), TokenType::BlockComment.pre_in_chars());
+    assert_eq!(literal.post(), TokenType::BlockComment.post_in_chars());
     assert_eq!(literal.len_in_chars(), source.chars().count() - 4);
     assert_eq!(literal.len(), source.len() - 4);
     let span = &literal.span();
@@ -613,8 +665,8 @@ mod tests {
     assert_eq!(literal_set.len(), 1);
     let literal = literal_set.literals().into_iter().last().unwrap();
     let indent_size = "    ".len(); // Also chars, because ASCII
-    assert_eq!(literal.pre(), 2);
-    assert_eq!(literal.post(), 2);
+    assert_eq!(literal.pre(), TokenType::BlockComment.pre_in_chars());
+    assert_eq!(literal.post(), TokenType::BlockComment.post_in_chars());
     assert_eq!(literal.len_in_chars(), source.chars().count() - indent_size - 4);
     assert_eq!(literal.len(), source.len() - indent_size - 4);
     let span = &literal.span();
@@ -639,7 +691,7 @@ mod tests {
     let literals = literal_set.literals();
     {
       let literal = literals.get(0).unwrap();
-      assert_eq!(literal.pre(), "/*".chars().count());
+      assert_eq!(literal.pre(), TokenType::BlockComment.pre_in_chars());
       assert_eq!(literal.post(), "".chars().count());
       assert_eq!(literal.len_in_chars(), " block".chars().count());
       assert_eq!(literal.len(), " block".len());
@@ -664,7 +716,7 @@ mod tests {
     {
       let literal = literals.get(2).unwrap();
       assert_eq!(literal.pre(), "".chars().count());
-      assert_eq!(literal.post(), "*/".chars().count());
+      assert_eq!(literal.post(), TokenType::BlockComment.post_in_chars());
       assert_eq!(literal.len_in_chars(), "comment ".chars().count());
       assert_eq!(literal.len(), "comment ".len());
       let span = &literal.span();
@@ -724,8 +776,8 @@ mod tests {
       let literal = literals.get(0).unwrap();
       assert!(literal.is_ok());
       let literal = literal.as_ref().unwrap();
-      assert_eq!(literal.pre(), "//".chars().count());
-      assert_eq!(literal.post(), "".chars().count());
+      assert_eq!(literal.pre(), TokenType::LineComment.pre_in_chars());
+      assert_eq!(literal.post(), TokenType::LineComment.post_in_chars());
       assert_eq!(literal.len_in_chars(), " First line comment".chars().count());
       assert_eq!(literal.len(), " First line comment".len());
       let span = &literal.span();
@@ -738,8 +790,8 @@ mod tests {
       let literal = literals.get(1).unwrap();
       assert!(literal.is_ok());
       let literal = literal.as_ref().unwrap();
-      assert_eq!(literal.pre(), "//".chars().count());
-      assert_eq!(literal.post(), "".chars().count());
+      assert_eq!(literal.pre(), TokenType::LineComment.pre_in_chars());
+      assert_eq!(literal.post(), TokenType::LineComment.post_in_chars());
       assert_eq!(literal.len_in_chars(), " A constant ".chars().count());
       assert_eq!(literal.len(), " A constant ".len());
       let span = &literal.span();
