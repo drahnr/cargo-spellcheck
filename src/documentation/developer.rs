@@ -179,15 +179,12 @@ pub fn source_to_tokens_with_location(source: &str) -> Vec<TokenWithLocation> {
 /// to calculate line & column from location.
 pub fn tokens_with_location_to_tokens_with_line_and_column
     (source: &str, tokens_in: Vec<TokenWithLocation>) -> Vec<TokenWithLineColumn> {
-  let mut tokens_out = vec!();
-  for token in tokens_in {
-    tokens_out.push(TokenWithLineColumn{
-      content: token.content,
-      line: count_lines(&source[..token.location]),
-      column: calculate_column(&source[..token.location])
-    });
-  }
-  tokens_out
+  tokens_in.into_iter()
+      .map(|t| TokenWithLineColumn {
+        content: t.content,
+        line: count_lines(&source[..t.location]),
+        column: calculate_column(&source[..t.location])
+      }).collect()
 }
 
 /// Given a string, calculates the 1 indexed line number of the line on which the final character
