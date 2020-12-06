@@ -140,23 +140,9 @@ pub fn extract_developer_comments(source: &str) -> Vec<LiteralSet> {
         token_with_line_column_to_token_with_type(
             tokens_with_location_to_tokens_with_line_and_column(
                 source, source_to_tokens_with_location(source))));
-  let mut literal_sets = vec!();
-  let block_comments: Vec<&TokenWithType> = tokens.iter()
-      .filter(|t| t.kind == TokenType::BlockComment).collect();
-  let line_comments: Vec<&TokenWithType> = tokens.iter()
-      .filter(|t| t.kind == TokenType::LineComment).collect();
-  for set in literal_sets_from_line_comments(line_comments) {
-    literal_sets.push(set);
-  }
-  for comment in block_comments {
-    match literal_set_from_block_comment(comment) {
-      Ok(ls) => literal_sets.push(ls),
-      Err(s) => log::trace!(
-          "Failed to create literal set from token with content \"{}\" due to \"{}\"",
-          comment.content, s)
-    }
-  }
-  literal_sets
+  literal_sets_from_block_comments(tokens.iter().collect()).into_iter()
+      .chain(literal_sets_from_line_comments(tokens.iter().collect()).into_iter())
+      .collect()
 }
 
 /// Creates a series of `TokenWithLocation`s from a source string
@@ -213,6 +199,23 @@ fn retain_only_developer_comments(tokens: Vec<TokenWithType>) -> Vec<TokenWithTy
   tokens.into_iter()
       .filter(|t| t.kind != TokenType::Other)
       .collect()
+}
+
+/// Attempts to convert all `TokenWithType` with kind `TokenType::BlockComment` in the input into
+/// literal sets, returning those successful or otherwise logging the errors
+fn literal_sets_from_block_comments(tokens: Vec<&TokenWithType>) -> Vec<LiteralSet> {
+  let mut literal_sets = vec!();
+  let only_block_comments: Vec<&TokenWithType> =
+      tokens.into_iter().filter(|t| t.kind == TokenType::BlockComment).collect();
+  for token in only_block_comments {
+    match literal_set_from_block_comment(token) {
+      Ok(ls) => literal_sets.push(ls),
+      Err(e) => log::trace!(
+          "Attempted to convert block comment with content \"{}\" to literal set, failed with \"{}\"",
+          token.content, e)
+    }
+  }
+  literal_sets
 }
 
 /// Attempts to create a `LiteralSet` from a token assuming it is block comment. Returns `None` if
@@ -289,8 +292,7 @@ fn literal_from_line_comment(token: &TokenWithType) -> Result<TrimmedLiteral, St
 }
 
 /// Converts a vector of tokens into a vector of `LiteralSet`s based on the developer line comments
-/// in the input. Should be called with only line comment tokens in the input, but it is safe to
-/// call it with other token types included.
+/// in the input, ignoring all other tokens in the input.
 fn literal_sets_from_line_comments(tokens: Vec<&TokenWithType>) -> Vec<LiteralSet> {
   let mut sets = vec!();
   for token in tokens {
