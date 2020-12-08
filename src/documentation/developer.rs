@@ -627,6 +627,27 @@ mod tests {
   }
 
   #[test]
+  fn test_block_comments_to_literal_sets_converter_keeps_block_comment_tokens() {
+    let source = "/* block comment */\n/*\n * multi line block comment\n */\n";
+    let tokens = source_to_tokens_with_location(&source);
+    let tokens = tokens_with_location_to_tokens_with_line_and_column(&source, tokens);
+    let tokens = token_with_line_column_to_token_with_type(tokens);
+    let literal_sets = literal_sets_from_block_comments(tokens.iter().collect());
+    assert_eq!(literal_sets.len(), 2);
+  }
+
+  #[test]
+  fn test_block_comments_to_literal_sets_converter_ignores_other_token_types() {
+    let source = "/// line comment\n/// outer documentation\npub fn test() -> i32 \
+        {\n  //! inner documentation\n  1 + 2\n}";
+    let tokens = source_to_tokens_with_location(&source);
+    let tokens = tokens_with_location_to_tokens_with_line_and_column(&source, tokens);
+    let tokens = token_with_line_column_to_token_with_type(tokens);
+    let literal_sets = literal_sets_from_block_comments(tokens.iter().collect());
+    assert_eq!(literal_sets.len(), 0);
+  }
+
+  #[test]
   fn test_single_line_block_comment_literal_correctly_created() {
     let source = "/* block 种 comment */";
     let tokens = source_to_tokens_with_location(source);
