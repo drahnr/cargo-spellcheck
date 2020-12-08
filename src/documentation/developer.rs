@@ -37,7 +37,7 @@ lazy_static::lazy_static! {
 /// A string token from a source string with the location at which it occurs in the source string
 /// in 0 indexed bytes
 #[derive(Debug)]
-pub struct TokenWithLocation {
+struct TokenWithLocation {
   /// The full contents of this token, including pre/post characters (like '//')
   content: String,
   /// The location of the start of this token in the source string, in bytes
@@ -47,7 +47,7 @@ pub struct TokenWithLocation {
 /// A string token from a source string with the location at which it occurs in the source string
 /// as line on which it occurs (1 indexed) and the column of its first character (0 indexed)
 #[derive(Debug)]
-pub struct TokenWithLineColumn {
+struct TokenWithLineColumn {
   /// The full contents of this token, including pre/post characters (like '//')
   content: String,
   /// The first line on which the token appears in the source file (1 indexed)
@@ -105,7 +105,7 @@ impl TokenType {
 /// A token from a source string with its variant (TokenType) and the line and column on which it
 /// occurs according to the description for `TokenWithLineColumn`
 #[derive(Debug)]
-pub struct TokenWithType {
+struct TokenWithType {
   /// Is the token a block developer comment, line developer comment or something else
   kind: TokenType,
   /// The full contents of this token, including pre/post characters (like '//')
@@ -146,7 +146,7 @@ pub fn extract_developer_comments(source: &str) -> Vec<LiteralSet> {
 }
 
 /// Creates a series of `TokenWithLocation`s from a source string
-pub fn source_to_tokens_with_location(source: &str) -> Vec<TokenWithLocation> {
+fn source_to_tokens_with_location(source: &str) -> Vec<TokenWithLocation> {
   let ra_tokens = tokenize(source).0;
   let mut tokens = vec!();
   let mut location = 0;
@@ -163,7 +163,7 @@ pub fn source_to_tokens_with_location(source: &str) -> Vec<TokenWithLocation> {
 
 /// Converts a series of `TokenWithLocation`s to `TokenWithLineColumn`s. Requires the source string
 /// to calculate line & column from location.
-pub fn tokens_with_location_to_tokens_with_line_and_column
+fn tokens_with_location_to_tokens_with_line_and_column
     (source: &str, tokens_in: Vec<TokenWithLocation>) -> Vec<TokenWithLineColumn> {
   tokens_in.into_iter()
       .map(|t| TokenWithLineColumn {
@@ -175,13 +175,13 @@ pub fn tokens_with_location_to_tokens_with_line_and_column
 
 /// Given a string, calculates the 1 indexed line number of the line on which the final character
 /// of the string appears
-pub fn count_lines(fragment: &str) -> usize {
+fn count_lines(fragment: &str) -> usize {
   fragment.chars().into_iter().filter(|c| *c == '\n').count() + 1
 }
 
 /// Given a string, calculates the 0 indexed column number of the character *just after* the final
 /// character in the string
-pub fn calculate_column(fragment: &str) -> usize {
+fn calculate_column(fragment: &str) -> usize {
   match fragment.rfind('\n') {
     Some(p) => fragment.chars().count() - fragment[..p].chars().count() - 1,
     None => fragment.chars().count()
