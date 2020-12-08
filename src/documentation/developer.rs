@@ -376,13 +376,17 @@ mod tests {
     }
   }
 
+  /// Convenience function to convert from source to tokens with line & column for tests
+  fn source_to_token_with_line_column(source: &str) -> Vec<TokenWithLineColumn> {
+    tokens_with_location_to_tokens_with_line_and_column(source,
+        source_to_tokens_with_location(source))
+  }
+
   #[test]
   fn test_tokens_with_line_column_values_set_correctly() {
     {
       let source = "/* test */\n// test";
-      let tokens = source_to_tokens_with_location(source);
-      let tokens = tokens_with_location_to_tokens_with_line_and_column(
-        source, tokens);
+      let tokens = source_to_token_with_line_column(source);
       assert_eq!(tokens.get(0).unwrap().line, 1); // Block comment
       assert_eq!(tokens.get(0).unwrap().column, 0);
       assert_eq!(tokens.get(1).unwrap().line, 1); // Whitespace
@@ -392,9 +396,7 @@ mod tests {
     }
     {
       let source = "/* te中st */\n// test";
-      let tokens = source_to_tokens_with_location(source);
-      let tokens = tokens_with_location_to_tokens_with_line_and_column(
-        source, tokens);
+      let tokens = source_to_token_with_line_column(source);
       assert_eq!(tokens.get(0).unwrap().line, 1); // Block comment
       assert_eq!(tokens.get(0).unwrap().column, 0);
       assert_eq!(tokens.get(1).unwrap().line, 1); // Whitespace
@@ -404,9 +406,7 @@ mod tests {
     }
     {
       let source = "/* te中st */\n// test\nfn 中(){\t}";
-      let tokens = source_to_tokens_with_location(source);
-      let tokens = tokens_with_location_to_tokens_with_line_and_column(
-        source, tokens);
+      let tokens = source_to_token_with_line_column(source);
       assert_eq!(tokens.get(0).unwrap().line, 1); // Block comment
       assert_eq!(tokens.get(0).unwrap().column, 0);
       assert_eq!(tokens.get(1).unwrap().line, 1); // Whitespace
@@ -467,101 +467,51 @@ mod tests {
     }
   }
 
+  /// Convenience function to create a single `TokenWithLineColumn` with given string content
+  /// at line 0 and column 0
+  fn token_with_line_column_at_start(content: &str) -> TokenWithLineColumn {
+    TokenWithLineColumn { content: content.to_string(), line: 0, column: 0 }
+  }
+
   #[test]
   fn test_identify_token_type_assigns_other_type_to_non_developer_comments() {
     let not_developer_comments = vec!(
-      TokenWithLineColumn {
-        content: "fn".to_string(),
-        line: 0,
-        column: 0
-      },
-      TokenWithLineColumn {
-        content: " ".to_string(),
-        line: 0,
-        column: 0
-      },
-      TokenWithLineColumn {
-        content: "\n".to_string(),
-        line: 0,
-        column: 0
-      },
-      TokenWithLineColumn {
-        content: "function_name".to_string(),
-        line: 0,
-        column: 0
-      },
-      TokenWithLineColumn {
-        content: "(".to_string(),
-        line: 0,
-        column: 0
-      },
-      TokenWithLineColumn {
-        content: ")".to_string(),
-        line: 0,
-        column: 0
-      },
-      TokenWithLineColumn {
-        content: ";".to_string(),
-        line: 0,
-        column: 0
-      },
-      TokenWithLineColumn {
-        content: "{".to_string(),
-        line: 0,
-        column: 0
-      },
-      TokenWithLineColumn {
-        content: "}".to_string(),
-        line: 0,
-        column: 0
-      },
-      TokenWithLineColumn {
-        content: "/// Outer documentation comment".to_string(),
-        line: 0,
-        column: 0
-      },
-      TokenWithLineColumn {
-        content: "//! Inner documentation comment".to_string(),
-        line: 0,
-        column: 0
-      }
+      token_with_line_column_at_start("fn"),
+      token_with_line_column_at_start(" "),
+      token_with_line_column_at_start("\n"),
+      token_with_line_column_at_start("function_name"),
+      token_with_line_column_at_start("("),
+      token_with_line_column_at_start(")"),
+      token_with_line_column_at_start(";"),
+      token_with_line_column_at_start("{"),
+      token_with_line_column_at_start("}"),
+      token_with_line_column_at_start("/// Outer documentation comment"),
+      token_with_line_column_at_start("//! Inner documentation comment")
     );
     for token in not_developer_comments {
       assert_eq!(TokenWithType::from(token).kind, TokenType::Other);
     }
   }
 
+  fn concatenate_with_line_breaks(includes: Vec<&&str>, excludes: Vec<&&str>) -> String {
+    let mut building = String::new();
+    for piece in includes {
+      building = building + piece + "\n";
+    }
+    for piece in excludes {
+      building = building + piece + "\n"
+    }
+    building
+  }
+
   #[test]
   fn retain_only_developer_comments_removes_non_comment_tokens() {
-    let block_comment = "/* A block comment */";
-    let line_comment = "// A line comment";
-    let function_keyword = "fn";
-    let function_name = "func中";
-    let left_bracket = "(";
-    let right_bracket = ")";
-    let left_brace = "{";
-    let right_brace = "}";
-    let left_add = "1";
-    let right_add = "2";
-    let plus = "+";
-    let semicolon = ";";
-    let newline = "\n";
-    let whitespace = " ";
-    let source = format!("{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}",
-        block_comment, newline,
-        function_keyword, whitespace, function_name, left_bracket, right_bracket, whitespace,
-        left_brace, newline, whitespace, whitespace, line_comment, newline, whitespace, whitespace,
-        left_add, whitespace, plus, whitespace, right_add, semicolon, newline, right_brace);
-
-    let should_be_excluded = vec!(function_keyword, function_name, left_bracket, newline,
-        right_bracket, left_brace, right_brace, left_add, plus, right_add, whitespace, semicolon);
-
-    let tokens = source_to_tokens_with_location(&source);
-    let tokens = tokens_with_location_to_tokens_with_line_and_column(&source, tokens);
-    let tokens = token_with_line_column_to_token_with_type(tokens);
-    let filtered = retain_only_developer_comments(tokens);
-    for token in filtered {
-      for content in &should_be_excluded {
+    let includes = vec!("/* A block comment */", "// A line comment");
+    let excludes = vec!("fn", "func中", "(", ")", "{", "1", "+", "2", ";", "}", "\n", " ");
+    let source = concatenate_with_line_breaks(includes.iter().collect(), excludes.iter().collect());
+    let tokens = source_to_developer_comment_tokens_with_type(&source);
+    for token in tokens {
+      for content in &excludes {
         assert_ne!(&token.content, content);
       }
     }
@@ -569,22 +519,14 @@ mod tests {
 
   #[test]
   fn retain_only_developer_comments_removes_documentation_comment_tokens() {
-    let block_comment = "/* A block comment */";
-    let line_comment = "// A line comment";
-    let inner_documentation_comment = "//! An inner documentation comment";
-    let outer_documentation_comment = "/// An outer documentation comment";
-    let newline = "\n";
-    let source = format!("{}{}{}{}{}{}{}{}", block_comment, newline, line_comment, newline,
-        outer_documentation_comment, newline, inner_documentation_comment, newline);
-
-    let should_be_excluded = vec!(outer_documentation_comment, inner_documentation_comment);
-
-    let tokens = source_to_tokens_with_location(&source);
-    let tokens = tokens_with_location_to_tokens_with_line_and_column(&source, tokens);
-    let tokens = token_with_line_column_to_token_with_type(tokens);
-    let filtered = retain_only_developer_comments(tokens);
-    for token in filtered {
-      for content in &should_be_excluded {
+    let includes = vec!("/* A block comment */", "// A line comment");
+    let excludes =
+        vec!("//! An inner documentation comment", "/// An outer documentation comment");
+    let source =
+      concatenate_with_line_breaks(includes.iter().collect(), excludes.iter().collect());
+    let tokens = source_to_developer_comment_tokens_with_type(&source);
+    for token in tokens {
+      for content in &excludes {
         assert_ne!(&token.content, content);
       }
     }
@@ -592,46 +534,30 @@ mod tests {
 
   #[test]
   fn retain_only_developer_comments_keeps_developer_comment_tokens() {
-    let block_comment = "/* A block comment */";
-    let line_comment = "// A line comment";
-    let function_keyword = "fn";
-    let function_name = "func中";
-    let left_bracket = "(";
-    let right_bracket = ")";
-    let left_brace = "{";
-    let right_brace = "}";
-    let left_add = "1";
-    let right_add = "2";
-    let plus = "+";
-    let semicolon = ";";
-    let newline = "\n";
-    let whitespace = " ";
-    let source = format!("{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}",
-        block_comment, newline,
-        function_keyword, whitespace, function_name, left_bracket, right_bracket, whitespace,
-        left_brace, newline, whitespace, whitespace, line_comment, newline, whitespace, whitespace,
-        left_add, whitespace, plus, whitespace, right_add, semicolon, newline, right_brace);
-
-    let should_be_included = vec!(block_comment, line_comment);
-
-    let tokens = source_to_tokens_with_location(&source);
-    let tokens = tokens_with_location_to_tokens_with_line_and_column(&source, tokens);
-    let tokens = token_with_line_column_to_token_with_type(tokens);
-    let filtered = retain_only_developer_comments(tokens);
-    for content in should_be_included {
-      let matches: Vec<&TokenWithType> = filtered.iter()
+    let includes = vec!("/* A block comment */", "// A line comment");
+    let excludes = vec!("fn", "func中", "(", ")", "{", "1", "+", "2", ";", "}", "\n", " ");
+    let source =
+        concatenate_with_line_breaks(includes.iter().collect(), excludes.iter().collect());
+    let tokens = source_to_developer_comment_tokens_with_type(&source);
+    for content in includes {
+      let matches: Vec<&TokenWithType> = tokens.iter()
           .filter(|t| t.content == content)
           .collect();
       assert!(matches.len() > 0);
     }
   }
 
+  /// Convenience function to convert a source string into a set of `TokenWithType`s
+  fn source_to_tokens_with_type(source: &str) -> Vec<TokenWithType> {
+    token_with_line_column_to_token_with_type(
+        tokens_with_location_to_tokens_with_line_and_column(source,
+            source_to_tokens_with_location(source)))
+  }
+
   #[test]
   fn test_block_comments_to_literal_sets_converter_keeps_block_comment_tokens() {
     let source = "/* block comment */\n/*\n * multi line block comment\n */\n";
-    let tokens = source_to_tokens_with_location(&source);
-    let tokens = tokens_with_location_to_tokens_with_line_and_column(&source, tokens);
-    let tokens = token_with_line_column_to_token_with_type(tokens);
+    let tokens = source_to_tokens_with_type(source);
     let literal_sets = literal_sets_from_block_comments(tokens.iter().collect());
     assert_eq!(literal_sets.len(), 2);
   }
@@ -640,9 +566,7 @@ mod tests {
   fn test_block_comments_to_literal_sets_converter_ignores_other_token_types() {
     let source = "/// line comment\n/// outer documentation\npub fn test() -> i32 \
         {\n  //! inner documentation\n  1 + 2\n}";
-    let tokens = source_to_tokens_with_location(&source);
-    let tokens = tokens_with_location_to_tokens_with_line_and_column(&source, tokens);
-    let tokens = token_with_line_column_to_token_with_type(tokens);
+    let tokens = source_to_tokens_with_type(source);
     let literal_sets = literal_sets_from_block_comments(tokens.iter().collect());
     assert_eq!(literal_sets.len(), 0);
   }
@@ -650,9 +574,7 @@ mod tests {
   #[test]
   fn test_single_line_block_comment_literal_correctly_created() {
     let source = "/* block 种 comment */";
-    let tokens = source_to_tokens_with_location(source);
-    let tokens = tokens_with_location_to_tokens_with_line_and_column(source, tokens);
-    let tokens = token_with_line_column_to_token_with_type(tokens);
+    let tokens = source_to_tokens_with_type(source);
     assert_eq!(tokens.len(), 1);
     let token = tokens.into_iter().last().unwrap();
     let literal_set = literal_set_from_block_comment(&token);
@@ -674,9 +596,7 @@ mod tests {
   #[test]
   fn test_single_line_indented_block_comment_literal_correctly_created() {
     let source = "    /* block 种 comment */";
-    let tokens = source_to_tokens_with_location(source);
-    let tokens = tokens_with_location_to_tokens_with_line_and_column(source, tokens);
-    let tokens = token_with_line_column_to_token_with_type(tokens);
+    let tokens = source_to_tokens_with_type(source);
     assert!(tokens.len() > 0);
     let token = tokens.into_iter().last().unwrap();
     let literal_set = literal_set_from_block_comment(&token);
@@ -699,9 +619,7 @@ mod tests {
   #[test]
   fn test_multi_line_block_comment_literal_correctly_created() {
     let source = "/* block\n 种 \ncomment */";
-    let tokens = source_to_tokens_with_location(source);
-    let tokens = tokens_with_location_to_tokens_with_line_and_column(source, tokens);
-    let tokens = token_with_line_column_to_token_with_type(tokens);
+    let tokens = source_to_tokens_with_type(source);
     assert_eq!(tokens.len(), 1);
     let token = tokens.into_iter().last().unwrap();
     let literal_set = literal_set_from_block_comment(&token);
@@ -751,9 +669,7 @@ mod tests {
   fn test_not_developer_comments_block_comment_converter_does_not_create_literals() {
     let source = "// line comment\n/// Outer documentation\nfn test(){\n \
         //! Inner documentation\n\tlet i = 1 + 2;\n}";
-    let tokens = source_to_tokens_with_location(source);
-    let tokens = tokens_with_location_to_tokens_with_line_and_column(source, tokens);
-    let tokens = token_with_line_column_to_token_with_type(tokens);
+    let tokens = source_to_tokens_with_type(source);
     for token in tokens {
       assert!(literal_set_from_block_comment(&token).is_err());
     }
@@ -762,9 +678,7 @@ mod tests {
   #[test]
   fn test_non_line_comment_tokens_line_comment_to_literal_does_not_create_literals() {
     let source = "/* Block comment */\nfn test(i: usize) {\n  let j = 1 + i;\n  j\n}";
-    let tokens = source_to_tokens_with_location(source);
-    let tokens = tokens_with_location_to_tokens_with_line_and_column(source, tokens);
-    let tokens = token_with_line_column_to_token_with_type(tokens);
+    let tokens = source_to_tokens_with_type(source);
     for token in tokens {
       assert!(literal_from_line_comment(&token).is_err());
     }
@@ -773,9 +687,7 @@ mod tests {
   #[test]
   fn test_documentation_line_comment_tokens_line_comment_to_literal_does_not_create_literals() {
     let source = "/// Outer \nfn(){\n//! Inner \n}";
-    let tokens = source_to_tokens_with_location(source);
-    let tokens = tokens_with_location_to_tokens_with_line_and_column(source, tokens);
-    let tokens = token_with_line_column_to_token_with_type(tokens);
+    let tokens = source_to_tokens_with_type(source);
     for token in tokens {
       assert!(literal_from_line_comment(&token).is_err());
     }
@@ -784,9 +696,7 @@ mod tests {
   #[test]
   fn test_developer_line_comment_tokens_line_comment_to_literal_create_literals_with_correct_data() {
     let source = "// First line comment\nconst ZERO: usize = 0; // A constant ";
-    let tokens = source_to_tokens_with_location(source);
-    let tokens = tokens_with_location_to_tokens_with_line_and_column(source, tokens);
-    let tokens = token_with_line_column_to_token_with_type(tokens);
+    let tokens = source_to_tokens_with_type(source);
     let filtered = retain_only_developer_comments(tokens);
     assert_eq!(filtered.len(), 2);
     let literals: Vec<Result<TrimmedLiteral, String>> = filtered.into_iter()
@@ -821,14 +731,18 @@ mod tests {
       assert_eq!(span.end.column, 25 + " A constant ".chars().count() - 1);
     }
   }
+
+  /// A convenience method to convert a source string into a set of `TokenWithType`s and filter
+  /// out any tokens which are not developer comments
+  fn source_to_developer_comment_tokens_with_type(source: &str) -> Vec<TokenWithType> {
+    retain_only_developer_comments(source_to_tokens_with_type(source))
+  }
+
   #[test]
   fn test_single_line_comment_put_in_one_literal_set() {
     let content = " line comment";
     let source = format!("//{}", content);
-    let tokens = retain_only_developer_comments(
-        token_with_line_column_to_token_with_type(
-            tokens_with_location_to_tokens_with_line_and_column(&source,
-              source_to_tokens_with_location(&source))));
+    let tokens = source_to_developer_comment_tokens_with_type(&source);
     let literal_sets = literal_sets_from_line_comments(tokens.iter().collect());
     assert_eq!(literal_sets.len(), 1);
     let literal_set = literal_sets.get(0).unwrap();
@@ -844,10 +758,7 @@ mod tests {
     let content_1 = " line comment 1 ";
     let content_2 = " line comment 2 ";
     let source = format!("//{}\n//{}", content_1, content_2);
-    let tokens = retain_only_developer_comments(
-        token_with_line_column_to_token_with_type(
-            tokens_with_location_to_tokens_with_line_and_column(&source,
-                source_to_tokens_with_location(&source))));
+    let tokens = source_to_developer_comment_tokens_with_type(&source);
     let literal_sets = literal_sets_from_line_comments(tokens.iter().collect());
     assert_eq!(literal_sets.len(), 1);
     let literal_set = literal_sets.get(0).unwrap();
@@ -868,10 +779,7 @@ mod tests {
     let content_1 = " line comment 1 ";
     let content_2 = " line comment 2 ";
     let source = format!("//{}\nfn(){{}}\n//{}", content_1, content_2);
-    let tokens = retain_only_developer_comments(
-      token_with_line_column_to_token_with_type(
-          tokens_with_location_to_tokens_with_line_and_column(&source,
-              source_to_tokens_with_location(&source))));
+    let tokens = source_to_developer_comment_tokens_with_type(&source);
     let literal_sets = literal_sets_from_line_comments(tokens.iter().collect());
     assert_eq!(literal_sets.len(), 2);
     {
