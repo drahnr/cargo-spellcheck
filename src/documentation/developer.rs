@@ -37,7 +37,6 @@ pub fn count_lines(fragment: &str) -> usize {
 }
 
 pub fn calculate_column(fragment: &str) -> usize {
-  println!("{:?} {:?}", fragment, fragment.rfind('\n'));
   match fragment.rfind('\n') {
     Some(p) => fragment.chars().count() - fragment[..p].chars().count(),
     None => fragment.chars().count() + 1

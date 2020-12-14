@@ -210,6 +210,7 @@ dependencies = [
  "log",
  "proc-macro2",
  "pulldown-cmark",
+ "ra_ap_syntax",
  "rayon",
  "regex",
  "serde",
@@ -504,6 +505,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "difference"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "524cbf6897b527295dff137cec09ecf3a05f4fddffd7dfcd1585403449e74198"
+
+[[package]]
 name = "directories"
 version = "3.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -534,6 +541,12 @@ dependencies = [
  "serde",
  "strsim 0.9.3",
 ]
+
+[[package]]
+name = "drop_bomb"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9bda8e21c04aca2ae33ffc2fd8c23134f3cac46db123ba97bd9d3f3b8a4a85e1"
 
 [[package]]
 name = "dtoa"
@@ -1206,6 +1219,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37fd5004feb2ce328a52b0b3d01dbf4ffff72583493900ed15f22d4111c51693"
 
 [[package]]
+name = "once_cell"
+version = "1.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "13bd41f508810a131401606d54ac32a467c97172d74ba7662562ebba5ad07fa0"
+
+[[package]]
 name = "openssl"
 version = "0.10.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1367,6 +1386,64 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "aa563d17ecb180e500da1cfd2b028310ac758de548efdd203e18f283af693f37"
 dependencies = [
  "proc-macro2",
+]
+
+[[package]]
+name = "ra_ap_parser"
+version = "0.0.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c2410f28bddc8d185f4a7e1b5c66487dcbf7f27d6d7ba4d69063cfee9e98e4dc"
+dependencies = [
+ "drop_bomb",
+]
+
+[[package]]
+name = "ra_ap_stdx"
+version = "0.0.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e984205a9ece7a6efaac42ff017faf3433c4fbfa3d21ee963670beceb0413b7c"
+
+[[package]]
+name = "ra_ap_syntax"
+version = "0.0.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a24394ab74f064c3a1be784db5b55d2d06984fbed62d8202c6341c8416fa92d6"
+dependencies = [
+ "arrayvec",
+ "indexmap",
+ "itertools",
+ "once_cell",
+ "ra_ap_parser",
+ "ra_ap_stdx",
+ "ra_ap_test_utils",
+ "ra_ap_text_edit",
+ "rowan",
+ "rustc-ap-rustc_lexer",
+ "rustc-hash",
+ "serde",
+ "smol_str",
+]
+
+[[package]]
+name = "ra_ap_test_utils"
+version = "0.0.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f6906392ce758c2aa6ef8db109a163728da8fa99700a482b0c3615a63d63e0cb"
+dependencies = [
+ "difference",
+ "ra_ap_stdx",
+ "rustc-hash",
+ "serde_json",
+ "text-size",
+]
+
+[[package]]
+name = "ra_ap_text_edit"
+version = "0.0.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "65582a9e095bf4cc2e2bd398d1014fed048ca542b6b76fdb757e91944cf26456"
+dependencies = [
+ "text-size",
 ]
 
 [[package]]
@@ -1629,6 +1706,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "rowan"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e081ed6eacce09e243b619ab90f069c27b0cff8a6d0eb8ad2ec935b65853798"
+dependencies = [
+ "rustc-hash",
+ "smol_str",
+ "text-size",
+ "thin-dst",
+]
+
+[[package]]
 name = "rust-argon2"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1638,6 +1727,15 @@ dependencies = [
  "blake2b_simd",
  "constant_time_eq",
  "crossbeam-utils 0.7.2",
+]
+
+[[package]]
+name = "rustc-ap-rustc_lexer"
+version = "686.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a5b04cd2159495584d976d501c5394498470c2e94e4f0cebb8186562d407a678"
+dependencies = [
+ "unicode-xid",
 ]
 
 [[package]]
@@ -1822,6 +1920,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fbee7696b84bbf3d89a1c2eccff0850e3047ed46bfcd2e92c29a2d074d57e252"
 
 [[package]]
+name = "smol_str"
+version = "0.1.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ca0f7ce3a29234210f0f4f0b56f8be2e722488b95cb522077943212da3b32eb"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "socket2"
 version = "0.3.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1911,6 +2018,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "text-size"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f03e7efdedc3bc78cb2337f1e2785c39e45f5ef762d9e4ebb137fff7380a6d8a"
+
+[[package]]
 name = "textwrap"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1918,6 +2031,12 @@ checksum = "d326610f408c7a4eb6f51c37c330e496b08506c9457c9d34287ecc38809fb060"
 dependencies = [
  "unicode-width",
 ]
+
+[[package]]
+name = "thin-dst"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "db3c46be180f1af9673ebb27bc1235396f61ef6965b3fe0dbb2e624deb604f0e"
 
 [[package]]
 name = "thread_local"
