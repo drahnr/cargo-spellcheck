@@ -311,7 +311,10 @@ fn literal_sets_from_line_comments(tokens: Vec<&TokenWithType>) -> Vec<LiteralSe
       None => sets.push(LiteralSet::from(literal)),
       Some(mut s) => {
         match s.add_adjacent(literal) {
-          Err(literal) => sets.push(LiteralSet::from(literal)),
+          Err(literal) => {
+            sets.push(s);
+            sets.push(LiteralSet::from(literal))
+          },
           Ok(_) => sets.push(s)
         }
       }
