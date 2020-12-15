@@ -25,14 +25,16 @@ use crate::{Range, Span};
 #[repr(u8)]
 pub enum Detector {
     /// Hunspell lib based detector.
-    Hunspell = 0b0001,
+    Hunspell = 0b00001,
     /// Language tool server based detection.
-    LanguageTool = 0b0010,
+    LanguageTool = 0b00010,
     /// Reflow according to a given max column.
-    Reflow = 0b0100,
+    Reflow = 0b00100,
+    /// Link check according to a given max column.
+    Lychee = 0b01000,
     /// Detection of nothing, a test helper.
     #[cfg(test)]
-    Dummy = 0b1000,
+    Dummy = 0b10000,
 }
 
 /// Terminal size in characters.
@@ -73,6 +75,7 @@ impl fmt::Display for Detector {
             Self::LanguageTool => "LanguageTool",
             Self::Hunspell => "Hunspell",
             Self::Reflow => "Reflow",
+            Self::Lychee => "LinkCheck",
             #[cfg(test)]
             Self::Dummy => "Dummy",
         })

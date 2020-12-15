@@ -12,6 +12,7 @@ mod checker;
 mod config;
 mod documentation;
 mod reflow;
+mod linkcheck;
 mod span;
 mod suggestion;
 mod traverse;
@@ -46,6 +47,7 @@ Usage:
     cargo-spellcheck [(-v...|-q)] check [--cfg=<cfg>] [--code=<code>] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
     cargo-spellcheck [(-v...|-q)] fix [--cfg=<cfg>] [--code=<code>] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
     cargo-spellcheck [(-v...|-q)] reflow [--cfg=<cfg>] [--code=<code>] [--skip-readme] [[--recursive] <paths>... ]
+    cargo-spellcheck [(-v...|-q)] linkcheck [--cfg=<cfg>] [--code=<code>] [--skip-readme] [[--recursive] <paths>... ]
     cargo-spellcheck [(-v...|-q)] config (--user|--stdout|--cfg=<cfg>) [--force]
     cargo-spellcheck [(-v...|-q)] [--cfg=<cfg>] [--fix] [--code=<code>] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
     cargo-spellcheck --help
@@ -115,6 +117,7 @@ struct Args {
     cmd_fix: bool,
     cmd_check: bool,
     cmd_reflow: bool,
+    cmd_linkcheck: bool,
     cmd_config: bool,
 }
 
@@ -366,6 +369,8 @@ fn run() -> anyhow::Result<ExitCode> {
         Action::Fix
     } else if args.cmd_reflow {
         Action::Reflow
+    } else if args.cmd_linkcheck {
+        Action::LinkCheck
     } else {
         Action::Check
     };
@@ -382,6 +387,9 @@ fn run() -> anyhow::Result<ExitCode> {
     let suggestion_set = match action {
         Action::Reflow => {
             reflow::Reflow::check(&combined, &config.reflow.clone().unwrap_or_default())?
+        }
+        Action::LinkCheck => {
+            linkcheck::LinkCheck::check(&combined, &config.linkcheck.clone().unwrap_or_default())?
         }
         Action::Check | Action::Fix => checker::check(&combined, &config)?,
     };

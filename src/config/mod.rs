@@ -12,6 +12,7 @@ mod search_dirs;
 pub use search_dirs::*;
 
 use crate::reflow::ReflowConfig;
+use crate::linkcheck::LinkCheckConfig;
 use crate::Detector;
 use anyhow::{anyhow, bail, Error, Result};
 use fancy_regex::Regex;
@@ -35,8 +36,13 @@ pub struct Config {
     #[serde(alias = "Languagetool")]
     pub languagetool: Option<LanguageToolConfig>,
     #[serde(alias = "ReFlow")]
+    #[serde(alias = "reFlow")]
     #[serde(alias = "Reflow")]
     pub reflow: Option<ReflowConfig>,
+    #[serde(alias = "LinkCheck")]
+    #[serde(alias = "linkCheck")]
+    #[serde(alias = "Linkcheck")]
+    pub linkcheck: Option<LinkCheckConfig>,
 }
 
 #[derive(Debug)]
@@ -400,6 +406,7 @@ impl Config {
             Detector::Hunspell => self.hunspell.is_some(),
             Detector::LanguageTool => self.languagetool.is_some(),
             Detector::Reflow => self.reflow.is_some(),
+            Detector::Lychee => true,
             #[cfg(test)]
             Detector::Dummy => true,
         }
@@ -429,6 +436,7 @@ impl Default for Config {
             // experimental and requires additional setup
             languagetool: None,
             reflow: Some(ReflowConfig::default()),
+            linkcheck: None,
         }
     }
 }
