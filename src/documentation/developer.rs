@@ -372,7 +372,7 @@ mod tests {
   }
 
   /// Convenience function to convert from source to tokens with line & column for tests
-  fn source_to_token_with_line_column(source: &str) -> Vec<TokenWithLineColumn> {
+  fn source_to_tokens_with_line_column(source: &str) -> Vec<TokenWithLineColumn> {
     let tokens = source_to_tokens_with_location(source);
     tokens_with_location_to_tokens_with_line_and_column(source, tokens)
   }
@@ -381,7 +381,7 @@ mod tests {
   fn test_tokens_with_line_column_values_set_correctly() {
     {
       let source = "/* test */\n// test";
-      let tokens = source_to_token_with_line_column(source);
+      let tokens = source_to_tokens_with_line_column(source);
       assert_eq!(tokens.get(0).unwrap().line, 1); // Block comment
       assert_eq!(tokens.get(0).unwrap().column, 0);
       assert_eq!(tokens.get(1).unwrap().line, 1); // Whitespace
@@ -391,7 +391,7 @@ mod tests {
     }
     {
       let source = "/* te中st */\n// test";
-      let tokens = source_to_token_with_line_column(source);
+      let tokens = source_to_tokens_with_line_column(source);
       assert_eq!(tokens.get(0).unwrap().line, 1); // Block comment
       assert_eq!(tokens.get(0).unwrap().column, 0);
       assert_eq!(tokens.get(1).unwrap().line, 1); // Whitespace
@@ -401,7 +401,7 @@ mod tests {
     }
     {
       let source = "/* te中st */\n// test\nfn 中(){\t}";
-      let tokens = source_to_token_with_line_column(source);
+      let tokens = source_to_tokens_with_line_column(source);
       assert_eq!(tokens.get(0).unwrap().line, 1); // Block comment
       assert_eq!(tokens.get(0).unwrap().column, 0);
       assert_eq!(tokens.get(1).unwrap().line, 1); // Whitespace
@@ -544,7 +544,7 @@ mod tests {
 
   /// Convenience function to convert a source string into a set of `TokenWithType`s
   fn source_to_tokens_with_type(source: &str) -> Vec<TokenWithType> {
-    let tokens = source_to_token_with_line_column(source);
+    let tokens = source_to_tokens_with_line_column(source);
     token_with_line_column_to_token_with_type(tokens)
   }
 
