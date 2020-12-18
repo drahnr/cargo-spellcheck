@@ -120,14 +120,12 @@ impl TokenWithType {
   /// Convert a `TokenWithLineColumn` to a `TokenWithType`. The kind is worked out from the content
   /// by checking against the developer block comment & line comment regexes.
   fn from (token: TokenWithLineColumn) -> Self {
-    let kind = {
-      if BLOCK_COMMENT.is_match(&token.content) {
-        TokenType::BlockComment
-      } else if LINE_COMMENT.is_match(&token.content) {
-        TokenType::LineComment
-      } else {
-        TokenType::Other
-      }
+    let kind = if BLOCK_COMMENT.is_match(&token.content) {
+      TokenType::BlockComment
+    } else if LINE_COMMENT.is_match(&token.content) {
+      TokenType::LineComment
+    } else {
+      TokenType::Other
     };
     Self { kind, content: token.content, line: token.line, column: token.column }
   }
