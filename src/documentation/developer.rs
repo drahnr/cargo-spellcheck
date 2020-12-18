@@ -136,13 +136,12 @@ impl TokenWithType {
 /// A convenience method that runs the complete 'pipeline' from string `source` file to all
 /// `LiteralSet`s that can be created from developer comments in the source
 pub fn extract_developer_comments(source: &str) -> Vec<LiteralSet> {
-  let tokens = retain_only_developer_comments(
-        token_with_line_column_to_token_with_type(
-            tokens_with_location_to_tokens_with_line_and_column(
-                source, source_to_tokens_with_location(source))));
-  literal_sets_from_block_comments(tokens.iter().collect()).into_iter()
-      .chain(literal_sets_from_line_comments(tokens.iter().collect()).into_iter())
-      .collect()
+  let tokens = source_to_tokens_with_location(source);
+  let tokens = tokens_with_location_to_tokens_with_line_and_column(source, tokens);
+  let tokens = token_with_line_column_to_token_with_type(tokens);
+  let block_comments = literal_sets_from_block_comments(tokens.iter().collect());
+  let line_comments = literal_sets_from_line_comments(tokens.iter().collect());
+  block_comments.into_iter().chain(line_comments.into_iter()).collect()
 }
 
 /// Creates a series of `TokenWithLocation`s from a source string
@@ -192,13 +191,6 @@ fn calculate_column(fragment: &str) -> usize {
 fn token_with_line_column_to_token_with_type(tokens_in: Vec<TokenWithLineColumn>)
     -> Vec<TokenWithType> {
   tokens_in.into_iter().map(|t| TokenWithType::from(t)).collect()
-}
-
-/// Returns a vector containing only the tokens from the input vector which are developer comments
-fn retain_only_developer_comments(tokens: Vec<TokenWithType>) -> Vec<TokenWithType> {
-  tokens.into_iter()
-      .filter(|t| t.kind != TokenType::Other)
-      .collect()
 }
 
 /// Attempts to convert all `TokenWithType` with kind `TokenType::BlockComment` in the input into
@@ -381,8 +373,8 @@ mod tests {
 
   /// Convenience function to convert from source to tokens with line & column for tests
   fn source_to_token_with_line_column(source: &str) -> Vec<TokenWithLineColumn> {
-    tokens_with_location_to_tokens_with_line_and_column(source,
-        source_to_tokens_with_location(source))
+    let tokens = source_to_tokens_with_location(source);
+    tokens_with_location_to_tokens_with_line_and_column(source, tokens)
   }
 
   #[test]
@@ -552,9 +544,8 @@ mod tests {
 
   /// Convenience function to convert a source string into a set of `TokenWithType`s
   fn source_to_tokens_with_type(source: &str) -> Vec<TokenWithType> {
-    token_with_line_column_to_token_with_type(
-        tokens_with_location_to_tokens_with_line_and_column(source,
-            source_to_tokens_with_location(source)))
+    let tokens = source_to_token_with_line_column(source);
+    token_with_line_column_to_token_with_type(tokens)
   }
 
   #[test]
@@ -696,6 +687,14 @@ mod tests {
     }
   }
 
+  /// Convenience method that returns a vector containing only the tokens from the input vector
+  /// which are developer comments
+  fn retain_only_developer_comments(tokens: Vec<TokenWithType>) -> Vec<TokenWithType> {
+    tokens.into_iter()
+      .filter(|t| t.kind != TokenType::Other)
+      .collect()
+  }
+
   #[test]
   fn test_developer_line_comment_tokens_line_comment_to_literal_create_literals_with_correct_data() {
     let source = "// First line comment\nconst ZERO: usize = 0; // A constant ";
@@ -738,7 +737,8 @@ mod tests {
   /// A convenience method to convert a source string into a set of `TokenWithType`s and filter
   /// out any tokens which are not developer comments
   fn source_to_developer_comment_tokens_with_type(source: &str) -> Vec<TokenWithType> {
-    retain_only_developer_comments(source_to_tokens_with_type(source))
+    let tokens = source_to_tokens_with_type(source);
+    retain_only_developer_comments(tokens)
   }
 
   #[test]
