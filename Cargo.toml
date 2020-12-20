@@ -33,8 +33,11 @@ itertools = "0.9"
 crossterm = "0.18"
 fancy-regex = "0.4"
 regex = "1.4.2"
-signal-hook = "0.1"
+signal-hook = "0.2"
 rayon = "1.5"
+lychee = "0.4"
+tokio = { version = "0.3", features = ["full"] }
+futures = "0.3"
 
 # config parsing, must be independent of features
 

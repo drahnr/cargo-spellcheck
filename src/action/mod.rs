@@ -218,6 +218,8 @@ pub enum Action {
     Fix,
     /// Reflow doc comments so they adhere to a given maximum column width.
     Reflow,
+    /// Check contained links.
+    LinkCheck,
 }
 
 impl Action {
@@ -325,7 +327,7 @@ impl Action {
     pub fn run(self, suggestions: SuggestionSet, config: &Config) -> Result<Finish> {
         match self {
             Self::Check => self.check(suggestions, config),
-            Self::Reflow => {
+            Self::LinkCheck | Self::Reflow => {
                 let n = suggestions.len();
 
                 for (origin, suggestions) in suggestions {
