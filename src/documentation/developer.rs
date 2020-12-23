@@ -247,7 +247,7 @@ fn literal_set_from_block_comment(token: &TokenWithType) -> Result<LiteralSet, S
     let mut lines = token.content.split("\n");
     if number_of_lines == 1 {
         let literal = match TrimmedLiteral::from(
-        CommentVariant::Unknown, &token.content, token.kind.pre_in_chars(),
+        CommentVariant::SlashStar, &token.content, token.kind.pre_in_chars(),
         token.kind.post_in_chars(), token.line, token.column) {
       Err(s) => return Err(format!(
           "Failed to create literal from single line block comment, content \"{}\" - caused by \"{}\"",
@@ -266,7 +266,7 @@ fn literal_set_from_block_comment(token: &TokenWithType) -> Result<LiteralSet, S
             Some(l) => l,
         };
         let literal = match TrimmedLiteral::from(
-            CommentVariant::Unknown,
+            CommentVariant::SlashStar,
             next_line,
             token.kind.pre_in_chars(),
             0,
@@ -292,7 +292,7 @@ fn literal_set_from_block_comment(token: &TokenWithType) -> Result<LiteralSet, S
                 0
             };
             let literal = match TrimmedLiteral::from(
-                CommentVariant::Unknown,
+                CommentVariant::SlashStar,
                 next_line,
                 0,
                 post,
@@ -326,7 +326,7 @@ fn literal_set_from_block_comment(token: &TokenWithType) -> Result<LiteralSet, S
 fn literal_from_line_comment(token: &TokenWithType) -> Result<TrimmedLiteral, String> {
     match token.kind {
         TokenType::LineComment => TrimmedLiteral::from(
-            CommentVariant::Unknown,
+            CommentVariant::DoubleSlash,
             &token.content,
             token.kind.pre_in_chars(),
             token.kind.post_in_chars(),
