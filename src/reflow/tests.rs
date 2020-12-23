@@ -719,3 +719,21 @@ of `0`.
 "###
     );
 }
+
+#[test]
+fn reflow_crlf() {
+    const input: &'static str = "        /// cargo spellcheck can be configured\r\n        /// with `-m <code>` to return a non-zero return code.\r\n        struct Foo {}";
+    dbg!(&input);
+    println!("{}", input);
+    reflow_content!(40usize break ContentOrigin::TestEntityRust, input
+    => patches [
+r##"cargo spellcheck can be\r\n
+        /// configured with\r\n
+        /// `-m <code>` to\r\n
+        /// return a non-zero\r\n
+        /// return code.
+        struct Foo {}
+
+"##
+    ]);
+}
