@@ -3,9 +3,9 @@ use crate::{Range, Span};
 use anyhow::{bail, Result};
 
 use fancy_regex::Regex;
+use proc_macro2::LineColumn;
 use std::convert::TryFrom;
 use std::fmt;
-use proc_macro2::LineColumn;
 
 /// Track what kind of comment the literal is
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
@@ -285,10 +285,16 @@ impl TrimmedLiteral {
     /// Creates a new (single line) literal from the variant, the content, the size of the
     /// pre & post and the line/column on which it starts. Fails if provided with multiline content
     /// (i.e if the content contains a linebreak).
-    pub fn from(variant: CommentVariant, content: &str, pre: usize, post: usize, line: usize,
-            column: usize) -> Result<TrimmedLiteral, String> {
+    pub fn from(
+        variant: CommentVariant,
+        content: &str,
+        pre: usize,
+        post: usize,
+        line: usize,
+        column: usize,
+    ) -> Result<TrimmedLiteral, String> {
         if content.contains("\n") {
-            return Err("Cannot create a multiline trimmed literal".to_string())
+            return Err("Cannot create a multiline trimmed literal".to_string());
         }
         let pre_text = &content[..pre];
         let post_text = &content[content.len() - post..];
@@ -297,18 +303,20 @@ impl TrimmedLiteral {
             span: Span {
                 start: LineColumn {
                     line,
-                    column: column + pre_text.chars().count()
+                    column: column + pre_text.chars().count(),
                 },
                 end: LineColumn {
                     line,
-                    column: column + content.chars().count() - post_text.chars().count() - 1
-                }
+                    column: column + content.chars().count() - post_text.chars().count() - 1,
+                },
             },
             rendered: content.to_string(),
             pre,
             post,
-            len_in_chars: content.chars().count() - pre_text.chars().count() - post_text.chars().count(),
-            len_in_bytes: content.len() - pre - post
+            len_in_chars: content.chars().count()
+                - pre_text.chars().count()
+                - post_text.chars().count(),
+            len_in_bytes: content.len() - pre - post,
         })
     }
 }
