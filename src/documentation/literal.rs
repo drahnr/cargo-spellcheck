@@ -61,7 +61,7 @@ impl CommentVariant {
             ),
         }
     }
-    /// Return legnth of comment prefix for each variant.
+    /// Return length (in bytes) of comment prefix for each variant.
     ///
     /// By definition matches the length of `prefix_string`.
     pub fn prefix_len(&self) -> usize {
