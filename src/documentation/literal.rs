@@ -21,6 +21,10 @@ pub enum CommentVariant {
     MacroDocEq(String, usize),
     /// Commonmark File
     CommonMark,
+    /// Developer line comment
+    DoubleSlash,
+    /// Developer block comment
+    SlashStar,
     /// Unknown Variant
     Unknown,
 }
@@ -49,6 +53,8 @@ impl CommentVariant {
                 format!(r#"{}{}"#, d, raw)
             }
             CommentVariant::CommonMark => "".to_string(),
+            CommentVariant::DoubleSlash => "//".to_string(),
+            CommentVariant::SlashStar => "/*".to_string(),
             unhandled => unreachable!(
                 "String representation for comment variant {:?} exists. qed",
                 unhandled
@@ -62,7 +68,7 @@ impl CommentVariant {
         match self {
             CommentVariant::TripleSlash | CommentVariant::DoubleSlashEM => 3,
             CommentVariant::MacroDocEq(d, p) => d.len() + *p + 1,
-            _ => 0,
+            _ => self.prefix_string().len(),
         }
     }
 
