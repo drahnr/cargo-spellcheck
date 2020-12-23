@@ -215,8 +215,19 @@ impl CheckableChunk {
                         sub_fragment_span.end = cursor;
                     }
                     // FIXME what about \n\r or \r\n or \r ?
+                    let (_, peeked) = iter.peek().unwrap_or(&(0, ' '));
                     match c {
+                        '\n' if *peeked == '\r' => {
+                            cursor.column += 1;
+                        }
+                        '\r' if *peeked == '\n' => {
+                            cursor.column += 1;
+                        }
                         '\n' => {
+                            cursor.line += 1;
+                            cursor.column = 0;
+                        }
+                        '\r' => {
                             cursor.line += 1;
                             cursor.column = 0;
                         }
