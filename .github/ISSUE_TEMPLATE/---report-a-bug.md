@@ -28,7 +28,7 @@ Steps to reproduce the behaviour:
 <!-- If applicable, add screenshots or copies of the commandline output to help explain your problem.
 Use code blocks -->
 
-**Pplease complete the following information:**
+**Please complete the following information:**
  - System: <!-- Fedora, Ubuntu, Win10, MacOS, ... -->
  - Obtained: <!-- git, cargo, binary -->
  - Version: <!-- run `$(cargo spellcheck --version)` -->
