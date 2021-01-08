@@ -103,6 +103,7 @@ impl TryFrom<&str> for Clusters {
         };
         let stream = syn::parse_str::<proc_macro2::TokenStream>(source)
             .map_err(|e| anyhow!("Failed to parse content to stream").context(e))?;
+        dbg!(&stream);
         chunk.parse_token_tree(source, stream)?;
         Ok(chunk)
     }

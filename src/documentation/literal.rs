@@ -163,6 +163,7 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
         span.end.column = span.end.column.saturating_sub(1);
 
         let rendered = util::load_span_from(content.as_bytes(), span.clone())?;
+        dbg!(&rendered, content);
         let prefix_span = Span {
             start: crate::LineColumn {
                 line: span.start.line,
