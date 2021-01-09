@@ -217,8 +217,8 @@ impl CheckableChunk {
                     // FIXME what about \n\r or \r\n or \r ?
                     match c {
                         '\n' => {
-                            cursor.column = 0;
                             cursor.line += 1;
+                            cursor.column = 0;
                         }
                         _ => cursor.column += 1,
                     }

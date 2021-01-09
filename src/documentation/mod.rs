@@ -118,6 +118,7 @@ impl Documentation {
     /// Adds a rust content str to the documentation.
     pub fn add_rust(&mut self, origin: ContentOrigin, content: &str) -> Result<()> {
         let cluster = Clusters::try_from(content)?;
+
         let chunks = Vec::<CheckableChunk>::from(cluster);
         self.add_inner(origin, chunks);
         Ok(())
