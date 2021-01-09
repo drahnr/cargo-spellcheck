@@ -206,8 +206,6 @@ macro_rules! reflow_fluff {
         const CONTENT:&'static str = fluff_up!($( $line ),+);
 
         reflow_content!($n break ContentOrigin::TestEntityRust, CONTENT => patches [ $( $expected ),+ ]);
-        let (_, peeked) = iter.peek().unwrap_or(&(0, ' '));
-        let (_, peeked) = iter.peek().unwrap_or(&(0, ' '));
     };
 
     ($n:literal break [ $( $line:literal ),+ $(,)?] => ok) => {
