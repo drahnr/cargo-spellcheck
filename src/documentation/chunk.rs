@@ -220,7 +220,7 @@ impl CheckableChunk {
                             cursor.column = 0;
                             cursor.line += 1;
                         }
-                        _ => cursor.column +=1,
+                        _ => cursor.column += 1,
                     }
                 }
 
