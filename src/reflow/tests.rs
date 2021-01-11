@@ -723,7 +723,7 @@ of `0`.
 #[test]
 fn reflow_crlf() {
     const INPUT: &'static str = "        /// cargo spellcheck can be configured with `-m <code>` to return a non-zero return code.\r\n        struct Foo {}";
-    println!("{}", INPUT);
+    println!("{:?}", INPUT);
     reflow_content!(40usize break ContentOrigin::TestEntityRust, INPUT
     => patches [
         "cargo spellcheck can be\r\n        /// configured with `-m <code>`\r\n        /// to return a non-zero return\r\n        /// code."
