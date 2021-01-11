@@ -82,7 +82,7 @@ fn extract_delimiter_inner<'a>(
 }
 
 /// Extract line delimiter of a string.
-fn extract_delimiter<'s>(s: &'s str) -> Option<&'static str> {
+pub fn extract_delimiter<'s>(s: &'s str) -> Option<&'static str> {
     use regex::Regex;
 
     // TODO lots of room for optimizations here

@@ -169,6 +169,18 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
         // Either cut off `]` or `\n` - we don't need either.
         span.end.column = span.end.column.saturating_sub(1);
 
+        // If the line ending has more than one character, we have to account
+        // for that. Otherwise cut of the last character of the ending such that
+        // we can't properly detect them anymore.
+        if crate::reflow::extract_delimiter(content)
+            .unwrap_or("\n")
+            .len()
+            > 1
+        {
+            log::trace!(target: "documentation", "Found two character line ending like CRLF");
+            span.end.column += 1;
+        }
+
         let rendered = util::load_span_from(content.as_bytes(), span.clone())?;
         let prefix_span = Span {
             start: crate::LineColumn {
