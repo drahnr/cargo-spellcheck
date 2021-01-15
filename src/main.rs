@@ -457,10 +457,12 @@ mod tests {
             "cargo-spellcheck reflow",
         ];
         for command in commands {
-            assert!(parse_args(commandline_to_iter(command)).map_err(|e| {
-                println!("Processing > {:?}", command);
-                e
-            }).is_ok());
+            assert!(parse_args(commandline_to_iter(command))
+                .map_err(|e| {
+                    println!("Processing > {:?}", command);
+                    e
+                })
+                .is_ok());
         }
     }
 }
