@@ -1110,6 +1110,9 @@ ff"#,
 }
 
 pub(crate) fn annotated_literals(source: &str) -> Vec<TrimmedLiteral> {
+
+    use std::convert::TryFrom;
+
     let stream = syn::parse_str::<proc_macro2::TokenStream>(source).expect("Must be valid rust");
     stream
         .into_iter()
