@@ -130,7 +130,10 @@ impl Iterator for TraverseModulesIter {
 /// instead
 // TODO should not read the documentation, that is out of scope.
 // TODO should not have knowledge of `dev_comments`.
-pub(crate) fn traverse(path: &Path, dev_comments: bool) -> Result<impl Iterator<Item = Documentation>> {
+pub(crate) fn traverse(
+    path: &Path,
+    dev_comments: bool,
+) -> Result<impl Iterator<Item = Documentation>> {
     traverse_with_depth_limit(path, usize::MAX, dev_comments)
 }
 
@@ -144,7 +147,11 @@ pub(crate) fn traverse_with_depth_limit(
     let it = TraverseModulesIter::with_depth_limit(path, max_depth)?
         .filter_map(move |path: PathBuf| -> Option<Documentation> {
             fs::read_to_string(&path).ok().map(|content| {
-                Documentation::load_from_str(ContentOrigin::RustSourceFile(path), content.as_str(), dev_comments)
+                Documentation::load_from_str(
+                    ContentOrigin::RustSourceFile(path),
+                    content.as_str(),
+                    dev_comments,
+                )
             })
         })
         .filter(|documentation| !documentation.is_empty());

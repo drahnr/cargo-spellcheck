@@ -215,26 +215,26 @@ where
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Deserialize)]
 pub enum Action {
     /// Only show errors
-    #[serde(alias="check")]
+    #[serde(alias = "check")]
     Check,
 
     /// Interactively choose from checker provided suggestions.
-    #[serde(alias="fix")]
+    #[serde(alias = "fix")]
     Fix,
     /// Reflow doc comments so they adhere to a given maximum column width.
-    #[serde(alias="reflow")]
+    #[serde(alias = "reflow")]
     Reflow,
 
     /// Print help and exit.
-    #[serde(alias="help")]
+    #[serde(alias = "help")]
     Help,
 
     /// Print the version info and exit.
-    #[serde(alias="version")]
+    #[serde(alias = "version")]
     Version,
 
     /// Print the config being in use, default config if none.
-    #[serde(alias="config")]
+    #[serde(alias = "config")]
     Config,
 }
 
@@ -374,7 +374,9 @@ impl Action {
                     Ok(Finish::MistakeCount(n))
                 }
             }
-            Self::Config | Self::Version | Self::Help => unreachable!("Should have been handled way earlier"),
+            Self::Config | Self::Version | Self::Help => {
+                unreachable!("Should have been handled way earlier")
+            }
         }
     }
 }

@@ -69,7 +69,6 @@ Options:
   --skip-readme             Do not attempt to process README.md files listed in Cargo.toml manifests.
 "#;
 
-
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Deserialize)]
 enum CheckerType {
     #[serde(alias = "hunspell")]

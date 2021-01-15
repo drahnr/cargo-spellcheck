@@ -117,7 +117,12 @@ impl Documentation {
     }
 
     /// Adds a rust content str to the documentation.
-    pub fn add_rust(&mut self, origin: ContentOrigin, content: &str, dev_comments: bool) -> Result<()> {
+    pub fn add_rust(
+        &mut self,
+        origin: ContentOrigin,
+        content: &str,
+        dev_comments: bool,
+    ) -> Result<()> {
         let cluster = Clusters::load_from_str(content, dev_comments)?;
 
         let chunks = Vec::<CheckableChunk>::from(cluster);
@@ -167,10 +172,8 @@ impl Documentation {
         self.index.len()
     }
 
-
     /// Load a document from a single string with a defined origin.
     pub fn load_from_str(origin: ContentOrigin, content: &str, dev_comments: bool) -> Self {
-
         let mut docs = Documentation::new();
 
         match &origin {
