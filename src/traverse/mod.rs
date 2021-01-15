@@ -398,7 +398,7 @@ pub(crate) fn extract(
                 match item {
                     CheckEntity::Source(path, recurse) => {
                         if recurse {
-                            let iter = traverse(path.as_path())?;
+                            let iter = traverse(path.as_path(), dev_comments)?;
                             docs.extend(iter);
                         } else {
                             let content: String = fs::read_to_string(&path).map_err(|e| {
@@ -407,6 +407,7 @@ pub(crate) fn extract(
                             docs.add_rust(
                                 ContentOrigin::RustSourceFile(path.to_owned()),
                                 content.as_str(),
+                                dev_comments,
                             )
                             .unwrap_or_else(|_e| {
                                 log::error!("BUG: Failed to create cluster for {}", path.display())

@@ -150,7 +150,8 @@ pub mod tests {
             .filter(None, log::LevelFilter::Trace)
             .is_test(true)
             .try_init();
-        let d = Documentation::from((ContentOrigin::TestEntityRust, content));
+        let dev_comments = false;
+        let d = Documentation::load_from_str(ContentOrigin::TestEntityRust, content, dev_comments);
         let suggestion_set =
             dummy::DummyChecker::check(&d, &()).expect("Dummy extraction must never fail");
 

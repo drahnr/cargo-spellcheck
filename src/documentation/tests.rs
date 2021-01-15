@@ -21,7 +21,7 @@ fn parse_and_construct() {
     const TEST_PLAIN: &str = r#"A very good test."#;
 
     let origin = ContentOrigin::TestEntityRust;
-    let docs = Documentation::from((origin.clone(), TEST_SOURCE));
+    let docs = Documentation::load_from_str(origin.clone(), TEST_SOURCE, false);
     assert_eq!(docs.index.len(), 1);
     let chunks = docs.index.get(&origin).expect("Must contain dummy path");
     assert_eq!(dbg!(chunks).len(), 1);
@@ -80,7 +80,7 @@ macro_rules! end2end {
             .try_init();
 
         let origin: ContentOrigin = $origin;
-        let docs = Documentation::from((origin.clone(), $test));
+        let docs = Documentation::load_from_str(origin.clone(), $test, false);
         assert_eq!(docs.index.len(), 1);
         let chunks = docs.index.get(&origin).expect("Must contain dummy path");
         assert_eq!(dbg!(chunks).len(), 1);
@@ -175,8 +175,7 @@ mod e2e {
 
             let origin: ContentOrigin = $origin;
 
-            let docs = Documentation::from((origin.clone(), $source));
-
+            let docs = Documentation::load_from_str(origin.clone(), $source, false);
             let suggestion_set =
                 dbg!(DummyChecker::check(&docs, &())).expect("Dummy checker never fails. qed");
 

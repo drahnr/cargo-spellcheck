@@ -43,11 +43,10 @@ const USAGE: &str = r#"
 Spellcheck all your doc comments
 
 Usage:
-    cargo-spellcheck [(-v...|-q)] check [--cfg=<cfg>] [--code=<code>] [--dev-comments] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
-    cargo-spellcheck [(-v...|-q)] fix [--cfg=<cfg>] [--code=<code>]  [--dev-comments] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
-    cargo-spellcheck [(-v...|-q)] reflow [--cfg=<cfg>] [--code=<code>]  [--dev-comments] [--skip-readme] [[--recursive] <paths>... ]
+    cargo-spellcheck [(-v...|-q)] [check] [--cfg=<cfg>] [--code=<code>] [--dev-comments] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
+    cargo-spellcheck [(-v...|-q)] fix [--cfg=<cfg>] [--code=<code>] [--dev-comments] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
+    cargo-spellcheck [(-v...|-q)] reflow [--cfg=<cfg>] [--code=<code>] [--dev-comments] [--skip-readme] [[--recursive] <paths>... ]
     cargo-spellcheck [(-v...|-q)] config (--user|--stdout|--cfg=<cfg>) [--force]
-    cargo-spellcheck [(-v...|-q)] [--cfg=<cfg>] [--fix] [--code=<code>] [--dev-comments] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
     cargo-spellcheck --help
     cargo-spellcheck --version
 
@@ -136,17 +135,21 @@ struct Args {
 impl Args {
     fn action(&self) -> Action {
         // extract operation mode
-        if self.cmd_fix || self.flag_fix {
+        let action = if self.cmd_fix || self.flag_fix {
             Action::Fix
         } else if self.cmd_reflow {
             Action::Reflow
-        } else if self.cmd_check {
-            Action::Check
         } else if self.cmd_config {
             Action::Config
-        } else {
+        } else if self.flag_help {
             Action::Help
-        }
+        } else if self.cmd_check {
+            Action::Check
+        } else {
+            Action::Check
+        };
+        log::trace!("Derived action {:?} from flags/args/cmds", action);
+        action
     }
 }
 
