@@ -4,7 +4,7 @@ use super::{trace, LiteralSet, Spacing, TokenTree, TrimmedLiteral, TryInto};
 use crate::documentation::developer::extract_developer_comments;
 use crate::documentation::Range;
 use crate::Span;
-use anyhow::{anyhow, Error, Result};
+use anyhow::{anyhow, Result};
 use std::convert::TryFrom;
 
 /// Cluster literals for one file

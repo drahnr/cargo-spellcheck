@@ -21,7 +21,7 @@ use log::trace;
 pub use proc_macro2::LineColumn;
 use proc_macro2::{Spacing, TokenTree};
 use rayon::prelude::*;
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryInto;
 use std::path::PathBuf;
 
 /// Range based on `usize`, simplification.
