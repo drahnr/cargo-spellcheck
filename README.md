@@ -85,6 +85,12 @@ return code if mistakes are found instead of `0`.
 # Project settings where a Cargo.toml exists and is passed
 # ${CARGO_MANIFEST_DIR}/.config/spellcheck.toml
 
+# Also take into account developer comments
+dev_comments = false
+
+# Skip the README.md file as defined in the cargo manifest
+skip_readme = false
+
 # Fallback to per use configuration files:
 # Linux:   /home/alice/.config/cargo_spellcheck/config.toml
 # Windows: C:\Users\Alice\AppData\Roaming\cargo_spellcheck\config.toml
@@ -104,7 +110,7 @@ lang = "en_US"
 # os specific search dirs, searched in order, defaults last
 # search_dirs = []
 
-# Adds additional dictionaries, can be specified as 
+# Adds additional dictionaries, can be specified as
 # absolute paths or relative in the search dirs (in this order).
 # Relative paths are resolved relative to the configuration file
 # which is used.

@@ -32,12 +32,12 @@ pub struct Config {
     #[serde(default)]
     #[serde(alias = "dev-comments")]
     #[serde(alias = "devcomments")]
-    dev_comments: bool,
+    pub dev_comments: bool,
 
     #[serde(default)]
     #[serde(alias = "skip-readme")]
     #[serde(alias = "skipreadme")]
-    skip_readme: bool,
+    pub skip_readme: bool,
 
     #[serde(alias = "Hunspell")]
     pub hunspell: Option<HunspellConfig>,

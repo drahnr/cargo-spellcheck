@@ -122,8 +122,9 @@ struct Args {
     flag_cfg: Option<PathBuf>,
     flag_force: bool,
     flag_user: bool,
-    flag_skip_readme: bool,
-    flag_dev_comments: bool,
+    // with fallback from config, so it has to be tri-state
+    flag_skip_readme: Option<bool>,
+    flag_dev_comments: Option<bool>,
     flag_code: u8,
     flag_stdout: bool,
     cmd_fix: bool,
@@ -393,11 +394,14 @@ fn run() -> anyhow::Result<ExitCode> {
 
     debug!("Executing: {:?} with {:?}", action, &config);
 
+    let dev_comments = args.flag_dev_comments.unwrap_or_else(config.dev_comments);
+    let skip_readme = args.flag_skip_readme.unwrap_or_else(config.skip_readme);
+
     let combined = traverse::extract(
         args.arg_paths,
         args.flag_recursive,
-        args.flag_skip_readme,
-        args.flag_dev_comments,
+        skip_readme,
+        dev_comments,
         &config,
     )?;
 
