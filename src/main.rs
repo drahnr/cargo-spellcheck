@@ -394,8 +394,8 @@ fn run() -> anyhow::Result<ExitCode> {
 
     debug!("Executing: {:?} with {:?}", action, &config);
 
-    let dev_comments = args.flag_dev_comments.unwrap_or_else(config.dev_comments);
-    let skip_readme = args.flag_skip_readme.unwrap_or_else(config.skip_readme);
+    let dev_comments = args.flag_dev_comments.unwrap_or(config.dev_comments);
+    let skip_readme = args.flag_skip_readme.unwrap_or(config.skip_readme);
 
     let combined = traverse::extract(
         args.arg_paths,
