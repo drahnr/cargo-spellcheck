@@ -298,6 +298,7 @@ pub(crate) fn extract(
     mut paths: Vec<PathBuf>,
     mut recurse: bool,
     skip_readme: bool,
+    dev_comments: bool,
     _config: &Config,
 ) -> Result<Documentation> {
     let cwd = cwd()?;
@@ -540,6 +541,7 @@ mod tests {
                 ],
                 $recurse,
                 false,
+                true,
                 &Config::default(),
             )
             .expect("Must be able to extract demo dir");

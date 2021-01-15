@@ -43,11 +43,11 @@ const USAGE: &str = r#"
 Spellcheck all your doc comments
 
 Usage:
-    cargo-spellcheck [(-v...|-q)] check [--cfg=<cfg>] [--code=<code>] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
-    cargo-spellcheck [(-v...|-q)] fix [--cfg=<cfg>] [--code=<code>] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
-    cargo-spellcheck [(-v...|-q)] reflow [--cfg=<cfg>] [--code=<code>] [--skip-readme] [[--recursive] <paths>... ]
+    cargo-spellcheck [(-v...|-q)] check [--cfg=<cfg>] [--code=<code>] [--dev-comments] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
+    cargo-spellcheck [(-v...|-q)] fix [--cfg=<cfg>] [--code=<code>]  [--dev-comments] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
+    cargo-spellcheck [(-v...|-q)] reflow [--cfg=<cfg>] [--code=<code>]  [--dev-comments] [--skip-readme] [[--recursive] <paths>... ]
     cargo-spellcheck [(-v...|-q)] config (--user|--stdout|--cfg=<cfg>) [--force]
-    cargo-spellcheck [(-v...|-q)] [--cfg=<cfg>] [--fix] [--code=<code>] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
+    cargo-spellcheck [(-v...|-q)] [--cfg=<cfg>] [--fix] [--code=<code>] [--dev-comments] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
     cargo-spellcheck --help
     cargo-spellcheck --version
 
@@ -69,6 +69,20 @@ Options:
   -m --code=<code>          Overwrite the exit value for a successful run with content mistakes found. [default=0]
   --skip-readme             Do not attempt to process README.md files listed in Cargo.toml manifests.
 "#;
+
+
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Deserialize)]
+enum CheckerType {
+    #[serde(alias = "hunspell")]
+    Hunspell,
+    #[serde(alias = "languageTool")]
+    #[serde(alias = "Languagetool")]
+    #[serde(alias = "languagetool")]
+    LanguageTool,
+    #[serde(alias = "ReFlow")]
+    #[serde(alias = "reflow")]
+    Reflow,
+}
 
 /// A simple exit code representation.
 ///
@@ -105,17 +119,35 @@ struct Args {
     flag_quiet: bool,
     flag_version: bool,
     flag_help: bool,
-    flag_checkers: Option<String>,
+    flag_checkers: Option<Vec<CheckerType>>,
     flag_cfg: Option<PathBuf>,
     flag_force: bool,
     flag_user: bool,
     flag_skip_readme: bool,
+    flag_dev_comments: bool,
     flag_code: u8,
     flag_stdout: bool,
     cmd_fix: bool,
     cmd_check: bool,
     cmd_reflow: bool,
     cmd_config: bool,
+}
+
+impl Args {
+    fn action(&self) -> Action {
+        // extract operation mode
+        if self.cmd_fix || self.flag_fix {
+            Action::Fix
+        } else if self.cmd_reflow {
+            Action::Reflow
+        } else if self.cmd_check {
+            Action::Check
+        } else if self.cmd_config {
+            Action::Config
+        } else {
+            Action::Help
+        }
+    }
 }
 
 /// Handle incoming signals.
@@ -199,73 +231,67 @@ fn run() -> anyhow::Result<ExitCode> {
         .filter_level(verbosity)
         .init();
 
-    if args.flag_version {
-        println!("cargo-spellcheck {}", env!("CARGO_PKG_VERSION"));
-        return Ok(ExitCode::Success);
-    }
-
-    if args.flag_help {
-        println!("{}", USAGE);
-        return Ok(ExitCode::Success);
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    let _signalthread = std::thread::spawn(move || signal_handler());
-
     let checkers = |config: &mut Config| {
         // overwrite checkers
-        if let Some(checkers) = args.flag_checkers.clone() {
-            let checkers = checkers
-                .split(',')
-                .map(|checker| checker.to_lowercase())
-                .collect::<Vec<_>>();
-            if !checkers.contains(&"hunspell".to_owned()) {
+        if let Some(ref checkers) = args.flag_checkers {
+            if !checkers.contains(&CheckerType::Hunspell) {
                 if !config.hunspell.take().is_some() {
                     warn!("Hunspell was never configured.")
                 }
             }
-            if !checkers.contains(&"languagetool".to_owned()) {
+            if !checkers.contains(&CheckerType::LanguageTool) {
                 if !config.languagetool.take().is_some() {
                     warn!("Languagetool was never configured.")
                 }
             }
-            if !checkers.contains(&"reflow".to_owned()) {
+            if !checkers.contains(&CheckerType::Reflow) {
                 warn!("Reflow is a separate sub command.")
             }
         }
     };
 
-    // handle `config` sub command
-    if args.cmd_config {
-        trace!("Configuration chore");
-        let mut config = Config::full();
-        checkers(&mut config);
-
-        let config_path = match args.flag_cfg.as_ref() {
-            Some(path) => Some(path.to_owned()),
-            None if args.flag_user => Some(Config::default_path()?),
-            None => None,
-        };
-
-        if args.flag_stdout {
-            println!("{}", config.to_toml()?);
+    let action = match args.action() {
+        Action::Version => {
+            println!("cargo-spellcheck {}", env!("CARGO_PKG_VERSION"));
             return Ok(ExitCode::Success);
         }
-
-        if let Some(path) = config_path {
-            if path.is_file() && !args.flag_force {
-                return Err(anyhow::anyhow!(
-                    "Attempting to overwrite {} requires `--force`.",
-                    path.display()
-                ));
-            }
-            info!("Writing configuration file to {}", path.display());
-            config.write_values_to_path(path)?;
+        Action::Help => {
+            println!("{}", USAGE);
+            return Ok(ExitCode::Success);
         }
-        return Ok(ExitCode::Success);
-    } else {
-        trace!("Not configuration sub command");
-    }
+        Action::Config => {
+            trace!("Configuration chore");
+            let mut config = Config::full();
+            checkers(&mut config);
+
+            let config_path = match args.flag_cfg.as_ref() {
+                Some(path) => Some(path.to_owned()),
+                None if args.flag_user => Some(Config::default_path()?),
+                None => None,
+            };
+
+            if args.flag_stdout {
+                println!("{}", config.to_toml()?);
+                return Ok(ExitCode::Success);
+            }
+
+            if let Some(path) = config_path {
+                if path.is_file() && !args.flag_force {
+                    return Err(anyhow::anyhow!(
+                        "Attempting to overwrite {} requires `--force`.",
+                        path.display()
+                    ));
+                }
+                info!("Writing configuration file to {}", path.display());
+                config.write_values_to_path(path)?;
+            }
+            return Ok(ExitCode::Success);
+        }
+        action => action,
+    };
+
+    #[cfg(not(target_os = "windows"))]
+    let _signalthread = std::thread::spawn(move || signal_handler());
 
     let (explicit_cfg, config_path) = match args.flag_cfg.as_ref() {
         Some(config_path) => {
@@ -322,7 +348,8 @@ fn run() -> anyhow::Result<ExitCode> {
                 // otherwise it's a file and we do not care about it
             }
 
-            let config_path = config_path.with_file_name(""); //.expect("Found file ends in Cargo.toml and is abs. qed");
+            // remove the file name
+            let config_path = config_path.with_file_name("");
 
             let resolved_config_path = config::Config::project_config(&config_path)
                 .or_else(|e| {
@@ -361,29 +388,23 @@ fn run() -> anyhow::Result<ExitCode> {
 
     checkers(&mut config);
 
-    // extract operation mode
-    let action = if args.cmd_fix || args.flag_fix {
-        Action::Fix
-    } else if args.cmd_reflow {
-        Action::Reflow
-    } else {
-        Action::Check
-    };
-
     debug!("Executing: {:?} with {:?}", action, &config);
 
     let combined = traverse::extract(
         args.arg_paths,
         args.flag_recursive,
         args.flag_skip_readme,
+        args.flag_dev_comments,
         &config,
     )?;
 
+    // TODO move this into action `fn run()`
     let suggestion_set = match action {
         Action::Reflow => {
             reflow::Reflow::check(&combined, &config.reflow.clone().unwrap_or_default())?
         }
         Action::Check | Action::Fix => checker::check(&combined, &config)?,
+        _ => unreachable!("Should never be reached, handled earlier"),
     };
 
     let finish = action.run(suggestion_set, &config)?;
