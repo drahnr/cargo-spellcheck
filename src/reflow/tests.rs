@@ -12,7 +12,7 @@ macro_rules! verify_reflow_inner {
             .try_init();
 
         const CONTENT: &'static str = fluff_up!($( $line ),+);
-        let docs = Documentation::from((ContentOrigin::TestEntityRust, CONTENT));
+        let docs = Documentation::load_from_str(ContentOrigin::TestEntityRust, CONTENT, false);
         assert_eq!(docs.entry_count(), 1);
         let chunks = docs.get(&ContentOrigin::TestEntityRust).expect("Must contain dummy path");
         assert_eq!(dbg!(chunks).len(), 1);
@@ -86,7 +86,7 @@ macro_rules! reflow_content {
             .is_test(true)
             .try_init();
 
-        let docs = Documentation::from(($content_type, $content));
+        let docs = Documentation::load_from_str($content_type, $content, false);
         assert_eq!(docs.entry_count(), 1);
         let chunks = docs.get(&$content_type).expect("Contains test data. qed");
         assert_eq!(dbg!(chunks).len(), 1);
@@ -129,7 +129,7 @@ macro_rules! reflow_content {
             .is_test(true)
             .try_init();
 
-        let docs = Documentation::from(($content_type, $content));
+        let docs = Documentation::load_from_str($content_type, $content, false);
         assert_eq!(docs.entry_count(), 1);
         let chunks = docs.get(&$content_type).expect("Contains test data. qed");
         assert_eq!(dbg!(chunks).len(), 1);
@@ -154,7 +154,7 @@ macro_rules! reflow_content {
             .is_test(true)
             .try_init();
 
-        let docs = Documentation::from(($content_type, $content));
+        let docs = Documentation::load_from_str($content_type, $content, false);
         assert_eq!(docs.entry_count(), 1);
         let chunks = docs.get(&$content_type).expect("Contains test data. qed");
         assert_eq!(dbg!(chunks).len(), 1);
@@ -286,7 +286,7 @@ fn reflow_indentations() {
         max_line_length: 10,
     };
 
-    let docs = Documentation::from((ContentOrigin::TestEntityRust, CONTENT));
+    let docs = Documentation::load_from_str(ContentOrigin::TestEntityRust, CONTENT, false);
     assert_eq!(docs.entry_count(), 1);
     let chunks = docs
         .get(&ContentOrigin::TestEntityRust)
@@ -324,7 +324,7 @@ fn reflow_doc_indentations() {
     #[doc = r#"that spans over two lines and"#]
     #[doc = r#"should be rewrapped."##;
 
-    let docs = Documentation::from((ContentOrigin::TestEntityRust, CONTENT));
+    let docs = Documentation::load_from_str(ContentOrigin::TestEntityRust, CONTENT, false);
     assert_eq!(dbg!(&docs).entry_count(), 1);
     let chunks = docs
         .get(&ContentOrigin::TestEntityRust)
@@ -397,7 +397,7 @@ fn reflow_markdown_two_paragraphs() {
         .is_test(true)
         .try_init();
 
-    let docs = Documentation::from((ContentOrigin::TestEntityRust, CONTENT));
+    let docs = Documentation::load_from_str(ContentOrigin::TestEntityRust, CONTENT, false);
     assert_eq!(docs.entry_count(), 1);
     let chunks = docs
         .get(&ContentOrigin::TestEntityRust)
@@ -439,7 +439,7 @@ With a second part that is fine"#
         r#"With a second part that is fine"#,
     ];
 
-    let docs = Documentation::from((ContentOrigin::TestEntityRust, chyrped));
+    let docs = Documentation::load_from_str(ContentOrigin::TestEntityRust, chyrped, false);
     assert_eq!(docs.entry_count(), 1);
     let chunks = docs
         .get(&ContentOrigin::TestEntityRust)
@@ -538,7 +538,7 @@ multiline. Fullstop."#,
         .is_test(true)
         .try_init();
 
-    let docs = Documentation::from((ContentOrigin::TestEntityCommonMark, CONTENT));
+    let docs = Documentation::load_from_str(ContentOrigin::TestEntityCommonMark, CONTENT, false);
     assert_eq!(docs.entry_count(), 1);
     let chunks = docs
         .get(&ContentOrigin::TestEntityCommonMark)
@@ -607,7 +607,7 @@ struct Fff;
         end: LineColumn { line: 2, column: 8 },
     };
 
-    let docs = Documentation::from((ContentOrigin::TestEntityRust, CONTENT));
+    let docs = Documentation::load_from_str(ContentOrigin::TestEntityRust, CONTENT, false);
     assert_eq!(docs.entry_count(), 1);
     let chunks = docs
         .get(&ContentOrigin::TestEntityRust)

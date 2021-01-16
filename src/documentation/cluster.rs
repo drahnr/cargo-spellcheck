@@ -4,7 +4,7 @@ use super::{trace, LiteralSet, Spacing, TokenTree, TrimmedLiteral, TryInto};
 use crate::documentation::developer::extract_developer_comments;
 use crate::documentation::Range;
 use crate::Span;
-use anyhow::{anyhow, Error, Result};
+use anyhow::{anyhow, Result};
 use std::convert::TryFrom;
 
 /// Cluster literals for one file
@@ -109,18 +109,18 @@ impl Clusters {
     fn ensure_sorted(&mut self) {
         self.set.sort_by(|ls1, ls2| ls1.coverage.cmp(&ls2.coverage));
     }
-}
 
-impl TryFrom<&str> for Clusters {
-    type Error = Error;
-    fn try_from(source: &str) -> Result<Self> {
+    /// Load clusters from a `&str`. Optionally loads developer comments as well.
+    pub(crate) fn load_from_str(source: &str, dev_comments: bool) -> Result<Self> {
         let mut chunk = Self {
             set: Vec::with_capacity(64),
         };
         let stream = syn::parse_str::<proc_macro2::TokenStream>(source)
             .map_err(|e| anyhow!("Failed to parse content to stream").context(e))?;
         chunk.parse_token_tree(source, stream)?;
-        chunk.parse_developer_comments(source);
+        if dev_comments {
+            chunk.parse_developer_comments(source);
+        }
         chunk.ensure_sorted();
         Ok(chunk)
     }

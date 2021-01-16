@@ -209,15 +209,33 @@ where
     Ok(())
 }
 
-/// Mode in which `cargo-spellcheck` operates
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+/// Mode in which `cargo-spellcheck` operates.
+///
+/// Eventually to be used directly in parsing args.
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Deserialize)]
 pub enum Action {
     /// Only show errors
+    #[serde(alias = "check")]
     Check,
+
     /// Interactively choose from checker provided suggestions.
+    #[serde(alias = "fix")]
     Fix,
     /// Reflow doc comments so they adhere to a given maximum column width.
+    #[serde(alias = "reflow")]
     Reflow,
+
+    /// Print help and exit.
+    #[serde(alias = "help")]
+    Help,
+
+    /// Print the version info and exit.
+    #[serde(alias = "version")]
+    Version,
+
+    /// Print the config being in use, default config if none.
+    #[serde(alias = "config")]
+    Config,
 }
 
 impl Action {
@@ -355,6 +373,9 @@ impl Action {
                     self.write_user_pick_changes_to_disk(picked, config)?;
                     Ok(Finish::MistakeCount(n))
                 }
+            }
+            Self::Config | Self::Version | Self::Help => {
+                unreachable!("Should have been handled way earlier")
             }
         }
     }

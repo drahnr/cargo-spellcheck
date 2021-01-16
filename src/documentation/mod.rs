@@ -21,7 +21,7 @@ use log::trace;
 pub use proc_macro2::LineColumn;
 use proc_macro2::{Spacing, TokenTree};
 use rayon::prelude::*;
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryInto;
 use std::path::PathBuf;
 
 /// Range based on `usize`, simplification.
@@ -117,8 +117,13 @@ impl Documentation {
     }
 
     /// Adds a rust content str to the documentation.
-    pub fn add_rust(&mut self, origin: ContentOrigin, content: &str) -> Result<()> {
-        let cluster = Clusters::try_from(content)?;
+    pub fn add_rust(
+        &mut self,
+        origin: ContentOrigin,
+        content: &str,
+        dev_comments: bool,
+    ) -> Result<()> {
+        let cluster = Clusters::load_from_str(content, dev_comments)?;
 
         let chunks = Vec::<CheckableChunk>::from(cluster);
         self.add_inner(origin, chunks);
@@ -166,26 +171,24 @@ impl Documentation {
     pub fn entry_count(&self) -> usize {
         self.index.len()
     }
-}
 
-/// only a shortcut to avoid duplicate code
-impl From<(ContentOrigin, &str)> for Documentation {
-    fn from((origin, content): (ContentOrigin, &str)) -> Self {
+    /// Load a document from a single string with a defined origin.
+    pub fn load_from_str(origin: ContentOrigin, content: &str, dev_comments: bool) -> Self {
         let mut docs = Documentation::new();
 
         match &origin {
             ContentOrigin::RustDocTest(_path, span) => {
                 if let Ok(excerpt) = load_span_from(&mut content.as_bytes(), span.clone()) {
-                    docs.add_rust(origin.clone(), excerpt.as_str())
+                    docs.add_rust(origin.clone(), excerpt.as_str(), dev_comments)
                 } else {
                     // TODO
                     Ok(())
                 }
             }
-            ContentOrigin::RustSourceFile(_path) => docs.add_rust(origin, content),
+            ContentOrigin::RustSourceFile(_path) => docs.add_rust(origin, content, dev_comments),
             ContentOrigin::CommonMarkFile(_path) => docs.add_commonmark(origin, content),
             #[cfg(test)]
-            ContentOrigin::TestEntityRust => docs.add_rust(origin, content),
+            ContentOrigin::TestEntityRust => docs.add_rust(origin, content, dev_comments),
             #[cfg(test)]
             ContentOrigin::TestEntityCommonMark => docs.add_commonmark(origin, content),
         }

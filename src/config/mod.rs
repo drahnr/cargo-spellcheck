@@ -28,6 +28,17 @@ use std::path::{Path, PathBuf};
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
+    // Options that modify the inputs being picked up.
+    #[serde(default)]
+    #[serde(alias = "dev-comments")]
+    #[serde(alias = "devcomments")]
+    pub dev_comments: bool,
+
+    #[serde(default)]
+    #[serde(alias = "skip-readme")]
+    #[serde(alias = "skipreadme")]
+    pub skip_readme: bool,
+
     #[serde(alias = "Hunspell")]
     pub hunspell: Option<HunspellConfig>,
     #[serde(alias = "LanguageTool")]
@@ -419,6 +430,8 @@ impl Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            dev_comments: false,
+            skip_readme: false,
             hunspell: Some(HunspellConfig {
                 lang: Some("en_US".to_owned()),
                 search_dirs: SearchDirs::default(),
@@ -452,6 +465,9 @@ mod tests {
     fn all() {
         let _ = Config::parse(
             r#"
+dev_comments = true
+skip-readme = true
+
 [LanguageTool]
 url = "http://127.0.0.1:8010/"
 
