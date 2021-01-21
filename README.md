@@ -56,6 +56,17 @@ cargo spellcheck fix
 `cargo spellcheck` can be configured with `-m <code>` to return a non-zero
 return code if mistakes are found instead of `0`.
 
+### git pre-commit hook
+
+```sh
+#!/usr/bin/sh
+
+# Redirect output to stderr.
+exec 1>&2
+
+exec cargo spellcheck -m 99 $(git diff-index --cached --name-only --diff-filter=AM HEAD)
+```
+
 ## Implemented Features + Roadmap
 
 * [x] Parse doc comments from arbitrary files
