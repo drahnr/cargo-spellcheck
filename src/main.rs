@@ -30,7 +30,7 @@ use log::{debug, info, trace, warn};
 use serde::Deserialize;
 
 #[cfg(not(target_os = "windows"))]
-use signal_hook::{iterator, SIGINT, SIGQUIT, SIGTERM};
+use signal_hook::{iterator, consts::signal::{SIGINT, SIGQUIT, SIGTERM}};
 
 #[cfg(target_os = "windows")]
 use signal_hook as _;
@@ -162,7 +162,7 @@ impl Args {
 /// Only relevant for *-nix platforms.
 #[cfg(not(target_os = "windows"))]
 fn signal_handler() {
-    let signals =
+    let mut signals =
         iterator::Signals::new(vec![SIGTERM, SIGINT, SIGQUIT]).expect("Failed to create Signals");
     for s in signals.forever() {
         match s {
