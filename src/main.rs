@@ -43,12 +43,12 @@ const USAGE: &str = r#"
 Spellcheck all your doc comments
 
 Usage:
-    cargo-spellcheck [(-v...|-q)] [check] [--fix] [--cfg=<cfg>] [--code=<code>] [--dev-comments] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
     cargo-spellcheck [(-v...|-q)] fix [--cfg=<cfg>] [--code=<code>] [--dev-comments] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
     cargo-spellcheck [(-v...|-q)] reflow [--cfg=<cfg>] [--code=<code>] [--dev-comments] [--skip-readme] [[--recursive] <paths>... ]
     cargo-spellcheck [(-v...|-q)] config (--user|--stdout|--cfg=<cfg>) [--force]
-    cargo-spellcheck --help
+    cargo-spellcheck [(-v...|-q)] [check] [--fix] [--cfg=<cfg>] [--code=<code>] [--dev-comments] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
     cargo-spellcheck --version
+    cargo-spellcheck --help
 
 Options:
   -h --help                 Show this screen.
@@ -135,7 +135,9 @@ struct Args {
 impl Args {
     fn action(&self) -> Action {
         // extract operation mode
-        let action = if self.cmd_fix || self.flag_fix {
+        let action = if self.cmd_fix {
+            Action::Fix
+        } else if self.flag_fix {
             Action::Fix
         } else if self.cmd_reflow {
             Action::Reflow
@@ -181,7 +183,7 @@ fn signal_handler() {
 /// `cargo spellcheck check` and even ``cargo-spellcheck check`.
 fn parse_args(mut argv_iter: impl Iterator<Item = String>) -> Result<Args, docopt::Error> {
     Docopt::new(USAGE).and_then(|d| {
-        // if ends with file name `cargo-spellcheck`, split
+        // if ends with file name `cargo-spellcheck`
         if let Some(arg0) = argv_iter.next() {
             match PathBuf::from(&arg0)
                 .file_name()
@@ -189,18 +191,32 @@ fn parse_args(mut argv_iter: impl Iterator<Item = String>) -> Result<Args, docop
                 .flatten()
             {
                 Some(file_name) => {
-                    // allow all variants
+                    // allow all variants to be parsed
                     // cargo spellcheck ...
                     // cargo-spellcheck ...
                     // cargo-spellcheck spellcheck ...
+                    //
+                    // so preprocess them to unified `cargo-spellcheck`
                     let mut next = vec!["cargo-spellcheck".to_owned()];
 
                     match argv_iter.next() {
                         Some(arg)
-                            if file_name.starts_with("cargo-spellcheck") && arg == "spellcheck" => {
+                            if file_name.starts_with("cargo-spellcheck") && arg == "spellcheck" =>
+                        {
+                            // drop the first arg `spellcheck`
                         }
-                        Some(arg) => next.push(arg.to_owned()),
-                        _ => {}
+                        Some(arg) if file_name.starts_with("cargo") && &arg == "spellcheck" => {
+                            // drop it, we replace it with `cargo-spellcheck`
+                        }
+                        Some(arg) if arg == "spellcheck" => {
+                            // "spellcheck" but the binary got renamed
+                            // drop the "spellcheck" part
+                        }
+                        Some(arg) => {
+                            // not "spellcheck" so retain it
+                            next.push(arg.to_owned())
+                        }
+                        None => {}
                     };
                     let collected = next.into_iter().chain(argv_iter).collect::<Vec<_>>();
                     d.argv(collected.into_iter())
@@ -444,15 +460,15 @@ mod tests {
     lazy_static::lazy_static!(
         static ref SAMPLES: std::collections::HashMap<&'static str, Action> = maplit::hashmap!{
             "cargo spellcheck" => Action::Check,
+            "cargo-spellcheck --version" => Action::Version,
             "cargo spellcheck --version" => Action::Version,
-            "cargo spellcheck reflow" => Action::Reflow,
             "cargo spellcheck reflow" => Action::Reflow,
             "cargo spellcheck -vvvv" => Action::Check,
             "cargo spellcheck --fix" => Action::Fix,
             "cargo spellcheck fix" => Action::Fix,
             "cargo-spellcheck" => Action::Check,
             "cargo-spellcheck -vvvv" => Action::Check,
-            "cargo-spellcheck --fix" => Action::Version,
+            "cargo-spellcheck --fix" => Action::Fix,
             "cargo-spellcheck fix" => Action::Fix,
             "cargo-spellcheck fix -r file.rs" => Action::Fix,
             "cargo-spellcheck -q fix Cargo.toml" => Action::Fix,
@@ -479,10 +495,6 @@ mod tests {
         for (command, action) in SAMPLES.iter() {
             assert_eq!(
                 parse_args(commandline_to_iter(command))
-                    .map_err(|e| {
-                        println!("Processing > {:?}", command);
-                        e
-                    })
                     .expect("Parsing is assured by another unit test. qed")
                     .action(),
                 *action
