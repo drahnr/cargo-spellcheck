@@ -477,7 +477,16 @@ mod tests {
     #[test]
     fn action_extraction() {
         for (command, action) in SAMPLES.iter() {
-            assert_eq!(parse_args(commandline_to_iter(command)).expect("Parsing is assured by another unit test. qed").action(), *action);
+            assert_eq!(
+                parse_args(commandline_to_iter(command))
+                    .map_err(|e| {
+                        println!("Processing > {:?}", command);
+                        e
+                    })
+                    .expect("Parsing is assured by another unit test. qed")
+                    .action(),
+                *action
+            );
         }
     }
 }
