@@ -9,9 +9,7 @@ use crate::checker::Checker;
 use crate::documentation::{CheckableChunk, Documentation};
 #[cfg(debug_assertions)]
 use crate::util::load_span_from;
-use crate::util::{
-    byte_range_to_char_range, byte_range_to_char_range_many, sub_char_range,
-};
+use crate::util::{byte_range_to_char_range, byte_range_to_char_range_many, sub_char_range};
 
 use crate::{CommentVariant, ContentOrigin, Detector, Range, Span, Suggestion, SuggestionSet};
 
