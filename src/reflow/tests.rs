@@ -1,4 +1,5 @@
 use super::*;
+use crate::util::load_span_from;
 use crate::{chyrp_up, fluff_up};
 use crate::{LineColumn, Span};
 
