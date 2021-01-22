@@ -143,6 +143,8 @@ impl Args {
             Action::Config
         } else if self.flag_help {
             Action::Help
+        } else if self.flag_version {
+            Action::Version
         } else if self.cmd_check {
             Action::Check
         } else {
@@ -439,30 +441,43 @@ mod tests {
         s.split(' ').map(|s| s.to_owned()).into_iter()
     }
 
+    lazy_static::lazy_static!(
+        static ref SAMPLES: std::collections::HashMap<&'static str, Action> = maplit::hashmap!{
+            "cargo spellcheck" => Action::Check,
+            "cargo spellcheck --version" => Action::Version,
+            "cargo spellcheck reflow" => Action::Reflow,
+            "cargo spellcheck reflow" => Action::Reflow,
+            "cargo spellcheck -vvvv" => Action::Check,
+            "cargo spellcheck --fix" => Action::Fix,
+            "cargo spellcheck fix" => Action::Fix,
+            "cargo-spellcheck" => Action::Check,
+            "cargo-spellcheck -vvvv" => Action::Check,
+            "cargo-spellcheck --fix" => Action::Version,
+            "cargo-spellcheck fix" => Action::Fix,
+            "cargo-spellcheck fix -r file.rs" => Action::Fix,
+            "cargo-spellcheck -q fix Cargo.toml" => Action::Fix,
+            "cargo spellcheck -v fix Cargo.toml" => Action::Fix,
+            "cargo spellcheck -m 11 check" => Action::Check,
+            "cargo-spellcheck reflow" => Action::Reflow,
+        };
+    );
+
     #[test]
     fn docopt() {
-        let commands = vec![
-            "cargo spellcheck",
-            "cargo spellcheck -vvvv",
-            "cargo spellcheck --fix",
-            "cargo spellcheck fix",
-            "cargo-spellcheck",
-            "cargo-spellcheck -vvvv",
-            "cargo-spellcheck --fix",
-            "cargo-spellcheck fix",
-            "cargo-spellcheck fix -r file.rs",
-            "cargo-spellcheck -q fix Cargo.toml",
-            "cargo spellcheck -v fix Cargo.toml",
-            "cargo spellcheck -m 11 check",
-            "cargo-spellcheck reflow",
-        ];
-        for command in commands {
+        for command in SAMPLES.keys() {
             assert!(parse_args(commandline_to_iter(command))
                 .map_err(|e| {
                     println!("Processing > {:?}", command);
                     e
                 })
                 .is_ok());
+        }
+    }
+
+    #[test]
+    fn action_extraction() {
+        for (command, action) in SAMPLES.iter() {
+            assert_eq!(parse_args(commandline_to_iter(command)).expect("Parsing is assured by another unit test. qed").action(), *action);
         }
     }
 }
