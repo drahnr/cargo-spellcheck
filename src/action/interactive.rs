@@ -542,7 +542,9 @@ impl UserPicked {
                     pick = picked.user_input(&mut state, (idx, count))?;
                 }
                 match pick {
-                    usel @ UserSelection::Abort | usel @ UserSelection::Quit => return Ok((picked, usel)),
+                    usel @ UserSelection::Abort | usel @ UserSelection::Quit => {
+                        return Ok((picked, usel))
+                    }
                     UserSelection::SkipFile => break, // break the inner loop
                     UserSelection::Previous => {
                         unimplemented!("Requires a iterator which works bidrectionally")
