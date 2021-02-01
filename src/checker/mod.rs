@@ -104,13 +104,13 @@ where
     #[cfg(feature = "nlprules")]
     {
         // if config.is_enabled() {
-            debug!("Running NlpRules checks");
+        debug!("Running NlpRules checks");
         // let config = config
         //         .nlprules
         //         .as_ref()
         //         .expect("Must be Some(NlpRulesConfig) if is_enabled returns true");
-            let suggestions = self::nlprules::NlpRulesChecker::check(documentation, &())?;
-            collective.join(suggestions);
+        let suggestions = self::nlprules::NlpRulesChecker::check(documentation, &())?;
+        collective.join(suggestions);
         // }
     }
 
