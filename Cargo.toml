@@ -41,8 +41,9 @@ crossterm = "0.19"
 fancy-regex = "0.4"
 signal-hook = "0.3"
 rayon = "1.5"
+#nlprule = { git = "https://github.com/drahnr/nlprule.git", optional = true }
+#nlprule = { path = "../nlprule/nlprule", optional = true }
 nlprule = { version = "0.3.0", optional = true }
-
 
 # config parsing, must be independent of features
 
