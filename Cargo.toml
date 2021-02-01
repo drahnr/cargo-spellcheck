@@ -10,6 +10,10 @@ keywords = ["spellcheck", "spelling", "grammar"]
 description = "Checks all doc comments for spelling mistakes"
 readme = "README.md"
 
+[build-dependencies]
+reqwest = "0.11"
+flate2 = "1"
+
 [dependencies]
 docopt = "1"
 serde = { version = "1", features = ["derive"] }
@@ -20,7 +24,7 @@ syn = { version = "1", features = ["full"] }
 log = "0.4"
 env_logger = "0.8"
 console = "0.14"
-indexmap = { version = "1", features=["rayon"] }
+indexmap = { version = "1", features=["rayon", "serde"] }
 enumflags2 = "0.6"
 ra_ap_syntax = "0.0.34"
 regex = "1.4.2"
@@ -36,6 +40,8 @@ crossterm = "0.19"
 fancy-regex = "0.4"
 signal-hook = "0.3"
 rayon = "1.5"
+nlprule = { version = "0.3.0", optional = true }
+
 
 # config parsing, must be independent of features
 
@@ -63,5 +69,6 @@ default = ["hunspell"]
 
 languagetool = ["languagetool-rs"]
 hunspell = ["hunspell-rs/bundled"]
+nlprules = ["nlprule"]
 
 all = ["hunspell", "languagetool"]
