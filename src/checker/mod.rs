@@ -16,6 +16,9 @@ mod hunspell;
 #[cfg(feature = "languagetool")]
 mod languagetool;
 
+#[cfg(feature = "nlprules")]
+mod nlprules;
+
 #[cfg(any(feature = "languagetool", feature = "hunspell"))]
 mod quirks;
 
@@ -96,6 +99,19 @@ where
                 self::languagetool::LanguageToolChecker::check(documentation, config)?;
             collective.join(suggestions);
         }
+    }
+
+    #[cfg(feature = "nlprules")]
+    {
+        // if config.is_enabled() {
+            debug!("Running NlpRules checks");
+        // let config = config
+        //         .nlprules
+        //         .as_ref()
+        //         .expect("Must be Some(NlpRulesConfig) if is_enabled returns true");
+            let suggestions = self::nlprules::NlpRulesChecker::check(documentation, &())?;
+            collective.join(suggestions);
+        // }
     }
 
     #[cfg(feature = "hunspell")]

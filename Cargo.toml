@@ -11,8 +11,9 @@ description = "Checks all doc comments for spelling mistakes"
 readme = "README.md"
 
 [build-dependencies]
-reqwest = "0.11"
+reqwest = { version = "0.11", features = ["blocking"] }
 flate2 = "1"
+fs-err = "2"
 
 [dependencies]
 docopt = "1"

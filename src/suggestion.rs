@@ -25,14 +25,16 @@ use crate::{Range, Span};
 #[repr(u8)]
 pub enum Detector {
     /// Hunspell lib based detector.
-    Hunspell = 0b0001,
+    Hunspell = 0b0_0001,
     /// Language tool server based detection.
-    LanguageTool = 0b0010,
+    LanguageTool = 0b0_0010,
+    /// Language server rules based on nlp detector.
+    NlpRules = 0b0_0100,
     /// Reflow according to a given max column.
-    Reflow = 0b0100,
+    Reflow = 0b0_1000,
     /// Detection of nothing, a test helper.
     #[cfg(test)]
-    Dummy = 0b1000,
+    Dummy = 0b1_0000,
 }
 
 /// Terminal size in characters.
@@ -70,8 +72,9 @@ use std::fmt;
 impl fmt::Display for Detector {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
-            Self::LanguageTool => "LanguageTool",
             Self::Hunspell => "Hunspell",
+            Self::NlpRules => "NlpRules",
+            Self::LanguageTool => "LanguageTool",
             Self::Reflow => "Reflow",
             #[cfg(test)]
             Self::Dummy => "Dummy",

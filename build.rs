@@ -1,12 +1,18 @@
-use std::io;
-use std::io::prelude::*;
-
+use std::path::PathBuf;
+use std::env;
 #[cfg(feature = "nlprules")]
 mod nlprules {
+    use super::*;
+    use std::path::Path;
 
+    use fs_err as fs;
+
+    use std::io;
+    use std::io::prelude::*;
     use flate2::read::GzDecoder;
+
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    enum What {
+    pub(crate) enum What {
         Tokenizer,
         Rules,
     }
@@ -14,47 +20,48 @@ mod nlprules {
 
     impl fmt::Display for What {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            f.wirte_str(match self {
+            f.write_str(match self {
                 Self::Tokenizer => "tokenizer",
                 Self::Rules => "rules",
             })
         }
     }
 
-    fn decompress(bytes: &[u8], dest: PathBuf) -> Result<(), dyn std::error::Error> {
+    pub(crate) fn decompress(bytes: &[u8], dest: PathBuf) -> Result<(), io::Error> {
         let mut gz = GzDecoder::new(bytes);
         let mut buffer = Vec::with_capacity(bytes.len() >> 1);
         gz.read_to_end(&mut buffer)
             .expect("Decompression always works. qed");
-        fs::write_all(path, &buffer)?;
+        fs::write(dest, &buffer)?;
         Ok(())
     }
 
-    fn get_resource(what: What, out: impl AsRef<Path>) -> Result<(), dyn std::error::Error> {
-        static NLP_RULE_VERSION: &'static str = "0.3.0";
+    pub(crate) fn get_resource(what: What, out: impl AsRef<Path>) -> Result<(), io::Error> {
+        static NLPRULE_VERSION: &'static str = "0.3.0";
         static LANG_CODE: &'static str = "en";
 
         // TODO make this a local thing
-        let tokenizer = reqwest::blocking::get(&format!(
+        let response = reqwest::blocking::get(&format!(
             "https://github.com/bminixhofer/nlprule/releases/download/{}/{}_{}.bin.gz",
             NLPRULE_VERSION, LANG_CODE, what
-        ))?;
+        )).unwrap();
+        let data = response.bytes().unwrap();
 
         let dest = out.as_ref().join(format!("{}.bin", what));
-        decompress(tokenizer, dest)?;
+        decompress(&data[..], dest)?;
 
         Ok(())
     }
 }
-fn main() -> Result<dyn std::error::Error> {
-    let out = std::env::env_var("OUT_DIR");
-    let out = std::path::PathBuf::from(out);
+fn main() {
+    let out = env::var("OUT_DIR").expect("OUT_DIR exists in env vars. qed");
+    let out = PathBuf::from(out);
 
     #[cfg(feature = "nlprules")]
-    nlprules::get_resource(What::Tokenizer, &out)?;
+    nlprules::get_resource(nlprules::What::Tokenizer, &out).expect("Github download works. qed");
 
     #[cfg(feature = "nlprules")]
-    nlprules::get_resource(What::Rules, &out)?;
+    nlprules::get_resource(nlprules::What::Rules, &out).expect("Github download works. qed");
 
-    Ok(())
+    let _ = out;
 }
