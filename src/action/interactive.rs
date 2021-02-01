@@ -82,10 +82,12 @@ pub(super) enum UserSelection {
     Help,
     /// Skip the remaining fixes for the current file.
     SkipFile,
-    /// Stop execution.
-    Abort,
     /// continue as if whatever returned this was never called.
     Nop,
+    /// Stop execution, forget all previous choices.
+    Abort,
+    /// Stop fixing chunks, move on to applying the ones chosen so far.
+    Quit,
 }
 
 /// Statefulness for the selection process
@@ -470,7 +472,7 @@ impl UserPicked {
                 }
                 KeyCode::Char('n') => return Ok(UserSelection::Skip),
                 KeyCode::Char('j') => return Ok(UserSelection::Previous),
-                KeyCode::Char('q') | KeyCode::Esc => return Ok(UserSelection::Abort),
+                KeyCode::Char('q') | KeyCode::Esc => return Ok(UserSelection::Quit),
                 KeyCode::Char('c') if modifiers == KeyModifiers::CONTROL => {
                     return Ok(UserSelection::Abort)
                 }
@@ -540,7 +542,7 @@ impl UserPicked {
                     pick = picked.user_input(&mut state, (idx, count))?;
                 }
                 match pick {
-                    UserSelection::Abort => return Ok((picked, UserSelection::Abort)),
+                    usel @ UserSelection::Abort | usel @ UserSelection::Quit => return Ok((picked, usel)),
                     UserSelection::SkipFile => break, // break the inner loop
                     UserSelection::Previous => {
                         unimplemented!("Requires a iterator which works bidrectionally")
