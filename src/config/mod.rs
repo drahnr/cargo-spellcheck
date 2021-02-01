@@ -409,6 +409,7 @@ impl Config {
     pub fn is_enabled(&self, detector: Detector) -> bool {
         match detector {
             Detector::Hunspell => self.hunspell.is_some(),
+            Detector::NlpRules => cfg!(feature = "nlprules"),
             Detector::LanguageTool => self.languagetool.is_some(),
             Detector::Reflow => self.reflow.is_some(),
             #[cfg(test)]
