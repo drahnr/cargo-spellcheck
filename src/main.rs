@@ -30,7 +30,10 @@ use log::{debug, info, trace, warn};
 use serde::Deserialize;
 
 #[cfg(not(target_os = "windows"))]
-use signal_hook::{iterator, consts::signal::{SIGINT, SIGQUIT, SIGTERM}};
+use signal_hook::{
+    consts::signal::{SIGINT, SIGQUIT, SIGTERM},
+    iterator,
+};
 
 #[cfg(target_os = "windows")]
 use signal_hook as _;
