@@ -31,6 +31,7 @@ impl Checker for NlpRulesChecker {
     where
         'a: 's,
     {
+        // dbg!(RULES.rules());
         let suggestions = docu
             .par_iter()
             .try_fold::<SuggestionSet, Result<_>, _, _>(
