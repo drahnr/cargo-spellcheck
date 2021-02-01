@@ -117,7 +117,7 @@ pub fn condition_display_content(
 
     const CENTER_DOTS: &'static str = "...";
     const LEFT_DOTS: &'static str = "..";
-    const RIGHT_DOTS: &'static str = "..";
+    const RIGHT_DOTS: &'static str = LEFT_DOTS;
     const NO_DOTS: &'static str = "";
 
     // guarantees that `marker_size` is always less than the max length.
