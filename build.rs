@@ -1,5 +1,5 @@
-use std::path::PathBuf;
 use std::env;
+use std::path::PathBuf;
 #[cfg(feature = "nlprules")]
 mod nlprules {
     use super::*;
@@ -7,9 +7,9 @@ mod nlprules {
 
     use fs_err as fs;
 
+    use flate2::read::GzDecoder;
     use std::io;
     use std::io::prelude::*;
-    use flate2::read::GzDecoder;
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub(crate) enum What {
@@ -44,7 +44,8 @@ mod nlprules {
         let response = reqwest::blocking::get(&format!(
             "https://github.com/bminixhofer/nlprule/releases/download/{}/{}_{}.bin.gz",
             NLPRULE_VERSION, LANG_CODE, what
-        )).unwrap();
+        ))
+        .unwrap();
         let data = response.bytes().unwrap();
 
         let dest = out.as_ref().join(format!("{}.bin", what));

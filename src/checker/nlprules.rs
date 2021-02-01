@@ -12,13 +12,13 @@ use rayon::prelude::*;
 
 use anyhow::Result;
 
-use nlprule::{Tokenizer, Rules};
 use nlprule::types::Suggestion as NlpFix;
+use nlprule::{Rules, Tokenizer};
 
 static TOKENIZER_BYTES: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/tokenizer.bin"));
 static RULES_BYTES: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/rules.bin"));
 
-lazy_static::lazy_static!{
+lazy_static::lazy_static! {
     static ref TOKENIZER: Tokenizer = Tokenizer::new_from(&mut &*TOKENIZER_BYTES).unwrap();
     static ref RULES: Rules = Rules::new_from(&mut &*RULES_BYTES).unwrap();
 }
@@ -46,11 +46,18 @@ impl Checker for NlpRulesChecker {
                         if nlpfixes.is_empty() {
                             continue 'check;
                         }
-                        'nlp: for NlpFix { message, start, end, replacements, .. } in nlpfixes {
-                            if start > end  {
+                        'nlp: for NlpFix {
+                            message,
+                            start,
+                            end,
+                            replacements,
+                            ..
+                        } in nlpfixes
+                        {
+                            if start > end {
                                 continue 'nlp;
                             }
-                            let range = start..(end+1);
+                            let range = start..(end + 1);
                             for (range, span) in plain.find_spans(range) {
                                 acc.add(
                                     origin.clone(),
@@ -59,8 +66,7 @@ impl Checker for NlpRulesChecker {
                                         range,
                                         span,
                                         origin: origin.clone(),
-                                        replacements:
-                                            replacements
+                                        replacements: replacements
                                             .iter()
                                             .map(|x| x.clone())
                                             .collect(),
