@@ -18,8 +18,19 @@ static TOKENIZER_BYTES: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/tokeni
 static RULES_BYTES: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/rules.bin"));
 
 lazy_static::lazy_static! {
-    static ref TOKENIZER: Tokenizer = Tokenizer::new_from(&mut &*TOKENIZER_BYTES).unwrap();
-    static ref RULES: Rules = Rules::new_from(&mut &*RULES_BYTES).unwrap();
+    static ref TOKENIZER: Tokenizer = {
+        Tokenizer::from_reader(&mut &*TOKENIZER_BYTES)
+            .expect("build.rs pulls valid tokenizer description. qed")
+    };
+    static ref RULES: Rules = {
+        Rules::from_reader(&mut &*RULES_BYTES)
+            .expect("build.rs pulls valid rules description. qed")
+            .into_iter()
+            .filter(|rule| {
+                rule.category_id() != "misspelling"
+            })
+            .collect::<Rules>()
+    };
 }
 
 pub(crate) struct NlpRulesChecker;
@@ -30,7 +41,10 @@ impl Checker for NlpRulesChecker {
     where
         'a: 's,
     {
-        // dbg!(RULES.rules());
+        // avoid poisioned `Once` calls inside the parallelized iterators
+        let tokenizer = &*TOKENIZER;
+        let rules = &*RULES;
+
         let mut suggestions = docu
             .par_iter()
             .try_fold::<SuggestionSet, Result<_>, _, _>(
@@ -41,7 +55,7 @@ impl Checker for NlpRulesChecker {
                     for chunk in chunks {
                         acc.extend(
                             origin.clone(),
-                            check_sentence(origin.clone(), chunk, &TOKENIZER, &RULES),
+                            check_sentence(origin.clone(), chunk, tokenizer, rules),
                         );
                     }
                     Ok(acc)

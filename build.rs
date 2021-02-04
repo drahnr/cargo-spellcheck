@@ -41,7 +41,7 @@ mod nlprules {
         Ok(())
     }
 
-    pub(crate) fn get_resource(what: What, out: impl AsRef<Path>) -> Result<(), io::Error> {
+    pub(crate) fn get_resource(what: What, out: impl AsRef<Path>) -> Result<PathBuf, io::Error> {
         static NLPRULE_VERSION: &'static str = "0.3.0";
         static LANG_CODE: &'static str = "en";
 
@@ -51,7 +51,7 @@ mod nlprules {
         println!("cargo:rerun-if-changed={}", dest.display());
 
         if dest.is_file() {
-            return Ok(());
+            return Ok(dest);
         }
 
         let data = reqwest::blocking::get(&format!(
@@ -78,7 +78,7 @@ mod nlprules {
 
         decompress(&data[..], &dest).unwrap();
 
-        Ok(())
+        Ok(dest)
     }
 }
 fn main() {
@@ -89,9 +89,14 @@ fn main() {
 
     #[cfg(feature = "nlprules")]
     {
-        nlprules::get_resource(nlprules::What::Tokenizer, &out)
+        let loco = nlprules::get_resource(nlprules::What::Tokenizer, &out)
             .expect("Github download works. qed");
-        nlprules::get_resource(nlprules::What::Rules, &out).expect("Github download works. qed");
+        let _ = nlprule::Tokenizer::new(&loco)
+            .expect("build.rs pulls valid tokenizer description. qed");
+
+        let loco = nlprules::get_resource(nlprules::What::Rules, &out)
+            .expect("Github download works. qed");
+        let _ = nlprule::Rules::new(&loco).expect("build.rs pulls valid rules description. qed");
     }
 
     let _ = out;
