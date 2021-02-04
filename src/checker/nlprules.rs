@@ -1,11 +1,10 @@
-//! A dictionary check with affixes, backed by `libhunspell`
+//! A nlp based rule checker base on `nlprule`
 //!
-//! Does not check grammar, but tokenizes the documentation chunk,
-//! and checks the individual tokens against the dictionary using
-//! the defined affixes.
-//! Can handle multiple dictionaries.
+//! Does check grammar, and is supposed to only check for grammar.
+//! Sentence splitting is done in hand-waving way. To be improved.
 
 use super::{Checker, Detector, Documentation, Suggestion, SuggestionSet};
+use crate::{CheckableChunk, ContentOrigin};
 
 use log::{debug, trace};
 use rayon::prelude::*;
@@ -32,51 +31,18 @@ impl Checker for NlpRulesChecker {
         'a: 's,
     {
         // dbg!(RULES.rules());
-        let suggestions = docu
+        let mut suggestions = docu
             .par_iter()
             .try_fold::<SuggestionSet, Result<_>, _, _>(
                 || SuggestionSet::new(),
                 move |mut acc, (origin, chunks)| {
                     debug!("Processing {}", origin.as_path().display());
 
-                    'check: for chunk in chunks {
-                        let plain = chunk.erase_cmark();
-                        trace!("{:?}", &plain);
-                        let txt = plain.as_str();
-                        let nlpfixes = RULES.suggest(txt, &TOKENIZER);
-                        if nlpfixes.is_empty() {
-                            continue 'check;
-                        }
-                        'nlp: for NlpFix {
-                            message,
-                            start,
-                            end,
-                            replacements,
-                            ..
-                        } in nlpfixes
-                        {
-                            if start > end {
-                                continue 'nlp;
-                            }
-                            let range = start..(end + 1);
-                            for (range, span) in plain.find_spans(range) {
-                                acc.add(
-                                    origin.clone(),
-                                    Suggestion {
-                                        detector: Detector::NlpRules,
-                                        range,
-                                        span,
-                                        origin: origin.clone(),
-                                        replacements: replacements
-                                            .iter()
-                                            .map(|x| x.clone())
-                                            .collect(),
-                                        chunk,
-                                        description: Some(message.clone()),
-                                    },
-                                );
-                            }
-                        }
+                    for chunk in chunks {
+                        acc.extend(
+                            origin.clone(),
+                            check_sentence(origin.clone(), chunk, &TOKENIZER, &RULES),
+                        );
                     }
                     Ok(acc)
                 },
@@ -89,7 +55,71 @@ impl Checker for NlpRulesChecker {
                 },
             )?;
 
-        // TODO sort spans by file and line + column
+        suggestions.sort();
         Ok(suggestions)
     }
+}
+
+/// Check one segmented sentence
+fn check_sentence<'a>(
+    origin: ContentOrigin,
+    chunk: &'a CheckableChunk,
+    tokenizer: &Tokenizer,
+    rules: &Rules,
+) -> Vec<Suggestion<'a>> {
+    let plain = chunk.erase_cmark();
+    trace!("{:?}", &plain);
+    let txt = plain.as_str();
+
+    let mut acc = Vec::with_capacity(32);
+
+    let mut history = Vec::with_capacity(8);
+    'sentence: for sentence in txt
+        .split(|c: char| {
+            let previous = history.pop();
+            history.push(c);
+            // FIXME use a proper segmenter
+            match c {
+                '.' | '!' | '?' | ';' => true,
+                '\n' if previous == Some('\n') => true, // FIXME other line endings
+                _ => false,
+            }
+        })
+        .filter(|sentence| !sentence.is_empty())
+    {
+        let nlpfixes = rules.suggest(sentence, tokenizer);
+        if nlpfixes.is_empty() {
+            continue 'sentence;
+        }
+
+        'nlp: for NlpFix {
+            message,
+            start,
+            end,
+            replacements,
+            ..
+        } in nlpfixes
+        {
+            if start > end {
+                continue 'nlp;
+            }
+            let range = start..(end + 1);
+            acc.extend(
+                plain
+                    .find_spans(range)
+                    .into_iter()
+                    .map(|(range, span)| Suggestion {
+                        detector: Detector::NlpRules,
+                        range,
+                        span,
+                        origin: origin.clone(),
+                        replacements: replacements.iter().map(|x| x.clone()).collect(),
+                        chunk,
+                        description: Some(message.clone()),
+                    }),
+            );
+        }
+    }
+
+    acc
 }
