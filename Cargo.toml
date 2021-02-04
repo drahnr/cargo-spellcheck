@@ -67,7 +67,7 @@ assert_matches = "1"
 maplit = "1"
 
 [features]
-default = ["hunspell"]
+default = ["hunspell", "nlprules"]
 
 languagetool = ["languagetool-rs"]
 hunspell = ["hunspell-rs/bundled"]

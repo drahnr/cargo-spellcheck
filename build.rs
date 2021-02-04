@@ -2,14 +2,14 @@ use std::env;
 use std::path::PathBuf;
 #[cfg(feature = "nlprules")]
 mod nlprules {
-    use std::path::{PathBuf, Path};
+    use std::path::{Path, PathBuf};
 
     use fs_err as fs;
 
     use flate2::read::GzDecoder;
+    use std::env;
     use std::io;
     use std::io::prelude::*;
-    use std::env;
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub(crate) enum What {
@@ -32,7 +32,11 @@ mod nlprules {
         let mut buffer = Vec::with_capacity(bytes.len() >> 1);
         gz.read_to_end(&mut buffer)
             .expect("Decompression always works. qed");
-        let mut f = fs::OpenOptions::new().create(true).write(true).truncate(true).open(dest)?;
+        let mut f = fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(dest)?;
         f.write_all(&buffer)?;
         Ok(())
     }
@@ -47,7 +51,7 @@ mod nlprules {
         println!("cargo:rerun-if-changed={}", dest.display());
 
         if dest.is_file() {
-            return Ok(())
+            return Ok(());
         }
 
         let data = reqwest::blocking::get(&format!(
@@ -58,22 +62,21 @@ mod nlprules {
         .and_then(|response| {
             if response.status().as_u16() != 200_u16 {
                 eprintln!("http status: {:?}", response.status());
-                return None
+                return None;
             }
             Some(response.bytes().unwrap().to_vec())
         })
         .unwrap_or_else(|| {
-            let src = env::var("CARGO_MANIFEST_DIR")
-                .expect("CARGO_MANIFEST_DIR exists in env vars. qed");
+            let src =
+                env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR exists in env vars. qed");
             let dest = PathBuf::from(src).join(file_name);
             let mut f = fs::OpenOptions::new().read(true).open(dest).unwrap();
-            let mut buf = Vec::with_capacity(10<<10);
+            let mut buf = Vec::with_capacity(10 << 10);
             f.read_to_end(&mut buf).unwrap();
             buf
         });
 
         decompress(&data[..], &dest).unwrap();
-
 
         Ok(())
     }
@@ -86,7 +89,8 @@ fn main() {
 
     #[cfg(feature = "nlprules")]
     {
-        nlprules::get_resource(nlprules::What::Tokenizer, &out).expect("Github download works. qed");
+        nlprules::get_resource(nlprules::What::Tokenizer, &out)
+            .expect("Github download works. qed");
         nlprules::get_resource(nlprules::What::Rules, &out).expect("Github download works. qed");
     }
 
