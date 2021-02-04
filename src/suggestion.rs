@@ -17,6 +17,7 @@ use std::cmp;
 use std::convert::TryFrom;
 
 use enumflags2::BitFlags;
+use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 
 use crate::{Range, Span};
 
@@ -610,6 +611,27 @@ impl<'s> SuggestionSet<'s> {
     #[inline]
     pub fn len(&self) -> usize {
         self.per_file.len()
+    }
+
+    /// Sorts the files in alphabetical order, then sorts the per file
+    /// suggestions based on start and end spans.
+    pub fn sort(&mut self) {
+        self.per_file
+            .par_iter_mut()
+            .for_each(|(_origin, suggestions)| {
+                suggestions.sort_by(|a, b| {
+                    let cmp = a.span.start.cmp(&b.span.start);
+                    if cmp != std::cmp::Ordering::Equal {
+                        return cmp;
+                    }
+                    let cmp = a.span.end.cmp(&b.span.end);
+                    return cmp;
+                });
+            });
+        self.per_file
+            .sort_by(|origin_a, _a, origin_b, _b| -> std::cmp::Ordering {
+                origin_a.as_path().cmp(origin_b.as_path())
+            });
     }
 
     /// Count the number of suggestions across all files in total

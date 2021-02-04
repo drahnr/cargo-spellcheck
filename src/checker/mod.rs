@@ -127,6 +127,8 @@ where
         }
     }
 
+    collective.sort();
+
     Ok(collective)
 }
 
