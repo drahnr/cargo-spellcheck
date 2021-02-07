@@ -23,7 +23,7 @@ lazy_static::lazy_static! {
             .expect("build.rs pulls valid tokenizer description. qed")
     };
     static ref RULES: Rules = {
-        Rules::from_reader(&mut &*RULES_BYTES)
+        let rules = Rules::from_reader(&mut &*RULES_BYTES)
             .expect("build.rs pulls valid rules description. qed")
             .into_iter()
             .filter(|rule| {
@@ -35,12 +35,13 @@ lazy_static::lazy_static! {
                     "misspelling"  => false,
                     // Anything quotes related is not relevant
                     // for code documentation.
-                    categ if categ.contains("quotes") => false,
-                    _ => true,
+                    "typography" => false,
+                    other => true,
                 }
 
             })
-            .collect::<Rules>()
+            .collect::<Rules>();
+        rules
     };
 }
 
@@ -56,7 +57,7 @@ impl Checker for NlpRulesChecker {
         let tokenizer = &*TOKENIZER;
         let rules = &*RULES;
 
-        let mut suggestions = docu
+        let suggestions = docu
             .par_iter()
             .try_fold::<SuggestionSet, Result<_>, _, _>(
                 || SuggestionSet::new(),
@@ -97,7 +98,7 @@ fn check_sentence<'a>(
 
     let mut acc = Vec::with_capacity(32);
 
-    let nlpfixes = rules.suggest(sentence, tokenizer);
+    let nlpfixes = rules.suggest(txt, tokenizer);
     if nlpfixes.is_empty() {
         return Vec::new();
     }
@@ -113,7 +114,7 @@ fn check_sentence<'a>(
         if start > end {
             continue 'nlp;
         }
-        let range = start..(end + 1);
+        let range = start..end;
         acc.extend(
             plain
                 .find_spans(range)
