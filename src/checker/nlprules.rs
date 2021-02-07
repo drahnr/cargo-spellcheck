@@ -97,52 +97,37 @@ fn check_sentence<'a>(
 
     let mut acc = Vec::with_capacity(32);
 
-    let mut history = Vec::with_capacity(8);
-    'sentence: for sentence in txt
-        .split(|c: char| {
-            let previous = history.pop();
-            history.push(c);
-            // FIXME use a proper segmenter
-            match c {
-                '.' | '!' | '?' | ';' => true,
-                '\n' if previous == Some('\n') => true, // FIXME other line endings
-                _ => false,
-            }
-        })
-        .filter(|sentence| !sentence.is_empty())
-    {
-        let nlpfixes = rules.suggest(sentence, tokenizer);
-        if nlpfixes.is_empty() {
-            continue 'sentence;
-        }
+    let nlpfixes = rules.suggest(sentence, tokenizer);
+    if nlpfixes.is_empty() {
+        return Vec::new();
+    }
 
-        'nlp: for NlpFix {
-            message,
-            start,
-            end,
-            replacements,
-            ..
-        } in nlpfixes
-        {
-            if start > end {
-                continue 'nlp;
-            }
-            let range = start..(end + 1);
-            acc.extend(
-                plain
-                    .find_spans(range)
-                    .into_iter()
-                    .map(|(range, span)| Suggestion {
-                        detector: Detector::NlpRules,
-                        range,
-                        span,
-                        origin: origin.clone(),
-                        replacements: replacements.iter().map(|x| x.clone()).collect(),
-                        chunk,
-                        description: Some(message.clone()),
-                    }),
-            );
+    'nlp: for NlpFix {
+        message,
+        start,
+        end,
+        replacements,
+        ..
+    } in nlpfixes
+    {
+        if start > end {
+            continue 'nlp;
         }
+        let range = start..(end + 1);
+        acc.extend(
+            plain
+                .find_spans(range)
+                .into_iter()
+                .map(|(range, span)| Suggestion {
+                    detector: Detector::NlpRules,
+                    range,
+                    span,
+                    origin: origin.clone(),
+                    replacements: replacements.iter().map(|x| x.clone()).collect(),
+                    chunk,
+                    description: Some(message.clone()),
+                }),
+        );
     }
 
     acc
