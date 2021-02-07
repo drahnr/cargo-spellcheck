@@ -27,7 +27,7 @@ lazy_static::lazy_static! {
             .expect("build.rs pulls valid rules description. qed")
             .into_iter()
             .filter(|rule| {
-                match rule.category_id().to_lowercase() {
+                match rule.category_id().to_lowercase().as_ref() {
                     // The hunspell backend is aware of
                     // custom lingo, which this one is not,
                     // so there would be a lot of false
