@@ -80,7 +80,6 @@ impl Checker for NlpRulesChecker {
                 },
             )?;
 
-        suggestions.sort();
         Ok(suggestions)
     }
 }
