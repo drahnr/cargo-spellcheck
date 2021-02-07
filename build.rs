@@ -54,11 +54,14 @@ mod nlprules {
             return Ok(dest);
         }
 
-        let alt = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("cargo manifest dir ist set. qed"));
-        let alt = alt.join("nlprule-data").join(&file_name);
+        let manifest_dir =
+            PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("cargo manifest dir ist set. qed"));
+        let alt = manifest_dir
+            .join("nlprule-data")
+            .join(format!("{}_{}", LANG_CODE, &file_name));
         if alt.is_file() {
             fs::copy(alt, &dest)?;
-            return Ok(dest)
+            return Ok(dest);
         }
 
         let url = &format!(
@@ -66,26 +69,29 @@ mod nlprules {
             NLPRULE_VERSION, LANG_CODE, what
         );
         let data = reqwest::blocking::get(url)
-        .ok()
-        .and_then(|response| {
-            if response.status().as_u16() != 200_u16 {
-                eprintln!("http status: {:?}", response.status());
-                return None;
-            }
-            Some(response.bytes().expect("HTTP response contains payload. qed").to_vec())
-        })
-        .unwrap_or_else(|| {
-            let src =
-                env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR exists in env vars. qed");
-            let dest = PathBuf::from(src)
+            .ok()
+            .and_then(|response| {
+                if response.status().as_u16() != 200_u16 {
+                    eprintln!("http status: {:?}", response.status());
+                    return None;
+                }
+                Some(
+                    response
+                        .bytes()
+                        .expect("HTTP response contains payload. qed")
+                        .to_vec(),
+                )
+            })
+            .unwrap_or_else(|| {
+                let dest = manifest_dir
                 .join(file_name)
                 // .join("nlprule-data")
                 ;
-            let mut f = fs::OpenOptions::new().read(true).open(dest).unwrap();
-            let mut buf = Vec::with_capacity(10 << 10);
-            f.read_to_end(&mut buf).unwrap();
-            buf
-        });
+                let mut f = fs::OpenOptions::new().read(true).open(dest).unwrap();
+                let mut buf = Vec::with_capacity(10 << 10);
+                f.read_to_end(&mut buf).unwrap();
+                buf
+            });
 
         decompress(&data[..], &dest).unwrap();
 
@@ -107,8 +113,7 @@ fn main() {
 
         let loco = nlprules::get_resource(nlprules::What::Rules, &out)
             .expect("Github download works. qed");
-        let _ = nlprule::Rules::new(&loco)
-            .expect("build.rs pulls valid rules description. qed");
+        let _ = nlprule::Rules::new(&loco).expect("build.rs pulls valid rules description. qed");
     }
 
     let _ = out;
