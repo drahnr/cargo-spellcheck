@@ -27,7 +27,18 @@ lazy_static::lazy_static! {
             .expect("build.rs pulls valid rules description. qed")
             .into_iter()
             .filter(|rule| {
-                rule.category_id() != "misspelling"
+                match rule.category_id().to_lowercase() {
+                    // The hunspell backend is aware of
+                    // custom lingo, which this one is not,
+                    // so there would be a lot of false
+                    // positives.
+                    "misspelling"  => false,
+                    // Anything quotes related is not relevant
+                    // for code documentation.
+                    categ if categ.contains("quotes") => false,
+                    _ => true,
+                }
+
             })
             .collect::<Rules>()
     };

@@ -11,10 +11,10 @@ description = "Checks all doc comments for spelling mistakes"
 readme = "README.md"
 
 [build-dependencies]
+nlprule = { git = "https://github.com/bminixhofer/nlprule.git", optional = true }
 reqwest = { version = "0.11", features = ["blocking"] }
 flate2 = "1"
 fs-err = "2"
-nlprule = { git = "https://github.com/drahnr/nlprule.git", optional = true }
 
 [dependencies]
 docopt = "1"
@@ -42,10 +42,7 @@ crossterm = "0.19"
 fancy-regex = "0.4"
 signal-hook = "0.3"
 rayon = "1.5"
-#nlprule = { git = "https://github.com/bminixhofer/nlprule.git", optional = true }
-nlprule = { git = "https://github.com/drahnr/nlprule.git", optional = true }
-# nlprule = { path = "../nlprule/nlprule", optional = true }
-# nlprule = { version = "0.3.0", optional = true }
+nlprule = { git = "https://github.com/bminixhofer/nlprule.git", optional = true }
 
 # config parsing, must be independent of features
 

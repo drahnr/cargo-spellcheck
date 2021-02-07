@@ -787,6 +787,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bcd1163ae48bda72a20ae26d66a04d3094135cadab911cff418ae5e33f253431"
 
 [[package]]
+name = "fst"
+version = "0.4.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d79238883cf0307100b90aba4a755d8051a3182305dfe7f649a1e9dc0517006f"
+
+[[package]]
 name = "fuchsia-cprng"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -954,6 +960,15 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tracing-futures",
+]
+
+[[package]]
+name = "half"
+version = "1.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "62aca2aba2d62b4a7f5b33f3712cb1b0692779a56fb510499d5c0aa594daeaf3"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -1463,24 +1478,28 @@ dependencies = [
 [[package]]
 name = "nlprule"
 version = "0.3.0"
-source = "git+https://github.com/drahnr/nlprule.git#024799b95db605659098bb14dd0c39b8142ff9d1"
+source = "git+https://github.com/bminixhofer/nlprule.git#8ce599848527e2208843302c3b26f9e72e60d3b0"
 dependencies = [
+ "aho-corasick",
  "bimap",
  "bincode",
  "derivative",
  "either",
  "enum_dispatch",
+ "fst",
+ "half",
  "indexmap",
  "itertools 0.10.0",
  "lazy_static",
  "log",
+ "once_cell",
  "onig",
  "rayon",
  "rayon-cond",
  "serde",
+ "srx",
  "thiserror",
  "unicase",
- "unicode-segmentation",
 ]
 
 [[package]]
@@ -2330,6 +2349,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_regex"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a8136f1a4ea815d7eac4101cfd0b16dc0cb5e1fe1b8609dfd728058656b7badf"
+dependencies = [
+ "regex",
+ "serde",
+]
+
+[[package]]
 name = "serde_urlencoded"
 version = "0.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2428,6 +2457,17 @@ dependencies = [
  "cfg-if 1.0.0",
  "libc",
  "winapi 0.3.9",
+]
+
+[[package]]
+name = "srx"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a47351e5488040fa603f81d3b2ecc8a9bf66894429afaaf1dc22c43cd105250"
+dependencies = [
+ "regex",
+ "serde",
+ "serde_regex",
 ]
 
 [[package]]
@@ -2834,12 +2874,6 @@ checksum = "a13e63ab62dbe32aeee58d1c5408d35c36c392bba5d9d3142287219721afe606"
 dependencies = [
  "tinyvec",
 ]
-
-[[package]]
-name = "unicode-segmentation"
-version = "1.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bb0d2e7be6ae3a5fa87eed5fb451aff96f2573d2694942e40543ae0bbe19c796"
 
 [[package]]
 name = "unicode-width"
