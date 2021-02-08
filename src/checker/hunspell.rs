@@ -13,6 +13,7 @@ use crate::Range;
 
 use fs_err as fs;
 use io::Write;
+use lazy_static::lazy_static;
 use log::{debug, trace};
 use rayon::prelude::*;
 use std::io::{self, BufRead};
@@ -96,6 +97,21 @@ fn cache_builtin() -> Result<(PathBuf, PathBuf)> {
     let path_aff = cache_builtin_inner(&cache_dir, "aff", BUILTIN_HUNSPELL_AFF)?;
     let path_dic = cache_builtin_inner(&cache_dir, "dic", BUILTIN_HUNSPELL_DIC)?;
     Ok((path_dic, path_aff))
+}
+
+/// The value is `true` if string is made of emoji's
+/// or unicode `VULGAR FRACTION`.
+pub fn consists_of_vulgar_fractions_or_emojis(word: &str) -> bool {
+    lazy_static! {
+        static ref VULAGAR_OR_EMOJI: regex::RegexSet = regex::RegexSetBuilder::new(&[
+            r"[\u00BC-\u00BE\u2150-\u215E-\u2189]",
+            r"^[\p{Emoji}]+$"
+        ])
+        .case_insensitive(true)
+        .build()
+        .expect("REGEX grammar is human checked. qed");
+    };
+    return VULAGAR_OR_EMOJI.is_match(word);
 }
 
 pub struct HunspellChecker;
@@ -212,13 +228,14 @@ impl Checker for HunspellChecker {
     {
         let hunspell = Self::inner_init(config)?;
 
-        let (transform_regex, allow_concatenated, allow_dashed) = {
+        let (transform_regex, allow_concatenated, allow_dashed, allow_emojis) = {
             let quirks = &config.quirks;
             {
                 (
                     quirks.transform_regex(),
                     quirks.allow_concatenated(),
                     quirks.allow_dashed(),
+                    quirks.allow_emojis(),
                 )
             }
         };
@@ -268,6 +285,7 @@ impl Checker for HunspellChecker {
                                     range,
                                     allow_concatenated,
                                     allow_dashed,
+                                    allow_emojis,
                                     &mut acc,
                                 )
                             } else {
@@ -284,6 +302,7 @@ impl Checker for HunspellChecker {
                                                 range,
                                                 allow_concatenated,
                                                 allow_dashed,
+                                                allow_emojis,
                                                 &mut acc,
                                             );
                                         }
@@ -298,6 +317,7 @@ impl Checker for HunspellChecker {
                                             range,
                                             allow_concatenated,
                                             allow_dashed,
+                                            allow_emojis,
                                             &mut acc,
                                         );
                                     }
@@ -331,6 +351,7 @@ fn obtain_suggestions<'s>(
     range: Range,
     allow_concatenated: bool,
     allow_dashed: bool,
+    allow_emojis: bool,
     acc: &mut SuggestionSet<'s>,
 ) {
     if !hunspell.check(&word) {
@@ -341,6 +362,12 @@ fn obtain_suggestions<'s>(
             .into_iter()
             .filter(|x| x.len() > 1) // single char suggestions tend to be useless
             .collect::<Vec<_>>();
+
+        // strings made of vulgar fraction or emoji
+        if allow_emojis && consists_of_vulgar_fractions_or_emojis(&word) {
+            trace!(target: "quirks", "Found emoji or vulgar fraction character, treating {} as ok", &word);
+            return;
+        }
 
         if allow_concatenated && replacements_contain_dashless(&word, replacements.as_slice()) {
             trace!(target: "quirks", "Found dashless word in replacement suggestions, treating {} as ok", &word);
@@ -488,5 +515,48 @@ bar
                 );
             }
         }
+    }
+
+    macro_rules! parametrized_vulgar_fraction_or_emoji {
+        ($($name:ident: $value:expr,)*) => {
+        $(
+            #[test]
+            fn $name() {
+                let (input, expected) = $value;
+                assert_eq!(expected, consists_of_vulgar_fractions_or_emojis(input));
+            }
+        )*
+        }
+    }
+
+    parametrized_vulgar_fraction_or_emoji! {
+        empty: ("", false),
+        emojis: ("🐍🤗🦀", true),
+        contains_emojis: ("🦀acean", false),
+        contains_only_unicode: ("⅔⅔⅔↉↉↉", true),
+        contains_emojis_and_unicodes: ("🐍🤗⅒🦀⅔¾", true),
+        no_emojis: ("no emoji string", false),
+        is_number: ("123", true),
+        is_latin_letter: ("a", false),
+        vulgar_fraction_one_quarter_and_emojis: ("¼🤗🦀", true),
+        emojis_and_vulgar_fraction_one_half: ("🤗🦀½", true),
+        emojis_and_vulgar_fraction_three_quarters: ("🤗🦀¾", true),
+        emojis_and_vulgar_fraction_one_seventh: ("🤗🦀⅐", true),
+        emojis_and_vulgar_fraction_one_ninth: ("🤗🦀⅑", true),
+        emojis_and_vulgar_fraction_one_tenth: ("🤗🦀⅒", true),
+        emojis_and_vulgar_fraction_one_third: ("🤗🦀⅓", true),
+        emojis_and_vulgar_fraction_two_thirds: ("🤗🦀⅔", true),
+        emojis_and_vulgar_fraction_one_fifth: ("🤗🦀⅕", true),
+        emojis_and_vulgar_fraction_two_fifth: ("🤗🦀⅖", true),
+        emojis_and_vulgar_fraction_three_fifths: ("🤗🦀⅗", true),
+        emojis_and_vulgar_fraction_four_fifths: ( "🐍⅘", true),
+        emojis_and_vulgar_fraction_one_sixth: ("🐍⅙", true),
+        emojis_and_vulgar_fraction_five_sixths: ("🐍⅚", true),
+        emojis_and_vulgar_fraction_one_eighth: ("🦀🐍⅛", true),
+        emojis_and_vulgar_fraction_three_eighths: ("🦀🐍⅜", true),
+        emojis_and_vulgar_fraction_five_eights: ("🦀🐍⅝", true),
+        emojis_and_vulgar_fraction_five_eighths: ("🦀🐍⅝", true),
+        emojis_and_vulgar_fraction_seven_eighths: ("🦀🐍⅞", true),
+        emojis_and_vulgar_fraction_zero_thirds: ("🦀🐍↉", true),
     }
 }

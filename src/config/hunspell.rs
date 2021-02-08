@@ -7,6 +7,10 @@ use anyhow::{bail, Result};
 
 use serde::{Deserialize, Serialize};
 
+const fn yes() -> bool {
+    true
+}
+
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Quirks {
     /// A regular expression, whose capture groups will be checked, instead of the initial token.
@@ -22,6 +26,9 @@ pub struct Quirks {
     /// that contain additional dashes.
     #[serde(default)]
     pub allow_dashes: bool,
+    /// Treats sequences of emojis as ok.
+    #[serde(default = "yes")]
+    pub allow_emojis: bool,
 }
 
 impl Default for Quirks {
@@ -30,17 +37,22 @@ impl Default for Quirks {
             transform_regex: vec![],
             allow_concatenation: false,
             allow_dashes: false,
+            allow_emojis: true,
         }
     }
 }
 
 impl Quirks {
-    pub(crate) fn allow_concatenated(&self) -> bool {
+    pub(crate) const fn allow_concatenated(&self) -> bool {
         self.allow_concatenation
     }
 
-    pub(crate) fn allow_dashed(&self) -> bool {
+    pub(crate) const fn allow_dashed(&self) -> bool {
         self.allow_dashes
+    }
+
+    pub(crate) const fn allow_emojis(&self) -> bool {
+        self.allow_emojis
     }
 
     pub(crate) fn transform_regex(&self) -> &[WrappedRegex] {
