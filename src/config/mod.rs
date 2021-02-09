@@ -11,16 +11,20 @@
 mod search_dirs;
 pub use search_dirs::*;
 
+mod regex;
+pub use self::regex::*;
+
 use crate::reflow::ReflowConfig;
 use crate::Detector;
 use anyhow::{anyhow, bail, Error, Result};
 use fancy_regex::Regex;
 use log::trace;
 
+use fs::File;
+use fs_err as fs;
 use serde::{Deserialize, Serialize};
 use std::convert::AsRef;
 use std::fmt;
-use std::fs::File;
 use std::io::Read;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -48,87 +52,13 @@ pub struct Config {
     #[serde(alias = "ReFlow")]
     #[serde(alias = "Reflow")]
     pub reflow: Option<ReflowConfig>,
-}
 
-#[derive(Debug)]
-pub struct WrappedRegex(pub Regex);
-
-impl Clone for WrappedRegex {
-    fn clone(&self) -> Self {
-        // TODO inefficient.. but right now this should almost never happen
-        // TODO implement a lazy static `Arc<Mutex<HashMap<&'static str,Regex>>`
-        Self(Regex::new(self.as_str()).unwrap())
-    }
-}
-
-impl std::ops::Deref for WrappedRegex {
-    type Target = Regex;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl std::convert::AsRef<Regex> for WrappedRegex {
-    fn as_ref(&self) -> &Regex {
-        &self.0
-    }
-}
-
-impl Serialize for WrappedRegex {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::ser::Serializer,
-    {
-        serializer.serialize_str(self.as_str())
-    }
-}
-
-impl<'de> Deserialize<'de> for WrappedRegex {
-    fn deserialize<D>(deserializer: D) -> Result<WrappedRegex, D::Error>
-    where
-        D: serde::de::Deserializer<'de>,
-    {
-        deserializer
-            .deserialize_any(RegexVisitor)
-            .map(WrappedRegex::from)
-    }
-}
-
-impl Into<Regex> for WrappedRegex {
-    fn into(self) -> Regex {
-        self.0
-    }
-}
-
-impl From<Regex> for WrappedRegex {
-    fn from(other: Regex) -> WrappedRegex {
-        WrappedRegex(other)
-    }
-}
-
-struct RegexVisitor;
-
-impl<'de> serde::de::Visitor<'de> for RegexVisitor {
-    type Value = Regex;
-
-    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        formatter.write_str("String with valid regex expression")
-    }
-
-    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-    where
-        E: serde::de::Error,
-    {
-        let re = Regex::new(value).map_err(E::custom)?;
-        Ok(re)
-    }
-
-    fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
-    where
-        E: serde::de::Error,
-    {
-        self.visit_str::<E>(value.as_str())
-    }
+    #[serde(alias = "Nlp")]
+    #[serde(alias = "NLP")]
+    #[serde(alias = "nlp")]
+    #[serde(alias = "NLP")]
+    #[serde(alias = "NlpRules")]
+    pub nlprules: Option<NlpRulesConfig>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -278,6 +208,15 @@ impl LanguageToolConfig {
         &self.url
     }
 }
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[serde(deny_unknown_fields)]
+pub struct NlpRulesConfig {
+    /// Location to use for an initial lookup
+    /// of alternate srx, tokenizer and rules data.
+    pub override_rules: Option<PathBuf>,
+    pub override_srx: Option<PathBuf>,
+    pub override_tokenizer: Option<PathBuf>,
+}
 
 impl Config {
     const QUALIFIER: &'static str = "io";
@@ -409,9 +348,9 @@ impl Config {
     pub fn is_enabled(&self, detector: Detector) -> bool {
         match detector {
             Detector::Hunspell => self.hunspell.is_some(),
-            Detector::NlpRules => cfg!(feature = "nlprules"),
+            Detector::NlpRules => self.nlprules.is_some(),
             Detector::LanguageTool => self.languagetool.is_some(),
-            Detector::Reflow => self.reflow.is_some() && cfg!(feature = "nlprule"),
+            Detector::Reflow => self.reflow.is_some(),
             #[cfg(test)]
             Detector::Dummy => true,
         }
@@ -439,6 +378,11 @@ impl Default for Config {
                 extra_dictionaries: Vec::new(),
                 quirks: Quirks::default(),
             }),
+            nlprules: if cfg!(feature = "nlprules") {
+                Some(NlpRulesConfig::default())
+            } else {
+                None
+            },
             // disabled by default, it's still
             // experimental and requires additional setup
             languagetool: None,
