@@ -188,7 +188,15 @@ do so:
 export LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config
 ```
 
+#### NlpRules
+
+When compiled with the default featureset which includes `nlprules`, the resulting binary can only
+be distributed under the [`LGPLv2.1`](./LICENSE-LGPL) since the `rules`, `srx` and `tokenizer`
+definitions are extracted from `LanguageTool` from git commit `05936acccb7e068a964332b9ce709b902b48d417` which is itself licensed under [`LGPLv2.1`](./LICENSE-LGPL).
+
 #### LanguageTool
+
+**Deprecated** use with caution!
 
 Run an instance of the [LanguageTool server i.e. as
 container](https://hub.docker.com/r/erikvl87/languagetool).
