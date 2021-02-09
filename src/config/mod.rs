@@ -212,9 +212,8 @@ impl LanguageToolConfig {
 #[serde(deny_unknown_fields)]
 pub struct NlpRulesConfig {
     /// Location to use for an initial lookup
-    /// of alternate srx, tokenizer and rules data.
+    /// of alternate tokenizer and rules data.
     pub override_rules: Option<PathBuf>,
-    pub override_srx: Option<PathBuf>,
     pub override_tokenizer: Option<PathBuf>,
 }
 
@@ -383,8 +382,9 @@ impl Default for Config {
             } else {
                 None
             },
-            // disabled by default, it's still
-            // experimental and requires additional setup
+            // disabled by default, it
+            // requires additional setup and
+            // deprecated now
             languagetool: None,
             reflow: Some(ReflowConfig::default()),
         }
