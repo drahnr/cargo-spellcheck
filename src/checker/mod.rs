@@ -87,44 +87,38 @@ where
     let mut collective = SuggestionSet::<'s>::new();
 
     #[cfg(feature = "languagetool")]
-    {
-        if config.is_enabled(Detector::LanguageTool) {
-            debug!("Running LanguageTool checks");
-            let config = config
-                .languagetool
-                .as_ref()
-                .expect("Must be Some(LanguageToolConfig) if is_enabled returns true");
+    if config.is_enabled(Detector::LanguageTool) {
+        debug!("Running LanguageTool checks");
+        let config = config
+            .languagetool
+            .as_ref()
+            .expect("Must be Some(LanguageToolConfig) if is_enabled returns true");
 
-            let mut suggestions =
-                self::languagetool::LanguageToolChecker::check(documentation, config)?;
-            collective.join(suggestions);
-        }
+        let mut suggestions =
+            self::languagetool::LanguageToolChecker::check(documentation, config)?;
+        collective.join(suggestions);
     }
 
     #[cfg(feature = "nlprules")]
-    {
-        // if config.is_enabled() {
+    if config.is_enabled(Detector::NlpRules) {
         debug!("Running NlpRules checks");
-        // let config = config
-        //         .nlprules
-        //         .as_ref()
-        //         .expect("Must be Some(NlpRulesConfig) if is_enabled returns true");
-        let suggestions = self::nlprules::NlpRulesChecker::check(documentation, &())?;
+        let config = config
+            .nlprules
+            .as_ref()
+            .expect("Must be Some(NlpRulesConfig) if is_enabled returns true");
+        let suggestions = self::nlprules::NlpRulesChecker::check(documentation, config)?;
         collective.join(suggestions);
-        // }
     }
 
     #[cfg(feature = "hunspell")]
-    {
-        if config.is_enabled(Detector::Hunspell) {
-            debug!("Running Hunspell checks");
-            let config = config
-                .hunspell
-                .as_ref()
-                .expect("Must be Some(HunspellConfig) if is_enabled returns true");
-            let suggestions = self::hunspell::HunspellChecker::check(documentation, config)?;
-            collective.join(suggestions);
-        }
+    if config.is_enabled(Detector::Hunspell) {
+        debug!("Running Hunspell checks");
+        let config = config
+            .hunspell
+            .as_ref()
+            .expect("Must be Some(HunspellConfig) if is_enabled returns true");
+        let suggestions = self::hunspell::HunspellChecker::check(documentation, config)?;
+        collective.join(suggestions);
     }
 
     collective.sort();

@@ -18,6 +18,7 @@ fs-err = "2"
 
 [dependencies]
 docopt = "1"
+fs-err = "2"
 serde = { version = "1", features = ["derive"] }
 anyhow = "1"
 proc-macro2 = { version = "1", features = ["span-locations"] }

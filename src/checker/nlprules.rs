@@ -6,25 +6,48 @@
 use super::{Checker, Detector, Documentation, Suggestion, SuggestionSet};
 use crate::{CheckableChunk, ContentOrigin};
 
+use anyhow::Result;
+use fs_err as fs;
 use log::{debug, trace};
 use rayon::prelude::*;
-
-use anyhow::Result;
 
 use nlprule::types::Suggestion as NlpFix;
 use nlprule::{Rules, Tokenizer};
 
-static TOKENIZER_BYTES: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/tokenizer.bin"));
-static RULES_BYTES: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/rules.bin"));
+static DEFAULT_TOKENIZER_BYTES: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/tokenizer.bin"));
+static DEFAULT_RULES_BYTES: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/rules.bin"));
 
-lazy_static::lazy_static! {
-    static ref TOKENIZER: Tokenizer = {
-        Tokenizer::from_reader(&mut &*TOKENIZER_BYTES)
-            .expect("build.rs pulls valid tokenizer description. qed")
-    };
-    static ref RULES: Rules = {
-        let rules = Rules::from_reader(&mut &*RULES_BYTES)
-            .expect("build.rs pulls valid rules description. qed")
+pub(crate) struct NlpRulesChecker;
+
+impl Checker for NlpRulesChecker {
+    type Config = crate::config::NlpRulesConfig;
+    fn check<'a, 's>(docu: &'a Documentation, config: &Self::Config) -> Result<SuggestionSet<'s>>
+    where
+        'a: 's,
+    {
+        let tokenizer = config.override_rules.as_ref().map_or_else(
+            || {
+                Ok(Tokenizer::from_reader(&mut &*DEFAULT_TOKENIZER_BYTES)
+                    .expect("build.rs pulls valid tokenizer description. qed"))
+            },
+            |path| -> Result<Tokenizer> {
+                let f = fs::File::open(&path)?;
+                Ok(Tokenizer::from_reader(f)?)
+            },
+        )?;
+
+        let rules = config.override_rules.as_ref().map_or_else(
+            || {
+                Ok(Rules::from_reader(&mut &*DEFAULT_RULES_BYTES)
+                    .expect("build.rs pulls valid tokenizer description. qed"))
+            },
+            |path| -> Result<Rules> {
+                let f = fs::File::open(&path)?;
+                Ok(Rules::from_reader(f)?)
+            },
+        )?;
+
+        let rules = rules
             .into_iter()
             .filter(|rule| {
                 match rule.category_id().to_lowercase().as_ref() {
@@ -32,31 +55,16 @@ lazy_static::lazy_static! {
                     // custom lingo, which this one is not,
                     // so there would be a lot of false
                     // positives.
-                    "misspelling"  => false,
+                    "misspelling" => false,
                     // Anything quotes related is not relevant
                     // for code documentation.
                     "typography" => false,
-                    other => true,
+                    _other => true,
                 }
-
             })
             .collect::<Rules>();
-        rules
-    };
-}
-
-pub(crate) struct NlpRulesChecker;
-
-impl Checker for NlpRulesChecker {
-    type Config = ();
-    fn check<'a, 's>(docu: &'a Documentation, _config: &Self::Config) -> Result<SuggestionSet<'s>>
-    where
-        'a: 's,
-    {
-        // avoid poisioned `Once` calls inside the parallelized iterators
-        let tokenizer = &*TOKENIZER;
-        let rules = &*RULES;
-
+        let rules = &rules;
+        let tokenizer = &tokenizer;
         let suggestions = docu
             .par_iter()
             .try_fold::<SuggestionSet, Result<_>, _, _>(
