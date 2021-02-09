@@ -143,6 +143,14 @@ allow_concatenation = true
 # recommendations without the dashes. This is less common.
 allow_dashed = false
 
+[NlpRules]
+# Allows the user to override the default included
+# exports of LanguageTool, with other custom
+# languages
+
+# override_rules = "/path/to/rules_binencoded.bin"
+# override_tokenizer = "/path/to/tokenizer_binencoded.bin"
+
 [Reflow]
 # Reflows doc comments to adhere to adhere to a given maximum line width limit.
 max_line_length = 80
@@ -192,13 +200,13 @@ export LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config
 
 When compiled with the default featureset which includes `nlprules`, the
 resulting binary can only be distributed under the [`LGPLv2.1`](./LICENSE-LGPL)
-since the `rules`, `srx` and `tokenizer` definitions are extracted from
-`LanguageTool` from git commit `05936acccb7e068a964332b9ce709b902b48d417` which
-is itself licensed under [`LGPLv2.1`](./LICENSE-LGPL).
+since the `rules` and `tokenizer` definitions are extracted from `LanguageTool`
+from git commit `05936acccb7e068a964332b9ce709b902b48d417` which is itself
+licensed under [`LGPLv2.1`](./LICENSE-LGPL).
 
 #### LanguageTool
 
-**Deprecated** use with caution!
+**Deprecated!**
 
-Run an instance of the [LanguageTool server i.e. as
+You must run an instance of the [LanguageTool server i.e. as
 container](https://hub.docker.com/r/erikvl87/languagetool).
