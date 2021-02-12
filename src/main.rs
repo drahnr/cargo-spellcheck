@@ -75,7 +75,11 @@ Options:
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Deserialize)]
 enum CheckerType {
     #[serde(alias = "hunspell")]
+    #[serde(alias = "hunSpell")]
     Hunspell,
+    #[serde(alias = "nlprules")]
+    #[serde(alias = "nlpRules")]
+    NlpRules,
     #[serde(alias = "languageTool")]
     #[serde(alias = "Languagetool")]
     #[serde(alias = "languagetool")]
