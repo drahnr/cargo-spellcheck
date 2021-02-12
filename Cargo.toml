@@ -17,33 +17,34 @@ flate2 = "1"
 fs-err = "2"
 
 [dependencies]
-docopt = "1"
-fs-err = "2"
-serde = { version = "1", features = ["derive"] }
 anyhow = "1"
-proc-macro2 = { version = "1", features = ["span-locations"] }
-walkdir = "2"
-syn = { version = "1", features = ["full"] }
-log = "0.4"
-env_logger = "0.8"
-console = "0.14"
-indexmap = { version = "1", features=["rayon", "serde"] }
-enumflags2 = "0.6"
-ra_ap_syntax = "0.0.36"
-regex = "1.4.2"
-# for the config file
-toml = "0.5"
-# for parsing and extracting elements from Cargo.toml
 cargo_toml = "0.8"
-directories = "3"
-lazy_static = "1"
-pulldown-cmark = "0.8"
-itertools = "0.10"
+console = "0.14"
 crossterm = "0.19"
+# for the config file
+directories = "3"
+docopt = "1"
+enumflags2 = "0.6"
+env_logger = "0.8"
 fancy-regex = "0.4"
-signal-hook = "0.3"
+fs-err = "2"
+indexmap = { version = "1", features=["rayon", "serde"] }
+itertools = "0.10"
+lazy_static = "1"
+log = "0.4"
+nlprule = { version = "0.4.3", optional = true }
+proc-macro2 = { version = "1", features = ["span-locations"] }
+pulldown-cmark = "0.8"
+ra_ap_syntax = "0.0.37"
 rayon = "1.5"
-nlprule = { git = "https://github.com/bminixhofer/nlprule.git", optional = true }
+regex = "1.4"
+serde = { version = "1", features = ["derive"] }
+signal-hook = "0.3"
+syn = { version = "1", features = ["full"] }
+# for parsing and extracting elements from Cargo.toml
+toml = "0.5"
+# for the config file
+walkdir = "2"
 
 # config parsing, must be independent of features
 
@@ -73,4 +74,8 @@ languagetool = ["languagetool-rs"]
 hunspell = ["hunspell-rs/bundled"]
 nlprules = ["nlprule"]
 
-all = ["hunspell", "languagetool"]
+all = ["hunspell", "nlprules", "languagetool"]
+
+
+[profile.dev]
+build-override = { opt-level = 2 }
