@@ -82,18 +82,20 @@ fn tokenize(s: &str) -> Vec<Range> {
     bananasplit
 }
 
-
-fn invoke_checker_inner<'a, 's, T>(documentation: &'a Documentation, config: Option<&T::Config>, collective: &mut SuggestionSet<'s>) -> Result<()>
+fn invoke_checker_inner<'a, 's, T>(
+    documentation: &'a Documentation,
+    config: Option<&T::Config>,
+    collective: &mut SuggestionSet<'s>,
+) -> Result<()>
 where
     'a: 's,
     T: Checker,
- {
+{
     let config = config
         .as_ref()
         .expect("Must be Some(Config) if is_enabled returns true");
 
-    let suggestions =
-        T::check(documentation, *config)?;
+    let suggestions = T::check(documentation, *config)?;
     collective.join(suggestions);
     Ok(())
 }
@@ -125,11 +127,32 @@ where
 {
     let mut collective = SuggestionSet::<'s>::new();
 
-    invoke_checker!("languagetool", self::languagetool::LanguageToolChecker, documentation, config, config.languagetool.as_ref(), &mut collective);
+    invoke_checker!(
+        "languagetool",
+        self::languagetool::LanguageToolChecker,
+        documentation,
+        config,
+        config.languagetool.as_ref(),
+        &mut collective
+    );
 
-    invoke_checker!("nlprules", self::nlprules::NlpRulesChecker, documentation, config, config.nlprules.as_ref(), &mut collective);
+    invoke_checker!(
+        "nlprules",
+        self::nlprules::NlpRulesChecker,
+        documentation,
+        config,
+        config.nlprules.as_ref(),
+        &mut collective
+    );
 
-    invoke_checker!("hunspell", self::hunspell::HunspellChecker, documentation, config, config.hunspell.as_ref(), &mut collective);
+    invoke_checker!(
+        "hunspell",
+        self::hunspell::HunspellChecker,
+        documentation,
+        config,
+        config.hunspell.as_ref(),
+        &mut collective
+    );
 
     collective.sort();
 
