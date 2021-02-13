@@ -8,7 +8,7 @@ use crate::{CheckableChunk, ContentOrigin};
 
 use anyhow::Result;
 use fs_err as fs;
-use log::{debug, info, trace};
+use log::{debug, info, trace, warn};
 use rayon::prelude::*;
 
 use nlprule::types::Suggestion as NlpFix;
@@ -90,7 +90,7 @@ impl Checker for NlpRulesChecker {
                     for chunk in chunks {
                         acc.extend(
                             origin.clone(),
-                            check_sentence(origin.clone(), chunk, tokenizer, rules),
+                            check_chunk(origin.clone(), chunk, tokenizer, rules),
                         );
                     }
                     Ok(acc)
@@ -108,8 +108,9 @@ impl Checker for NlpRulesChecker {
     }
 }
 
-/// Check one segmented sentence
-fn check_sentence<'a>(
+/// Check the plain text contained in chunk,
+/// which can be one or more sentences.
+fn check_chunk<'a>(
     origin: ContentOrigin,
     chunk: &'a CheckableChunk,
     tokenizer: &Tokenizer,
@@ -135,6 +136,7 @@ fn check_sentence<'a>(
     } in nlpfixes
     {
         if start > end {
+            warn!("BUG: crate nlprule yielded a negative range, please file a bug");
             continue 'nlp;
         }
         let range = start..end;
