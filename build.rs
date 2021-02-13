@@ -106,6 +106,14 @@ fn main() {
 
     #[cfg(feature = "nlprules")]
     {
+        nlprule_build::BinaryBuilder::new(Some(&["en"]), &out)
+            .fallback_to_build_dir(true)
+            .build()
+            .validate();
+    }
+
+    if false
+    {
         let loco = nlprules::get_resource(nlprules::What::Tokenizer, &out)
             .expect("Github download works. qed");
         let _ = nlprule::Tokenizer::new(&loco)

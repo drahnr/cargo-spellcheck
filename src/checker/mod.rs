@@ -92,7 +92,7 @@ where
         .as_ref()
         .expect("Must be Some(Config) if is_enabled returns true");
 
-    let mut suggestions =
+    let suggestions =
         T::check(documentation, *config)?;
     collective.join(suggestions);
     Ok(())
