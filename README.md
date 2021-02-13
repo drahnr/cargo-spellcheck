@@ -200,9 +200,8 @@ export LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config
 
 When compiled with the default featureset which includes `nlprules`, the
 resulting binary can only be distributed under the [`LGPLv2.1`](./LICENSE-LGPL)
-since the `rules` and `tokenizer` definitions are extracted from `LanguageTool`
-from git commit `05936acccb7e068a964332b9ce709b902b48d417` which is itself
-licensed under [`LGPLv2.1`](./LICENSE-LGPL).
+since the `rules` and `tokenizer` definitions are extracted from `LanguageTool` (which is itself
+licensed under [`LGPLv2.1`](./LICENSE-LGPL)) as described by the library that is used for pulling and integrating - details are to be found under [crate `nlprule`'s README.md](https://github.com/bminixhofer/nlprule#license).
 
 #### LanguageTool
 
