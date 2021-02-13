@@ -8,7 +8,7 @@ use crate::{CheckableChunk, ContentOrigin};
 
 use anyhow::Result;
 use fs_err as fs;
-use log::{debug, trace};
+use log::{debug, trace, info};
 use rayon::prelude::*;
 
 use nlprule::types::Suggestion as NlpFix;
@@ -30,7 +30,7 @@ impl Checker for NlpRulesChecker {
     where
         'a: 's,
     {
-        debug!("Loading tokenizer...");
+        info!("Loading tokenizer...");
 
         let tokenizer = config.override_tokenizer.as_ref().map_or_else(
             || {
@@ -43,9 +43,9 @@ impl Checker for NlpRulesChecker {
             },
         )?;
 
-        debug!("Loaded tokenizer");
+        info!("Loaded tokenizer.");
 
-        debug!("Loading rules..");
+        info!("Loading rules..");
 
         let rules = config.override_rules.as_ref().map_or_else(
             || {
@@ -75,7 +75,7 @@ impl Checker for NlpRulesChecker {
             })
             .collect::<Rules>();
 
-        debug!("Loaded rules");
+        info!("Loaded rules.");
 
         let rules = &rules;
         let tokenizer = &tokenizer;
