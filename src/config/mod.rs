@@ -44,7 +44,15 @@ pub struct Config {
     pub skip_readme: bool,
 
     #[serde(alias = "Hunspell")]
+    #[serde(default = "default_hunspell")]
     pub hunspell: Option<HunspellConfig>,
+    #[serde(alias = "Nlp")]
+    #[serde(alias = "NLP")]
+    #[serde(alias = "nlp")]
+    #[serde(alias = "NLP")]
+    #[serde(alias = "NlpRules")]
+    #[serde(default = "default_nlprules")]
+    pub nlprules: Option<NlpRulesConfig>,
     #[serde(alias = "LanguageTool")]
     #[serde(alias = "languageTool")]
     #[serde(alias = "Languagetool")]
@@ -52,13 +60,6 @@ pub struct Config {
     #[serde(alias = "ReFlow")]
     #[serde(alias = "Reflow")]
     pub reflow: Option<ReflowConfig>,
-
-    #[serde(alias = "Nlp")]
-    #[serde(alias = "NLP")]
-    #[serde(alias = "nlp")]
-    #[serde(alias = "NLP")]
-    #[serde(alias = "NlpRules")]
-    pub nlprules: Option<NlpRulesConfig>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -366,22 +367,30 @@ impl Config {
     }
 }
 
+fn default_nlprules() -> Option<NlpRulesConfig> {
+    if cfg!(feature = "nlprules") {
+        Some(NlpRulesConfig::default())
+    } else {
+        None
+    }
+}
+
+fn default_hunspell() -> Option<HunspellConfig> {
+    Some(HunspellConfig {
+        lang: Some("en_US".to_owned()),
+        search_dirs: SearchDirs::default(),
+        extra_dictionaries: Vec::new(),
+        quirks: Quirks::default(),
+    })
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
             dev_comments: false,
             skip_readme: false,
-            hunspell: Some(HunspellConfig {
-                lang: Some("en_US".to_owned()),
-                search_dirs: SearchDirs::default(),
-                extra_dictionaries: Vec::new(),
-                quirks: Quirks::default(),
-            }),
-            nlprules: if cfg!(feature = "nlprules") {
-                Some(NlpRulesConfig::default())
-            } else {
-                None
-            },
+            hunspell: default_hunspell(),
+            nlprules: default_nlprules(),
             // disabled by default, it
             // requires additional setup and
             // deprecated now
