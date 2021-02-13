@@ -278,7 +278,7 @@ impl Config {
         let path = path.as_ref();
 
         if let Some(path) = path.parent() {
-            std::fs::create_dir_all(path).map_err(|e| {
+            fs::create_dir_all(path).map_err(|e| {
                 anyhow!("Failed to create directories {}", path.display()).context(e)
             })?;
         }
