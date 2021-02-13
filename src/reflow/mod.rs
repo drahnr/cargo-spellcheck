@@ -30,6 +30,11 @@ pub struct Reflow;
 
 impl Checker for Reflow {
     type Config = ReflowConfig;
+
+    fn detector() -> Detector {
+        Detector::Reflow
+    }
+
     fn check<'a, 's>(docu: &'a Documentation, config: &Self::Config) -> Result<SuggestionSet<'s>>
     where
         'a: 's,

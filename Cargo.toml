@@ -11,7 +11,7 @@ description = "Checks all doc comments for spelling mistakes"
 readme = "README.md"
 
 [build-dependencies]
-nlprule = { git = "https://github.com/bminixhofer/nlprule.git", optional = true }
+nlprule = { version = "0.4.3", optional = true }
 reqwest = { version = "0.11", features = ["blocking"] }
 flate2 = "1"
 fs-err = "2"
@@ -70,6 +70,7 @@ maplit = "1"
 [features]
 default = ["hunspell", "nlprules"]
 
+# deprecated! pending removal
 languagetool = ["languagetool-rs"]
 hunspell = ["hunspell-rs/bundled"]
 nlprules = ["nlprule"]
