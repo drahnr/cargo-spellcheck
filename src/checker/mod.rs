@@ -25,6 +25,9 @@ mod quirks;
 /// Implementation for a checker
 pub(crate) trait Checker {
     type Config;
+
+    fn detector() -> Detector;
+
     fn check<'a, 's>(docu: &'a Documentation, config: &Self::Config) -> Result<SuggestionSet<'s>>
     where
         'a: 's;
@@ -79,6 +82,42 @@ fn tokenize(s: &str) -> Vec<Range> {
     bananasplit
 }
 
+
+fn invoke_checker_inner<'a, 's, T>(documentation: &'a Documentation, config: Option<&T::Config>, collective: &mut SuggestionSet<'s>) -> Result<()>
+where
+    'a: 's,
+    T: Checker,
+ {
+    let config = config
+        .as_ref()
+        .expect("Must be Some(Config) if is_enabled returns true");
+
+    let mut suggestions =
+        T::check(documentation, *config)?;
+    collective.join(suggestions);
+    Ok(())
+}
+
+macro_rules! invoke_checker {
+    ($feature:literal, $checker:ty, $documentation:ident, $config:expr, $config_inner:expr, $collective:expr) => {
+        if !cfg!(feature = $feature) {
+            debug!("Feature {} is disabled by compilation.", $feature);
+        } else {
+            #[cfg(feature = $feature)]
+            {
+                let detector = <$checker>::detector();
+                let config = $config;
+                if config.is_enabled(detector) {
+                    debug!("Running {} checks.", detector);
+                    invoke_checker_inner::<$checker>($documentation, $config_inner, $collective)?;
+                } else {
+                    debug!("Checker {} is disabled by configuration.", detector);
+                }
+            }
+        }
+    };
+}
+
 /// Check a full document for violations using the tools we have.
 pub fn check<'a, 's>(documentation: &'a Documentation, config: &Config) -> Result<SuggestionSet<'s>>
 where
@@ -86,40 +125,11 @@ where
 {
     let mut collective = SuggestionSet::<'s>::new();
 
-    #[cfg(feature = "languagetool")]
-    if config.is_enabled(Detector::LanguageTool) {
-        debug!("Running LanguageTool checks");
-        let config = config
-            .languagetool
-            .as_ref()
-            .expect("Must be Some(LanguageToolConfig) if is_enabled returns true");
+    invoke_checker!("languagetool", self::languagetool::LanguageToolChecker, documentation, config, config.languagetool.as_ref(), &mut collective);
 
-        let mut suggestions =
-            self::languagetool::LanguageToolChecker::check(documentation, config)?;
-        collective.join(suggestions);
-    }
+    invoke_checker!("nlprules", self::nlprules::NlpRulesChecker, documentation, config, config.nlprules.as_ref(), &mut collective);
 
-    #[cfg(feature = "nlprules")]
-    if config.is_enabled(Detector::NlpRules) {
-        debug!("Running NlpRules checks");
-        let config = config
-            .nlprules
-            .as_ref()
-            .expect("Must be Some(NlpRulesConfig) if is_enabled returns true");
-        let suggestions = self::nlprules::NlpRulesChecker::check(documentation, config)?;
-        collective.join(suggestions);
-    }
-
-    #[cfg(feature = "hunspell")]
-    if config.is_enabled(Detector::Hunspell) {
-        debug!("Running Hunspell checks");
-        let config = config
-            .hunspell
-            .as_ref()
-            .expect("Must be Some(HunspellConfig) if is_enabled returns true");
-        let suggestions = self::hunspell::HunspellChecker::check(documentation, config)?;
-        collective.join(suggestions);
-    }
+    invoke_checker!("hunspell", self::hunspell::HunspellChecker, documentation, config, config.hunspell.as_ref(), &mut collective);
 
     collective.sort();
 

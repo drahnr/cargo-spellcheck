@@ -123,6 +123,11 @@ impl HunspellChecker {
 
 impl Checker for HunspellChecker {
     type Config = crate::config::HunspellConfig;
+
+    fn detector() -> Detector {
+        Detector::Hunspell
+    }
+
     fn check<'a, 's>(docu: &'a Documentation, config: &Self::Config) -> Result<SuggestionSet<'s>>
     where
         'a: 's,

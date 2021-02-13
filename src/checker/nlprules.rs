@@ -21,6 +21,11 @@ pub(crate) struct NlpRulesChecker;
 
 impl Checker for NlpRulesChecker {
     type Config = crate::config::NlpRulesConfig;
+
+    fn detector() -> Detector {
+        Detector::NlpRules
+    }
+
     fn check<'a, 's>(docu: &'a Documentation, config: &Self::Config) -> Result<SuggestionSet<'s>>
     where
         'a: 's,

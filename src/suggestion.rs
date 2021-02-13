@@ -23,7 +23,7 @@ use crate::{Range, Span};
 
 /// Bitflag of available checkers by compilation / configuration.
 #[derive(Debug, Clone, Copy, BitFlags, Eq, PartialEq, Hash)]
-#[repr(u8)]
+#[repr(u16)]
 pub enum Detector {
     /// Hunspell lib based detector.
     Hunspell = 0b0_0001,
@@ -36,6 +36,20 @@ pub enum Detector {
     /// Detection of nothing, a test helper.
     #[cfg(test)]
     Dummy = 0b1_0000,
+}
+
+impl Detector {
+    /// Converts the detector to its static str representation.
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::Hunspell => "Hunspell",
+            Self::NlpRules => "NlpRules",
+            Self::LanguageTool => "LanguageTool",
+            Self::Reflow => "Reflow",
+            #[cfg(test)]
+            Self::Dummy => "Dummy",
+        }
+    }
 }
 
 /// Terminal size in characters.
@@ -72,14 +86,7 @@ use std::fmt;
 
 impl fmt::Display for Detector {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(match self {
-            Self::Hunspell => "Hunspell",
-            Self::NlpRules => "NlpRules",
-            Self::LanguageTool => "LanguageTool",
-            Self::Reflow => "Reflow",
-            #[cfg(test)]
-            Self::Dummy => "Dummy",
-        })
+        formatter.write_str(self.as_str())
     }
 }
 
