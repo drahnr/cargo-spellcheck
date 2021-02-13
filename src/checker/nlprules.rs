@@ -8,13 +8,14 @@ use crate::{CheckableChunk, ContentOrigin};
 
 use anyhow::Result;
 use fs_err as fs;
-use log::{debug, trace, info};
+use log::{debug, info, trace};
 use rayon::prelude::*;
 
 use nlprule::types::Suggestion as NlpFix;
 use nlprule::{Rules, Tokenizer};
 
-static DEFAULT_TOKENIZER_BYTES: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/en_tokenizer.bin"));
+static DEFAULT_TOKENIZER_BYTES: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/en_tokenizer.bin"));
 static DEFAULT_RULES_BYTES: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/en_rules.bin"));
 
 pub(crate) struct NlpRulesChecker;
