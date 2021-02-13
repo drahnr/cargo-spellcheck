@@ -30,7 +30,9 @@ impl Checker for NlpRulesChecker {
     where
         'a: 's,
     {
-        let tokenizer = config.override_rules.as_ref().map_or_else(
+        debug!("Loading tokenizer...");
+
+        let tokenizer = config.override_tokenizer.as_ref().map_or_else(
             || {
                 Ok(Tokenizer::from_reader(&mut &*DEFAULT_TOKENIZER_BYTES)
                     .expect("build.rs pulls valid tokenizer description. qed"))
@@ -40,6 +42,10 @@ impl Checker for NlpRulesChecker {
                 Ok(Tokenizer::from_reader(f)?)
             },
         )?;
+
+        debug!("Loaded tokenizer");
+
+        debug!("Loading rules..");
 
         let rules = config.override_rules.as_ref().map_or_else(
             || {
@@ -68,6 +74,9 @@ impl Checker for NlpRulesChecker {
                 }
             })
             .collect::<Rules>();
+
+        debug!("Loaded rules");
+
         let rules = &rules;
         let tokenizer = &tokenizer;
         let suggestions = docu
