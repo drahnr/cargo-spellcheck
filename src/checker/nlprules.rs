@@ -51,7 +51,7 @@ impl Checker for NlpRulesChecker {
         let rules = config.override_rules.as_ref().map_or_else(
             || {
                 Ok(Rules::from_reader(&mut &*DEFAULT_RULES_BYTES)
-                    .expect("build.rs pulls valid tokenizer description. qed"))
+                    .expect("build.rs pulls valid rules set. qed"))
             },
             |path| -> Result<Rules> {
                 let f = fs::File::open(&path)?;
