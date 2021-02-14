@@ -9,8 +9,12 @@ fn main() {
 
     #[cfg(feature = "nlprules")]
     {
-        nlprule_build::BinaryBuilder::new(Some(&["en"]), &out)
+        let cwd = env::current_dir().expect("Current dir must exist. qed");
+        let cache_dir = cwd.join("nlprule-data");
+
+        nlprule_build::BinaryBuilder::new(None, &out)
             .fallback_to_build_dir(true)
+            .cache_dir(Some(cache_dir))
             .build()
             .validate();
     }
