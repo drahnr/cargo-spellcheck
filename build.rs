@@ -14,7 +14,7 @@ fn main() {
 
         nlprule_build::BinaryBuilder::new(None, &out)
             .fallback_to_build_dir(true)
-            .cache_dir(Some(cache_dir))
+            .cache_dir(None)
             .build()
             .validate();
     }
