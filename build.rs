@@ -13,6 +13,12 @@ fn main() -> std::result::Result<(), Box<(dyn std::error::Error + 'static)>> {
 
     #[cfg(feature = "nlprules")]
     {
+        println!("cargo:rerun-if-changed=nlprule-data/en_rules.bin.xz");
+        println!("cargo:rerun-if-changed=nlprule-data/en_tokenizer.bin.xz");
+
+        println!("cargo:rerun-if-changed={}/en_rules.bin", out.display());
+        println!("cargo:rerun-if-changed={}/en_tokenizer.bin", out.display());
+
         let cwd = env::current_dir().expect("Current dir must exist. qed");
         let cache_dir = cwd.join("nlprule-data");
 
