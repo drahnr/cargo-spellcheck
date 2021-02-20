@@ -1,14 +1,12 @@
 use std::env;
-use std::path::PathBuf;
 use std::io::BufReader;
+use std::path::PathBuf;
 
-use xz2::bufread::{XzEncoder, XzDecoder};
-
+use xz2::bufread::{XzDecoder, XzEncoder};
 
 fn main() -> std::result::Result<(), Box<(dyn std::error::Error + 'static)>> {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=Cargo.toml");
-
 
     let out = env::var("OUT_DIR").expect("OUT_DIR exists in env vars. qed");
     let out = PathBuf::from(out);
