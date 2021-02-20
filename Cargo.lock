@@ -271,7 +271,7 @@ dependencies = [
  "lazy_static",
  "log",
  "maplit",
- "nlprule",
+ "nlprule 0.4.5",
  "nlprule-build",
  "proc-macro2",
  "pulldown-cmark",
@@ -284,6 +284,7 @@ dependencies = [
  "toml",
  "url 2.2.1",
  "walkdir",
+ "xz2",
 ]
 
 [[package]]
@@ -787,9 +788,9 @@ dependencies = [
 
 [[package]]
 name = "fancy-regex"
-version = "0.4.1"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "36996e5f56f32ca51a937f325094fa450b32df871af1a89be331b7145b931bfc"
+checksum = "fe09872bd11351a75f22b24c3769fc863e8212d926d6db46b94ad710d14cc5cc"
 dependencies = [
  "bit-set",
  "regex",
@@ -1409,6 +1410,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "lzma-sys"
+version = "0.1.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bdb4b7c3eddad11d3af9e86c487607d2d2442d185d848575365c4856ba96d619"
+dependencies = [
+ "cc",
+ "libc",
+ "pkg-config",
+]
+
+[[package]]
 name = "maplit"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1570,9 +1582,36 @@ dependencies = [
 
 [[package]]
 name = "nlprule"
-version = "0.4.3"
+version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "776eb5c0c41023898f55a6115ab7e3c90037c0e3c289f5b0d9a3071f249b0963"
+checksum = "815e26d5d977cf0881c0aa354e0274385ed0f10e3379e9888036e4bd081046ca"
+dependencies = [
+ "aho-corasick",
+ "bimap",
+ "bincode",
+ "derivative",
+ "either",
+ "enum_dispatch",
+ "fs-err",
+ "fst",
+ "half",
+ "indexmap",
+ "itertools 0.10.0",
+ "lazy_static",
+ "log",
+ "onig",
+ "rayon",
+ "rayon-cond",
+ "serde",
+ "serde_json",
+ "srx",
+ "thiserror",
+ "unicase",
+]
+
+[[package]]
+name = "nlprule"
+version = "0.4.6-pre"
 dependencies = [
  "aho-corasick",
  "bimap",
@@ -1582,13 +1621,13 @@ dependencies = [
  "either",
  "enum_dispatch",
  "env_logger 0.8.3",
+ "fs-err",
  "fst",
  "half",
  "indexmap",
  "itertools 0.10.0",
  "lazy_static",
  "log",
- "once_cell",
  "onig",
  "rayon",
  "rayon-cond",
@@ -1604,13 +1643,12 @@ dependencies = [
 
 [[package]]
 name = "nlprule-build"
-version = "0.4.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3052d253f22c1d0ff7977e5b98bdd7b9b00804d73725b4ed685185f2d653934a"
+version = "0.4.6-pre"
 dependencies = [
  "directories",
  "flate2",
- "nlprule",
+ "fs-err",
+ "nlprule 0.4.6-pre",
  "reqwest 0.11.1",
  "thiserror",
  "zip",
@@ -1937,24 +1975,24 @@ dependencies = [
 
 [[package]]
 name = "ra_ap_la-arena"
-version = "0.0.37"
+version = "0.0.38"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "01cbb37472ba2209a76301da670d3da89e5290a6d3354d98b3ed0ee7fce9a167"
+checksum = "d3bafc0aa7d8024d6d64fb07562e28d9dc30bd80497635d21321c8e0b39845b3"
 
 [[package]]
 name = "ra_ap_parser"
-version = "0.0.37"
+version = "0.0.38"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "195874e185bbd111eaea94b693d036495fac258fe47b8078ceed79388054337b"
+checksum = "0848834768a18bf4a0787d5872af9ace2b41e48dd5ddf202fdbf5a552ceb3df0"
 dependencies = [
  "drop_bomb",
 ]
 
 [[package]]
 name = "ra_ap_profile"
-version = "0.0.37"
+version = "0.0.38"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e7ec9607652879522806df903097a2804cb22160b9243e3d56ebc21956d82d8a"
+checksum = "833f276679d1ee093236294d4a3f07787f7567141c65ff30c2ad276cadb984bc"
 dependencies = [
  "cfg-if 1.0.0",
  "countme",
@@ -1966,18 +2004,18 @@ dependencies = [
 
 [[package]]
 name = "ra_ap_stdx"
-version = "0.0.37"
+version = "0.0.38"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "20cbc9ac688a302f3bb779c496288f99f2542b26e9d0b4f4c8f4f4c1307cdc6f"
+checksum = "bb3c8c1f17832cc5e10467b131def046f3dafeba1e12f2a35cd2af4614df95db"
 dependencies = [
  "always-assert",
 ]
 
 [[package]]
 name = "ra_ap_syntax"
-version = "0.0.37"
+version = "0.0.38"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "97a4c14b4ded9fc6095d2fc5f7f4ae679e43c05f7c37f63e18af9d3f2519c0b1"
+checksum = "1709e9fd7e597d0fc9b6e9a8ac6c40cce85879bf1b25eb1d6e03683af9b670a2"
 dependencies = [
  "arrayvec",
  "indexmap",
@@ -1997,11 +2035,12 @@ dependencies = [
 
 [[package]]
 name = "ra_ap_test_utils"
-version = "0.0.37"
+version = "0.0.38"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a467df2329878154e1b179d67ff55c02179d99b4d1dba340428accc40af1748"
+checksum = "8b75ac23856c87960ac54a15302f8d61de14645e4b0c8145a2f3b92e465c88fd"
 dependencies = [
  "dissimilar",
+ "ra_ap_profile",
  "ra_ap_stdx",
  "rustc-hash",
  "serde_json",
@@ -2010,9 +2049,9 @@ dependencies = [
 
 [[package]]
 name = "ra_ap_text_edit"
-version = "0.0.37"
+version = "0.0.38"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "232344aeb9b26e767d3ffe647113e8482716a303c24b713814b0e7ee63732af0"
+checksum = "fac103f98d2127264002eb55c4e1e4040c7122a0515660cba91f7aea239778e6"
 dependencies = [
  "text-size",
 ]
@@ -2381,9 +2420,9 @@ dependencies = [
 
 [[package]]
 name = "rustc-ap-rustc_lexer"
-version = "702.0.0"
+version = "705.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47cfdb02425aed8c56f85692975d262cb438ea0388e0c8cd254e73bd22bb6539"
+checksum = "3a030d00510966cd31e13dca5e6c1bd40d303a932c54eca40e854188bca8c49e"
 dependencies = [
  "unicode-xid",
 ]
@@ -3403,6 +3442,15 @@ name = "xmlparser"
 version = "0.13.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "114ba2b24d2167ef6d67d7d04c8cc86522b87f490025f39f0303b7db5bf5e3d8"
+
+[[package]]
+name = "xz2"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c179869f34fc7c01830d3ce7ea2086bc3a07e0d35289b667d0a8bf910258926c"
+dependencies = [
+ "lzma-sys",
+]
 
 [[package]]
 name = "zip"
