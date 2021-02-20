@@ -271,7 +271,7 @@ dependencies = [
  "lazy_static",
  "log",
  "maplit",
- "nlprule 0.4.5",
+ "nlprule",
  "nlprule-build",
  "proc-macro2",
  "pulldown-cmark",
@@ -1582,36 +1582,9 @@ dependencies = [
 
 [[package]]
 name = "nlprule"
-version = "0.4.5"
+version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "815e26d5d977cf0881c0aa354e0274385ed0f10e3379e9888036e4bd081046ca"
-dependencies = [
- "aho-corasick",
- "bimap",
- "bincode",
- "derivative",
- "either",
- "enum_dispatch",
- "fs-err",
- "fst",
- "half",
- "indexmap",
- "itertools 0.10.0",
- "lazy_static",
- "log",
- "onig",
- "rayon",
- "rayon-cond",
- "serde",
- "serde_json",
- "srx",
- "thiserror",
- "unicase",
-]
-
-[[package]]
-name = "nlprule"
-version = "0.4.6-pre"
+checksum = "1ba57239f72be2db8ff77d5aab74431d7aab4ace0273df537948f7d32394a00b"
 dependencies = [
  "aho-corasick",
  "bimap",
@@ -1643,12 +1616,14 @@ dependencies = [
 
 [[package]]
 name = "nlprule-build"
-version = "0.4.6-pre"
+version = "0.4.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "440474e54f1e87a9b722ca34f973f4fd897da2d16a5c622a68023d19e21ba45f"
 dependencies = [
  "directories",
  "flate2",
  "fs-err",
- "nlprule 0.4.6-pre",
+ "nlprule",
  "reqwest 0.11.1",
  "thiserror",
  "zip",

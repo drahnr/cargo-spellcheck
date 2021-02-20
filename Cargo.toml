@@ -20,7 +20,7 @@ include = [
 ]
 
 [build-dependencies]
-nlprule-build = { version = "0.4.5", optional = true }
+nlprule-build = { version = "0.4.6", optional = true }
 # compress the nlprule artifacts to be under the 10 MB limit
 # that cargo enforces
 xz2 = "0.1"
@@ -41,7 +41,6 @@ indexmap = { version = "1", features=["rayon", "serde"] }
 itertools = "0.10"
 lazy_static = "1"
 log = "0.4"
-nlprule = { version = "0.4.5", optional = true }
 proc-macro2 = { version = "1", features = ["span-locations"] }
 pulldown-cmark = "0.8"
 ra_ap_syntax = "0.0.38"
@@ -69,6 +68,7 @@ hunspell-rs = { version = "0.3", default-features=false, optional = true }
 # full grammar check
 languagetool-rs = { version = "0.1", package = "languagetool", optional = true }
 
+nlprule = { version = "0.4.6", optional = true }
 
 [dev-dependencies]
 # for stripping ansi color codes

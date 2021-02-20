@@ -25,13 +25,12 @@ fn main() -> std::result::Result<(), Box<(dyn std::error::Error + 'static)>> {
         const COMPRESSION_EXTENSION: &str = "xz";
 
         nlprule_build::BinaryBuilder::new(&["en"], &out)
-            .version("0.4.5")
             .fallback_to_build_dir(true)
             .cache_dir(Some(cache_dir))
             .transform(
                 &|source, mut sink| {
                     eprintln!("Calling transform data");
-                    let mut encoder = XzEncoder::new(BufReader::new(source), 8);
+                    let mut encoder = XzEncoder::new(BufReader::new(source), 9);
                     std::io::copy(&mut encoder, &mut sink)?;
                     Ok(())
                 },
