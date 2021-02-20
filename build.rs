@@ -7,6 +7,8 @@ use xz2::bufread::{XzEncoder, XzDecoder};
 
 fn main() -> std::result::Result<(), Box<(dyn std::error::Error + 'static)>> {
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=Cargo.toml");
+
 
     let out = env::var("OUT_DIR").expect("OUT_DIR exists in env vars. qed");
     let out = PathBuf::from(out);
@@ -25,6 +27,7 @@ fn main() -> std::result::Result<(), Box<(dyn std::error::Error + 'static)>> {
         const COMPRESSION_EXTENSION: &str = "xz";
 
         nlprule_build::BinaryBuilder::new(&["en"], &out)
+            .version("0.4.5")
             .fallback_to_build_dir(true)
             .cache_dir(Some(cache_dir))
             .transform(
@@ -67,8 +70,7 @@ fn main() -> std::result::Result<(), Box<(dyn std::error::Error + 'static)>> {
                     path
                 }
             )?
-            // .validate()? requires https://github.com/bminixhofer/nlprule/pull/39
-            ;
+            .validate()?;
     }
 
     let _ = out;

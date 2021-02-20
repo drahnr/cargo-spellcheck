@@ -9,6 +9,15 @@ license = "MIT OR Apache-2.0"
 keywords = ["spellcheck", "spelling", "grammar"]
 description = "Checks all doc comments for spelling mistakes"
 readme = "README.md"
+build = "build.rs"
+include = [
+    "nlprule-data/**.bin.xz",
+    "src/**.rs",
+    "Cargo.toml",
+    "build.rs",
+    "/LICENSE-*",
+    "/README.md"
+]
 
 [build-dependencies]
 nlprule-build = { version = "0.4.5", optional = true }
