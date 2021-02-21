@@ -12,7 +12,7 @@ readme = "README.md"
 build = "build.rs"
 include = [
     "nlprule-data/**.bin.xz",
-    "src/**.rs",
+    "src/**/*.rs",
     "Cargo.toml",
     "build.rs",
     "/LICENSE-*",
