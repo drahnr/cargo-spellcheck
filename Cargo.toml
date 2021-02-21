@@ -24,6 +24,7 @@ nlprule-build = { version = "0.4.6", optional = true }
 # compress the nlprule artifacts to be under the 10 MB limit
 # that cargo enforces
 xz2 = "0.1"
+fs-err = "2"
 
 [dependencies]
 anyhow = "1"
@@ -86,6 +87,7 @@ nlprules = ["nlprule", "nlprule-build"]
 
 all = ["hunspell", "nlprules", "languagetool"]
 
+artifacts = []
 
 [profile.dev]
 build-override = { opt-level = 2 }

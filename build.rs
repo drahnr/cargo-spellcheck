@@ -1,7 +1,7 @@
+use fs_err as fs;
 use std::env;
-use std::io::BufReader;
+use std::io::{self, BufReader};
 use std::path::PathBuf;
-
 use xz2::bufread::{XzDecoder, XzEncoder};
 
 fn main() -> std::result::Result<(), Box<(dyn std::error::Error + 'static)>> {
@@ -20,13 +20,36 @@ fn main() -> std::result::Result<(), Box<(dyn std::error::Error + 'static)>> {
         println!("cargo:rerun-if-changed={}/en_tokenizer.bin", out.display());
 
         let cwd = env::current_dir().expect("Current dir must exist. qed");
-        let cache_dir = cwd.join("nlprule-data");
 
         const COMPRESSION_EXTENSION: &str = "xz";
+        const VERSION: &str = "0.4.6";
+        const ARTIFACTS_DIR: &str = "nlprule-data";
+
+        let artifacts = cwd.join(ARTIFACTS_DIR);
+        let cache_dir = if cfg!(feature = "artifacts") {
+            // update the artifacts in git
+            Some(artifacts)
+        } else {
+            // since cargo publish is not happy about any files outside
+            // of $OUT being touched with the build.rs
+            let artifacts = artifacts.join(VERSION).join("en");
+            let tmp_dest = out.join(ARTIFACTS_DIR);
+            let tmp_dist_sub = tmp_dest.join(VERSION).join("en");
+            fs::create_dir_all(&tmp_dist_sub)?;
+
+            let cpy = |from: &PathBuf, to: &PathBuf, what: &str| -> io::Result<()> {
+                fs::copy(dbg!(from.join(what)), dbg!(to.join(what)))?;
+                Ok(())
+            };
+            cpy(&artifacts, &tmp_dist_sub, "en_rules.bin.xz")?;
+            cpy(&artifacts, &tmp_dist_sub, "en_tokenizer.bin.xz")?;
+            Some(tmp_dest)
+        };
 
         nlprule_build::BinaryBuilder::new(&["en"], &out)
-            .fallback_to_build_dir(true)
-            .cache_dir(Some(cache_dir))
+            .version(VERSION)
+            .fallback_to_build_dir(false)
+            .cache_dir(cache_dir)
             .transform(
                 &|source, mut sink| {
                     eprintln!("Calling transform data");
