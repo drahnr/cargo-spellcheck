@@ -11,7 +11,7 @@ description = "Checks all doc comments for spelling mistakes"
 readme = "README.md"
 build = "build.rs"
 include = [
-    "nlprule-data/**.bin.xz",
+    "nlprule-data/**/*.bin.xz",
     "src/**/*.rs",
     "Cargo.toml",
     "build.rs",
