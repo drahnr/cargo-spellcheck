@@ -10,17 +10,24 @@
 
 pub mod args;
 
-mod search_dirs;
-pub use search_dirs::*;
-
 mod regex;
 pub use self::regex::*;
 
-use crate::reflow::ReflowConfig;
+mod reflow;
+pub use self::reflow::*;
+
+mod hunspell;
+pub use self::hunspell::*;
+
+mod nlprules;
+pub use self::nlprules::*;
+
+mod search_dirs;
+pub use search_dirs::*;
+
 use crate::Detector;
 use anyhow::{anyhow, bail, Error, Result};
 use fancy_regex::Regex;
-use log::trace;
 
 use fs::File;
 use fs_err as fs;
@@ -30,6 +37,17 @@ use std::fmt;
 use std::io::Read;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+
+// TODO figure out which ISO spec this actually is
+pub struct CommonLang(String);
+
+impl std::str::FromStr for CommonLang {
+    type Err = Error;
+    fn from_str(_s: &str) -> std::result::Result<Self, Self::Err> {
+        //
+        unimplemented!("Common Lang needs a ref spec")
+    }
+}
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
@@ -62,162 +80,6 @@ pub struct Config {
     #[serde(alias = "ReFlow")]
     #[serde(alias = "Reflow")]
     pub reflow: Option<ReflowConfig>,
-}
-
-#[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct Quirks {
-    /// A regular expression, whose capture groups will be checked, instead of the initial token.
-    /// Only the first one that matches will be used to split the word.
-    #[serde(default)]
-    pub transform_regex: Vec<WrappedRegex>,
-    /// Allow concatenated words instead of dashed connection.
-    /// Note that this only applies, if one of the suggested replacements has an item that is
-    /// equivalent except for addition dashes (`-`).
-    #[serde(default)]
-    pub allow_concatenation: bool,
-    /// The counterpart of `allow_concatenation`. Accepts words which have repalcement suggestions
-    /// that contain additional dashes.
-    #[serde(default)]
-    pub allow_dashes: bool,
-}
-
-impl Default for Quirks {
-    fn default() -> Self {
-        // use some for default, so for generating the default config has the default values
-        // but the options are necessary to allow omitting them in the config file
-        Self {
-            transform_regex: vec![],
-            allow_concatenation: false,
-            allow_dashes: false,
-        }
-    }
-}
-
-impl Quirks {
-    pub(crate) fn allow_concatenated(&self) -> bool {
-        self.allow_concatenation
-    }
-
-    pub(crate) fn allow_dashed(&self) -> bool {
-        self.allow_dashes
-    }
-
-    pub(crate) fn transform_regex(&self) -> &[WrappedRegex] {
-        &self.transform_regex
-    }
-}
-
-#[derive(Deserialize, Serialize, Debug, Clone)]
-#[serde(deny_unknown_fields)]
-pub struct HunspellConfig {
-    /// The language we want to check against, used as the dictionary and affixes file name.
-    // TODO impl a custom xx_YY code deserializer based on iso crates
-    pub lang: Option<String>,
-    /// Additional search dirs for `.dic` and `.aff` files.
-    // must be option so it can be omitted in the config
-    #[serde(default)]
-    pub search_dirs: SearchDirs,
-    /// Additional dictionaries for topic specific lingo.
-    #[serde(default)]
-    pub extra_dictionaries: Vec<PathBuf>,
-    /// Additional quirks besides dictionary lookups.
-    #[serde(default)]
-    pub quirks: Quirks,
-}
-
-impl HunspellConfig {
-    pub fn lang(&self) -> &str {
-        if let Some(ref lang) = self.lang {
-            lang.as_str()
-        } else {
-            "en_US"
-        }
-    }
-
-    pub fn search_dirs(&self) -> &[PathBuf] {
-        &self.search_dirs
-    }
-
-    pub fn extra_dictionaries(&self) -> &[PathBuf] {
-        &self.extra_dictionaries
-    }
-
-    pub fn sanitize_paths(&mut self, base: &Path) -> Result<()> {
-        self.search_dirs = self
-            .search_dirs
-            .iter()
-            .filter_map(|search_dir| {
-                let abspath = if !search_dir.is_absolute() {
-                    base.join(&search_dir)
-                } else {
-                    search_dir.to_owned()
-                };
-
-                abspath.canonicalize().ok().map(|abspath| {
-                    trace!(
-                        "Sanitized ({} + {}) -> {}",
-                        base.display(),
-                        search_dir.display(),
-                        abspath.display()
-                    );
-                    abspath
-                })
-            })
-            .collect::<Vec<PathBuf>>()
-            .into();
-
-        // convert all extra dictionaries to absolute paths
-
-        'o: for extra_dic in self.extra_dictionaries.iter_mut() {
-            for search_dir in self.search_dirs.iter().filter_map(|search_dir| {
-                if !extra_dic.is_absolute() {
-                    base.join(&search_dir).canonicalize().ok()
-                } else {
-                    Some(search_dir.to_owned())
-                }
-            }) {
-                let abspath = if !extra_dic.is_absolute() {
-                    search_dir.join(&extra_dic)
-                } else {
-                    continue 'o;
-                };
-                if let Ok(abspath) = abspath.canonicalize() {
-                    if abspath.is_file() {
-                        *extra_dic = abspath;
-                        continue 'o;
-                    }
-                } else {
-                    log::debug!("Failed to canonicalize {}", abspath.display());
-                }
-            }
-            bail!(
-                "Could not find extra dictionary {} in any of the search paths",
-                extra_dic.display()
-            );
-        }
-
-        Ok(())
-    }
-}
-
-#[derive(Deserialize, Serialize, Debug, Clone)]
-#[serde(deny_unknown_fields)]
-pub struct LanguageToolConfig {
-    pub url: url::Url,
-}
-
-impl LanguageToolConfig {
-    pub fn url(&self) -> &url::Url {
-        &self.url
-    }
-}
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
-#[serde(deny_unknown_fields)]
-pub struct NlpRulesConfig {
-    /// Location to use for an initial lookup
-    /// of alternate tokenizer and rules data.
-    pub override_rules: Option<PathBuf>,
-    pub override_tokenizer: Option<PathBuf>,
 }
 
 impl Config {
@@ -399,17 +261,6 @@ impl Default for Config {
             languagetool: None,
             reflow: Some(ReflowConfig::default()),
         }
-    }
-}
-
-// TODO figure out which ISO spec this actually is
-pub struct CommonLang(String);
-
-impl std::str::FromStr for CommonLang {
-    type Err = Error;
-    fn from_str(_s: &str) -> std::result::Result<Self, Self::Err> {
-        //
-        unimplemented!("Common Lang needs a ref spec")
     }
 }
 

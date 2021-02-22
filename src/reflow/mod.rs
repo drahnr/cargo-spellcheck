@@ -17,8 +17,7 @@ use indexmap::IndexMap;
 
 use pulldown_cmark::{Event, Options, Parser, Tag};
 
-mod config;
-pub use config::ReflowConfig;
+pub use crate::config::ReflowConfig;
 
 mod iter;
 pub use iter::{Gluon, Tokeneer};
