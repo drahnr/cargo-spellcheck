@@ -24,7 +24,6 @@ nlprule-build = { version = "0.4.6", optional = true }
 # compress the nlprule artifacts to be under the 10 MB limit
 # that cargo enforces
 xz2 = "0.1"
-fs-err = "2"
 
 [dependencies]
 anyhow = "1"

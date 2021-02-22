@@ -1,6 +1,5 @@
-use fs_err as fs;
 use std::env;
-use std::io::{self, BufReader};
+use std::io::BufReader;
 use std::path::PathBuf;
 use xz2::bufread::{XzDecoder, XzEncoder};
 
