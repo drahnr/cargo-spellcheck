@@ -87,7 +87,5 @@ nlprules = ["nlprule", "nlprule-build"]
 
 all = ["hunspell", "nlprules", "languagetool"]
 
-artifacts = []
-
 [profile.dev]
 build-override = { opt-level = 2 }
