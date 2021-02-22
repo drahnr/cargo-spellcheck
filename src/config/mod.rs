@@ -8,6 +8,8 @@
 // TODO pendeng refactor, avoid spending time on documenting the status quo.
 #![allow(missing_docs)]
 
+pub mod args;
+
 mod search_dirs;
 pub use search_dirs::*;
 
