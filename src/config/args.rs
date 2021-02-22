@@ -20,7 +20,7 @@ Spellcheck all your doc comments
 Usage:
     cargo-spellcheck [(-v...|-q)] fix [--cfg=<cfg>] [--code=<code>] [--dev-comments] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
     cargo-spellcheck [(-v...|-q)] reflow [--cfg=<cfg>] [--code=<code>] [--dev-comments] [--skip-readme] [[--recursive] <paths>... ]
-    cargo-spellcheck [(-v...|-q)] config (--user|--stdout|--cfg=<cfg>) [--force]
+    cargo-spellcheck [(-v...|-q)] config (--user|--stdout|--cfg=<cfg>) [--checkers=<checkers>] [--force]
     cargo-spellcheck [(-v...|-q)] [check] [--fix] [--cfg=<cfg>] [--code=<code>] [--dev-comments] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
     cargo-spellcheck --version
     cargo-spellcheck --help
@@ -368,6 +368,7 @@ pub enum ConfigWriteDestination {
 /// only present in the arguments, or
 /// are present in the args and have a fallback
 /// in the configuration.
+#[derive(Debug, Clone)]
 pub enum UnifiedArgs {
     Config {
         dest_config: ConfigWriteDestination,
@@ -397,6 +398,7 @@ impl UnifiedArgs {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use assert_matches::assert_matches;
 
     fn commandline_to_iter(s: &'static str) -> impl Iterator<Item = String> {
         s.split(' ').map(|s| s.to_owned()).into_iter()
@@ -436,14 +438,68 @@ mod tests {
     }
 
     #[test]
-    fn unify() {
+    fn unify_ops_check() {
         let args = Args::parse(
-            &mut ["cargo", "spellcheck", "check"]
-                .iter()
-                .map(ToOwned::to_owned)
-                .map(ToOwned::to_owned),
+            &mut [
+                "cargo",
+                "spellcheck",
+                "-vvvvv",
+                "check",
+                "--code=77",
+                "--dev-comments",
+                "--skip-readme",
+            ]
+            .iter()
+            .map(ToOwned::to_owned)
+            .map(ToOwned::to_owned),
         )
         .unwrap();
-        let _unified = args.unified().unwrap();
+        let (unified, _config) = args.unified().unwrap();
+        assert_matches!(unified,
+            UnifiedArgs::Operate {
+                action,
+                config_path: _,
+                dev_comments,
+                skip_readme,
+                recursive,
+                paths,
+                exit_code_override,
+            } => {
+                assert_eq!(Action::Check, action);
+                assert_eq!(exit_code_override, 77);
+                assert_eq!(dev_comments, true);
+                assert_eq!(skip_readme, true);
+                assert_eq!(recursive, false);
+                assert_eq!(paths, Vec::<PathBuf>::new());
+            }
+        );
+    }
+
+    #[test]
+    fn unify_config() {
+        let args = Args::parse(
+            &mut [
+                "cargo-spellcheck",
+                "config",
+                "--cfg=.config/spellcheck.toml",
+                "--checkers=NlpRules",
+                "--force",
+            ]
+            .iter()
+            .map(ToOwned::to_owned)
+            .map(ToOwned::to_owned),
+        )
+        .unwrap();
+        let (unified, _config) = args.unified().unwrap();
+        assert_matches!(unified,
+            UnifiedArgs::Config {
+                dest_config: ConfigWriteDestination::File { overwrite, path },
+                checker_filter_set,
+            } => {
+                assert_eq!(path, PathBuf::from(".config/spellcheck.toml"));
+                assert_eq!(checker_filter_set, Some(vec![CheckerType::NlpRules]));
+                assert_eq!(overwrite, true);
+            }
+        );
     }
 }
