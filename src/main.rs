@@ -18,8 +18,8 @@ mod traverse;
 mod util;
 
 pub use self::action::*;
-pub use self::config::{Config, HunspellConfig, LanguageToolConfig};
 pub use self::config::args::*;
+pub use self::config::{Config, HunspellConfig, LanguageToolConfig};
 pub use self::documentation::*;
 pub use self::span::*;
 pub use self::suggestion::*;
@@ -38,8 +38,6 @@ use signal_hook::{
 use signal_hook as _;
 
 use checker::Checker;
-use std::path::PathBuf;
-
 
 /// A simple exit code representation.
 ///
@@ -67,7 +65,6 @@ impl ExitCode {
     }
 }
 
-
 /// Handle incoming signals.
 ///
 /// Only relevant for *-nix platforms.
@@ -87,7 +84,6 @@ fn signal_handler() {
         }
     }
 }
-
 
 /// The inner main.
 fn run() -> anyhow::Result<ExitCode> {
@@ -111,26 +107,8 @@ fn run() -> anyhow::Result<ExitCode> {
         .filter_level(verbosity)
         .init();
 
-    let checkers = |config: &mut Config| {
-        // overwrite checkers
-        if let Some(ref checkers) = args.flag_checkers {
-            if !checkers.contains(&CheckerType::Hunspell) {
-                if !config.hunspell.take().is_some() {
-                    warn!("Hunspell was never configured.")
-                }
-            }
-            if !checkers.contains(&CheckerType::LanguageTool) {
-                if !config.languagetool.take().is_some() {
-                    warn!("Languagetool was never configured.")
-                }
-            }
-            if !checkers.contains(&CheckerType::Reflow) {
-                warn!("Reflow is a separate sub command.")
-            }
-        }
-    };
-
-    let action = match args.action() {
+    // handle the simple variants right away
+    match args.action() {
         Action::Version => {
             println!("cargo-spellcheck {}", env!("CARGO_PKG_VERSION"));
             return Ok(ExitCode::Success);
@@ -139,163 +117,79 @@ fn run() -> anyhow::Result<ExitCode> {
             println!("{}", Args::USAGE);
             return Ok(ExitCode::Success);
         }
-        Action::Config => {
-            trace!("Configuration chore");
-            let mut config = Config::full();
-            checkers(&mut config);
-
-            let config_path = match args.flag_cfg.as_ref() {
-                Some(path) => Some(path.to_owned()),
-                None if args.flag_user => Some(Config::default_path()?),
-                None => None,
-            };
-
-            if args.flag_stdout {
-                println!("{}", config.to_toml()?);
-                return Ok(ExitCode::Success);
-            }
-
-            if let Some(path) = config_path {
-                if path.is_file() && !args.flag_force {
-                    return Err(anyhow::anyhow!(
-                        "Attempting to overwrite {} requires `--force`.",
-                        path.display()
-                    ));
-                }
-                info!("Writing configuration file to {}", path.display());
-                config.write_values_to_path(path)?;
-            }
-            return Ok(ExitCode::Success);
-        }
-        action => action,
-    };
+        _ => {}
+    }
 
     #[cfg(not(target_os = "windows"))]
     let _signalthread = std::thread::spawn(move || signal_handler());
 
-    let (explicit_cfg, config_path) = match args.flag_cfg.as_ref() {
-        Some(config_path) => {
-            let config_path = if config_path.is_absolute() {
-                config_path.to_owned()
-            } else {
-                traverse::cwd()?.join(config_path)
+    let (unified, config) = args.unified()?;
+
+    match unified {
+        // must unify first, for the proper paths
+        UnifiedArgs::Config {
+            dest_config,
+            checker_filter_set,
+        } => {
+            trace!("Configuration chore");
+            let mut config = Config::full();
+            Args::checker_selection_override(
+                checker_filter_set.as_ref().map(|x| x.as_slice()),
+                &mut config,
+            )?;
+
+            match dest_config {
+                ConfigWriteDestination::Stdout => {
+                    println!("{}", config.to_toml()?);
+                    return Ok(ExitCode::Success);
+                }
+                ConfigWriteDestination::File { overwrite, path } => {
+                    if path.exists() && !overwrite {
+                        return Err(anyhow::anyhow!(
+                            "Attempting to overwrite {} requires `--force`.",
+                            path.display()
+                        ));
+                    }
+
+                    info!("Writing configuration file to {}", path.display());
+                    config.write_values_to_path(path)?;
+                }
+            }
+            return Ok(ExitCode::Success);
+        }
+        UnifiedArgs::Operate {
+            action,
+            paths,
+            recursive,
+            skip_readme,
+            config_path,
+            dev_comments,
+            exit_code_override,
+        } => {
+            debug!(
+                "Executing: {:?} with {:?} from {:?}",
+                action, &config, config_path
+            );
+
+            let combined = traverse::extract(paths, recursive, skip_readme, dev_comments, &config)?;
+
+            // TODO move this into action `fn run()`
+            let suggestion_set = match action {
+                Action::Reflow => {
+                    reflow::Reflow::check(&combined, &config.reflow.clone().unwrap_or_default())?
+                }
+                Action::Check | Action::Fix => checker::check(&combined, &config)?,
+                _ => unreachable!("Should never be reached, handled earlier"),
             };
-            (true, config_path)
-        }
-        None => {
-            // TODO refactor needed
 
-            // the current work dir as fallback
-            let cwd = traverse::cwd()?;
-            let mut config_path: PathBuf = cwd.as_path().join("Cargo.toml");
+            let finish = action.run(suggestion_set, &config)?;
 
-            // TODO Currently uses the first manifest dir as search dir for a spellcheck.toml
-            // TODO with a fallback to the cwd as project dir.
-            // TODO But it would be preferable to use the config specific to each dir if available.
-            for path in args.arg_paths.iter() {
-                let path = if let Some(path) = if path.is_absolute() {
-                    path.to_owned()
-                } else {
-                    traverse::cwd()?.join(path)
-                }
-                .canonicalize()
-                .ok()
-                {
-                    path
-                } else {
-                    warn!(
-                        "Provided path could not be canonicalized {}",
-                        path.display()
-                    );
-                    // does not exist or access issues
-                    continue;
-                };
-
-                if path.is_dir() {
-                    let path = path.join("Cargo.toml");
-                    if path.is_file() {
-                        debug!("Using {} manifest as anchor file", path.display());
-                        config_path = path;
-                        break;
-                    }
-                } else if let Some(file_name) = path.file_name() {
-                    if file_name == "Cargo.toml" && path.is_file() {
-                        debug!("Using {} manifest as anchor file", path.display());
-                        config_path = path.to_owned();
-                        break;
-                    }
-                }
-                // otherwise it's a file and we do not care about it
-            }
-
-            // remove the file name
-            let config_path = config_path.with_file_name("");
-
-            let resolved_config_path = config::Config::project_config(&config_path)
-                .or_else(|e| {
-                    debug!("Manifest dir found {}: {}", config_path.display(), e);
-                    // in case there is none, attempt the cwd first before falling back to the user config
-                    // this is a common case for workspace setups where we want to sanitize a sub project
-                    config::Config::project_config(cwd.as_path())
-                })
-                .or_else(|e| {
-                    debug!("Fallback to user default lookup, failed to load project specific config {}: {}", config_path.display(), e);
-                    Config::default_path()
-                })?;
-            (false, resolved_config_path)
-        }
-    };
-    info!("Using configuration file {}", config_path.display());
-    let mut config = match Config::load_from(&config_path) {
-        Ok(config) => config,
-        Err(e) => {
-            if explicit_cfg {
-                return Err(e);
-            } else {
-                debug!(
-                    "Loading configuration from {} failed due to: {}",
-                    config_path.display(),
-                    e
-                );
-                warn!(
-                    "Loading configuration from {} failed, falling back to default values",
-                    config_path.display(),
-                );
-                Config::default()
+            match finish {
+                Finish::MistakeCount(0) => Ok(ExitCode::Success),
+                Finish::MistakeCount(_n) => Ok(ExitCode::Custom(exit_code_override)),
+                Finish::Abort => Ok(ExitCode::Signal),
             }
         }
-    };
-
-    checkers(&mut config);
-
-    debug!("Executing: {:?} with {:?}", action, &config);
-
-    let dev_comments = args.flag_dev_comments.unwrap_or(config.dev_comments);
-    let skip_readme = args.flag_skip_readme.unwrap_or(config.skip_readme);
-
-    let combined = traverse::extract(
-        args.arg_paths,
-        args.flag_recursive,
-        skip_readme,
-        dev_comments,
-        &config,
-    )?;
-
-    // TODO move this into action `fn run()`
-    let suggestion_set = match action {
-        Action::Reflow => {
-            reflow::Reflow::check(&combined, &config.reflow.clone().unwrap_or_default())?
-        }
-        Action::Check | Action::Fix => checker::check(&combined, &config)?,
-        _ => unreachable!("Should never be reached, handled earlier"),
-    };
-
-    let finish = action.run(suggestion_set, &config)?;
-
-    match finish {
-        Finish::MistakeCount(0) => Ok(ExitCode::Success),
-        Finish::MistakeCount(_n) => Ok(ExitCode::Custom(args.flag_code)),
-        Finish::Abort => Ok(ExitCode::Signal),
     }
 }
 

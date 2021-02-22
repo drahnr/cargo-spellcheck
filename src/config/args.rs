@@ -1,10 +1,17 @@
 use std::path::PathBuf;
 
+use anyhow::{bail, Result};
 use docopt::Docopt;
 
+use crate::traverse;
+use itertools::Itertools;
 use serde::Deserialize;
 
 use crate::Action;
+
+use super::Config;
+
+use log::{debug, info, warn};
 
 /// Docopt usage string.
 const USAGE: &str = r#"
@@ -36,7 +43,6 @@ Options:
   -m --code=<code>          Overwrite the exit value for a successful run with content mistakes found. [default=0]
   --skip-readme             Do not attempt to process README.md files listed in Cargo.toml manifests.
 "#;
-
 
 /// Checker types to be derived from the stringly typed args.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Deserialize)]
@@ -108,14 +114,14 @@ impl Args {
         action
     }
 
-
     /// Adjust the raw arguments for call variants.
     ///
     /// The program could be called like `cargo-spellcheck`, `cargo spellcheck` or
     /// `cargo spellcheck check` and even ``cargo-spellcheck check`.
-    pub fn parse(mut argv_iter: impl Iterator<Item = String>) -> Result<Self, docopt::Error> {
+    pub fn parse(argv_iter: impl IntoIterator<Item = String>) -> Result<Self, docopt::Error> {
         Docopt::new(USAGE).and_then(|d| {
             // if ends with file name `cargo-spellcheck`
+            let mut argv_iter = argv_iter.into_iter();
             if let Some(arg0) = argv_iter.next() {
                 match PathBuf::from(&arg0)
                     .file_name()
@@ -133,7 +139,8 @@ impl Args {
 
                         match argv_iter.next() {
                             Some(arg)
-                                if file_name.starts_with("cargo-spellcheck") && arg == "spellcheck" =>
+                                if file_name.starts_with("cargo-spellcheck")
+                                    && arg == "spellcheck" =>
                             {
                                 // drop the first arg `spellcheck`
                             }
@@ -150,8 +157,8 @@ impl Args {
                             }
                             None => {}
                         };
-                        let collected = next.into_iter().chain(argv_iter).collect::<Vec<_>>();
-                        d.argv(collected.into_iter())
+                        let collected = next.into_iter().chain(argv_iter);
+                        d.argv(collected)
                     }
                     _ => d,
                 }
@@ -160,6 +167,230 @@ impl Args {
             }
             .deserialize()
         })
+    }
+
+    /// Overrides the enablement status of checkers in the configuration
+    /// based on the checkers enabled by arg, if it is set.
+    ///
+    /// Errors of no checkers are left.
+    pub fn checker_selection_override(
+        filter_set: Option<&[CheckerType]>,
+        config: &mut Config,
+    ) -> Result<()> {
+        // overwrite checkers
+        if let Some(ref checkers) = filter_set {
+            #[cfg(feature = "hunspell")]
+            if !checkers.contains(&CheckerType::Hunspell) {
+                if !config.hunspell.take().is_some() {
+                    warn!("Hunspell was never configured.")
+                }
+            }
+            #[cfg(feature = "nlprule")]
+            if !checkers.contains(&CheckerType::NlpRules) {
+                if !config.languagetool.take().is_some() {
+                    warn!("Nlprules checker was never configured.")
+                }
+            }
+            #[cfg(feature = "languagetool")]
+            if !checkers.contains(&CheckerType::LanguageTool) {
+                if !config.languagetool.take().is_some() {
+                    warn!("Languagetool checker was never configured.")
+                }
+            }
+
+            if !checkers.contains(&CheckerType::Reflow) {
+                warn!("Reflow is a separate sub command.")
+            }
+
+            const EXPECTED_COUNT: usize = 1_usize
+                + cfg!(feature = "nlprule") as usize
+                + cfg!(feature = "hunspell") as usize
+                + cfg!(feature = "languagetool") as usize;
+
+            if checkers.iter().unique().count() == EXPECTED_COUNT {
+                bail!("Argument override for checkers disabled all checkers")
+            }
+        }
+        Ok(())
+    }
+
+    /// Load configuration with fallbacks.
+    ///
+    /// When explicitly
+    fn load_config(&self) -> Result<(Config, Option<PathBuf>)> {
+        let (explicit_cfg, config_path) = match self.flag_cfg.as_ref() {
+            Some(config_path) => {
+                let config_path = if config_path.is_absolute() {
+                    config_path.to_owned()
+                } else {
+                    crate::traverse::cwd()?.join(config_path)
+                };
+                (true, config_path)
+            }
+            None => {
+                // TODO refactor needed
+
+                // the current work dir as fallback
+                let cwd = traverse::cwd()?;
+                let mut config_path: PathBuf = cwd.as_path().join("Cargo.toml");
+
+                // TODO Currently uses the first manifest dir as search dir for a spellcheck.toml
+                // TODO with a fallback to the cwd as project dir.
+                // TODO But it would be preferable to use the config specific to each dir if available.
+                for path in self.arg_paths.iter() {
+                    let path = if let Some(path) = if path.is_absolute() {
+                        path.to_owned()
+                    } else {
+                        traverse::cwd()?.join(path)
+                    }
+                    .canonicalize()
+                    .ok()
+                    {
+                        path
+                    } else {
+                        warn!(
+                            "Provided path could not be canonicalized {}",
+                            path.display()
+                        );
+                        // does not exist or access issues
+                        continue;
+                    };
+
+                    if path.is_dir() {
+                        let path = path.join("Cargo.toml");
+                        if path.is_file() {
+                            debug!("Using {} manifest as anchor file", path.display());
+                            config_path = path;
+                            break;
+                        }
+                    } else if let Some(file_name) = path.file_name() {
+                        if file_name == "Cargo.toml" && path.is_file() {
+                            debug!("Using {} manifest as anchor file", path.display());
+                            config_path = path.to_owned();
+                            break;
+                        }
+                    }
+                    // otherwise it's a file and we do not care about it
+                }
+
+                // remove the file name
+                let config_path = config_path.with_file_name("");
+
+                let config_path = Config::project_config(&config_path)
+                    .or_else(|e| {
+                        debug!("Manifest dir found {}: {}", config_path.display(), e);
+                        // in case there is none, attempt the cwd first before falling back to the user config
+                        // this is a common case for workspace setups where we want to sanitize a sub project
+                        Config::project_config(cwd.as_path())
+                    })
+                    .or_else(|e| {
+                        debug!("Fallback to user default lookup, failed to load project specific config {}: {}", config_path.display(), e);
+                        Config::default_path()
+                    })?;
+                (false, config_path)
+            }
+        };
+        info!(
+            "Attempting to use configuration file {}",
+            config_path.display()
+        );
+        let (config, config_path) = match Config::load_from(&config_path) {
+            Ok(config) => (config, Some(config_path)),
+            Err(e) => {
+                if explicit_cfg {
+                    return Err(e);
+                } else {
+                    debug!(
+                        "Loading configuration from {} failed due to: {}",
+                        config_path.display(),
+                        e
+                    );
+                    warn!(
+                        "Loading configuration from {} failed, falling back to default values",
+                        config_path.display(),
+                    );
+                    (Config::default(), None)
+                }
+            }
+        };
+        Ok((config, config_path))
+    }
+
+    /// Evaluate the configuration flags, overwrite
+    /// config values as needed and provide a new,
+    /// unified config struct.
+    pub fn unified(self) -> Result<(UnifiedArgs, Config)> {
+        let (config, config_path) = self.load_config()?;
+
+        let unified = match self.action() {
+            Action::Config => {
+                let dest_config = match self.flag_cfg {
+                    None if self.flag_stdout => ConfigWriteDestination::Stdout,
+                    Some(path) => ConfigWriteDestination::File {
+                        overwrite: self.flag_force,
+                        path: path.to_owned(),
+                    },
+                    None if self.flag_user => ConfigWriteDestination::File {
+                        overwrite: self.flag_force,
+                        path: Config::default_path()?,
+                    },
+                    _ => bail!("Neither --user or --stdout are given, invalid flags passed."),
+                };
+                UnifiedArgs::Config {
+                    dest_config,
+                    checker_filter_set: self.flag_checkers,
+                }
+            }
+            action => UnifiedArgs::Operate {
+                action,
+                config_path,
+                dev_comments: self.flag_dev_comments.unwrap_or(config.dev_comments),
+                skip_readme: self.flag_skip_readme.unwrap_or(config.skip_readme),
+                recursive: self.flag_recursive,
+                paths: self.arg_paths,
+                exit_code_override: self.flag_code,
+            },
+        };
+
+        Ok((unified, config))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ConfigWriteDestination {
+    Stdout,
+    File { overwrite: bool, path: PathBuf },
+}
+
+/// Unified args with configuration fallbacks.
+///
+/// Only contains options which are either
+/// only present in the arguments, or
+/// are present in the args and have a fallback
+/// in the configuration.
+pub enum UnifiedArgs {
+    Config {
+        dest_config: ConfigWriteDestination,
+        checker_filter_set: Option<Vec<CheckerType>>,
+    },
+    Operate {
+        action: Action,
+        config_path: Option<PathBuf>,
+        dev_comments: bool,
+        skip_readme: bool,
+        recursive: bool,
+        paths: Vec<PathBuf>,
+        exit_code_override: u8,
+    },
+}
+
+impl UnifiedArgs {
+    /// Extract the action.
+    pub fn action(&self) -> Action {
+        match self {
+            Self::Config { .. } => Action::Config,
+            Self::Operate { action, .. } => *action,
+        }
     }
 }
 
@@ -195,7 +426,7 @@ mod tests {
     #[test]
     fn docopt() {
         for command in SAMPLES.keys() {
-            assert!(parse_args(commandline_to_iter(command))
+            assert!(Args::parse(commandline_to_iter(command))
                 .map_err(|e| {
                     println!("Processing > {:?}", command);
                     e
@@ -205,14 +436,14 @@ mod tests {
     }
 
     #[test]
-    fn action_extraction() {
-        for (command, action) in SAMPLES.iter() {
-            assert_eq!(
-                parse_args(commandline_to_iter(command))
-                    .expect("Parsing is assured by another unit test. qed")
-                    .action(),
-                *action
-            );
-        }
+    fn unify() {
+        let args = Args::parse(
+            &mut ["cargo", "spellcheck", "check"]
+                .iter()
+                .map(ToOwned::to_owned)
+                .map(ToOwned::to_owned),
+        )
+        .unwrap();
+        let _unified = args.unified().unwrap();
     }
 }
