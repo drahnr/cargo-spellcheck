@@ -19,12 +19,11 @@ mod util;
 
 pub use self::action::*;
 pub use self::config::{Config, HunspellConfig, LanguageToolConfig};
+pub use self::config::args::*;
 pub use self::documentation::*;
 pub use self::span::*;
 pub use self::suggestion::*;
 pub use self::util::*;
-
-use docopt::Docopt;
 
 use log::{debug, info, trace, warn};
 use serde::Deserialize;
@@ -41,53 +40,6 @@ use signal_hook as _;
 use checker::Checker;
 use std::path::PathBuf;
 
-/// Docopt usage string.
-const USAGE: &str = r#"
-Spellcheck all your doc comments
-
-Usage:
-    cargo-spellcheck [(-v...|-q)] fix [--cfg=<cfg>] [--code=<code>] [--dev-comments] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
-    cargo-spellcheck [(-v...|-q)] reflow [--cfg=<cfg>] [--code=<code>] [--dev-comments] [--skip-readme] [[--recursive] <paths>... ]
-    cargo-spellcheck [(-v...|-q)] config (--user|--stdout|--cfg=<cfg>) [--force]
-    cargo-spellcheck [(-v...|-q)] [check] [--fix] [--cfg=<cfg>] [--code=<code>] [--dev-comments] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
-    cargo-spellcheck --version
-    cargo-spellcheck --help
-
-Options:
-  -h --help                 Show this screen.
-  --version                 Print the version and exit.
-
-  --fix                     Interactively apply spelling and grammer fixes, synonym to `fix` sub-command.
-  -r --recursive            If a path is provided, if recursion into subdirectories is desired.
-  --checkers=<checkers>     Calculate the intersection between
-                            configured by config file and the ones provided on commandline.
-  -f --force                Overwrite any existing configuration file. [default=false]
-  -c --cfg=<cfg>            Use a non default configuration file.
-                            Passing a directory will attempt to open `cargo_spellcheck.toml` in that directory.
-  --user                    Write the configuration file to the default user configuration directory.
-  --stdout                  Print the configuration file to stdout and exit.
-  -v --verbose              Verbosity level.
-  -q --quiet                Silences all printed messages. Overrules `-v`.
-  -m --code=<code>          Overwrite the exit value for a successful run with content mistakes found. [default=0]
-  --skip-readme             Do not attempt to process README.md files listed in Cargo.toml manifests.
-"#;
-
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Deserialize)]
-enum CheckerType {
-    #[serde(alias = "hunspell")]
-    #[serde(alias = "hunSpell")]
-    Hunspell,
-    #[serde(alias = "nlprules")]
-    #[serde(alias = "nlpRules")]
-    NlpRules,
-    #[serde(alias = "languageTool")]
-    #[serde(alias = "Languagetool")]
-    #[serde(alias = "languagetool")]
-    LanguageTool,
-    #[serde(alias = "ReFlow")]
-    #[serde(alias = "reflow")]
-    Reflow,
-}
 
 /// A simple exit code representation.
 ///
@@ -115,54 +67,6 @@ impl ExitCode {
     }
 }
 
-#[derive(Debug, Deserialize, Default)]
-struct Args {
-    arg_paths: Vec<PathBuf>,
-    flag_fix: bool,
-    flag_recursive: bool,
-    flag_verbose: usize,
-    flag_quiet: bool,
-    flag_version: bool,
-    flag_help: bool,
-    flag_checkers: Option<Vec<CheckerType>>,
-    flag_cfg: Option<PathBuf>,
-    flag_force: bool,
-    flag_user: bool,
-    // with fallback from config, so it has to be tri-state
-    flag_skip_readme: Option<bool>,
-    flag_dev_comments: Option<bool>,
-    flag_code: u8,
-    flag_stdout: bool,
-    cmd_fix: bool,
-    cmd_check: bool,
-    cmd_reflow: bool,
-    cmd_config: bool,
-}
-
-impl Args {
-    fn action(&self) -> Action {
-        // extract operation mode
-        let action = if self.cmd_fix {
-            Action::Fix
-        } else if self.flag_fix {
-            Action::Fix
-        } else if self.cmd_reflow {
-            Action::Reflow
-        } else if self.cmd_config {
-            Action::Config
-        } else if self.flag_help {
-            Action::Help
-        } else if self.flag_version {
-            Action::Version
-        } else if self.cmd_check {
-            Action::Check
-        } else {
-            Action::Check
-        };
-        log::trace!("Derived action {:?} from flags/args/cmds", action);
-        action
-    }
-}
 
 /// Handle incoming signals.
 ///
@@ -184,58 +88,6 @@ fn signal_handler() {
     }
 }
 
-/// Agjust the raw arguments for call variants.
-///
-/// The program could be called like `cargo-spellcheck`, `cargo spellcheck` or
-/// `cargo spellcheck check` and even ``cargo-spellcheck check`.
-fn parse_args(mut argv_iter: impl Iterator<Item = String>) -> Result<Args, docopt::Error> {
-    Docopt::new(USAGE).and_then(|d| {
-        // if ends with file name `cargo-spellcheck`
-        if let Some(arg0) = argv_iter.next() {
-            match PathBuf::from(&arg0)
-                .file_name()
-                .map(|x| x.to_str())
-                .flatten()
-            {
-                Some(file_name) => {
-                    // allow all variants to be parsed
-                    // cargo spellcheck ...
-                    // cargo-spellcheck ...
-                    // cargo-spellcheck spellcheck ...
-                    //
-                    // so preprocess them to unified `cargo-spellcheck`
-                    let mut next = vec!["cargo-spellcheck".to_owned()];
-
-                    match argv_iter.next() {
-                        Some(arg)
-                            if file_name.starts_with("cargo-spellcheck") && arg == "spellcheck" =>
-                        {
-                            // drop the first arg `spellcheck`
-                        }
-                        Some(arg) if file_name.starts_with("cargo") && &arg == "spellcheck" => {
-                            // drop it, we replace it with `cargo-spellcheck`
-                        }
-                        Some(arg) if arg == "spellcheck" => {
-                            // "spellcheck" but the binary got renamed
-                            // drop the "spellcheck" part
-                        }
-                        Some(arg) => {
-                            // not "spellcheck" so retain it
-                            next.push(arg.to_owned())
-                        }
-                        None => {}
-                    };
-                    let collected = next.into_iter().chain(argv_iter).collect::<Vec<_>>();
-                    d.argv(collected.into_iter())
-                }
-                _ => d,
-            }
-        } else {
-            d
-        }
-        .deserialize()
-    })
-}
 
 /// The inner main.
 fn run() -> anyhow::Result<ExitCode> {
@@ -244,7 +96,7 @@ fn run() -> anyhow::Result<ExitCode> {
         .num_threads(1)
         .build_global();
 
-    let args = parse_args(std::env::args()).unwrap_or_else(|e| e.exit());
+    let args = Args::parse(std::env::args()).unwrap_or_else(|e| e.exit());
 
     let verbosity = match args.flag_verbose {
         _ if args.flag_quiet => log::LevelFilter::Off,
@@ -284,7 +136,7 @@ fn run() -> anyhow::Result<ExitCode> {
             return Ok(ExitCode::Success);
         }
         Action::Help => {
-            println!("{}", USAGE);
+            println!("{}", Args::USAGE);
             return Ok(ExitCode::Success);
         }
         Action::Config => {
@@ -454,58 +306,4 @@ fn main() -> anyhow::Result<()> {
         std::process::exit(val as i32)
     }
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn commandline_to_iter(s: &'static str) -> impl Iterator<Item = String> {
-        s.split(' ').map(|s| s.to_owned()).into_iter()
-    }
-
-    lazy_static::lazy_static!(
-        static ref SAMPLES: std::collections::HashMap<&'static str, Action> = maplit::hashmap!{
-            "cargo spellcheck" => Action::Check,
-            "cargo-spellcheck --version" => Action::Version,
-            "cargo spellcheck --version" => Action::Version,
-            "cargo spellcheck reflow" => Action::Reflow,
-            "cargo spellcheck -vvvv" => Action::Check,
-            "cargo spellcheck --fix" => Action::Fix,
-            "cargo spellcheck fix" => Action::Fix,
-            "cargo-spellcheck" => Action::Check,
-            "cargo-spellcheck -vvvv" => Action::Check,
-            "cargo-spellcheck --fix" => Action::Fix,
-            "cargo-spellcheck fix" => Action::Fix,
-            "cargo-spellcheck fix -r file.rs" => Action::Fix,
-            "cargo-spellcheck -q fix Cargo.toml" => Action::Fix,
-            "cargo spellcheck -v fix Cargo.toml" => Action::Fix,
-            "cargo spellcheck -m 11 check" => Action::Check,
-            "cargo-spellcheck reflow" => Action::Reflow,
-        };
-    );
-
-    #[test]
-    fn docopt() {
-        for command in SAMPLES.keys() {
-            assert!(parse_args(commandline_to_iter(command))
-                .map_err(|e| {
-                    println!("Processing > {:?}", command);
-                    e
-                })
-                .is_ok());
-        }
-    }
-
-    #[test]
-    fn action_extraction() {
-        for (command, action) in SAMPLES.iter() {
-            assert_eq!(
-                parse_args(commandline_to_iter(command))
-                    .expect("Parsing is assured by another unit test. qed")
-                    .action(),
-                *action
-            );
-        }
-    }
 }
