@@ -35,7 +35,6 @@ use serde::{Deserialize, Serialize};
 use std::convert::AsRef;
 use std::fmt;
 use std::io::Read;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 // TODO figure out which ISO spec this actually is
@@ -138,8 +137,13 @@ impl Config {
         toml::to_string(self).map_err(|e| anyhow!("Failed to convert to toml").context(e))
     }
 
-    pub fn write_values_to_path<P: AsRef<Path>>(&self, path: P) -> Result<Self> {
+    pub fn write_values_to<W: std::io::Write>(&self, mut writer: W) -> Result<Self> {
         let s = self.to_toml()?;
+        writer.write_all(s.as_bytes())?;
+        Ok(self.clone())
+    }
+
+    pub fn write_values_to_path<P: AsRef<Path>>(&self, path: P) -> Result<Self> {
         let path = path.as_ref();
 
         if let Some(path) = path.parent() {
@@ -156,13 +160,10 @@ impl Config {
             .map_err(|e| {
                 anyhow!("Failed to write default values to {}", path.display()).context(e)
             })?;
-        let mut writer = std::io::BufWriter::new(file);
+        let writer = std::io::BufWriter::new(file);
 
-        writer.write_all(s.as_bytes()).map_err(|e| {
-            anyhow!("Failed to write default config to {}", path.display()).context(e)
-        })?;
-
-        Ok(self.clone())
+        self.write_values_to(writer)
+            .map_err(|e| anyhow!("Failed to write default config to {}", path.display()).context(e))
     }
 
     pub fn write_values_to_default_path(&self) -> Result<Self> {
