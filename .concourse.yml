@@ -65,7 +65,7 @@ jobs:
   - name: pr-validate
     build_logs_to_retain: 10
     public: true
-    serial: true
+    serial: false
     plan:
     - in_parallel:
       - get: git-pull-request-resource
@@ -390,7 +390,7 @@ jobs:
                 path: git-pull-request-resource
                 context: test-spearow-juice
                 status: failure
-      
+
 
           - task: pr-test-on-rustlang-rust
             timeout: 15m
@@ -432,7 +432,7 @@ jobs:
                 path: git-pull-request-resource
                 context: test-rustlang-rust
                 status: failure
-  
+
   ####################################################################################
   #                                 M A S T E R
   ####################################################################################
@@ -702,5 +702,3 @@ jobs:
         params:
           file: ./release-info/artifacts/x86_64-unknown-linux-gnu-cargo-spellcheck-*
           acl: public-read
-     
-     
