@@ -13,8 +13,10 @@ use crate::Range;
 
 use log::{debug, trace};
 use rayon::prelude::*;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::io::{self, BufRead};
+use fs_err as fs;
 
 use hunspell_rs::Hunspell;
 
@@ -86,6 +88,7 @@ impl HunspellChecker {
         let aff = aff.to_str().unwrap();
 
         let mut hunspell = Hunspell::new(aff, dic);
+        is_valid_hunspell_dic_path(dic)?;
         hunspell.add_dictionary(dic);
 
         if cfg!(debug_assertions) && lang == "en_US" {
@@ -102,6 +105,7 @@ impl HunspellChecker {
             if !extra_dic.is_file() {
                 bail!("Extra dictionary {} is not a file", extra_dic.display())
             }
+            is_valid_hunspell_dic_path(extra_dic)?;
             if let Some(extra_dic) = extra_dic.to_str() {
                 if !hunspell.add_dictionary(extra_dic) {
                     bail!(
@@ -274,11 +278,51 @@ fn obtain_suggestions<'s>(
     }
 }
 
+/// Check if provided path has valid dictionary format.
+///
+/// This is a YOLO check.
+fn is_valid_hunspell_dic_path(path: impl AsRef<Path>) -> Result<()> {
+    let reader = io::BufReader::new(fs::File::open(path.as_ref())?);
+    is_valid_hunspell_dic(reader)
+}
+
+
+fn is_valid_hunspell_dic(reader: impl BufRead) -> Result<()> {
+    let mut iter = reader.lines().enumerate();
+    if let Some((_lineno, first)) = iter.next() {
+        let first = first?;
+        let _ = first.parse::<u64>().map_err(|e| anyhow!("First line of extra dictionary must a number, but is: >{}<", first).context(e))?;
+    }
+    // Just check the first 10 lines, don't waste much time here
+    // the first two are the most important ones.
+    for (lineno, line) in iter.take(10) {
+        // All lines after must be format x.
+        if let Ok(num) = line?.parse::<i64>() {
+            bail!("Line {} of extra dictionary must not be a number, but is: >{}<", lineno, num)
+        };
+    }
+    Ok(())
+}
 
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+
+    #[test]
+    fn hunspell_dic_format() {
+        const GOOD: &str = "2
+whitespazes
+catsndogs
+";
+        const BAD: &str = "foo
+12349
+bar
+";
+        assert!(is_valid_hunspell_dic(&mut GOOD.as_bytes()).is_ok());
+        assert!(is_valid_hunspell_dic(&mut BAD.as_bytes()).is_err());
+    }
 
     #[test]
     fn hunspell_binding_is_sane() {
@@ -289,7 +333,7 @@ mod tests {
         for search_dir in search_dirs {
             let dic = search_dir.join("en_US.dic");
             let aff = search_dir.join("en_US.aff");
-            if dic.is_file() && aff.is_file() {
+            if dic.is_file() && aff.is_file() && is_valid_hunspell_dic_path(&dic).is_ok() {
                 srcs = Some((dic, aff));
                 break;
             }
@@ -301,26 +345,29 @@ mod tests {
         let cwd = crate::traverse::cwd().unwrap();
         let extra = dbg!(cwd.join(".config/lingo.dic"));
         assert!(extra.is_file());
+        assert!(is_valid_hunspell_dic_path(&dic).is_ok());
 
-        hunspell.add_dictionary(extra.display().to_string().as_str());
+        hunspell.add_dictionary(dbg!(extra.display().to_string().as_str()));
 
-        let extra_dic = fs_err::read_to_string(extra).unwrap();
-        for line in extra_dic.lines().skip(2) {
+        let extra_dic = io::BufReader::new(fs::File::open(extra).unwrap());
+        for (lineno, line) in extra_dic.lines().enumerate().skip(1) {
+            let line = line.unwrap();
             let word = if line.contains('/') {
                 line.split('/').next().unwrap()
             } else {
-                line
+                line.as_str()
             };
-            println!("testing >{}<", word);
+
+            println!("testing >{}< against line #{} >{}<", word, lineno, line);
             // "whitespace" is a word part of our custom dictionary
             assert!(hunspell.check(word));
-            // suggestion must contain the word itself if it is valid
-            assert!(hunspell.suggest(word).contains(&word.to_owned()));
-
-            // ... and its plural "whitespaces" as well.
-            assert!(hunspell.check(word));
-            // suggestion must contain the word itself if it is valid
-            assert!(hunspell.suggest(word).contains(&word.to_owned()));
+            // Technically suggestion must contain the word itself if it is valid
+            let suggestions = hunspell.suggest(word);
+            // but this is not true for i.e. `clang`
+            // assert!(suggestions.contains(&word.to_owned()));
+            if !suggestions.contains(&word.to_owned()) {
+                eprintln!("suggest does not contain valid self: {} ∉ {:?}", word, suggestions);
+            }
         }
     }
 }
