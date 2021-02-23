@@ -273,3 +273,54 @@ fn obtain_suggestions<'s>(
         );
     }
 }
+
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hunspell_binding_is_sane() {
+        let config = crate::config::HunspellConfig::default();
+        let search_dirs = config.search_dirs();
+
+        let mut srcs = None;
+        for search_dir in search_dirs {
+            let dic = search_dir.join("en_US.dic");
+            let aff = search_dir.join("en_US.aff");
+            if dic.is_file() && aff.is_file() {
+                srcs = Some((dic, aff));
+                break;
+            }
+        }
+
+        let (dic, aff) = srcs.unwrap();
+
+        let mut hunspell = Hunspell::new(aff.display().to_string().as_str(), dic.display().to_string().as_str());
+        let cwd = crate::traverse::cwd().unwrap();
+        let extra = dbg!(cwd.join(".config/lingo.dic"));
+        assert!(extra.is_file());
+
+        hunspell.add_dictionary(extra.display().to_string().as_str());
+
+        let extra_dic = fs_err::read_to_string(extra).unwrap();
+        for line in extra_dic.lines().skip(2) {
+            let word = if line.contains('/') {
+                line.split('/').next().unwrap()
+            } else {
+                line
+            };
+            println!("testing >{}<", word);
+            // "whitespace" is a word part of our custom dictionary
+            assert!(hunspell.check(word));
+            // suggestion must contain the word itself if it is valid
+            assert!(hunspell.suggest(word).contains(&word.to_owned()));
+
+            // ... and its plural "whitespaces" as well.
+            assert!(hunspell.check(word));
+            // suggestion must contain the word itself if it is valid
+            assert!(hunspell.suggest(word).contains(&word.to_owned()));
+        }
+    }
+}
