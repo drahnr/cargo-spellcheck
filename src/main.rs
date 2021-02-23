@@ -105,6 +105,8 @@ fn run() -> anyhow::Result<ExitCode> {
 
     env_logger::Builder::from_env(env_logger::Env::new().filter_or("CARGO_SPELLCHECK", "warn"))
         .filter_level(verbosity)
+        .filter_module("nlprule", log::LevelFilter::Error)
+        .filter_module("mio", log::LevelFilter::Error)
         .init();
 
     // handle the simple variants right away
