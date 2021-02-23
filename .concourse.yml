@@ -533,14 +533,18 @@ jobs:
               - -exc
               - |
                 export CARGO_HOME="$(pwd)/../cargo"
+                export EXE=./target/release/cargo-spellcheck
                 sudo chown $(whoami): -Rf ${CARGO_HOME} .
-                cargo +stable run --release -- --version
-                cargo +stable run --release -- spellcheck demo/Cargo.toml
-                cargo +stable run --release -- spellcheck -vvvv demo/src/main.rs
-                cargo +stable run --release -- spellcheck demo/
-                cargo +stable run --release
+                ls -al
+                cargo +stable build --release
+                "${EXE}" --version
+                "${EXE}" spellcheck demo/Cargo.toml
+                "${EXE}" spellcheck spellcheck -vvvv demo/src/main.rs
+                "${EXE}" spellcheck demo
+                "${EXE}" spellcheck
+                "${EXE}"
 
-                sudo cp -vf target/release/cargo-spellcheck ../binary/cargo-spellcheck-$(git rev-parse HEAD)
+                sudo cp -vf "${EXE}" "../binary/cargo-spellcheck-$(git rev-parse HEAD)
               dir: git-repo
             caches:
             - path: cargo
@@ -560,8 +564,9 @@ jobs:
               - -exc
               - |
                 export EXE="../binary/cargo-spellcheck-$(git rev-parse HEAD)"
-                sudo chown $(whoami): -f "${EXE}"
-                chmod +x "${EXE}"
+                sudo chown $(whoami): -f "${EXE}" .
+                sudo chmod +x "${EXE}"
+                ls -al
                 "${EXE}" --version
                 "${EXE}" reflow demo/Cargo.toml
                 "${EXE}" reflow -vvvv demo/src/main.rs
