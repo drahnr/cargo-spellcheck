@@ -26,8 +26,6 @@ pub struct Quirks {
 
 impl Default for Quirks {
     fn default() -> Self {
-        // use some for default, so for generating the default config has the default values
-        // but the options are necessary to allow omitting them in the config file
         Self {
             transform_regex: vec![],
             allow_concatenation: false,
