@@ -370,7 +370,7 @@ impl CheckableChunk {
         self.source_mapping.len()
     }
 
-    /// Obtain an accessor object containing mapping and string repr, removing the markdown anotations.
+    /// Obtain an accessor object containing mapping and string representation, removing the markdown annotations.
     pub fn erase_cmark(&self) -> PlainOverlay {
         PlainOverlay::erase_cmark(self)
     }

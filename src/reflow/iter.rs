@@ -1,5 +1,5 @@
 //! Iterate over a documentation comments and
-//! extract reflowable content.
+//! extract allowable content.
 //!
 //! Operates on strings and ranges referring to the
 //! original content. Parses the Commonmark syntax and
@@ -169,7 +169,7 @@ pub struct Gluon<'s> {
     line_counter: usize,
     /// A set of indentations for considering indentations
     /// if there are more lines than there are lines, the last
-    /// values in this vector willl bre reused.
+    /// values in this vector will be reused.
     indentations: &'s [Indentation<'s>],
     /// The inner iterator which first tokenizes the string into undividable items.
     inner: Tokeneer<'s>,
@@ -302,7 +302,7 @@ impl<'s> Iterator for Gluon<'s> {
 mod tests {
     use super::*;
 
-    /// `indentations` represent the indentation of indiviaul lines in `content`.
+    /// `indentations` represent the indentation of individual lines in `content`.
     fn verify_reflow(
         content: &'static str,
         expected: &'static str,

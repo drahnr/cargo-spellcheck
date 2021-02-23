@@ -1,6 +1,6 @@
 use super::*;
 
-/// Obtain os specific search dirs.
+/// Obtain OS specific search directories.
 fn os_specific_search_dirs() -> &'static [PathBuf] {
     lazy_static::lazy_static! {
         static ref OS_SPECIFIC_LOOKUP_DIRS: Vec<PathBuf> =
@@ -24,7 +24,7 @@ fn os_specific_search_dirs() -> &'static [PathBuf] {
     OS_SPECIFIC_LOOKUP_DIRS.as_slice()
 }
 
-/// A collection of search dirs, extended by os specific defaults.
+/// A collection of search directories, extended by OS specific defaults.
 #[derive(Debug, Clone)]
 pub struct SearchDirs(pub Vec<PathBuf>);
 
@@ -79,7 +79,7 @@ impl From<Vec<PathBuf>> for SearchDirs {
     }
 }
 
-/// A search dir visitor, auto extending the search dir with OS defaults.
+/// A search directory visitor, auto extending the search directory with OS defaults.
 struct SearchDirVisitor;
 
 impl<'de> serde::de::Visitor<'de> for SearchDirVisitor {

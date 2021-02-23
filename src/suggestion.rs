@@ -301,7 +301,7 @@ pub struct Suggestion<'s> {
     pub origin: ContentOrigin,
     /// The suggestion is relative to a specific chunk.
     pub chunk: &'s CheckableChunk,
-    /// The span (absolute!) within the file or chunk (depens on `origin`).
+    /// The span (absolute!) within the file or chunk (depends on `origin`).
     pub span: Span,
     /// Range relative to the chunk the current suggestion is located.
     pub range: Range,
@@ -620,7 +620,7 @@ impl<'s> SuggestionSet<'s> {
         self.per_file.len()
     }
 
-    /// Sorts the files in alphabetical order, then sorts the per file
+    /// Sorts the files in alphabetical order, then sorts the per-file
     /// suggestions based on start and end spans.
     pub fn sort(&mut self) {
         self.per_file
@@ -672,7 +672,7 @@ mod tests {
 
     /// A test helper comparing the output against an expected output.
     ///
-    /// Strips all colour codes from both the expected string as well as the
+    /// Strips all colour codes from both the expected string and the
     /// display-able object.
     fn assert_display_eq<D: fmt::Display, S: AsRef<str>>(display: D, s: S) {
         let expected = s.as_ref();

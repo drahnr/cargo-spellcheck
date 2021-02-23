@@ -41,7 +41,7 @@ use checker::Checker;
 
 /// A simple exit code representation.
 ///
-/// `Custom` can be specified by the user, others map to thei unix equivalents
+/// `Custom` can be specified by the user, others map to their UNIX equivalents
 /// where available.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum ExitCode {

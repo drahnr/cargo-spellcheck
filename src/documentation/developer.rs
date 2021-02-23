@@ -117,7 +117,7 @@ struct TokenWithType {
 
 impl TokenWithType {
     /// Convert a `TokenWithLineColumn` to a `TokenWithType`. The kind is worked out from the content
-    /// by checking against the developer block comment & line comment regexes.
+    /// by checking against the developer block comment & line comment regexps.
     fn from(token: TokenWithLineColumn) -> Self {
         let kind = if BLOCK_COMMENT.is_match(&token.content) {
             TokenType::BlockComment

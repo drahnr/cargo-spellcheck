@@ -167,7 +167,7 @@ pub struct UserPicked {
 }
 
 impl UserPicked {
-    /// Count the number of suggestions accross all files in total.
+    /// Count the number of suggestions across all files in total.
     pub fn total_count(&self) -> usize {
         self.bandaids.iter().map(|(_origin, vec)| vec.len()).sum()
     }

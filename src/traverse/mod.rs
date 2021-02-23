@@ -1,4 +1,4 @@
-//! Travers paths and or mod declaration paths and manifest entry points.
+//! Traverse paths and or mod declaration paths and manifest entry points.
 //!
 //! Essentially collects all `Chunk`s used for parsing with an associated `Origin`.
 
@@ -164,7 +164,7 @@ fn load_manifest<P: AsRef<Path>>(manifest_dir: P) -> Result<cargo_toml::Manifest
     Ok(manifest)
 }
 
-/// can convert manifest with or without Cargo.toml into the dir that contains the manifest
+/// can convert manifest with or without Cargo.toml into the directory that contains the manifest
 fn to_manifest_dir<P: AsRef<Path>>(manifest_dir: P) -> Result<PathBuf> {
     let manifest_dir: &Path = manifest_dir.as_ref();
     if manifest_dir.ends_with("Cargo.toml") {
