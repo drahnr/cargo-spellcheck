@@ -216,7 +216,12 @@ impl Args {
 
     /// Load configuration with fallbacks.
     ///
-    /// When explicitly
+    /// Does IO checks if files exist.
+    ///
+    /// Provides a config and where it was retrieved from,
+    /// if no config file exists, a default is provided
+    /// and the config path becomes `None`.
+    // TODO split the IO operations and lookup dirs.
     fn load_config(&self) -> Result<(Config, Option<PathBuf>)> {
         let (explicit_cfg, config_path) = match self.flag_cfg.as_ref() {
             Some(config_path) => {
