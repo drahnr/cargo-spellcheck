@@ -299,7 +299,7 @@ impl Args {
             "Attempting to use configuration file {}",
             config_path.display()
         );
-        let (config, config_path) = match Config::load_from(&config_path) {
+        let (mut config, config_path) = match Config::load_from(&config_path) {
             Ok(config) => (config, Some(config_path)),
             Err(e) => {
                 if explicit_cfg {
@@ -318,6 +318,33 @@ impl Args {
                 }
             }
         };
+        // mask all disabled checkers, use the default config
+        // for those which have one if not enabled already
+        if let Some(filter_set) = &self.flag_checkers {
+            if filter_set.contains(&CheckerType::Hunspell) {
+                if config.hunspell.is_none() {
+                    config.hunspell = Some(crate::config::HunspellConfig::default());
+                }
+            } else {
+                config.hunspell = None;
+            }
+            if filter_set.contains(&CheckerType::NlpRules) {
+                if config.nlprules.is_none() {
+                    config.nlprules = Some(crate::config::NlpRulesConfig::default());
+                }
+            } else {
+                config.nlprules = None;
+            }
+            if filter_set.contains(&CheckerType::LanguageTool) {
+                if config.languagetool.is_none() {
+                    warn!("Language tool must be explicitly configured via config file")
+                }
+            } else {
+                config.languagetool = None;
+            }
+            // reflow is a different subcommand, not relevant
+        }
+
         Ok((config, config_path))
     }
 
@@ -495,7 +522,7 @@ mod tests {
             .map(ToOwned::to_owned),
         )
         .unwrap();
-        let (unified, _config) = args.unified().unwrap();
+        let (unified, config) = args.unified().unwrap();
         assert_matches!(unified,
             UnifiedArgs::Config {
                 dest_config: ConfigWriteDestination::File { overwrite, path },
@@ -506,5 +533,12 @@ mod tests {
                 assert_eq!(overwrite, true);
             }
         );
+
+        assert_matches!(config.hunspell, None => {});
+        assert_matches!(config.nlprules, Some(cfg) => {
+            assert!(cfg.override_rules.is_none());
+            assert!(cfg.override_tokenizer.is_none());
+        });
+        assert_matches!(config.languagetool, None => {});
     }
 }

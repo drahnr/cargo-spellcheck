@@ -66,6 +66,17 @@ pub struct HunspellConfig {
     pub quirks: Quirks,
 }
 
+impl Default for HunspellConfig {
+    fn default() -> Self {
+        Self {
+            lang: Some("en".to_owned()),
+            search_dirs: SearchDirs::default(),
+            extra_dictionaries: Vec::default(),
+            quirks: Quirks::default(),
+        }
+    }
+}
+
 impl HunspellConfig {
     pub fn lang(&self) -> &str {
         if let Some(ref lang) = self.lang {
