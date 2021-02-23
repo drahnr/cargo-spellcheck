@@ -286,7 +286,7 @@ fn is_valid_hunspell_dic_path(path: impl AsRef<Path>) -> Result<()> {
     is_valid_hunspell_dic(reader)
 }
 
-
+/// Check a reader for correct hunspell format.
 fn is_valid_hunspell_dic(reader: impl BufRead) -> Result<()> {
     let mut iter = reader.lines().enumerate();
     if let Some((_lineno, first)) = iter.next() {
@@ -316,12 +316,23 @@ mod tests {
 whitespazes
 catsndogs
 ";
-        const BAD: &str = "foo
+        const BAD_1: &str = "foo
 12349
 bar
 ";
+        const BAD_2: &str = "2
+12349
+bar
+";
+        const BAD_3: &str = "foo
+xxx
+bar
+";
         assert!(is_valid_hunspell_dic(&mut GOOD.as_bytes()).is_ok());
-        assert!(is_valid_hunspell_dic(&mut BAD.as_bytes()).is_err());
+        assert!(is_valid_hunspell_dic(&mut BAD_1.as_bytes()).is_err());
+        assert!(is_valid_hunspell_dic(&mut BAD_2.as_bytes()).is_err());
+        assert!(is_valid_hunspell_dic(&mut BAD_3.as_bytes()).is_err());
+
     }
 
     #[test]
