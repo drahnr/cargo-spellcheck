@@ -1,4 +1,3 @@
-*nix/MS
 50
 accessor/MS
 API/MS
@@ -22,6 +21,7 @@ hunspell/MS
 iff
 LanguageTool/MS
 multiline/S
+nix/MS
 pickable
 pre/MS
 proc_macro2/MS
