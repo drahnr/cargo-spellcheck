@@ -8,9 +8,9 @@ Check your spelling with `hunspell` and/or `languagetool`.
 ## Use Cases
 
 Run `cargo spellcheck --fix` or `cargo spellcheck fix` to fix all your
-documentation comments in order to avoid narsty typos all over your source tree.
+documentation comments in order to avoid nasty typos all over your source tree.
 Meant as a helper simplifying review as well as improving CI checks after a
-learning phase for custom/topic specifc lingo.
+learning phase for custom/topic specific lingo.
 
 ### Check For Spelling and/or Grammar Mistakes
 
@@ -78,7 +78,7 @@ exec cargo spellcheck -m 99 $(git diff-index --cached --name-only --diff-filter=
 * [x] Grammar check using `languagetool` http API
 * [x] Follow module declarations rather than blindly recurse
 * [x] Be `commonmark`/`markdown` aware
-  * [ ] Handle doctests with ` ```rust` as virtual files [#43](https://github.com/drahnr/cargo-spellcheck/issues/43)
+  * [ ] Handle doc-tests with ` ```rust` as virtual files [#43](https://github.com/drahnr/cargo-spellcheck/issues/43)
   * [ ] Verify all types of links [#44](https://github.com/drahnr/cargo-spellcheck/issues/44)
 * [x] Check `README.md` files [#37](https://github.com/drahnr/cargo-spellcheck/issues/37)
 * [x] Improve interactive user interface with `crossterm`

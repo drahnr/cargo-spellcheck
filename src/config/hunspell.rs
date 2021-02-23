@@ -18,7 +18,7 @@ pub struct Quirks {
     /// equivalent except for addition dashes (`-`).
     #[serde(default)]
     pub allow_concatenation: bool,
-    /// The counterpart of `allow_concatenation`. Accepts words which have repalcement suggestions
+    /// The counterpart of `allow_concatenation`. Accepts words which have replacement suggestions
     /// that contain additional dashes.
     #[serde(default)]
     pub allow_dashes: bool,
@@ -56,7 +56,7 @@ pub struct HunspellConfig {
     /// The language we want to check against, used as the dictionary and affixes file name.
     // TODO impl a custom xx_YY code deserializer based on iso crates
     pub lang: Option<String>,
-    /// Additional search dirs for `.dic` and `.aff` files.
+    /// Additional search directories for `.dic` and `.aff` files.
     // must be option so it can be omitted in the config
     #[serde(default)]
     pub search_dirs: SearchDirs,

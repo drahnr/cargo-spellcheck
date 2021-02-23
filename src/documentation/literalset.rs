@@ -25,7 +25,7 @@ impl LiteralSet {
 
     /// Add a literal to a literal set, if the previous lines literal already exists.
     ///
-    /// Returns literl within the Err variant if not adjacent
+    /// Returns literal within the Err variant if not adjacent
     pub fn add_adjacent(&mut self, literal: TrimmedLiteral) -> Result<(), TrimmedLiteral> {
         if literal.variant() != self.variant {
             log::debug!(

@@ -38,7 +38,7 @@ pub(crate) fn replacements_contain_dashed<T: AsRef<str>>(word: &str, replacement
 /// Transformed word with information on the transformation outcome.
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) enum Transformed<'i> {
-    /// A whitelisted chunk
+    /// A allow-listed chunk
     Whitelisted((Range, &'i str)),
     /// A set of word-fragments to be checked.
     Fragments(Vec<(Range, &'i str)>),

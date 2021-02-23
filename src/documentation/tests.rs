@@ -64,10 +64,10 @@ fn parse_and_construct() {
 
 use crate::documentation::Documentation;
 
-/// Declare an end to end test case, ranging from input content
+/// Declare an end-to-end test case, ranging from input content
 /// down to the number expected issues given a checker type.
 #[macro_export]
-/// End to end tests for different Checkers
+/// End-to-end tests for different Checkers
 macro_rules! end2end {
     ($test:expr, $n:expr) => {{
         end2end!($test, ContentOrigin::TestEntityRust, $n, DummyChecker);
@@ -98,7 +98,7 @@ macro_rules! end2end {
     }};
 }
 
-/// Declare an end to end test case based on an existing rust file.
+/// Declare an end-to-end test case based on an existing rust file.
 macro_rules! end2end_file_rust {
     ($path: literal, $n: expr) => {{
         let path2 = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/", $path));
@@ -112,7 +112,7 @@ macro_rules! end2end_file_rust {
     }};
 }
 
-/// Declare an end to end test case based on an existing common mark file.
+/// Declare an end-to-end test case based on an existing common mark file.
 macro_rules! end2end_file_cmark {
     ($path: literal, $n: expr) => {{
         let path2 = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/", $path));

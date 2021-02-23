@@ -34,13 +34,13 @@ impl Finish {
     }
 }
 
-/// A patch to be stitched ontop of another string.
+/// A patch to be stitched on-top of another string.
 ///
 /// Has intentionally no awareness of any rust or cmark/markdown semantics.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub(crate) enum Patch {
     /// Replace the area spanned by `replace` with `replacement`.
-    /// Since `Span` is inclusive, `Replace` always will replace a character in the original sources.
+    /// Since `Span` is inclusive, `Replace` will always replace a character in the original sources.
     Replace {
         replace_span: Span,
         replacement: String,
@@ -77,10 +77,10 @@ impl From<BandAid> for Patch {
 /// Correct lines by applying patches.
 ///
 /// Assumes all `BandAids` do not overlap when replacing.
-/// Inserting multiple times at a particular `LineColumn` is ok,
+/// Inserting multiple times at a particular `LineColumn` is OK,
 /// but replacing overlapping `Span`s of the original source is not.
 ///
-/// This function is not concerend with _any_ semantics or comments or
+/// This function is not concerned with _any_ semantics or comments or
 /// whatsoever at all, it blindly replaces what is given to it.
 pub(crate) fn apply_patches<'s, II, I>(
     patches: II,
@@ -211,7 +211,7 @@ where
 
 /// Mode in which `cargo-spellcheck` operates.
 ///
-/// Eventually to be used directly in parsing args.
+/// Eventually to be used directly in parsing arguments.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Deserialize)]
 pub enum Action {
     /// Only show errors
@@ -221,7 +221,7 @@ pub enum Action {
     /// Interactively choose from checker provided suggestions.
     #[serde(alias = "fix")]
     Fix,
-    /// Reflow doc comments so they adhere to a given maximum column width.
+    /// Reflow doc comments, so they adhere to a given maximum column width.
     #[serde(alias = "reflow")]
     Reflow,
 

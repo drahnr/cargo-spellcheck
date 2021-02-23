@@ -44,7 +44,7 @@ Options:
   --skip-readme             Do not attempt to process README.md files listed in Cargo.toml manifests.
 "#;
 
-/// Checker types to be derived from the stringly typed args.
+/// Checker types to be derived from the stringly typed arguments.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Deserialize)]
 pub enum CheckerType {
     #[serde(alias = "hunspell")]
@@ -362,11 +362,11 @@ pub enum ConfigWriteDestination {
     File { overwrite: bool, path: PathBuf },
 }
 
-/// Unified args with configuration fallbacks.
+/// Unified arguments with configuration fallbacks.
 ///
 /// Only contains options which are either
 /// only present in the arguments, or
-/// are present in the args and have a fallback
+/// are present in the arguments and have a fallback
 /// in the configuration.
 #[derive(Debug, Clone)]
 pub enum UnifiedArgs {

@@ -200,7 +200,7 @@ macro_rules! reflow_content {
 }
 
 /// Run reflow on a set of lines that are `fluff_up`ed
-/// and match the resulting `Patch`s replacment with
+/// and match the resulting `Patch`s replacement with
 /// an `expected` (a single literal, TODO allow multiple).
 macro_rules! reflow_fluff {
     ($n:literal break [ $( $line:literal ),+ $(,)?] => $( $expected:literal ),+ $(,)?) => {

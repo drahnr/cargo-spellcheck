@@ -302,7 +302,7 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
 impl TrimmedLiteral {
     /// Creates a new (single line) literal from the variant, the content, the size of the
     /// pre & post and the line/column on which it starts. Fails if provided with multiline content
-    /// (i.e if the content contains a linebreak).
+    /// (i.e. if the content contains a line-break).
     pub fn from(
         variant: CommentVariant,
         content: &str,
@@ -374,21 +374,21 @@ impl TrimmedLiteral {
 
     /// Obtain the number of characters in `pre()`.
     ///
-    /// Since all pre charcters are ascii, this is equivalent to the number of bytes in `pre()`.
+    /// Since all pre characters are ASCII, this is equivalent to the number of bytes in `pre()`.
     pub fn pre(&self) -> usize {
         self.pre
     }
 
     /// Obtain the number of characters in `post()`.
     ///
-    /// Since all pre charcters are ascii, this is equivalent to the number of bytes in `post()`.
+    /// Since all pre characters are ASCII, this is equivalent to the number of bytes in `post()`.
     pub fn post(&self) -> usize {
         self.post
     }
 
     /// The span that is covered by this literal.
     ///
-    /// Covers only the content, no marker or helper chracters.
+    /// Covers only the content, no marker or helper characters.
     pub fn span(&self) -> Span {
         self.span.clone()
     }
