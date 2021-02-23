@@ -11,12 +11,12 @@ use crate::documentation::{CheckableChunk, ContentOrigin, PlainOverlay};
 use crate::util::sub_chars;
 use crate::Range;
 
+use fs_err as fs;
 use log::{debug, trace};
 use rayon::prelude::*;
+use std::io::{self, BufRead};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::io::{self, BufRead};
-use fs_err as fs;
 
 use hunspell_rs::Hunspell;
 
@@ -291,24 +291,32 @@ fn is_valid_hunspell_dic(reader: impl BufRead) -> Result<()> {
     let mut iter = reader.lines().enumerate();
     if let Some((_lineno, first)) = iter.next() {
         let first = first?;
-        let _ = first.parse::<u64>().map_err(|e| anyhow!("First line of extra dictionary must a number, but is: >{}<", first).context(e))?;
+        let _ = first.parse::<u64>().map_err(|e| {
+            anyhow!(
+                "First line of extra dictionary must a number, but is: >{}<",
+                first
+            )
+            .context(e)
+        })?;
     }
     // Just check the first 10 lines, don't waste much time here
     // the first two are the most important ones.
     for (lineno, line) in iter.take(10) {
         // All lines after must be format x.
         if let Ok(num) = line?.parse::<i64>() {
-            bail!("Line {} of extra dictionary must not be a number, but is: >{}<", lineno, num)
+            bail!(
+                "Line {} of extra dictionary must not be a number, but is: >{}<",
+                lineno,
+                num
+            )
         };
     }
     Ok(())
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
 
     #[test]
     fn hunspell_dic_format() {
@@ -332,7 +340,6 @@ bar
         assert!(is_valid_hunspell_dic(&mut BAD_1.as_bytes()).is_err());
         assert!(is_valid_hunspell_dic(&mut BAD_2.as_bytes()).is_err());
         assert!(is_valid_hunspell_dic(&mut BAD_3.as_bytes()).is_err());
-
     }
 
     #[test]
@@ -352,7 +359,10 @@ bar
 
         let (dic, aff) = srcs.unwrap();
 
-        let mut hunspell = Hunspell::new(aff.display().to_string().as_str(), dic.display().to_string().as_str());
+        let mut hunspell = Hunspell::new(
+            aff.display().to_string().as_str(),
+            dic.display().to_string().as_str(),
+        );
         let cwd = crate::traverse::cwd().unwrap();
         let extra = dbg!(cwd.join(".config/lingo.dic"));
         assert!(extra.is_file());
@@ -377,7 +387,10 @@ bar
             // but this is not true for i.e. `clang`
             // assert!(suggestions.contains(&word.to_owned()));
             if !suggestions.contains(&word.to_owned()) {
-                eprintln!("suggest does not contain valid self: {} ∉ {:?}", word, suggestions);
+                eprintln!(
+                    "suggest does not contain valid self: {} ∉ {:?}",
+                    word, suggestions
+                );
             }
         }
     }
