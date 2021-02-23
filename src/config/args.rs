@@ -187,7 +187,7 @@ impl Args {
             }
             #[cfg(feature = "nlprule")]
             if !checkers.contains(&CheckerType::NlpRules) {
-                if !config.languagetool.take().is_some() {
+                if !config.nlprules.take().is_some() {
                     warn!("Nlprules checker was never configured.")
                 }
             }
