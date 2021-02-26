@@ -1,10 +1,8 @@
-/*! Just a lil smthin smthin.
- */
+/*! Just a lil smthin smthin. */
 
 mod lib;
 
-/* dev
- */
+/* dev */
 pub mod nested;
 
 /**
