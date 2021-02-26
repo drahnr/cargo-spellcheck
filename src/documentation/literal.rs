@@ -396,12 +396,7 @@ impl TrimmedLiteral {
             },
         };
 
-        trim_span(
-            content,
-            &mut span,
-            pre,
-            post + 1
-        );
+        trim_span(content, &mut span, pre, post + 1);
 
         Ok(TrimmedLiteral {
             variant,
@@ -409,9 +404,7 @@ impl TrimmedLiteral {
             rendered: content.to_string(),
             pre,
             post,
-            len_in_chars: content_chars_len
-                - pre
-                - post,
+            len_in_chars: content_chars_len - pre - post,
             len_in_bytes: content.len() - pre - post,
         })
     }
