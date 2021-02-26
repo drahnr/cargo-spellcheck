@@ -1109,7 +1109,9 @@ ff"#,
     );
 }
 
-pub(crate) fn annotated_literals_raw<'a>(source: &'a str) -> impl Iterator<Item=proc_macro2::Literal> + 'a {
+pub(crate) fn annotated_literals_raw<'a>(
+    source: &'a str,
+) -> impl Iterator<Item = proc_macro2::Literal> + 'a {
     let stream = syn::parse_str::<proc_macro2::TokenStream>(source).expect("Must be valid rust");
     stream
         .into_iter()

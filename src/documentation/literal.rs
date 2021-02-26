@@ -263,7 +263,8 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
                 span.end.column -= post;
             } else {
                 // look for the last character in the previous line
-                let previous_line_length = rendered.chars()
+                let previous_line_length = rendered
+                    .chars()
                     .rev()
                     // assumes \n, we want to skip the first one from the back
                     .skip(post + 1)
@@ -589,7 +590,6 @@ impl<'a> fmt::Display for TrimmedLiteralDisplay<'a> {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -607,7 +607,14 @@ mod tests {
                 let tl = TrimmedLiteral::try_from((CONTENT, literal)).unwrap();
                 assert!(CONTENT.starts_with(tl.prefix()));
                 assert!(CONTENT.ends_with(tl.suffix()));
-                assert_eq!(CONTENT.chars().skip(tl.pre()).take(tl.len_in_chars()).collect::<String>(), tl.as_str().to_owned())
+                assert_eq!(
+                    CONTENT
+                        .chars()
+                        .skip(tl.pre())
+                        .take(tl.len_in_chars())
+                        .collect::<String>(),
+                    tl.as_str().to_owned()
+                )
             }
         };
     }
@@ -615,10 +622,16 @@ mod tests {
     block_comment_test!(trimmed_oneline_doc, "/** dooc */");
     block_comment_test!(trimmed_oneline_mod, "/*! dooc */");
 
-    block_comment_test!(trimmed_multi_doc, "/**
+    block_comment_test!(
+        trimmed_multi_doc,
+        "/**
 mood
-*/");
-    block_comment_test!(trimmed_multi_mod, "/*!
+*/"
+    );
+    block_comment_test!(
+        trimmed_multi_mod,
+        "/*!
 mood
-*/");
+*/"
+    );
 }
