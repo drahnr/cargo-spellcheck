@@ -99,9 +99,9 @@ impl CommentVariant {
     /// Return string which will be appended to each line
     pub fn suffix_string(&self) -> String {
         match self {
-            CommentVariant::MacroDocEq(_, p) if p == 0 || p == 1 => r#""]"#.to_string(),
+            CommentVariant::MacroDocEq(_, p) if *p == 0 || *p == 1 => r#""]"#.to_string(),
             CommentVariant::MacroDocEq(_, p) => {
-                r#"""#.to_string() + &"#".repeat(n.saturating_sub(1)) + "]"
+                r#"""#.to_string() + &"#".repeat(p.saturating_sub(1)) + "]"
             }
             CommentVariant::SlashAsteriskAsterisk
             | CommentVariant::SlashAsteriskEM
@@ -275,8 +275,35 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
 
             let pre = variant.prefix_len();
             let post = variant.suffix_len();
+
+            #[cfg(debug_assertions)]
+            let orig = span.clone();
+
             span.start.column += pre;
-            span.end.column = dbg!(span.end.column).saturating_sub(post);
+            if span.end.column >= post {
+                span.end.column -= post;
+            } else {
+                // look for the last character in the previous line
+                let previous_line_length = rendered.chars()
+                    .rev()
+                    // assumes \n, we want to skip the first one from the back
+                    .skip(post + 1)
+                    .take_while(|c| *c != '\n')
+                    .count();
+                span.end = LineColumn {
+                    line: span.end.line - 1,
+                    column: previous_line_length,
+                };
+            }
+
+            #[cfg(debug_assertions)]
+            {
+                let raw = dbg!(util::load_span_from(&mut content.as_bytes(), orig)?);
+                let adjusted = dbg!(util::load_span_from(&mut content.as_bytes(), span.clone())?);
+                // we know pre and post only consist of single byte characters
+                // so `.len()` is way faster here yet correct.
+                assert_eq!(adjusted.len() + pre + post, raw.len());
+            }
 
             (variant, span, pre, post)
         } else {
@@ -613,16 +640,10 @@ mod tests {
     block_comment_test!(trimmed_oneline_doc, "/** dooc */");
     block_comment_test!(trimmed_oneline_mod, "/*! dooc */");
 
-    block_comment_test!(
-        trimmed_multi_doc,
-        "/**
+    block_comment_test!(trimmed_multi_doc, "/**
 mood
-*/"
-    );
-    block_comment_test!(
-        trimmed_multi_mod,
-        "/*!
+*/");
+    block_comment_test!(trimmed_multi_mod, "/*!
 mood
-*/"
-    );
+*/");
 }
