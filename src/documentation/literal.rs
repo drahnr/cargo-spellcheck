@@ -3,6 +3,7 @@ use crate::{Range, Span};
 use anyhow::{bail, Result};
 
 use fancy_regex::Regex;
+use lazy_static::lazy_static;
 use proc_macro2::LineColumn;
 use std::convert::TryFrom;
 use std::fmt;
@@ -15,6 +16,12 @@ pub enum CommentVariant {
     TripleSlash,
     /// `//!`
     DoubleSlashEM,
+    /// `/*!`
+    SlashAsteriskEM,
+    /// `/**`
+    SlashAsteriskAsterisk,
+    /// `/*`
+    SlashAsterisk,
     /// `#[doc=` with actual prefix like `#[doc=` and
     /// the total length of `r###` etc. including `r`
     /// but without `"`
@@ -55,6 +62,9 @@ impl CommentVariant {
             CommentVariant::CommonMark => "".to_string(),
             CommentVariant::DoubleSlash => "//".to_string(),
             CommentVariant::SlashStar => "/*".to_string(),
+            CommentVariant::SlashAsterisk => "/*".to_string(),
+            CommentVariant::SlashAsteriskEM => "/*!".to_string(),
+            CommentVariant::SlashAsteriskAsterisk => "/**".to_string(),
             unhandled => unreachable!(
                 "String representation for comment variant {:?} exists. qed",
                 unhandled
@@ -68,6 +78,8 @@ impl CommentVariant {
         match self {
             CommentVariant::TripleSlash | CommentVariant::DoubleSlashEM => 3,
             CommentVariant::MacroDocEq(d, p) => d.len() + *p + 1,
+            CommentVariant::SlashAsterisk => 2,
+            CommentVariant::SlashAsteriskEM | CommentVariant::SlashAsteriskAsterisk => 3,
             _ => self.prefix_string().len(),
         }
     }
@@ -77,19 +89,24 @@ impl CommentVariant {
         match self {
             CommentVariant::MacroDocEq(_, 0) => 2,
             CommentVariant::MacroDocEq(_, p) => p + 1,
+            CommentVariant::SlashAsteriskAsterisk
+            | CommentVariant::SlashAsteriskEM
+            | CommentVariant::SlashAsterisk => 2,
             _ => 0,
         }
     }
 
     /// Return string which will be appended to each line
     pub fn suffix_string(&self) -> String {
-        if let CommentVariant::MacroDocEq(_, p) = self {
-            match p {
-                0 | 1 => r#""]"#.to_string(),
-                n => r#"""#.to_string() + &"#".repeat(n.saturating_sub(1)) + "]",
+        match self {
+            CommentVariant::MacroDocEq(_, p) if *p == 0 || *p == 1 => r#""]"#.to_string(),
+            CommentVariant::MacroDocEq(_, p) => {
+                r#"""#.to_string() + &"#".repeat(p.saturating_sub(1)) + "]"
             }
-        } else {
-            "".to_string()
+            CommentVariant::SlashAsteriskAsterisk
+            | CommentVariant::SlashAsteriskEM
+            | CommentVariant::SlashAsterisk => "*/".to_string(),
+            _ => "".to_string(),
         }
     }
 }
@@ -151,6 +168,27 @@ impl std::hash::Hash for TrimmedLiteral {
     }
 }
 
+/// Adjust the provided span by a numer of `pre` and `post` characters.
+fn trim_span(content: &str, span: &mut Span, pre: usize, post: usize) {
+    span.start.column += pre;
+    if span.end.column >= post {
+        span.end.column -= post;
+    } else {
+        // look for the last character in the previous line
+        let previous_line_length = content
+            .chars()
+            .rev()
+            // assumes \n, we want to skip the first one from the back
+            .skip(post + 1)
+            .take_while(|c| *c != '\n')
+            .count();
+        span.end = LineColumn {
+            line: span.end.line - 1,
+            column: previous_line_length,
+        };
+    }
+}
+
 impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
     type Error = anyhow::Error;
     fn try_from((content, literal): (&str, proc_macro2::Literal)) -> Result<Self> {
@@ -195,9 +233,11 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
         let prefix = util::load_span_from(content.as_bytes(), prefix_span)?
             .trim_start()
             .to_string();
+
         // TODO cache the offsets for faster processing and avoiding repeated O(n) ops
         // let byteoffset2char = rendered.char_indices().enumerate().collect::<indexmap::IndexMap<_usize, (_usize, char)>>();
         // let rendered_len = byteoffset2char.len();
+
         let rendered_len = rendered.chars().count();
 
         log::trace!("extracted from source: >{}< @ {:?}", rendered, span);
@@ -224,14 +264,44 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
             };
 
             (variant, span, pre, post)
+        } else if rendered.starts_with("/*") && rendered.ends_with("*/") {
+            let variant = if rendered.starts_with("/*!") {
+                CommentVariant::SlashAsteriskEM
+            } else if rendered.starts_with("/**") {
+                CommentVariant::SlashAsteriskAsterisk
+            } else {
+                CommentVariant::SlashAsterisk
+            };
+
+            let pre = variant.prefix_len();
+            let post = variant.suffix_len();
+
+            #[cfg(debug_assertions)]
+            let orig = span.clone();
+
+            trim_span(&rendered, &mut span, pre, post);
+
+            #[cfg(debug_assertions)]
+            {
+                let raw = dbg!(util::load_span_from(&mut content.as_bytes(), orig)?);
+                let adjusted = dbg!(util::load_span_from(&mut content.as_bytes(), span.clone())?);
+                // we know pre and post only consist of single byte characters
+                // so `.len()` is way faster here yet correct.
+                assert_eq!(adjusted.len() + pre + post, raw.len());
+            }
+
+            (variant, span, pre, post)
         } else {
             // pre and post are for the rendered content
             // not necessarily for the span
 
             //^r(#+?)"(?:.*\s*)+(?=(?:"\1))("\1)$
-            lazy_static::lazy_static! {
-                static ref BOUNDED_RAW_STR: Regex = Regex::new(r##"^(r(#+)?")(?:.*\s*)+?(?=(?:"\2))("\2)\s*\]?\s*$"##).expect("BOUNEDED_RAW_STR regex compiles");
-                static ref BOUNDED_STR: Regex = Regex::new(r##"^"(?:.(?!"\\"))*?"*\s*\]?\s*"$"##).expect("BOUNEDED_STR regex compiles");
+            lazy_static! {
+                static ref BOUNDED_RAW_STR: Regex =
+                    Regex::new(r##"^(r(#+)?")(?:.*\s*)+?(?=(?:"\2))("\2)\s*\]?\s*$"##)
+                        .expect("BOUNEDED_RAW_STR regex compiles");
+                static ref BOUNDED_STR: Regex = Regex::new(r##"^"(?:.(?!"\\"))*?"*\s*\]?\s*"$"##)
+                    .expect("BOUNEDED_STR regex compiles");
             };
 
             let (pre, post) = if let Some(captures) =
@@ -280,9 +350,12 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
         let len_in_chars = rendered_len.saturating_sub(post + pre);
 
         if let Some(span_len) = span.one_line_len() {
-            let extracted = sub_chars(rendered.as_str(), pre..rendered_len.saturating_sub(post));
-            log::trace!(target: "quirks", "{:?} {}||{} for \n extracted: >{}<\n rendered:  >{}<", span, pre, post, &extracted, rendered);
-            assert_eq!(len_in_chars, span_len);
+            if log::log_enabled!(log::Level::Trace) {
+                let extracted =
+                    sub_chars(rendered.as_str(), pre..rendered_len.saturating_sub(post));
+                log::trace!(target: "quirks", "{:?} {}||{} for \n extracted: >{}<\n rendered:  >{}<", span, pre, post, &extracted, rendered);
+                assert_eq!(len_in_chars, span_len);
+            }
         }
 
         let len_in_bytes = rendered.len().saturating_sub(post + pre);
@@ -311,29 +384,27 @@ impl TrimmedLiteral {
         line: usize,
         column: usize,
     ) -> Result<TrimmedLiteral, String> {
-        if content.contains("\n") {
-            return Err("Cannot create a multiline trimmed literal".to_string());
-        }
-        let pre_text = &content[..pre];
-        let post_text = &content[content.len() - post..];
+        let content_chars_len = content.chars().count();
+        let mut span = Span {
+            start: LineColumn {
+                line,
+                column: column,
+            },
+            end: LineColumn {
+                line,
+                column: column + content_chars_len,
+            },
+        };
+
+        trim_span(content, &mut span, pre, post + 1);
+
         Ok(TrimmedLiteral {
             variant,
-            span: Span {
-                start: LineColumn {
-                    line,
-                    column: column + pre_text.chars().count(),
-                },
-                end: LineColumn {
-                    line,
-                    column: column + content.chars().count() - post_text.chars().count() - 1,
-                },
-            },
+            span,
             rendered: content.to_string(),
             pre,
             post,
-            len_in_chars: content.chars().count()
-                - pre_text.chars().count()
-                - post_text.chars().count(),
+            len_in_chars: content_chars_len - pre - post,
             len_in_bytes: content.len() - pre - post,
         })
     }
@@ -520,4 +591,50 @@ impl<'a> fmt::Display for TrimmedLiteralDisplay<'a> {
 
         write!(formatter, "{}{}{}{}{}", pre, ctx1, highlight, ctx2, post)
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::documentation::tests::annotated_literals_raw;
+
+    macro_rules! block_comment_test {
+        ($name:ident, $content:literal) => {
+            #[test]
+            fn $name() {
+                const CONTENT: &str = $content;
+                let mut literals = annotated_literals_raw(CONTENT);
+                let literal = literals.next().unwrap();
+                assert!(literals.next().is_none());
+
+                let tl = TrimmedLiteral::try_from((CONTENT, literal)).unwrap();
+                assert!(CONTENT.starts_with(tl.prefix()));
+                assert!(CONTENT.ends_with(tl.suffix()));
+                assert_eq!(
+                    CONTENT
+                        .chars()
+                        .skip(tl.pre())
+                        .take(tl.len_in_chars())
+                        .collect::<String>(),
+                    tl.as_str().to_owned()
+                )
+            }
+        };
+    }
+
+    block_comment_test!(trimmed_oneline_doc, "/** dooc */");
+    block_comment_test!(trimmed_oneline_mod, "/*! dooc */");
+
+    block_comment_test!(
+        trimmed_multi_doc,
+        "/**
+mood
+*/"
+    );
+    block_comment_test!(
+        trimmed_multi_mod,
+        "/*!
+mood
+*/"
+    );
 }

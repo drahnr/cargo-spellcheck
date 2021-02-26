@@ -1109,9 +1109,9 @@ ff"#,
     );
 }
 
-pub(crate) fn annotated_literals(source: &str) -> Vec<TrimmedLiteral> {
-    use std::convert::TryFrom;
-
+pub(crate) fn annotated_literals_raw<'a>(
+    source: &'a str,
+) -> impl Iterator<Item = proc_macro2::Literal> + 'a {
     let stream = syn::parse_str::<proc_macro2::TokenStream>(source).expect("Must be valid rust");
     stream
         .into_iter()
@@ -1130,6 +1130,12 @@ pub(crate) fn annotated_literals(source: &str) -> Vec<TrimmedLiteral> {
                 None
             }
         })
+}
+
+pub(crate) fn annotated_literals(source: &str) -> Vec<TrimmedLiteral> {
+    use std::convert::TryFrom;
+
+    annotated_literals_raw(source)
         .map(|literal| {
             TrimmedLiteral::try_from((source, literal))
                 .expect("Literals must be convertable to trimmed literals")
