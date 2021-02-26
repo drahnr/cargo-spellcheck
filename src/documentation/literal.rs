@@ -3,6 +3,7 @@ use crate::{Range, Span};
 use anyhow::{bail, Result};
 
 use fancy_regex::Regex;
+use lazy_static::lazy_static;
 use proc_macro2::LineColumn;
 use std::convert::TryFrom;
 use std::fmt;
@@ -15,6 +16,12 @@ pub enum CommentVariant {
     TripleSlash,
     /// `//!`
     DoubleSlashEM,
+    /// `/*!`
+    SlashAsteriskEM,
+    /// `/**`
+    SlashAsteriskAsterisk,
+    /// `/*`
+    SlashAsterisk,
     /// `#[doc=` with actual prefix like `#[doc=` and
     /// the total length of `r###` etc. including `r`
     /// but without `"`
@@ -55,6 +62,9 @@ impl CommentVariant {
             CommentVariant::CommonMark => "".to_string(),
             CommentVariant::DoubleSlash => "//".to_string(),
             CommentVariant::SlashStar => "/*".to_string(),
+            CommentVariant::SlashAsterisk => "/*".to_string(),
+            CommentVariant::SlashAsteriskEM => "/*!".to_string(),
+            CommentVariant::SlashAsteriskAsterisk => "/**".to_string(),
             unhandled => unreachable!(
                 "String representation for comment variant {:?} exists. qed",
                 unhandled
@@ -77,19 +87,24 @@ impl CommentVariant {
         match self {
             CommentVariant::MacroDocEq(_, 0) => 2,
             CommentVariant::MacroDocEq(_, p) => p + 1,
+            CommentVariant::SlashAsteriskAsterisk
+            | CommentVariant::SlashAsteriskEM
+            | CommentVariant::SlashAsterisk => 2,
             _ => 0,
         }
     }
 
     /// Return string which will be appended to each line
     pub fn suffix_string(&self) -> String {
-        if let CommentVariant::MacroDocEq(_, p) = self {
-            match p {
-                0 | 1 => r#""]"#.to_string(),
-                n => r#"""#.to_string() + &"#".repeat(n.saturating_sub(1)) + "]",
+        match self {
+            CommentVariant::MacroDocEq(_, p) if p == 0 || p == 1 => r#""]"#.to_string(),
+            CommentVariant::MacroDocEq(_, p) => {
+                r#"""#.to_string() + &"#".repeat(n.saturating_sub(1)) + "]"
             }
-        } else {
-            "".to_string()
+            CommentVariant::SlashAsteriskAsterisk
+            | CommentVariant::SlashAsteriskEM
+            | CommentVariant::SlashAsterisk => "*/".to_string(),
+            _ => "".to_string(),
         }
     }
 }
@@ -195,9 +210,11 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
         let prefix = util::load_span_from(content.as_bytes(), prefix_span)?
             .trim_start()
             .to_string();
+
         // TODO cache the offsets for faster processing and avoiding repeated O(n) ops
         // let byteoffset2char = rendered.char_indices().enumerate().collect::<indexmap::IndexMap<_usize, (_usize, char)>>();
         // let rendered_len = byteoffset2char.len();
+
         let rendered_len = rendered.chars().count();
 
         log::trace!("extracted from source: >{}< @ {:?}", rendered, span);
@@ -224,14 +241,32 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
             };
 
             (variant, span, pre, post)
+        } else if rendered.starts_with("/*") && rendered.ends_with("*/") {
+            let variant = if rendered.starts_with("/*!") {
+                CommentVariant::SlashAsteriskEM
+            } else if rendered.starts_with("/**") {
+                CommentVariant::SlashAsteriskAsterisk
+            } else {
+                CommentVariant::SlashAsterisk
+            };
+
+            let pre = variant.prefix_len();
+            let post = variant.suffix_len();
+            span.start.column += pre;
+            span.end.column = dbg!(span.end.column).saturating_sub(post);
+
+            (variant, span, pre, post)
         } else {
             // pre and post are for the rendered content
             // not necessarily for the span
 
             //^r(#+?)"(?:.*\s*)+(?=(?:"\1))("\1)$
-            lazy_static::lazy_static! {
-                static ref BOUNDED_RAW_STR: Regex = Regex::new(r##"^(r(#+)?")(?:.*\s*)+?(?=(?:"\2))("\2)\s*\]?\s*$"##).expect("BOUNEDED_RAW_STR regex compiles");
-                static ref BOUNDED_STR: Regex = Regex::new(r##"^"(?:.(?!"\\"))*?"*\s*\]?\s*"$"##).expect("BOUNEDED_STR regex compiles");
+            lazy_static! {
+                static ref BOUNDED_RAW_STR: Regex =
+                    Regex::new(r##"^(r(#+)?")(?:.*\s*)+?(?=(?:"\2))("\2)\s*\]?\s*$"##)
+                        .expect("BOUNEDED_RAW_STR regex compiles");
+                static ref BOUNDED_STR: Regex = Regex::new(r##"^"(?:.(?!"\\"))*?"*\s*\]?\s*"$"##)
+                    .expect("BOUNEDED_STR regex compiles");
             };
 
             let (pre, post) = if let Some(captures) =
@@ -280,9 +315,12 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
         let len_in_chars = rendered_len.saturating_sub(post + pre);
 
         if let Some(span_len) = span.one_line_len() {
-            let extracted = sub_chars(rendered.as_str(), pre..rendered_len.saturating_sub(post));
-            log::trace!(target: "quirks", "{:?} {}||{} for \n extracted: >{}<\n rendered:  >{}<", span, pre, post, &extracted, rendered);
-            assert_eq!(len_in_chars, span_len);
+            if log::log_enabled!(log::Level::Trace) {
+                let extracted =
+                    sub_chars(rendered.as_str(), pre..rendered_len.saturating_sub(post));
+                log::trace!(target: "quirks", "{:?} {}||{} for \n extracted: >{}<\n rendered:  >{}<", span, pre, post, &extracted, rendered);
+                assert_eq!(len_in_chars, span_len);
+            }
         }
 
         let len_in_bytes = rendered.len().saturating_sub(post + pre);

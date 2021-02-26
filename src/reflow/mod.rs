@@ -43,7 +43,15 @@ impl Checker for Reflow {
             .try_fold::<SuggestionSet, Result<SuggestionSet>, _, _>(
                 || SuggestionSet::new(),
                 |mut acc, (origin, chunks)| {
-                    for chunk in chunks {
+                    'c: for chunk in chunks {
+                        match chunk.variant() {
+                            CommentVariant::SlashAsterisk
+                            | CommentVariant::SlashAsteriskAsterisk
+                            | CommentVariant::SlashAsteriskEM => {
+                                continue 'c;
+                            }
+                            _ => {}
+                        }
                         let suggestions = reflow(origin, chunk, config)?;
                         acc.extend(origin.clone(), suggestions);
                     }

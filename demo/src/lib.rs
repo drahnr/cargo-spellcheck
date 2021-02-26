@@ -1,10 +1,10 @@
 //! Fancy module docs are really helpful if they contain usage examples.
 
-
 /// Pick option a also known as door #1.
 pub fn a() {
 
 }
+
 
 #[doc = "Pick option b also known as door #2."]
 pub fn b() {
