@@ -132,17 +132,17 @@ l
                 },
                 end: LineColumn {
                     line: 1,
-                    column: 22,
+                    column: 20,
                 },
             },
             Span {
                 start: LineColumn {
                     line: 1,
-                    column: 24,
+                    column: 22,
                 },
                 end: LineColumn {
                     line: 1,
-                    column: 31,
+                    column: 27,
                 },
             },
         ];

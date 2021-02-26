@@ -168,6 +168,27 @@ impl std::hash::Hash for TrimmedLiteral {
     }
 }
 
+/// Adjust the provided span by a numer of `pre` and `post` characters.
+fn trim_span(content: &str, span: &mut Span, pre: usize, post: usize) {
+    span.start.column += pre;
+    if span.end.column >= post {
+        span.end.column -= post;
+    } else {
+        // look for the last character in the previous line
+        let previous_line_length = content
+            .chars()
+            .rev()
+            // assumes \n, we want to skip the first one from the back
+            .skip(post + 1)
+            .take_while(|c| *c != '\n')
+            .count();
+        span.end = LineColumn {
+            line: span.end.line - 1,
+            column: previous_line_length,
+        };
+    }
+}
+
 impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
     type Error = anyhow::Error;
     fn try_from((content, literal): (&str, proc_macro2::Literal)) -> Result<Self> {
@@ -258,23 +279,7 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
             #[cfg(debug_assertions)]
             let orig = span.clone();
 
-            span.start.column += pre;
-            if span.end.column >= post {
-                span.end.column -= post;
-            } else {
-                // look for the last character in the previous line
-                let previous_line_length = rendered
-                    .chars()
-                    .rev()
-                    // assumes \n, we want to skip the first one from the back
-                    .skip(post + 1)
-                    .take_while(|c| *c != '\n')
-                    .count();
-                span.end = LineColumn {
-                    line: span.end.line - 1,
-                    column: previous_line_length,
-                };
-            }
+            trim_span(&rendered, &mut span, pre, post);
 
             #[cfg(debug_assertions)]
             {
@@ -379,29 +384,34 @@ impl TrimmedLiteral {
         line: usize,
         column: usize,
     ) -> Result<TrimmedLiteral, String> {
-        if content.contains("\n") {
-            return Err("Cannot create a multiline trimmed literal".to_string());
-        }
-        let pre_text = &content[..pre];
-        let post_text = &content[content.len() - post..];
+        let content_chars_len = content.chars().count();
+        let mut span = Span {
+            start: LineColumn {
+                line,
+                column: column,
+            },
+            end: LineColumn {
+                line,
+                column: column + content_chars_len,
+            },
+        };
+
+        trim_span(
+            content,
+            &mut span,
+            pre,
+            post + 1
+        );
+
         Ok(TrimmedLiteral {
             variant,
-            span: Span {
-                start: LineColumn {
-                    line,
-                    column: column + pre_text.chars().count(),
-                },
-                end: LineColumn {
-                    line,
-                    column: column + content.chars().count() - post_text.chars().count() - 1,
-                },
-            },
+            span,
             rendered: content.to_string(),
             pre,
             post,
-            len_in_chars: content.chars().count()
-                - pre_text.chars().count()
-                - post_text.chars().count(),
+            len_in_chars: content_chars_len
+                - pre
+                - post,
             len_in_bytes: content.len() - pre - post,
         })
     }
