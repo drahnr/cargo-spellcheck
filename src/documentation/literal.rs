@@ -279,22 +279,7 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
             #[cfg(debug_assertions)]
             let orig = span.clone();
 
-            span.start.column += pre;
-            if span.end.column >= post {
-                span.end.column -= post;
-            } else {
-                // look for the last character in the previous line
-                let previous_line_length = rendered.chars()
-                    .rev()
-                    // assumes \n, we want to skip the first one from the back
-                    .skip(post + 1)
-                    .take_while(|c| *c != '\n')
-                    .count();
-                span.end = LineColumn {
-                    line: span.end.line - 1,
-                    column: previous_line_length,
-                };
-            }
+            trim_span(&rendered, &mut span, pre, post);
 
             #[cfg(debug_assertions)]
             {
@@ -640,10 +625,16 @@ mod tests {
     block_comment_test!(trimmed_oneline_doc, "/** dooc */");
     block_comment_test!(trimmed_oneline_mod, "/*! dooc */");
 
-    block_comment_test!(trimmed_multi_doc, "/**
+    block_comment_test!(
+        trimmed_multi_doc,
+        "/**
 mood
-*/");
-    block_comment_test!(trimmed_multi_mod, "/*!
+*/"
+    );
+    block_comment_test!(
+        trimmed_multi_mod,
+        "/*!
 mood
-*/");
+*/"
+    );
 }
