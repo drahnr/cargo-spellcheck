@@ -33,7 +33,6 @@ crossterm = "0.19"
 # for the config file
 directories = "3"
 docopt = "1"
-enumflags2 = "0.6"
 env_logger = "0.8"
 fancy-regex = "0.5"
 fs-err = "2"

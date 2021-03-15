@@ -16,26 +16,24 @@ use crate::documentation::{CheckableChunk, ContentOrigin};
 use std::cmp;
 use std::convert::TryFrom;
 
-use enumflags2::BitFlags;
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 
 use crate::{Range, Span};
 
 /// Bitflag of available checkers by compilation / configuration.
-#[derive(Debug, Clone, Copy, BitFlags, Eq, PartialEq, Hash)]
-#[repr(u16)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub enum Detector {
     /// Hunspell lib based detector.
-    Hunspell = 0b0_0001,
+    Hunspell,
     /// Language tool server based detection.
-    LanguageTool = 0b0_0010,
+    LanguageTool,
     /// Language server rules based on nlp detector.
-    NlpRules = 0b0_0100,
+    NlpRules,
     /// Reflow according to a given max column.
-    Reflow = 0b0_1000,
+    Reflow,
     /// Detection of nothing, a test helper.
     #[cfg(test)]
-    Dummy = 0b1_0000,
+    Dummy,
 }
 
 impl Detector {
