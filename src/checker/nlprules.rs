@@ -7,7 +7,6 @@ use super::{Checker, Detector, Documentation, Suggestion, SuggestionSet};
 use crate::{CheckableChunk, ContentOrigin};
 
 use anyhow::Result;
-use fs_err as fs;
 use log::{debug, info, trace, warn};
 use rayon::prelude::*;
 
@@ -27,7 +26,8 @@ impl Checker for NlpRulesChecker {
     where
         'a: 's,
     {
-
+        let tokenizer = super::tokenizer(config.override_tokenizer.as_ref())?;
+        let rules = super::rules(config.override_tokenizer.as_ref())?;
 
         let rules = rules
             .into_iter()

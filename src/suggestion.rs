@@ -16,6 +16,10 @@ use crate::documentation::{CheckableChunk, ContentOrigin};
 use std::cmp;
 use std::convert::TryFrom;
 
+<<<<<<< HEAD
+=======
+use enumflags2::bitflags;
+>>>>>>> d690304 (always tokenize based on nlprule backend)
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 
 use crate::{Range, Span};
@@ -40,9 +44,7 @@ impl Detector {
         match self {
             Self::Hunspell => "Hunspell",
             Self::NlpRules => "NlpRules",
-            Self::LanguageTool => "LanguageTool",
             Self::Reflow => "Reflow",
-            #[cfg(test)]
             Self::Dummy => "Dummy",
         }
     }
