@@ -14,10 +14,6 @@ use rayon::prelude::*;
 use nlprule::types::Suggestion as NlpFix;
 use nlprule::{Rules, Tokenizer};
 
-static DEFAULT_TOKENIZER_BYTES: &[u8] =
-    include_bytes!(concat!(env!("OUT_DIR"), "/en_tokenizer.bin"));
-static DEFAULT_RULES_BYTES: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/en_rules.bin"));
-
 pub(crate) struct NlpRulesChecker;
 
 impl Checker for NlpRulesChecker {
@@ -31,33 +27,7 @@ impl Checker for NlpRulesChecker {
     where
         'a: 's,
     {
-        info!("Loading tokenizer...");
 
-        let tokenizer = config.override_tokenizer.as_ref().map_or_else(
-            || {
-                Ok(Tokenizer::from_reader(&mut &*DEFAULT_TOKENIZER_BYTES)
-                    .expect("build.rs pulls valid tokenizer description. qed"))
-            },
-            |path| -> Result<Tokenizer> {
-                let f = fs::File::open(&path)?;
-                Ok(Tokenizer::from_reader(f)?)
-            },
-        )?;
-
-        info!("Loaded tokenizer.");
-
-        info!("Loading rules..");
-
-        let rules = config.override_rules.as_ref().map_or_else(
-            || {
-                Ok(Rules::from_reader(&mut &*DEFAULT_RULES_BYTES)
-                    .expect("build.rs pulls valid rules set. qed"))
-            },
-            |path| -> Result<Rules> {
-                let f = fs::File::open(&path)?;
-                Ok(Rules::from_reader(f)?)
-            },
-        )?;
 
         let rules = rules
             .into_iter()
