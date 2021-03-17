@@ -161,7 +161,7 @@ impl Checker for HunspellChecker {
                         trace!("{:?}", &plain);
                         let txt = plain.as_str();
                         let hunspell = &*hunspell.0;
-                        for range in tokenize(txt) {
+                        for range in tokenize(txt, config.tokenization_splitchars.as_str())? {
                             let word = sub_chars(txt, range.clone());
                             if transform_regex.is_empty() {
                                 obtain_suggestions(

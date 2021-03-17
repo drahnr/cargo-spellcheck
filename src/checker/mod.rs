@@ -39,28 +39,28 @@ pub(crate) trait Checker {
 /// Returns the a vector of ranges for the input str.
 ///
 /// All ranges are in characters.
-fn tokenize(s: &str) -> Vec<Range> {
+fn tokenize_naive(s: &str, char_offset: usize, splitchars: &str) -> Vec<Range> {
     let mut started = false;
-    let mut linear_start = 0usize;
+    // in characters
+    let mut linear_start = 0;
     let mut linear_end;
-    let mut bananasplit = Vec::with_capacity(32);
-    let _fin_char_idx = 0usize;
 
-    let blacklist = "\";:,.?!#(){}[]-\n\r/`".to_owned();
-    let is_ignore_char = |c: char| c.is_whitespace() || blacklist.contains(c);
+    // very few sentences have more than 32 words, hence ranges.
+    let mut bananasplit = Vec::with_capacity(32);
+
+    let is_split_char = move |c: char| { c.is_whitespace() || splitchars.contains(c) };
 
     for (c_idx, (_byte_offset, c)) in s.char_indices().enumerate() {
-        if is_ignore_char(c) {
+        if is_split_char(c) {
             linear_end = c_idx;
             if started {
-                bananasplit.push(linear_start..linear_end);
+                let range = Range {
+                    start: linear_start + char_offset,
+                    end: linear_end + char_offset,
+                };
+                bananasplit.push(range);
             }
             started = false;
-        // TODO handle hyphenation
-        // if c == '\n' {
-        //     column = 0;
-        //     line += 1;
-        // }
         } else {
             if !started {
                 linear_start = c_idx;
@@ -80,6 +80,27 @@ fn tokenize(s: &str) -> Vec<Range> {
         }
     }
     bananasplit
+}
+
+/// Recommeneded default split chars for intra sentence spliting:
+/// `splitchars = "\";:,?!#(){}[]\n\r/`"`
+fn tokenize(s: &str, splitchars: &str) -> Result<Vec<Range>> {
+    use std::{fs, str::FromStr};
+    use srx::SRX;
+
+    let srx = SRX::from_str(&fs::read_to_string("data/segment.srx")?)?;
+    let english_rules = srx.language_rules("en_US");
+
+    let previous_end = 0;
+    let mut char_counter = previous_end;
+    let mut acc = Vec::new();
+
+    for byte_range in english_rules.split_ranges(s) {
+        char_counter += s[previous_end..=(byte_range.start-1)].chars().count();
+        acc.extend(tokenize_naive(&s[byte_range], char_counter, splitchars));
+    }
+
+    Ok(acc)
 }
 
 fn invoke_checker_inner<'a, 's, T>(
@@ -184,7 +205,7 @@ pub mod tests {
 
     #[test]
     fn tokens() {
-        let ranges: Vec<Range> = tokenize(TEXT);
+        let ranges: Vec<Range> = tokenize(TEXT, "{}()[]/|,.!?").unwrap();
         for (range, expect) in ranges.into_iter().zip(TOKENS.iter()) {
             assert_eq!(&&TEXT[range], expect);
         }

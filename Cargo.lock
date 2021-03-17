@@ -279,6 +279,7 @@ dependencies = [
  "regex",
  "serde",
  "signal-hook 0.3.4",
+ "srx",
  "syn",
  "toml",
  "url 2.2.1",
@@ -2657,8 +2658,7 @@ checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 [[package]]
 name = "srx"
 version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "23ecf4aeafaf1f47c0a089702f563118100dead4b5b6ee0c50671c6f00f2b9d8"
+source = "git+https://github.com/drahnr/srx.git#7e27b2a2cac58bca507c9732eca55e0f19e26972"
 dependencies = [
  "regex",
  "serde",
