@@ -48,6 +48,10 @@ impl Quirks {
     }
 }
 
+fn default_tokenization_splitchars() -> String {
+    "\";:,?!#(){}[]\n\r/`".to_owned()
+}
+
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct HunspellConfig {
@@ -64,6 +68,10 @@ pub struct HunspellConfig {
     /// Additional quirks besides dictionary lookups.
     #[serde(default)]
     pub quirks: Quirks,
+
+
+    #[serde(default = "default_tokenization_splitchars")]
+    pub tokenization_splitchars: String,
 }
 
 impl Default for HunspellConfig {
@@ -73,6 +81,7 @@ impl Default for HunspellConfig {
             search_dirs: SearchDirs::default(),
             extra_dictionaries: Vec::default(),
             quirks: Quirks::default(),
+            tokenization_splitchars: default_tokenization_splitchars(),
         }
     }
 }

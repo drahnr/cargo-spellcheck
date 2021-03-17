@@ -243,9 +243,7 @@ fn default_nlprules() -> Option<NlpRulesConfig> {
 fn default_hunspell() -> Option<HunspellConfig> {
     Some(HunspellConfig {
         lang: Some("en_US".to_owned()),
-        search_dirs: SearchDirs::default(),
-        extra_dictionaries: Vec::new(),
-        quirks: Quirks::default(),
+        .. Default::default()
     })
 }
 
