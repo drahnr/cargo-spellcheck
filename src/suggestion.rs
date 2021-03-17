@@ -25,8 +25,6 @@ use crate::{Range, Span};
 pub enum Detector {
     /// Hunspell lib based detector.
     Hunspell,
-    /// Language tool server based detection.
-    LanguageTool,
     /// Language server rules based on nlp detector.
     NlpRules,
     /// Reflow according to a given max column.
@@ -73,10 +71,10 @@ pub fn get_terminal_size() -> usize {
 
 // impl
 // // TODO use this to display included compiled backends
-// fn list_available() {
+// fn list_available() -> bool {
 //     match detector {
-//         Detector::Hunspell => cfg!(feature="hunspell"),
-//         Detector::LanguageTool => cfg!(feature="languagetool"),
+//         Detector::Hunspell => cfg!(feature="hunspell") as bool,
+//         Detector::NlpRules => cfg!(feature="nlprules") as bool,
 //     }
 // }
 

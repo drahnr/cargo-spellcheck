@@ -65,9 +65,7 @@ url = { version = "2", features = ["serde"] }
 hunspell-rs = { version = "0.3", default-features=false, optional = true }
 srx = {version = "^0.1.2", features = ["from_xml"], optional = true }
 
-# full grammar check
-languagetool-rs = { version = "0.1", package = "languagetool", optional = true }
-
+# full grammar check, but also tokenization and disambiguation
 nlprule = { version = "0.4.6", optional = true }
 
 [dev-dependencies]
@@ -80,11 +78,10 @@ maplit = "1"
 default = ["hunspell", "nlprules"]
 
 # deprecated! pending removal
-languagetool = ["languagetool-rs"]
 hunspell = ["hunspell-rs/bundled", "srx"]
 nlprules = ["nlprule", "nlprule-build", "srx"]
 
-all = ["hunspell", "nlprules", "languagetool"]
+all = ["hunspell", "nlprules"]
 
 [profile.dev]
 build-override = { opt-level = 2 }
