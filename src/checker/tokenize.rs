@@ -61,3 +61,24 @@ pub(crate) fn rules<P: AsRef<Path> + Clone>(override_path: Option<P>) -> Result<
     // so this is fine for now
     rules_inner(override_path)
 }
+
+
+use crate::Range;
+
+pub(crate) fn apply_tokenizer<'t, 'z>(tokenizer: &'t Arc<Tokenizer>, text: &'z str) -> impl std::iter::Iterator<Item=Range> + 'z where 't: 'z {
+    tokenizer.pipe(text)
+        .into_iter()
+        .map(|sentence| {
+            sentence
+                .into_iter()
+                .filter_map(|token| {
+                    let range = token.char_span.0 .. token.char_span.1;
+                    if range.is_empty() {
+                        None
+                    } else {
+                        Some(range)
+                    }
+                })
+        })
+        .flatten()
+}

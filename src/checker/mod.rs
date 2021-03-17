@@ -111,6 +111,9 @@ pub mod tests {
     use crate::span::Span;
     use crate::ContentOrigin;
     use crate::LineColumn;
+    use crate::Range;
+    use std::path::PathBuf;
+
 
     use crate::fluff_up;
 
@@ -120,14 +123,17 @@ pub mod tests {
             "With",
             "markdown",
             "removed",
+            ",",
             "for",
-            "sure"
+            "sure",
+            ".",
         ];
     }
 
     #[test]
     fn tokens() {
-        let ranges: Vec<Range> = tokenize(TEXT, "{}()[]/|,.!?").unwrap();
+        let tokenizer = tokenizer::<&PathBuf>(None).unwrap();
+        let ranges: Vec<Range> = dbg!(apply_tokenizer(&tokenizer, TEXT).collect());
         for (range, expect) in ranges.into_iter().zip(TOKENS.iter()) {
             assert_eq!(&&TEXT[range], expect);
         }
@@ -157,9 +163,10 @@ pub mod tests {
         {
             assert_eq!(
                 suggestion.replacements,
-                vec![format!("replacement_{}", index)]
+                vec![format!("replacement_{}", index)],
+                "found vs expected replacement"
             );
-            assert_eq!(suggestion.span, *expected_span);
+            assert_eq!(suggestion.span, *expected_span, "found vs expected span");
         }
     }
 

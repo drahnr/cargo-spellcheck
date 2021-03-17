@@ -289,19 +289,6 @@ extra_dictionaries = ["/home/bernhard/test.dic"]
     }
 
     #[test]
-    fn partial_2() {
-        assert!(Config::parse(
-            r#"
-[Hunspell]
-lang = "en_US"
-search_dirs = ["/usr/lib64/hunspell"]
-extra_dictionaries = ["/home/bernhard/test.dic"]
-			"#,
-        )
-        .is_err());
-    }
-
-    #[test]
     fn partial_3() {
         let cfg = Config::parse(
             r#"
