@@ -65,7 +65,7 @@ jobs:
   - name: pr-validate
     build_logs_to_retain: 10
     public: true
-    serial: false
+    serial: true
     plan:
     - in_parallel:
       - get: git-pull-request-resource
@@ -114,7 +114,7 @@ jobs:
 
     - in_parallel:
       - task: compile-pr
-        timeout: 10m
+        timeout: 20m
         image: env-glibc
         config:
           platform: linux
@@ -159,7 +159,7 @@ jobs:
             status: failure
 
       - task: unit-tests-pr
-        timeout: 10m
+        timeout: 20m
         image: env-glibc
         config:
           platform: linux
@@ -193,7 +193,7 @@ jobs:
             status: failure
 
       - task: pr-win64-cross-build
-        timeout: 15m
+        timeout: 20m
         image: env-glibc
         config:
           platform: linux
