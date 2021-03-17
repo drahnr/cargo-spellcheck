@@ -63,7 +63,6 @@ url = { version = "2", features = ["serde"] }
 
 # dictionary lookup with affixes
 hunspell-rs = { version = "0.3", default-features=false, optional = true }
-srx = {version = "^0.1.2", features = ["from_xml"], optional = true }
 
 # full grammar check, but also tokenization and disambiguation
 nlprule = { version = "0.4.6", optional = true }
@@ -78,13 +77,10 @@ maplit = "1"
 default = ["hunspell", "nlprules"]
 
 # deprecated! pending removal
-hunspell = ["hunspell-rs/bundled", "srx"]
-nlprules = ["nlprule", "nlprule-build", "srx"]
+hunspell = ["hunspell-rs/bundled"]
+nlprules = ["nlprule", "nlprule-build"]
 
 all = ["hunspell", "nlprules"]
 
 [profile.dev]
 build-override = { opt-level = 2 }
-
-[patch.crates-io]
-srx = { git = "https://github.com/drahnr/srx.git", features = ["from_xml"] }
