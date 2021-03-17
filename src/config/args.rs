@@ -192,9 +192,8 @@ impl Args {
                 warn!("Reflow is a separate sub command.")
             }
 
-            const EXPECTED_COUNT: usize = 1_usize
-                + cfg!(feature = "nlprule") as usize
-                + cfg!(feature = "hunspell") as usize;
+            const EXPECTED_COUNT: usize =
+                1_usize + cfg!(feature = "nlprule") as usize + cfg!(feature = "hunspell") as usize;
 
             if checkers.iter().unique().count() == EXPECTED_COUNT {
                 bail!("Argument override for checkers disabled all checkers")

@@ -231,7 +231,7 @@ fn default_nlprules() -> Option<NlpRulesConfig> {
 fn default_hunspell() -> Option<HunspellConfig> {
     Some(HunspellConfig {
         lang: Some("en_US".to_owned()),
-        .. Default::default()
+        ..Default::default()
     })
 }
 

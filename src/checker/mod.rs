@@ -33,7 +33,6 @@ pub(crate) trait Checker {
         'a: 's;
 }
 
-
 fn invoke_checker_inner<'a, 's, T>(
     documentation: &'a Documentation,
     config: Option<&T::Config>,
@@ -113,7 +112,6 @@ pub mod tests {
     use crate::LineColumn;
     use crate::Range;
     use std::path::PathBuf;
-
 
     use crate::fluff_up;
 
