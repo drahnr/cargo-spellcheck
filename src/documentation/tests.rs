@@ -260,7 +260,6 @@ Erronbeous bold uetchkp"#;
         );
     }
 
-
     #[test]
     fn word_extraction_commonmark_small() {
         // raw source
@@ -293,7 +292,6 @@ Erronbeous bold uetchkp"#;
             ]
         );
     }
-
 
     #[test]
     fn word_extraction_commonmark_large() {

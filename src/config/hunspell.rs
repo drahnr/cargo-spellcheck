@@ -69,7 +69,6 @@ pub struct HunspellConfig {
     #[serde(default)]
     pub quirks: Quirks,
 
-
     #[serde(default = "default_tokenization_splitchars")]
     pub tokenization_splitchars: String,
 }
