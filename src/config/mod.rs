@@ -72,10 +72,6 @@ pub struct Config {
     #[serde(alias = "NlpRules")]
     #[serde(default = "default_nlprules")]
     pub nlprules: Option<NlpRulesConfig>,
-    #[serde(alias = "LanguageTool")]
-    #[serde(alias = "languageTool")]
-    #[serde(alias = "Languagetool")]
-    pub languagetool: Option<LanguageToolConfig>,
     #[serde(alias = "ReFlow")]
     #[serde(alias = "Reflow")]
     pub reflow: Option<ReflowConfig>,
@@ -214,7 +210,6 @@ impl Config {
         match detector {
             Detector::Hunspell => self.hunspell.is_some(),
             Detector::NlpRules => self.nlprules.is_some(),
-            Detector::LanguageTool => self.languagetool.is_some(),
             Detector::Reflow => self.reflow.is_some(),
             #[cfg(test)]
             Detector::Dummy => true,
@@ -222,13 +217,7 @@ impl Config {
     }
 
     pub fn full() -> Self {
-        let languagetool = LanguageToolConfig {
-            url: url::Url::parse("http://127.0.0.1:8010").expect("Default ip must be ok"),
-        };
-        Self {
-            languagetool: Some(languagetool),
-            ..Default::default()
-        }
+        Default::default()
     }
 }
 
@@ -254,10 +243,6 @@ impl Default for Config {
             skip_readme: false,
             hunspell: default_hunspell(),
             nlprules: default_nlprules(),
-            // disabled by default, it
-            // requires additional setup and
-            // deprecated now
-            languagetool: None,
             reflow: Some(ReflowConfig::default()),
         }
     }
@@ -273,9 +258,6 @@ mod tests {
             r#"
 dev_comments = true
 skip-readme = true
-
-[LanguageTool]
-url = "http://127.0.0.1:8010/"
 
 [Hunspell]
 lang = "en_US"
@@ -311,9 +293,6 @@ extra_dictionaries = ["/home/bernhard/test.dic"]
     fn partial_2() {
         assert!(Config::parse(
             r#"
-[languageTool]
-
-
 [Hunspell]
 lang = "en_US"
 search_dirs = ["/usr/lib64/hunspell"]
@@ -341,16 +320,12 @@ extra_dictionaries = ["/home/bernhard/test.dic"]
     fn partial_4() {
         let cfg = Config::parse(
             r#"
-[LanguageTool]
-url = "http://127.0.0.1:8010/"
-
 [Hunspell]
 lang = "en_US"
 			"#,
         )
         .unwrap();
         let _hunspell = cfg.hunspell.expect("Must contain hunspell cfg");
-        let _langtool = cfg.languagetool.expect("Must contain language tool cfg");
     }
 
     #[test]

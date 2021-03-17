@@ -53,10 +53,6 @@ pub enum CheckerType {
     #[serde(alias = "nlprules")]
     #[serde(alias = "nlpRules")]
     NlpRules,
-    #[serde(alias = "languageTool")]
-    #[serde(alias = "Languagetool")]
-    #[serde(alias = "languagetool")]
-    LanguageTool,
     #[serde(alias = "ReFlow")]
     #[serde(alias = "reflow")]
     Reflow,
@@ -191,12 +187,6 @@ impl Args {
                     warn!("Nlprules checker was never configured.")
                 }
             }
-            #[cfg(feature = "languagetool")]
-            if !checkers.contains(&CheckerType::LanguageTool) {
-                if !config.languagetool.take().is_some() {
-                    warn!("Languagetool checker was never configured.")
-                }
-            }
 
             if !checkers.contains(&CheckerType::Reflow) {
                 warn!("Reflow is a separate sub command.")
@@ -204,8 +194,7 @@ impl Args {
 
             const EXPECTED_COUNT: usize = 1_usize
                 + cfg!(feature = "nlprule") as usize
-                + cfg!(feature = "hunspell") as usize
-                + cfg!(feature = "languagetool") as usize;
+                + cfg!(feature = "hunspell") as usize;
 
             if checkers.iter().unique().count() == EXPECTED_COUNT {
                 bail!("Argument override for checkers disabled all checkers")
@@ -334,13 +323,6 @@ impl Args {
                 }
             } else {
                 config.nlprules = None;
-            }
-            if filter_set.contains(&CheckerType::LanguageTool) {
-                if config.languagetool.is_none() {
-                    warn!("Language tool must be explicitly configured via config file")
-                }
-            } else {
-                config.languagetool = None;
             }
             // reflow is a different subcommand, not relevant
         }
@@ -539,6 +521,5 @@ mod tests {
             assert!(cfg.override_rules.is_none());
             assert!(cfg.override_tokenizer.is_none());
         });
-        assert_matches!(config.languagetool, None => {});
     }
 }

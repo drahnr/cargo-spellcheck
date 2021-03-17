@@ -13,13 +13,11 @@ use log::debug;
 
 #[cfg(feature = "hunspell")]
 mod hunspell;
-#[cfg(feature = "languagetool")]
-mod languagetool;
 
 #[cfg(feature = "nlprules")]
 mod nlprules;
 
-#[cfg(any(feature = "languagetool", feature = "hunspell"))]
+#[cfg(feature = "hunspell")]
 mod quirks;
 
 /// Implementation for a checker
@@ -147,15 +145,6 @@ where
     'a: 's,
 {
     let mut collective = SuggestionSet::<'s>::new();
-
-    invoke_checker!(
-        "languagetool",
-        self::languagetool::LanguageToolChecker,
-        documentation,
-        config,
-        config.languagetool.as_ref(),
-        &mut collective
-    );
 
     invoke_checker!(
         "nlprules",
