@@ -145,6 +145,16 @@ l
                     column: 27,
                 },
             },
+            Span {
+                start: LineColumn {
+                    line: 1,
+                    column: 28,
+                },
+                end: LineColumn {
+                    line: 1,
+                    column: 28,
+                },
+            },
         ];
 
         crate::checker::tests::extraction_test_body(TEST, EXPECTED);
@@ -156,6 +166,7 @@ l
         let fn_with_doc = TEST
             .lines()
             .skip(18)
+            .take(4)
             .fold(String::new(), |acc, line| acc + line);
 
         const EXPECTED: &[Span] = &[
@@ -176,13 +187,13 @@ l
                 },
                 end: LineColumn {
                     line: 1,
-                    column: 17,
+                    column: 18,
                 },
             },
             Span {
                 start: LineColumn {
                     line: 1,
-                    column: 19,
+                    column: 20,
                 },
                 end: LineColumn {
                     line: 1,
@@ -202,75 +213,15 @@ l
             Span {
                 start: LineColumn {
                     line: 1,
-                    column: 28,
+                    column: 27,
                 },
                 end: LineColumn {
                     line: 1,
-                    column: 32,
-                },
-            },
-            Span {
-                start: LineColumn {
-                    line: 1,
-                    column: 35,
-                },
-                end: LineColumn {
-                    line: 1,
-                    column: 38,
-                },
-            },
-            Span {
-                start: LineColumn {
-                    line: 1,
-                    column: 40,
-                },
-                end: LineColumn {
-                    line: 1,
-                    column: 43,
-                },
-            },
-            Span {
-                start: LineColumn {
-                    line: 1,
-                    column: 45,
-                },
-                end: LineColumn {
-                    line: 1,
-                    column: 47,
-                },
-            },
-            Span {
-                start: LineColumn {
-                    line: 1,
-                    column: 49,
-                },
-                end: LineColumn {
-                    line: 1,
-                    column: 53,
-                },
-            },
-            Span {
-                start: LineColumn {
-                    line: 1,
-                    column: 55,
-                },
-                end: LineColumn {
-                    line: 1,
-                    column: 57,
-                },
-            },
-            Span {
-                start: LineColumn {
-                    line: 1,
-                    column: 59,
-                },
-                end: LineColumn {
-                    line: 1,
-                    column: 61,
+                    column: 27,
                 },
             },
         ];
 
-        crate::checker::tests::extraction_test_body(fn_with_doc.as_str(), EXPECTED);
+        crate::checker::tests::extraction_test_body(dbg!(fn_with_doc.as_str()), EXPECTED);
     }
 }

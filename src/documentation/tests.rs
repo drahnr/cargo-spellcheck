@@ -151,7 +151,7 @@ mod e2e {
 
     #[test]
     fn file_justone() {
-        end2end_file_rust!("demo/src/nested/justone.rs", 1);
+        end2end_file_rust!("demo/src/nested/justone.rs", 2);
     }
 
     #[test]
@@ -188,13 +188,13 @@ mod e2e {
             let chunk = chunks
                 .iter()
                 .next()
-                .expect("Commonmark files always contain a chunk. qed");
+                .expect("Commonmark files always contains a chunk. qed");
 
             assert_eq!(chunks.len(), 1);
             assert_eq!(RAW, chunk.as_str());
 
-            let plain = chunk.erase_cmark();
-            assert_eq!($plain, plain.as_str());
+            let plain = dbg!(chunk.erase_cmark());
+            assert_eq!(dbg!($plain), plain.as_str());
 
             let mut it = suggestion_set.iter();
             let (_, suggestions) = it.next().expect("Dummy checker produces one error per tokenized word. qed");
@@ -260,8 +260,43 @@ Erronbeous bold uetchkp"#;
         );
     }
 
+
     #[test]
-    fn word_extraction_commonmark() {
+    fn word_extraction_commonmark_small() {
+        // raw source
+        const SOURCE: &'static str = r###"## cmark test 1
+
+🐢 are _so_ *cute*!
+"###;
+
+        // extracted content as present as provided by `chunk.as_str()`
+        const RAW: &'static str = SOURCE;
+
+        // markdown erased residue
+        const PLAIN: &'static str = r##"cmark test 1
+
+🐢 are so cute!"##;
+
+        bananasplit!(
+            ContentOrigin::TestEntityCommonMark;
+            SOURCE -> RAW -> PLAIN
+            expect
+            [
+                "cmark",
+                "test",
+                "1",
+                "🐢",
+                "are",
+                "so",
+                "cute",
+                "!",
+            ]
+        );
+    }
+
+
+    #[test]
+    fn word_extraction_commonmark_large() {
         // raw source
         const SOURCE: &'static str = r#"# cmark test
 
@@ -307,11 +342,14 @@ The end.🐢"#;
                 "relly",
                 "boring",
                 "test",
+                ".",
                 "Engineering",
                 "Breakage",
                 "anticipated",
+                "?",
                 "The",
                 "end",
+                ".",
                 "🐢",
             ]
         );

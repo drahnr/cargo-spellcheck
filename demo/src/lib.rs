@@ -16,7 +16,7 @@ pub fn c() {
 
 }
 
-#[doc = r#"Risk is not your thing, just tkae the money and run."#]
+#[doc = r#"Risk not ya ting?"#]
 pub fn take_the_money_and_leave() {
 
 }

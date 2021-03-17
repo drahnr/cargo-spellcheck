@@ -2,7 +2,8 @@
 //!
 //! A test checker, only available for unit tests.
 
-use super::Checker;
+// use super::tokenize;
+use super::{apply_tokenizer, Checker};
 use crate::documentation::Documentation;
 use crate::suggestion::{Detector, Suggestion, SuggestionSet};
 use crate::util::sub_chars;
@@ -23,6 +24,8 @@ impl Checker for DummyChecker {
     where
         'a: 's,
     {
+        let tokenizer = super::tokenizer::<&std::path::PathBuf>(None)?;
+
         let suggestions = docu.iter().try_fold::<SuggestionSet, _, Result<_>>(
             SuggestionSet::new(),
             |mut acc, (origin, chunks)| {
@@ -31,11 +34,12 @@ impl Checker for DummyChecker {
                     .next()
                     .expect("DummyChecker expects at least one chunk");
                 let plain = chunk.erase_cmark();
-                for (index, range) in dbg!(tokenize(plain.as_str(), ".!?;")?).into_iter().enumerate() {
+                let txt = plain.as_str();
+                for (index, range) in apply_tokenizer(&tokenizer, txt).enumerate() {
                     trace!(
                         "****Token[{}]: >{}<",
                         index,
-                        sub_chars(plain.as_str(), range.clone())
+                        sub_chars(txt, range.clone())
                     );
                     let detector = Detector::Dummy;
                     let range2span = plain.find_spans(range.clone());
