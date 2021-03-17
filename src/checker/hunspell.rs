@@ -5,7 +5,7 @@
 //! the defined affixes.
 //! Can handle multiple dictionaries.
 
-use super::{tokenize, Checker, Detector, Documentation, Suggestion, SuggestionSet};
+use super::{Checker, Detector, Documentation, Suggestion, SuggestionSet};
 
 use crate::documentation::{CheckableChunk, ContentOrigin, PlainOverlay};
 use crate::util::sub_chars;
@@ -149,6 +149,9 @@ impl Checker for HunspellChecker {
             }
         };
 
+        // TODO allow override
+        let tokenizer = super::tokenizer::<&PathBuf>(None)?;
+
         let suggestions = docu
             .par_iter()
             .try_fold::<SuggestionSet, Result<_>, _, _>(
@@ -161,8 +164,11 @@ impl Checker for HunspellChecker {
                         trace!("{:?}", &plain);
                         let txt = plain.as_str();
                         let hunspell = &*hunspell.0;
-                        for range in tokenize(txt, config.tokenization_splitchars.as_str())? {
+
+                        for token in tokenizer.pipe(txt).into_iter().map(|sentence|sentence.into_iter()).flatten() {
+                            let range = token.char_span.0..(token.char_span.1+1);
                             let word = sub_chars(txt, range.clone());
+                            assert!(token.sentence.contains(&word));
                             if transform_regex.is_empty() {
                                 obtain_suggestions(
                                     &plain,

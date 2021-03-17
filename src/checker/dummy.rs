@@ -2,7 +2,6 @@
 //!
 //! A test checker, only available for unit tests.
 
-use super::tokenize;
 use super::Checker;
 use crate::documentation::Documentation;
 use crate::suggestion::{Detector, Suggestion, SuggestionSet};
