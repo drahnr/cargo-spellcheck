@@ -216,6 +216,7 @@ dependencies = [
  "maplit",
  "nlprule",
  "nlprule-build",
+ "num_cpus",
  "proc-macro2",
  "pulldown-cmark",
  "ra_ap_syntax",

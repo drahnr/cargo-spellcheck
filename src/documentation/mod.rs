@@ -176,7 +176,7 @@ impl Documentation {
     pub fn load_from_str(origin: ContentOrigin, content: &str, dev_comments: bool) -> Self {
         let mut docs = Documentation::new();
 
-        match &origin {
+        match origin.clone() {
             ContentOrigin::RustDocTest(_path, span) => {
                 if let Ok(excerpt) = load_span_from(&mut content.as_bytes(), span.clone()) {
                     docs.add_rust(origin.clone(), excerpt.as_str(), dev_comments)
@@ -185,14 +185,14 @@ impl Documentation {
                     Ok(())
                 }
             }
-            ContentOrigin::RustSourceFile(_path) => docs.add_rust(origin, content, dev_comments),
-            ContentOrigin::CommonMarkFile(_path) => docs.add_commonmark(origin, content),
+            origin @ ContentOrigin::RustSourceFile(_) => docs.add_rust(origin, content, dev_comments),
+            origin @ ContentOrigin::CommonMarkFile(_) => docs.add_commonmark(origin, content),
             #[cfg(test)]
-            ContentOrigin::TestEntityRust => docs.add_rust(origin, content, dev_comments),
+            origin @ ContentOrigin::TestEntityRust  => docs.add_rust(origin, content, dev_comments),
             #[cfg(test)]
-            ContentOrigin::TestEntityCommonMark => docs.add_commonmark(origin, content),
+            origin @ ContentOrigin::TestEntityCommonMark => docs.add_commonmark(origin, content),
         }
-        .unwrap_or_else(|e| warn!("BUG! << failed to load yada >> {}", e));
+        .unwrap_or_else(move |e| warn!("BUG! << failed to load content from {} (dev_comments={:?}) >> {}", origin, dev_comments, e));
         docs
     }
 }

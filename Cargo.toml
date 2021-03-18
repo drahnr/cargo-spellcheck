@@ -40,6 +40,7 @@ indexmap = { version = "1", features=["rayon", "serde"] }
 itertools = "0.10"
 lazy_static = "1"
 log = "0.4"
+num_cpus = "1.13"
 proc-macro2 = { version = "1", features = ["span-locations"] }
 pulldown-cmark = "0.8"
 ra_ap_syntax = "0.0.42"

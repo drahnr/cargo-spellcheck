@@ -106,7 +106,7 @@ fn check_chunk<'a>(
     } in nlpfixes
     {
         if start > end {
-            warn!("BUG: crate nlprule yielded a negative range, please file a bug");
+            warn!("BUG: crate nlprule yielded a negative range {:?} for chunk in {}, please file a bug", start..end, &origin);
             continue 'nlp;
         }
         let range = start..end;
