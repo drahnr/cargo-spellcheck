@@ -148,6 +148,14 @@ impl Checker for HunspellChecker {
                 )
             }
         };
+        // FIXME rename the config option
+        let ignorelist = dbg!(config.tokenization_splitchars.as_str());
+        // without these, a lot of those would be flagged as mistakes.
+        debug_assert!(ignorelist.contains(','));
+        debug_assert!(ignorelist.contains('.'));
+        debug_assert!(ignorelist.contains(';'));
+        debug_assert!(ignorelist.contains('!'));
+        debug_assert!(ignorelist.contains('?'));
 
         // TODO allow override
         let tokenizer = super::tokenizer::<&PathBuf>(None)?;
@@ -165,8 +173,11 @@ impl Checker for HunspellChecker {
                         let txt = plain.as_str();
                         let hunspell = &*hunspell.0;
 
-                        for range in apply_tokenizer(&tokenizer, txt) {
+                        'tokenization: for range in apply_tokenizer(&tokenizer, txt) {
                             let word = sub_chars(txt, range.clone());
+                            if range.len() == 1 && word.chars().next().filter(|c| ignorelist.contains(*c)).is_some() {
+                                continue 'tokenization;
+                            }
                             if transform_regex.is_empty() {
                                 obtain_suggestions(
                                     &plain,
