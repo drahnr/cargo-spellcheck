@@ -112,6 +112,36 @@ impl Args {
         action
     }
 
+    /// Set the worker pool job/thread count.
+    ///
+    /// Affects the parallel processing intra checkers.
+    /// Checkers are always executed in sequence.
+    pub fn job_count(&self) -> usize {
+        match self.flag_jobs {
+            _ if cfg!(debug_assertions) => {
+                log::warn!("Debug mode always uses 1 thread!");
+                1
+            }
+            Some(jobs) if jobs == 0 => {
+                log::warn!("Cannot have less than one worker thread ({}). Retaining one worker thread.", jobs);
+                1
+            }
+            Some(jobs) if jobs > 128 => {
+                log::warn!("Setting threads beyond 128 ({}) is insane. Capping at 128", jobs);
+                128
+            }
+            Some(jobs) => {
+                log::info!("Explicitly set threads to {}", jobs);
+                jobs
+            }
+            None => {
+                // commonly we are not the only process
+                // on the machine, so use the physical cores.
+                num_cpus::get_physical()
+            }
+        }
+    }
+
     /// Adjust the raw arguments for call variants.
     ///
     /// The program could be called like `cargo-spellcheck`, `cargo spellcheck` or
