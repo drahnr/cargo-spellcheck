@@ -9,8 +9,8 @@ use anyhow::{anyhow, bail, Error, Result};
 use log::{debug, trace, warn};
 
 use fs_err as fs;
-use std::path::{Path, PathBuf};
 use std::collections::HashSet;
+use std::path::{Path, PathBuf};
 
 pub(crate) fn cwd() -> Result<PathBuf> {
     std::env::current_dir().map_err(|_e| anyhow::anyhow!("Missing cwd!"))
@@ -30,7 +30,11 @@ use proc_macro2::Spacing;
 use proc_macro2::TokenStream;
 use proc_macro2::TokenTree;
 
-fn extract_modules_recurse_collect<P: AsRef<Path>>(path: P, acc: &mut HashSet<PathBuf>, mod_name: &str) -> Result<()> {
+fn extract_modules_recurse_collect<P: AsRef<Path>>(
+    path: P,
+    acc: &mut HashSet<PathBuf>,
+    mod_name: &str,
+) -> Result<()> {
     let path = path.as_ref();
     let base = if let Some(base) = path.parent() {
         trace!("Parent path of {} is {}", path.display(), base.display());
@@ -44,20 +48,23 @@ fn extract_modules_recurse_collect<P: AsRef<Path>>(path: P, acc: &mut HashSet<Pa
     let path1 = base.join(&mod_name).join("mod.rs");
     let path2 = base.join(&mod_name).with_extension("rs");
     let path3 = base
-        .join(
-            path.file_stem()
-                .expect("If parent exists, should work™"),
-        )
+        .join(path.file_stem().expect("If parent exists, should work™"))
         .join(mod_name)
         .with_extension("rs");
     // avoid IO
     if acc.contains(&path1) || acc.contains(&path2) || acc.contains(&path3) {
-        return Ok(())
+        return Ok(());
     }
     match (path1.is_file(), path2.is_file(), path3.is_file()) {
-        (true, false, false) => { let _ = acc.insert(path1); },
-        (false, true, false) => { let _ = acc.insert(path2); },
-        (false, false, true) => { let _ = acc.insert(path3); },
+        (true, false, false) => {
+            let _ = acc.insert(path1);
+        }
+        (false, true, false) => {
+            let _ = acc.insert(path2);
+        }
+        (false, false, true) => {
+            let _ = acc.insert(path3);
+        }
         (true, true, _) | (true, _, true) | (_, true, true) => {
             return Err(anyhow::anyhow!(
                 "Detected both module entry files: {} and {} and {}",
@@ -76,8 +83,10 @@ fn extract_modules_recurse_collect<P: AsRef<Path>>(path: P, acc: &mut HashSet<Pa
     Ok(())
 }
 
-
-fn extract_modules_recurse<P: AsRef<Path>>(path: P, stream: TokenStream) -> Result<HashSet<PathBuf>> {
+fn extract_modules_recurse<P: AsRef<Path>>(
+    path: P,
+    stream: TokenStream,
+) -> Result<HashSet<PathBuf>> {
     let path: &Path = path.as_ref();
 
     // Ident {
@@ -122,7 +131,11 @@ fn extract_modules_recurse<P: AsRef<Path>>(path: P, stream: TokenStream) -> Resu
                     if punct.as_char() == ';' && punct.spacing() == Spacing::Alone {
                         extract_modules_recurse_collect(path, &mut acc, &mod_name)?;
                     } else {
-                        trace!("🍂 Either not alone or not a semi colon {:?} - incomplete mod {}", punct, mod_name);
+                        trace!(
+                            "🍂 Either not alone or not a semi colon {:?} - incomplete mod {}",
+                            punct,
+                            mod_name
+                        );
                     }
                 }
                 state = SeekingFor::ModulKeyword;
@@ -147,10 +160,18 @@ pub(crate) fn extract_modules_from_file<P: AsRef<Path>>(path: P) -> Result<HashS
         let stream = syn::parse_str::<proc_macro2::TokenStream>(s.as_str())
             .map_err(|e| Error::from(e).context(anyhow!("File {} has syntax errors", path_str)))?;
         let acc = extract_modules_recurse(path.to_owned(), stream)?;
-        log::debug!("🥞 Recursed into {} modules from {}", acc.len(), path.display());
+        log::debug!(
+            "🥞 Recursed into {} modules from {}",
+            acc.len(),
+            path.display()
+        );
         if log::log_enabled!(log::Level::Trace) {
             for path_rec in acc.iter() {
-                log::trace!("🥞 recurse into {} from {}", path_rec.display(), path.display());
+                log::trace!(
+                    "🥞 recurse into {} from {}",
+                    path_rec.display(),
+                    path.display()
+                );
             }
         }
         Ok(acc)
@@ -250,7 +271,10 @@ fn extract_readme(
     Ok(acc)
 }
 
-fn handle_manifest<P: AsRef<Path>>(manifest_dir: P, skip_readme: bool) -> Result<HashSet<CheckEntity>> {
+fn handle_manifest<P: AsRef<Path>>(
+    manifest_dir: P,
+    skip_readme: bool,
+) -> Result<HashSet<CheckEntity>> {
     let manifest_dir = to_manifest_dir(manifest_dir)?;
     trace!("Handle manifest in dir: {}", manifest_dir.display());
 

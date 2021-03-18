@@ -169,7 +169,10 @@ mod tests {
 
     #[test]
     fn traverse_main_rs() {
-        let _ = env_logger::builder().filter_level(log::LevelFilter::Trace).is_test(true).try_init();
+        let _ = env_logger::builder()
+            .filter_level(log::LevelFilter::Trace)
+            .is_test(true)
+            .try_init();
         let manifest_path = demo_dir().join("src/main.rs");
 
         let expect = indexmap::indexset! {
