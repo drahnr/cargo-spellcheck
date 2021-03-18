@@ -211,6 +211,7 @@ impl Config {
             Detector::Hunspell => self.hunspell.is_some(),
             Detector::NlpRules => self.nlprules.is_some(),
             Detector::Reflow => self.reflow.is_some(),
+            #[cfg(test)]
             Detector::Dummy => true,
         }
     }
