@@ -18,10 +18,10 @@ const USAGE: &str = r#"
 Spellcheck all your doc comments
 
 Usage:
-    cargo-spellcheck [(-v...|-q)] fix [--cfg=<cfg>] [--code=<code>] [--dev-comments] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
-    cargo-spellcheck [(-v...|-q)] reflow [--cfg=<cfg>] [--code=<code>] [--dev-comments] [--skip-readme] [[--recursive] <paths>... ]
-    cargo-spellcheck [(-v...|-q)] config (--user|--stdout|--cfg=<cfg>) [--checkers=<checkers>] [--force]
-    cargo-spellcheck [(-v...|-q)] [check] [--fix] [--cfg=<cfg>] [--code=<code>] [--dev-comments] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
+    cargo-spellcheck [(-v...|-q)] [--jobs=<jobs>] fix [--cfg=<cfg>] [--code=<code>] [--dev-comments] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
+    cargo-spellcheck [(-v...|-q)] [--jobs=<jobs>] reflow [--cfg=<cfg>] [--code=<code>] [--dev-comments] [--skip-readme] [[--recursive] <paths>... ]
+    cargo-spellcheck [(-v...|-q)] [--jobs=<jobs>] config (--user|--stdout|--cfg=<cfg>) [--checkers=<checkers>] [--force]
+    cargo-spellcheck [(-v...|-q)] [--jobs=<jobs>] [check] [--fix] [--cfg=<cfg>] [--code=<code>] [--dev-comments] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
     cargo-spellcheck --version
     cargo-spellcheck --help
 
@@ -40,6 +40,7 @@ Options:
   --stdout                  Print the configuration file to stdout and exit.
   -v --verbose              Verbosity level.
   -q --quiet                Silences all printed messages. Overrules `-v`.
+  -j --jobs=<jobs>          The number of threads to use for parallel checking.
   -m --code=<code>          Overwrite the exit value for a successful run with content mistakes found. [default=0]
   --skip-readme             Do not attempt to process README.md files listed in Cargo.toml manifests.
 "#;
@@ -74,6 +75,7 @@ pub struct Args {
     // with fallback from config, so it has to be tri-state
     pub flag_skip_readme: Option<bool>,
     pub flag_dev_comments: Option<bool>,
+    pub flag_jobs: Option<usize>,
     pub flag_code: u8,
     pub flag_stdout: bool,
     pub cmd_fix: bool,
