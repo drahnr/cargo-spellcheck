@@ -49,7 +49,7 @@ impl Quirks {
 }
 
 fn default_tokenization_splitchars() -> String {
-    "\";:,?!#(){}[]\n\r/`".to_owned()
+    "\",;:.!?#(){}[]|/_-‒'`&@§¶…".to_owned()
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
