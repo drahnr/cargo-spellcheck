@@ -10,6 +10,7 @@ use log::{debug, trace, warn};
 
 use fs_err as fs;
 use std::path::{Path, PathBuf};
+use std::collections::HashSet;
 
 pub(crate) fn cwd() -> Result<PathBuf> {
     std::env::current_dir().map_err(|_e| anyhow::anyhow!("Missing cwd!"))
@@ -29,7 +30,54 @@ use proc_macro2::Spacing;
 use proc_macro2::TokenStream;
 use proc_macro2::TokenTree;
 
-fn extract_modules_inner<P: AsRef<Path>>(path: P, stream: TokenStream) -> Result<Vec<PathBuf>> {
+fn extract_modules_recurse_collect<P: AsRef<Path>>(path: P, acc: &mut HashSet<PathBuf>, mod_name: &str) -> Result<()> {
+    let path = path.as_ref();
+    let base = if let Some(base) = path.parent() {
+        trace!("Parent path of {} is {}", path.display(), base.display());
+        base.to_owned()
+    } else {
+        return Err(anyhow::anyhow!(
+            "Must have a valid parent directory: {}",
+            path.display()
+        ));
+    };
+    let path1 = base.join(&mod_name).join("mod.rs");
+    let path2 = base.join(&mod_name).with_extension("rs");
+    let path3 = base
+        .join(
+            path.file_stem()
+                .expect("If parent exists, should work™"),
+        )
+        .join(mod_name)
+        .with_extension("rs");
+    // avoid IO
+    if acc.contains(&path1) || acc.contains(&path2) || acc.contains(&path3) {
+        return Ok(())
+    }
+    match (path1.is_file(), path2.is_file(), path3.is_file()) {
+        (true, false, false) => { let _ = acc.insert(path1); },
+        (false, true, false) => { let _ = acc.insert(path2); },
+        (false, false, true) => { let _ = acc.insert(path3); },
+        (true, true, _) | (true, _, true) | (_, true, true) => {
+            return Err(anyhow::anyhow!(
+                "Detected both module entry files: {} and {} and {}",
+                path1.display(),
+                path2.display(),
+                path3.display()
+            ))
+        }
+        _ => trace!(
+            "Neither file nor dir with mod.rs {} / {} / {}",
+            path1.display(),
+            path2.display(),
+            path2.display()
+        ),
+    };
+    Ok(())
+}
+
+
+fn extract_modules_recurse<P: AsRef<Path>>(path: P, stream: TokenStream) -> Result<HashSet<PathBuf>> {
     let path: &Path = path.as_ref();
 
     // Ident {
@@ -43,15 +91,7 @@ fn extract_modules_inner<P: AsRef<Path>>(path: P, stream: TokenStream) -> Result
     //     spacing: Alone,
     // },
 
-    let base = if let Some(base) = path.parent() {
-        trace!("Parent path of {} is {}", path.display(), base.display());
-        base.to_owned()
-    } else {
-        return Err(anyhow::anyhow!(
-            "Must have a valid parent directory: {}",
-            path.display()
-        ));
-    };
+    let mut acc = HashSet::with_capacity(16);
 
     #[derive(Debug, Clone)]
     enum SeekingFor {
@@ -60,10 +100,9 @@ fn extract_modules_inner<P: AsRef<Path>>(path: P, stream: TokenStream) -> Result
         ModulFin(String),
     }
 
-    let mut acc = Vec::with_capacity(16);
     let mut state = SeekingFor::ModulKeyword;
-    for tree in stream {
-        match tree {
+    for tt in stream {
+        match tt {
             TokenTree::Ident(ident) => match state {
                 SeekingFor::ModulKeyword => {
                     if ident == "mod" {
@@ -76,41 +115,17 @@ fn extract_modules_inner<P: AsRef<Path>>(path: P, stream: TokenStream) -> Result
                 _ => {}
             },
             TokenTree::Punct(punct) => {
-                if let SeekingFor::ModulFin(mod_name) = state {
+                if let SeekingFor::ModulFin(ref mod_name) = state {
                     if punct.as_char() == ';' && punct.spacing() == Spacing::Alone {
-                        let path1 = base.join(&mod_name).join("mod.rs");
-                        let path2 = base.join(&mod_name).with_extension("rs");
-                        let path3 = base
-                            .join(
-                                path.file_stem()
-                                    .expect("If parent exists, should work (TM)"),
-                            )
-                            .join(mod_name)
-                            .with_extension("rs");
-                        match (path1.is_file(), path2.is_file(), path3.is_file()) {
-                            (true, false, false) => acc.push(path1),
-                            (false, true, false) => acc.push(path2),
-                            (false, false, true) => acc.push(path3),
-                            (true, true, _) | (true, _, true) | (_, true, true) => {
-                                return Err(anyhow::anyhow!(
-                                    "Detected both module entry files: {} and {} and {}",
-                                    path1.display(),
-                                    path2.display(),
-                                    path3.display()
-                                ))
-                            }
-                            _ => trace!(
-                                "Neither file nor dir with mod.rs {} / {} / {}",
-                                path1.display(),
-                                path2.display(),
-                                path2.display()
-                            ),
-                        };
+                        extract_modules_recurse_collect(path, &mut acc, &mod_name)?;
                     } else {
-                        trace!("Either not alone or not a semi colon {:?}", punct);
+                        trace!("Either not alone or not a semi colon {:?} - incomplete mod {}", punct, mod_name);
                     }
                 }
+            }
+            TokenTree::Group(grp) => {
                 state = SeekingFor::ModulKeyword;
+                acc.extend(extract_modules_recurse(path, grp.stream())?.into_iter());
             }
             _ => {
                 state = SeekingFor::ModulKeyword;
@@ -121,13 +136,20 @@ fn extract_modules_inner<P: AsRef<Path>>(path: P, stream: TokenStream) -> Result
 }
 
 /// Read all `mod x;` declarations from a source file.
-pub(crate) fn extract_modules_from_file<P: AsRef<Path>>(path: P) -> Result<Vec<PathBuf>> {
+pub(crate) fn extract_modules_from_file<P: AsRef<Path>>(path: P) -> Result<HashSet<PathBuf>> {
     let path: &Path = path.as_ref();
     if let Some(path_str) = path.to_str() {
         let s = fs::read_to_string(path_str)?;
         let stream = syn::parse_str::<proc_macro2::TokenStream>(s.as_str())
             .map_err(|e| Error::from(e).context(anyhow!("File {} has syntax errors", path_str)))?;
-        extract_modules_inner(path.to_owned(), stream)
+        let acc = extract_modules_recurse(path.to_owned(), stream)?;
+        log::debug!("🧇 Recursed into {} modules from {}", acc.len(), path.display());
+        if log::log_enabled!(log::Level::Trace) {
+            for path_rec in acc.iter() {
+                log::trace!("🥞 recurse into {} from {}", path_rec.display(), path.display());
+            }
+        }
+        Ok(acc)
     } else {
         Err(anyhow::anyhow!("path must have a string representation"))
     }
@@ -181,7 +203,7 @@ fn to_manifest_dir<P: AsRef<Path>>(manifest_dir: P) -> Result<PathBuf> {
 fn extract_products(
     manifest: &cargo_toml::Manifest,
     manifest_dir: &Path,
-) -> Result<Vec<CheckEntity>> {
+) -> Result<HashSet<CheckEntity>> {
     let iter = manifest
         .bin
         .iter()
@@ -194,7 +216,7 @@ fn extract_products(
         // cargo_toml's complete is not very truthfull
         .filter(|path_str| manifest_dir.join(path_str).is_file())
         .map(|path_str| CheckEntity::Source(manifest_dir.join(path_str), true))
-        .collect::<Vec<CheckEntity>>();
+        .collect::<HashSet<CheckEntity>>();
 
     trace!("manifest products {:?}", &items);
     Ok(items)
@@ -203,13 +225,13 @@ fn extract_products(
 fn extract_readme(
     manifest: &cargo_toml::Manifest,
     manifest_dir: &Path,
-) -> Result<Vec<CheckEntity>> {
-    let mut acc = Vec::with_capacity(2);
+) -> Result<HashSet<CheckEntity>> {
+    let mut acc = HashSet::with_capacity(2);
     if let Some(package) = manifest.package.clone() {
         if let Some(readme) = package.readme {
             let readme = PathBuf::from(readme);
             if readme.is_file() {
-                acc.push(CheckEntity::Markdown(manifest_dir.join(readme)));
+                acc.insert(CheckEntity::Markdown(manifest_dir.join(readme)));
             } else {
                 warn!(
                     "README.md defined in Cargo.toml {} is not a file",
@@ -218,13 +240,13 @@ fn extract_readme(
             }
         }
         if let Some(description) = package.description {
-            acc.push(CheckEntity::ManifestDescription(description.to_owned()));
+            acc.insert(CheckEntity::ManifestDescription(description.to_owned()));
         }
     }
     Ok(acc)
 }
 
-fn handle_manifest<P: AsRef<Path>>(manifest_dir: P, skip_readme: bool) -> Result<Vec<CheckEntity>> {
+fn handle_manifest<P: AsRef<Path>>(manifest_dir: P, skip_readme: bool) -> Result<HashSet<CheckEntity>> {
     let manifest_dir = to_manifest_dir(manifest_dir)?;
     trace!("Handle manifest in dir: {}", manifest_dir.display());
 
@@ -447,7 +469,7 @@ mod tests {
         assert_eq!(
             extract_modules_from_file(demo_dir().join(TEST_FILE_FRAGMENTS))
                 .expect("fragments.rs must exist"),
-            vec![
+            maplit::hashset![
                 demo_dir()
                     .join(TEST_FILE_SIMPLE)
                     .with_file_name("simple.rs"),
@@ -463,14 +485,14 @@ mod tests {
         let (manifest, dir) = demo_dir_manifest();
         assert_eq!(
             extract_products(&manifest, &dir).expect("Must succeed"),
-            vec![
+            maplit::hashset![
                 CheckEntity::Source(demo_dir().join("src/main.rs"), true),
                 CheckEntity::Source(demo_dir().join("src/lib.rs"), true),
             ]
         );
         assert_eq!(
             extract_readme(&manifest, &dir).expect("Must succeed"),
-            vec![
+            maplit::hashset![
                 CheckEntity::Markdown(demo_dir().join("README.md")),
                 CheckEntity::ManifestDescription(
                     "A silly demo with plenty of spelling mistakes for cargo-spellcheck demos and CI".to_string()

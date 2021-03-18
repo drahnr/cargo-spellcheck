@@ -149,7 +149,7 @@ impl Checker for HunspellChecker {
             }
         };
         // FIXME rename the config option
-        let ignorelist = dbg!(config.tokenization_splitchars.as_str());
+        let ignorelist = config.tokenization_splitchars.as_str();
         // without these, a lot of those would be flagged as mistakes.
         debug_assert!(ignorelist.contains(','));
         debug_assert!(ignorelist.contains('.'));
