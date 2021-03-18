@@ -112,22 +112,26 @@ fn extract_modules_recurse<P: AsRef<Path>>(path: P, stream: TokenStream) -> Resu
                 SeekingFor::ModulName => {
                     state = SeekingFor::ModulFin(ident.to_string());
                 }
-                _ => {}
+                _x => {
+                    state = SeekingFor::ModulKeyword;
+                }
             },
             TokenTree::Punct(punct) => {
                 if let SeekingFor::ModulFin(ref mod_name) = state {
+                    trace!("✨ Found a module: {}", mod_name);
                     if punct.as_char() == ';' && punct.spacing() == Spacing::Alone {
                         extract_modules_recurse_collect(path, &mut acc, &mod_name)?;
                     } else {
-                        trace!("Either not alone or not a semi colon {:?} - incomplete mod {}", punct, mod_name);
+                        trace!("🍂 Either not alone or not a semi colon {:?} - incomplete mod {}", punct, mod_name);
                     }
                 }
+                state = SeekingFor::ModulKeyword;
             }
             TokenTree::Group(grp) => {
                 state = SeekingFor::ModulKeyword;
                 acc.extend(extract_modules_recurse(path, grp.stream())?.into_iter());
             }
-            _ => {
+            _y => {
                 state = SeekingFor::ModulKeyword;
             }
         };
@@ -143,7 +147,7 @@ pub(crate) fn extract_modules_from_file<P: AsRef<Path>>(path: P) -> Result<HashS
         let stream = syn::parse_str::<proc_macro2::TokenStream>(s.as_str())
             .map_err(|e| Error::from(e).context(anyhow!("File {} has syntax errors", path_str)))?;
         let acc = extract_modules_recurse(path.to_owned(), stream)?;
-        log::debug!("🧇 Recursed into {} modules from {}", acc.len(), path.display());
+        log::debug!("🥞 Recursed into {} modules from {}", acc.len(), path.display());
         if log::log_enabled!(log::Level::Trace) {
             for path_rec in acc.iter() {
                 log::trace!("🥞 recurse into {} from {}", path_rec.display(), path.display());
