@@ -8,7 +8,7 @@ use crate::Documentation;
 use anyhow::{anyhow, bail, Error, Result};
 use log::{debug, trace, warn};
 
-use std::fs;
+use fs_err as fs;
 use std::path::{Path, PathBuf};
 
 pub(crate) fn cwd() -> Result<PathBuf> {
@@ -124,9 +124,7 @@ fn extract_modules_inner<P: AsRef<Path>>(path: P, stream: TokenStream) -> Result
 pub(crate) fn extract_modules_from_file<P: AsRef<Path>>(path: P) -> Result<Vec<PathBuf>> {
     let path: &Path = path.as_ref();
     if let Some(path_str) = path.to_str() {
-        let s = std::fs::read_to_string(path_str).map_err(|e| {
-            Error::from(e).context(anyhow!("Failed to read file content of {}", path_str))
-        })?;
+        let s = fs::read_to_string(path_str)?;
         let stream = syn::parse_str::<proc_macro2::TokenStream>(s.as_str())
             .map_err(|e| Error::from(e).context(anyhow!("File {} has syntax errors", path_str)))?;
         extract_modules_inner(path.to_owned(), stream)
@@ -146,9 +144,7 @@ fn load_manifest<P: AsRef<Path>>(manifest_dir: P) -> Result<cargo_toml::Manifest
     let manifest_dir = manifest_dir.as_ref();
     let manifest_file = manifest_dir.join("Cargo.toml");
     // read to str first to provide better error messages
-    let manifest_content = std::fs::read_to_string(&manifest_file).map_err(|e| {
-        anyhow::anyhow!("Failed to open manifest file {}", manifest_file.display()).context(e)
-    })?;
+    let manifest_content = fs::read_to_string(&manifest_file)?;
     let mut manifest = cargo_toml::Manifest::from_str(manifest_content.as_str()).map_err(|e| {
         anyhow::anyhow!("Failed to parse manifest file {}", manifest_file.display()).context(e)
     })?;
@@ -415,7 +411,7 @@ pub(crate) fn extract(
                         }
                     }
                     CheckEntity::Markdown(path) => {
-                        let content = std::fs::read_to_string(&path).map_err(|e| {
+                        let content = fs::read_to_string(&path).map_err(|e| {
                             anyhow!("Common mark / markdown file does not exist").context(e)
                         })?;
                         if content.len() < 1 {
