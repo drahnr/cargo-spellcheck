@@ -175,7 +175,13 @@ impl Checker for HunspellChecker {
 
                         'tokenization: for range in apply_tokenizer(&tokenizer, txt) {
                             let word = sub_chars(txt, range.clone());
-                            if range.len() == 1 && word.chars().next().filter(|c| ignorelist.contains(*c)).is_some() {
+                            if range.len() == 1
+                                && word
+                                    .chars()
+                                    .next()
+                                    .filter(|c| ignorelist.contains(*c))
+                                    .is_some()
+                            {
                                 continue 'tokenization;
                             }
                             if transform_regex.is_empty() {
