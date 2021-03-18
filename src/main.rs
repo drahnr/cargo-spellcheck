@@ -89,18 +89,8 @@ fn signal_handler() {
 fn run() -> anyhow::Result<ExitCode> {
     let args = Args::parse(std::env::args()).unwrap_or_else(|e| e.exit());
 
-    let n_threads =  if cfg!(debug_assertions) {
-        1
-    } else if let Some(jobs) = args.flag_jobs {
-        jobs
-    } else {
-        // commonly we are not the only process
-        // on the machine, so use the physical cores.
-        num_cpus::get_physical()
-    };
-
     let _ = ::rayon::ThreadPoolBuilder::new()
-        .num_threads(n_threads)
+        .num_threads(args.job_count())
         .build_global();
 
     let verbosity = match args.flag_verbose {
