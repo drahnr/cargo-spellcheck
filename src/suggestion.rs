@@ -41,6 +41,7 @@ impl Detector {
             Self::Hunspell => "Hunspell",
             Self::NlpRules => "NlpRules",
             Self::Reflow => "Reflow",
+            #[cfg(test)]
             Self::Dummy => "Dummy",
         }
     }
