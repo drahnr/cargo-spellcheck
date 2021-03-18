@@ -80,8 +80,7 @@ where
         .pipe(text)
         .into_iter()
         .map(|sentence| {
-            sentence.into_iter()
-            .filter_map(|token| {
+            sentence.into_iter().filter_map(|token| {
                 let range = token.char_span.0..token.char_span.1;
                 if range.is_empty() {
                     None
@@ -96,7 +95,8 @@ where
             // Get rid of this asap once
             // https://github.com/bminixhofer/nlprule/issues/53
             // is resolved
-            let offset_bytes = (token.sentence.as_ptr() as usize).saturating_sub(text.as_ptr() as usize);
+            let offset_bytes =
+                (token.sentence.as_ptr() as usize).saturating_sub(text.as_ptr() as usize);
             let offset_chars = text[..offset_bytes].chars().count();
             Range {
                 start: range.start + offset_chars,

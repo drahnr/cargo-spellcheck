@@ -185,14 +185,21 @@ impl Documentation {
                     Ok(())
                 }
             }
-            origin @ ContentOrigin::RustSourceFile(_) => docs.add_rust(origin, content, dev_comments),
+            origin @ ContentOrigin::RustSourceFile(_) => {
+                docs.add_rust(origin, content, dev_comments)
+            }
             origin @ ContentOrigin::CommonMarkFile(_) => docs.add_commonmark(origin, content),
             #[cfg(test)]
-            origin @ ContentOrigin::TestEntityRust  => docs.add_rust(origin, content, dev_comments),
+            origin @ ContentOrigin::TestEntityRust => docs.add_rust(origin, content, dev_comments),
             #[cfg(test)]
             origin @ ContentOrigin::TestEntityCommonMark => docs.add_commonmark(origin, content),
         }
-        .unwrap_or_else(move |e| warn!("BUG! << failed to load content from {} (dev_comments={:?}) >> {}", origin, dev_comments, e));
+        .unwrap_or_else(move |e| {
+            warn!(
+                "BUG! << failed to load content from {} (dev_comments={:?}) >> {}",
+                origin, dev_comments, e
+            )
+        });
         docs
     }
 }
