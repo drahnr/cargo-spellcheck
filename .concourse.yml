@@ -114,7 +114,7 @@ jobs:
 
     - in_parallel:
       - task: compile-pr
-        timeout: 20m
+        timeout: 40m
         image: env-glibc
         config:
           platform: linux
@@ -159,7 +159,7 @@ jobs:
             status: failure
 
       - task: unit-tests-pr
-        timeout: 20m
+        timeout: 40m
         image: env-glibc
         config:
           platform: linux
@@ -193,7 +193,7 @@ jobs:
             status: failure
 
       - task: pr-win64-cross-build
-        timeout: 20m
+        timeout: 40m
         image: env-glibc
         config:
           platform: linux
@@ -229,7 +229,7 @@ jobs:
             status: failure
 
       - task: format-check
-        timeout: 5m
+        timeout: 10m
         image: env-glibc
         config:
           platform: linux
@@ -263,7 +263,7 @@ jobs:
 
     - in_parallel:
       - task: validate-spellcheck-pr
-        timeout: 10m
+        timeout: 40m
         image: env-glibc
         config:
           platform: linux
@@ -307,7 +307,7 @@ jobs:
             status: failure
 
       - task: validate-reflow-pr
-        timeout: 5m
+        timeout: 10m
         image: env-glibc
         config:
           platform: linux
@@ -363,7 +363,7 @@ jobs:
 
       - in_parallel:
         - task: pr-test-on-spearow-juice
-          timeout: 15m
+          timeout: 40m
           image: env-glibc
           config:
             platform: linux
@@ -402,7 +402,7 @@ jobs:
 
 
         - task: pr-test-on-rustlang-rust
-          timeout: 15m
+          timeout: 40m
           image: env-glibc
           config:
             platform: linux
@@ -464,7 +464,7 @@ jobs:
 
     - in_parallel:
       - task: compile-master
-        timeout: 10m
+        timeout: 40m
         image: env-glibc
         config:
           platform: linux
@@ -496,7 +496,7 @@ jobs:
           - path: target
 
       - task: win64-cross-build-master
-        timeout: 15m
+        timeout: 40m
         image: env-glibc
         config:
           platform: linux
@@ -516,7 +516,7 @@ jobs:
           - path: cargo
 
       - task: unit-tests-master
-        timeout: 10m
+        timeout: 40m
         image: env-glibc
         config:
           platform: linux
@@ -537,7 +537,7 @@ jobs:
           - path: cargo
 
       - task: validate-meta-master
-        timeout: 5m
+        timeout: 15m
         image: env-glibc
         config:
           platform: linux
@@ -561,7 +561,7 @@ jobs:
 
     - in_parallel:
       - task: validate-spellcheck-master
-        timeout: 10m
+        timeout: 40m
         image: env-glibc
         config:
           platform: linux
@@ -589,7 +589,7 @@ jobs:
             dir: git-repo
 
       - task: validate-reflow-master
-        timeout: 5m
+        timeout: 40m
         image: env-glibc
         config:
           platform: linux
@@ -618,7 +618,7 @@ jobs:
 
       - in_parallel:
         - task: test-on-spearow-juice-master
-          timeout: 15m
+          timeout: 40m
           image: env-glibc
           config:
             platform: linux
@@ -645,7 +645,7 @@ jobs:
 
 
         - task: test-on-rustlang-rust-master
-          timeout: 15m
+          timeout: 40m
           image: env-glibc
           config:
             platform: linux
@@ -680,7 +680,7 @@ jobs:
       trigger: true
 
     - task: github-release
-      timeout: 15m
+      timeout: 40m
       image: env-glibc
       config:
         platform: linux
