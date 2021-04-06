@@ -265,7 +265,8 @@ impl<'a> PlainOverlay<'a> {
                         start: range.start + offset,
                         end: range.start + offset + len,
                     }
-                };
+                }
+
                 let _ = if sub.contains(&start) {
                     // calculate the offset between our `condensed_range.start` and
                     // the `sub` which is one entry in the mappings

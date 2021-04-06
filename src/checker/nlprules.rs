@@ -10,7 +10,6 @@ use anyhow::Result;
 use log::{debug, info, trace, warn};
 use rayon::prelude::*;
 
-use nlprule::types::Suggestion as NlpFix;
 use nlprule::{Rules, Tokenizer};
 
 pub(crate) struct NlpRulesChecker;
@@ -31,16 +30,22 @@ impl Checker for NlpRulesChecker {
 
         let rules = rules
             .into_iter()
+            .into_iter()
             .filter(|rule| {
-                match rule.category_id().to_lowercase().as_ref() {
+                match rule
+                    .category_type()
+                    .map(str::to_lowercase)
+                    .as_ref()
+                    .map(|x| x as &str)
+                {
                     // The hunspell backend is aware of
                     // custom lingo, which this one is not,
                     // so there would be a lot of false
                     // positives.
-                    "misspelling" => false,
+                    Some("misspelling") => false,
                     // Anything quotes related is not relevant
                     // for code documentation.
-                    "typography" => false,
+                    Some("typography") => false,
                     _other => true,
                 }
             })
@@ -97,14 +102,11 @@ fn check_chunk<'a>(
         return Vec::new();
     }
 
-    'nlp: for NlpFix {
-        message,
-        start,
-        end,
-        replacements,
-        ..
-    } in nlpfixes
-    {
+    'nlp: for fix in nlpfixes {
+        let message = fix.message();
+        let replacements = fix.replacements();
+        let start = fix.span().char().start;
+        let end = fix.span().char().end;
         if start > end {
             warn!("BUG: crate nlprule yielded a negative range {:?} for chunk in {}, please file a bug", start..end, &origin);
             continue 'nlp;
@@ -121,7 +123,7 @@ fn check_chunk<'a>(
                     origin: origin.clone(),
                     replacements: replacements.iter().map(|x| x.clone()).collect(),
                     chunk,
-                    description: Some(message.clone()),
+                    description: Some(message.to_owned()),
                 }),
         );
     }
