@@ -29,12 +29,12 @@ fn main() -> std::result::Result<(), Box<(dyn std::error::Error + 'static)>> {
             .fallback_to_build_dir(false)
             .cache_dir(cache_dir)
             .transform(
-                &|source, mut sink| {
+                |source, mut sink| {
                     let mut encoder = XzEncoder::new(BufReader::new(source), 9);
                     std::io::copy(&mut encoder, &mut sink)?;
                     Ok(())
                 },
-                &|mut path: PathBuf| -> Result<PathBuf, Box<(dyn std::error::Error + Send + Sync + 'static)>> {
+                |mut path: PathBuf| -> Result<PathBuf, Box<(dyn std::error::Error + Send + Sync + 'static)>> {
                     let mut ext = path.extension().map(|s| {
                         s.to_os_string()
                             .into_string()

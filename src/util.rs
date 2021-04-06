@@ -14,7 +14,8 @@ pub fn iter_with_line_column_from<'a>(
     struct State {
         cursor: LineColumn,
         previous_char_was_newline: bool,
-    };
+    }
+
     let initial = State {
         cursor: start_point,
         previous_char_was_newline: false,
