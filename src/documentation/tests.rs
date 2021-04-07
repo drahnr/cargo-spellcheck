@@ -310,7 +310,7 @@ I am so code!
 
 ---
 
-**Breakage** ` ```rust` anticipated?
+**Breakage** ` on ```rust` anticipated?
 
 The end.🐢"#;
 
@@ -325,7 +325,7 @@ A relly boring test.
 Engineering
 
 
-Breakage  anticipated?
+Breakage on rust anticipated?
 
 The end.🐢"#;
 
@@ -343,6 +343,8 @@ The end.🐢"#;
                 ".",
                 "Engineering",
                 "Breakage",
+                "on",
+                "rust",
                 "anticipated",
                 "?",
                 "The",
@@ -949,7 +951,7 @@ And a line, or a rule."##;
     for (reduced_range, cmark_range) in mapping.iter() {
         assert_eq!(
             reduced[reduced_range.clone()],
-            MARKDOWN[cmark_range.clone()]
+            MARKDOWN[cmark_range.range()]
         );
     }
 }
@@ -966,7 +968,7 @@ fn reduction_leading_space() {
     for (reduced_range, cmark_range) in mapping.iter() {
         assert_eq!(
             reduced[reduced_range.clone()].to_owned(),
-            MARKDOWN[cmark_range.clone()].to_owned()
+            MARKDOWN[cmark_range.range()].to_owned()
         );
     }
 }
@@ -1003,16 +1005,19 @@ fn cmark_reduction_test(input: &'static str, expected: &'static str, expected_ma
     let (plain, mapping) = PlainOverlay::extract_plain_with_mapping(input);
     assert_eq!(dbg!(&plain).as_str(), expected);
     assert_eq!(dbg!(&mapping).len(), expected_mapping_len);
-    for (reduced_range, markdown_range) in mapping.iter() {
-        assert_eq!(
-            dbg!(sub_chars(&plain, reduced_range.clone())),
-            dbg!(sub_chars(&input, markdown_range.clone()))
-        );
+    for (reduced_range, markdown_range) in mapping.into_iter() {
+        match markdown_range {
+            SourceRange::Direct(cmark_range) => assert_eq!(
+                dbg!(sub_chars(&plain, reduced_range.clone())),
+                dbg!(sub_chars(&input, cmark_range))
+            ),
+            SourceRange::Alias(_cmark_range, _alias) => {},
+        }
     }
 }
 
 #[test]
-fn emoji() {
+fn reduce_w_emoji() {
     cmark_reduction_test(
         r#"
 Abcd
@@ -1035,8 +1040,39 @@ fgh"#,
     );
 }
 
+
 #[test]
-fn link_footnote() {
+fn reduce_w_code_block() {
+    cmark_reduction_test(
+        r#"
+Abcd
+
+```rust
+/// Yoda is no yak!
+let mut foo = unimplemented!("not yet");
+```
+
+fgh"#,
+        r#"Abcd
+
+fgh"#,
+        2,
+    );
+}
+
+#[test]
+fn reduce_w_inline_code() {
+    cmark_reduction_test(
+        r#"
+I like vars named `Yak<Turbo>` but not `Foo<Bar>`.
+"#,
+        r#"I like vars named YakTurbo but not FooBar."#,
+        5,
+    );
+}
+
+#[test]
+fn reduce_w_link_footnote() {
     cmark_reduction_test(
         r#"footnote [^linktxt]. Which one?
 
@@ -1047,7 +1083,7 @@ fn link_footnote() {
 }
 
 #[test]
-fn link_inline() {
+fn reduce_w_link_inline() {
     cmark_reduction_test(
         r#" prefix [I'm an inline-style link](https://duckduckgo.com) postfix"#,
         r#"prefix I'm an inline-style link postfix"#,
@@ -1055,7 +1091,7 @@ fn link_inline() {
     );
 }
 #[test]
-fn link_auto() {
+fn reduce_w_link_auto() {
     cmark_reduction_test(
         r#" prefix <http://foo.bar/baz> postfix"#,
         r#"prefix  postfix"#,
@@ -1065,7 +1101,7 @@ fn link_auto() {
 }
 
 #[test]
-fn link_email() {
+fn reduce_w_link_email() {
     cmark_reduction_test(
         r#" prefix <loe@example.com> postfix"#,
         r#"prefix  postfix"#,
@@ -1074,7 +1110,7 @@ fn link_email() {
 }
 
 #[test]
-fn link_reference() {
+fn reduce_w_link_reference() {
     cmark_reduction_test(
         r#"[classy reference link][the reference str]"#,
         r#"classy reference link"#,
@@ -1083,7 +1119,7 @@ fn link_reference() {
 }
 
 #[test]
-fn link_collapsed_ref() {
+fn reduce_w_link_collapsed_ref() {
     cmark_reduction_test(
         r#"[collapsed reference link][]"#,
         r#"collapsed reference link"#,
@@ -1092,7 +1128,7 @@ fn link_collapsed_ref() {
 }
 
 #[test]
-fn link_shortcut_ref() {
+fn reduce_w_link_shortcut_ref() {
     cmark_reduction_test(
         r#"[shortcut reference link]"#,
         r#"shortcut reference link"#,
@@ -1103,7 +1139,7 @@ fn link_shortcut_ref() {
 // impossible according to the common mark spec.
 
 #[test]
-fn list_nested() {
+fn reduce_w_list_nested() {
     cmark_reduction_test(
         r#"
 * [x] a
@@ -1121,7 +1157,7 @@ d"#,
 }
 
 #[test]
-fn table_ignore() {
+fn reduce_w_table_ignore() {
     // TODO FIXME it would be better to transform this into
     // one line per cell and test each cell.
     // TODO very most likely will cause issues with grammar checks
