@@ -12,6 +12,47 @@ use crate::documentation::{CheckableChunk, Range};
 use crate::util::sub_chars;
 use crate::Span;
 
+
+/// Describes whether there is a matching segment in the source,
+/// of if it is a placeholder for i.e. a code block or inline code.
+/// These placeholders are required for grammar checks.
+#[derive(Debug, Clone)]
+pub(crate) enum SourceRange {
+    Direct(Range),
+    Alias(Range, String),
+}
+
+impl SourceRange {
+    /// Apply an offset to `start` and `end` members, qualing a shift of the range.
+    #[allow(dead_code)]
+    pub(crate) fn apply_offset(&mut self, offset: usize) {
+        match self {
+            Self::Direct(range) => apply_offset(range, offset),
+            Self::Alias(range, _) => apply_offset(range, offset),
+        }
+    }
+
+    /// Extract a clone of the inner `Range<usize>`.
+    ///
+    /// Use `deref()` or `*` for a reference.
+    pub(crate) fn range(&self) -> Range {
+        match self {
+            Self::Direct(range) => range.clone(),
+            Self::Alias(range, _) => range.clone(),
+        }
+    }
+}
+
+impl std::ops::Deref for SourceRange {
+    type Target = Range;
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Self::Direct(range) => range,
+            Self::Alias(range, _) => range,
+        }
+    }
+}
+
 /// A plain representation of cmark riddled chunk.
 #[derive(Clone)]
 pub struct PlainOverlay<'a> {
@@ -22,7 +63,7 @@ pub struct PlainOverlay<'a> {
     // require a sorted map, so we have the chance of binary search
     // key: plain string range
     // value: the corresponding areas in the full cmark
-    mapping: IndexMap<Range, Range>,
+    mapping: IndexMap<Range, SourceRange>,
 }
 
 impl<'a> PlainOverlay<'a> {
@@ -30,23 +71,33 @@ impl<'a> PlainOverlay<'a> {
     /// formatted text, to the fragments in the plain string.
     fn track(
         s: &str,
-        cmark_range: Range,
+        cmark_range: SourceRange,
         plain_acc: &mut String,
-        mapping: &mut IndexMap<Range, Range>,
+        mapping: &mut IndexMap<Range, SourceRange>,
     ) {
         // map the range within the plain data,
         // which is fed to the checker,
         // back to the repr with markdown modifiers
 
-        // TODO avoid doing this repeatedly, use a cursor
-        let x = plain_acc.chars().count();
-        let d = s.chars().count();
-        let plain_range = Range {
-            start: x,
-            end: x + d,
+        // avoid repeated calculation of this
+        let cursor = plain_acc.chars().count();
+        let plain_range = match &cmark_range {
+            SourceRange::Alias(_range, alias) => {
+                plain_acc.push_str(&alias);
+                Range {
+                    start: cursor,
+                    end: cursor + alias.chars().count(),
+                }
+            },
+            SourceRange::Direct(_range) => {
+                plain_acc.push_str(&s);
+                Range {
+                    start: cursor,
+                    end: cursor + s.chars().count(),
+                }
+            },
         };
         let _ = mapping.insert(plain_range, cmark_range);
-        plain_acc.push_str(&s);
     }
 
     /// Append n newlines to the current state string `plain`.
@@ -57,7 +108,7 @@ impl<'a> PlainOverlay<'a> {
     }
 
     /// Ranges are mapped `cmark reduced/plain -> raw`.
-    pub(crate) fn extract_plain_with_mapping(cmark: &str) -> (String, IndexMap<Range, Range>) {
+    pub(crate) fn extract_plain_with_mapping(cmark: &str) -> (String, IndexMap<Range, SourceRange>) {
         let mut plain = String::with_capacity(cmark.len());
         let mut mapping = indexmap::IndexMap::with_capacity(128);
 
@@ -156,7 +207,7 @@ impl<'a> PlainOverlay<'a> {
                             // the actual rendered content is in a text section
                         }
                         Tag::Image(_link_type, _url, title) => {
-                            Self::track(&title, char_range, &mut plain, &mut mapping);
+                            Self::track(&title, SourceRange::Direct(char_range), &mut plain, &mut mapping);
                         }
                         Tag::Heading(_n) => {
                             Self::newlines(&mut plain, 2);
@@ -180,16 +231,39 @@ impl<'a> PlainOverlay<'a> {
                 Event::Text(s) => {
                     if code_block {
                         if inception {
+                            // let offset = char_range.start;
                             // TODO validate as additional, virtual document
+                            // TODO https://github.com/drahnr/cargo-spellcheck/issues/43
+                            // FIXME must also run the whole syn/ra_syntax pipeline not just another mapping
+                            // let (inner, inner_mapping) = Self::extract_plain_with_mapping(s.as_str());
+                            // mapping.extend(inner_mapping.into_iter().map(|(mut k,mut v)|
+                            //     {
+                            //         apply_offset(&mut k, offset);
+                            //         v.apply_offset(offset);
+                            //         (k,v)
+                            //     }));
+                            // plain.push_str(dbg!(inner.as_str()));
                         }
                     } else if skip_link_text {
                         skip_link_text = false
                     } else if !skip_table_text {
-                        Self::track(&s, char_range, &mut plain, &mut mapping);
+                        Self::track(&s, SourceRange::Direct(char_range), &mut plain, &mut mapping);
                     }
                 }
-                Event::Code(_s) => {
-                    // inline code such as `YakShave` shall be ignored
+                Event::Code(s) => {
+                    // inline code such as `YakShave` shall be ignored, but we must keep a placeholder for grammar
+                    // rules to avoid misleading suggestions.
+                    let shortened_range = Range {
+                        start: char_range.start.saturating_add(1),
+                        end: char_range.end.saturating_sub(1),
+                    };
+                    let alias = cmark[byte_range].chars().skip(1).take(shortened_range.len()).filter(|x| {
+                        x.is_ascii_alphanumeric()
+                    }).collect::<String>();
+
+                    if !shortened_range.is_empty() && !alias.is_empty() {
+                        Self::track(&s, SourceRange::Alias(shortened_range, alias), &mut plain, &mut mapping);
+                    }
                 }
                 Event::Html(_s) => {}
                 Event::FootnoteReference(s) => {
@@ -198,7 +272,7 @@ impl<'a> PlainOverlay<'a> {
                             start: char_range.start + 2,
                             end: char_range.end - 1,
                         };
-                        Self::track(&s, char_range, &mut plain, &mut mapping);
+                        Self::track(&s, SourceRange::Direct(char_range), &mut plain, &mut mapping);
                     }
                 }
                 Event::SoftBreak => {
@@ -248,6 +322,7 @@ impl<'a> PlainOverlay<'a> {
     pub fn find_spans(&self, condensed_range: Range) -> IndexMap<Range, Span> {
         let mut active = false;
         let Range { start, end } = condensed_range;
+        let n = self.mapping.len();
         self.mapping
             .iter()
             .skip_while(|(sub, _raw)| sub.end <= start)
@@ -257,9 +332,17 @@ impl<'a> PlainOverlay<'a> {
             })
             .filter(|(sub, _)| {
                 // could possibly happen on empty documentation lines with `///`
-                sub.len() > 0
+                !sub.is_empty()
             })
-            .fold(IndexMap::<_, _>::new(), |mut acc, (sub, raw)| {
+            .filter(|(_, raw)| {
+                // aliases are not required for span search
+                if let SourceRange::Direct(_) = raw {
+                    true
+                } else {
+                    false
+                }
+            })
+            .fold(IndexMap::<Range, Span>::with_capacity(n), |mut acc, (sub, raw)| {
                 fn recombine(range: Range, offset: usize, len: usize) -> Range {
                     Range {
                         start: range.start + offset,
@@ -274,12 +357,12 @@ impl<'a> PlainOverlay<'a> {
                     if sub.contains(&(end - 1)) {
                         // complete start to end
                         active = false;
-                        let raw = recombine(raw.clone(), offset, end - start);
+                        let raw = recombine(raw.range(), offset, end - start);
                         Some((start..end, raw))
                     } else {
                         // only start, continue taking until end
                         active = true;
-                        let raw = recombine(raw.clone(), offset, sub.end - start);
+                        let raw = recombine(raw.range(), offset, sub.end - start);
                         Some((start..sub.end, raw))
                     }
                 // TODO must be implemented properly
@@ -358,7 +441,7 @@ impl<'a> fmt::Debug for PlainOverlay<'a> {
             }
             previous_md_end = md_range.end;
 
-            let s = sub_chars(commonmark.as_str(), md_range.clone());
+            let s = sub_chars(commonmark.as_str(), md_range.range());
             coloured_md.push_str(style.apply_to(s.as_str()).to_string().as_str());
 
             let s = sub_chars(self.plain.as_str(), plain_range.clone());
