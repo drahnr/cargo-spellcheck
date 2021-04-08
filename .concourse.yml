@@ -276,6 +276,7 @@ jobs:
             args:
             - -exc
             - |
+              export RUST_BACKTRACE=full
               export EXE="../binary/cargo-spellcheck-$(git rev-parse HEAD)"
 
               sudo chown $(whoami): -f "${EXE}"
@@ -320,6 +321,7 @@ jobs:
             args:
             - -exc
             - |
+              export RUST_BACKTRACE=full
               export EXE="../binary/cargo-spellcheck-$(git rev-parse HEAD)"
 
               sudo chown $(whoami): -f "${EXE}"
@@ -375,6 +377,7 @@ jobs:
               args:
               - -exc
               - |
+                export RUST_BACKTRACE=full
                 export EXE="../binary/cargo-spellcheck"
                 sudo cp -vf "${EXE}"-* "${EXE}"
 
@@ -416,6 +419,7 @@ jobs:
               args:
               - -exc
               - |
+                export RUST_BACKTRACE=full
                 export EXE="../binary/cargo-spellcheck"
                 sudo cp -vf "${EXE}"-* "${EXE}"
 
@@ -478,6 +482,7 @@ jobs:
             args:
             - -exc
             - |
+              export RUST_BACKTRACE=full
               export CARGO_HOME="$(pwd)/../cargo"
               export CARGO_TARGET_DIR="$(pwd)/../target"
               export EXE="${CARGO_TARGET_DIR}/release/cargo-spellcheck"
@@ -528,6 +533,7 @@ jobs:
             args:
             - -exc
             - |
+              export RUST_BACKTRACE=1
               export CARGO_HOME="$(pwd)/../cargo"
               sudo chown $(whoami): -Rf ${CARGO_HOME} .
               rustc +stable --version --verbose
@@ -574,6 +580,7 @@ jobs:
             args:
             - -exc
             - |
+              export RUST_BACKTRACE=full
               export EXE="../binary/cargo-spellcheck-$(git rev-parse HEAD)"
 
               sudo chown $(whoami): -f "${EXE}"
@@ -602,6 +609,7 @@ jobs:
             args:
             - -exc
             - |
+              export RUST_BACKTRACE=full
               export EXE="../binary/cargo-spellcheck-$(git rev-parse HEAD)"
 
               sudo chown $(whoami): -f "${EXE}"
@@ -630,6 +638,7 @@ jobs:
               args:
               - -exc
               - |
+                export RUST_BACKTRACE=full
                 export EXE="../binary/cargo-spellcheck"
                 sudo cp -vf "${EXE}"-* "${EXE}"
 
@@ -695,8 +704,7 @@ jobs:
           args:
             - -exc
             - |
-              # TODO migrate to env-glibc container
-
+              export RUST_BACKTRACE=full
               export CARGO_HOME="$(pwd)/../cargo"
               sudo chown $(whoami): -Rf ${CARGO_HOME} .
 
