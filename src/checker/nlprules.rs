@@ -7,7 +7,7 @@ use super::{Checker, Detector, Documentation, Suggestion, SuggestionSet};
 use crate::{CheckableChunk, ContentOrigin};
 
 use anyhow::Result;
-use log::{debug, info, trace, warn};
+use log::{debug, trace, warn};
 use rayon::prelude::*;
 
 use nlprule::{Rules, Tokenizer};
@@ -50,8 +50,6 @@ impl Checker for NlpRulesChecker {
                 }
             })
             .collect::<Rules>();
-
-        info!("Loaded rules.");
 
         let rules = &rules;
         let tokenizer = &tokenizer;
