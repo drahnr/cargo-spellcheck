@@ -354,17 +354,17 @@ impl<'a> PlainOverlay<'a> {
                     // calculate the offset between our `condensed_range.start` and
                     // the `sub` which is one entry in the mappings
                     let offset = start - sub.start;
-                    if sub.contains(&(end - 1)) {
+                    let overlay_range =  if sub.contains(&(end - 1)) {
                         // complete start to end
                         active = false;
-                        let raw = recombine(raw.range(), offset, end - start);
-                        Some((start..end, raw))
+                        start..end
                     } else {
                         // only start, continue taking until end
                         active = true;
-                        let raw = recombine(raw.range(), offset, sub.end - start);
-                        Some((start..sub.end, raw))
-                    }
+                        start..sub.end
+                    };
+                    let raw = recombine(raw.range(), offset, overlay_range.len());
+                    Some((overlay_range, raw))
                 // TODO must be implemented properly
                 // } else if active {
                 //     let offset = sub.end - end;
