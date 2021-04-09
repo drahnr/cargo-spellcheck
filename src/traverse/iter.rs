@@ -182,6 +182,7 @@ mod tests {
             "src/nested/justone.rs",
             "src/nested/justtwo.rs",
             "src/nested/again/mod.rs",
+            "src/nested/again/code.rs",
             "src/nested/fragments.rs",
             "src/nested/fragments/enumerate.rs",
             "src/nested/fragments/simple.rs",
