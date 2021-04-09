@@ -86,12 +86,13 @@ impl<'a> PlainOverlay<'a> {
                     log::debug!("Alias for {:?} was empty. Ignoring.", s);
                     return;
                 }
-                // limit the lias names to 16 chars
+                // limit the lias names to 16 chars, all ascii
+                // and as such byte length equals char length
                 let alias16 = &alias[..std::cmp::min(alias.len(), 16)];
                 plain_acc.push_str(alias16);
                 Range {
                     start: cursor,
-                    end: cursor + alias16.chars().count(),
+                    end: cursor + alias16.len(),
                 }
             }
             SourceRange::Direct(_range) => {
