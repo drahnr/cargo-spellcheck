@@ -305,12 +305,12 @@ A relly boring test.
 ## Engineering
 
 ```rust
-I am so code!
+let code = be;
 ```
 
 ---
 
-**Breakage** ` on ```rust` anticipated?
+**Breakage** on `rust` anticipated?
 
 The end.🐢"#;
 
@@ -344,7 +344,7 @@ The end.🐢"#;
                 "Engineering",
                 "Breakage",
                 "on",
-                "rust",
+                // "rust", code is not included in the list
                 "anticipated",
                 "?",
                 "The",
