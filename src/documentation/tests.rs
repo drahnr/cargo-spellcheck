@@ -1011,7 +1011,7 @@ fn cmark_reduction_test(input: &'static str, expected: &'static str, expected_ma
                 dbg!(sub_chars(&plain, reduced_range.clone())),
                 dbg!(sub_chars(&input, cmark_range))
             ),
-            SourceRange::Alias(_cmark_range, _alias) => {},
+            SourceRange::Alias(_cmark_range, _alias) => {}
         }
     }
 }
@@ -1039,7 +1039,6 @@ fgh"#,
         3,
     );
 }
-
 
 #[test]
 fn reduce_w_code_block() {

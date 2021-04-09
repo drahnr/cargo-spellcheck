@@ -12,7 +12,6 @@ use crate::documentation::{CheckableChunk, Range};
 use crate::util::sub_chars;
 use crate::Span;
 
-
 /// Describes whether there is a matching segment in the source,
 /// of if it is a placeholder for i.e. a code block or inline code.
 /// These placeholders are required for grammar checks.
@@ -88,14 +87,14 @@ impl<'a> PlainOverlay<'a> {
                     start: cursor,
                     end: cursor + alias.chars().count(),
                 }
-            },
+            }
             SourceRange::Direct(_range) => {
                 plain_acc.push_str(&s);
                 Range {
                     start: cursor,
                     end: cursor + s.chars().count(),
                 }
-            },
+            }
         };
         let _ = mapping.insert(plain_range, cmark_range);
     }
@@ -108,7 +107,9 @@ impl<'a> PlainOverlay<'a> {
     }
 
     /// Ranges are mapped `cmark reduced/plain -> raw`.
-    pub(crate) fn extract_plain_with_mapping(cmark: &str) -> (String, IndexMap<Range, SourceRange>) {
+    pub(crate) fn extract_plain_with_mapping(
+        cmark: &str,
+    ) -> (String, IndexMap<Range, SourceRange>) {
         let mut plain = String::with_capacity(cmark.len());
         let mut mapping = indexmap::IndexMap::with_capacity(128);
 
@@ -207,7 +208,12 @@ impl<'a> PlainOverlay<'a> {
                             // the actual rendered content is in a text section
                         }
                         Tag::Image(_link_type, _url, title) => {
-                            Self::track(&title, SourceRange::Direct(char_range), &mut plain, &mut mapping);
+                            Self::track(
+                                &title,
+                                SourceRange::Direct(char_range),
+                                &mut plain,
+                                &mut mapping,
+                            );
                         }
                         Tag::Heading(_n) => {
                             Self::newlines(&mut plain, 2);
@@ -247,7 +253,12 @@ impl<'a> PlainOverlay<'a> {
                     } else if skip_link_text {
                         skip_link_text = false
                     } else if !skip_table_text {
-                        Self::track(&s, SourceRange::Direct(char_range), &mut plain, &mut mapping);
+                        Self::track(
+                            &s,
+                            SourceRange::Direct(char_range),
+                            &mut plain,
+                            &mut mapping,
+                        );
                     }
                 }
                 Event::Code(s) => {
@@ -257,12 +268,20 @@ impl<'a> PlainOverlay<'a> {
                         start: char_range.start.saturating_add(1),
                         end: char_range.end.saturating_sub(1),
                     };
-                    let alias = cmark[byte_range].chars().skip(1).take(shortened_range.len()).filter(|x| {
-                        x.is_ascii_alphanumeric()
-                    }).collect::<String>();
+                    let alias = cmark[byte_range]
+                        .chars()
+                        .skip(1)
+                        .take(shortened_range.len())
+                        .filter(|x| x.is_ascii_alphanumeric())
+                        .collect::<String>();
 
                     if !shortened_range.is_empty() && !alias.is_empty() {
-                        Self::track(&s, SourceRange::Alias(shortened_range, alias), &mut plain, &mut mapping);
+                        Self::track(
+                            &s,
+                            SourceRange::Alias(shortened_range, alias),
+                            &mut plain,
+                            &mut mapping,
+                        );
                     }
                 }
                 Event::Html(_s) => {}
@@ -272,7 +291,12 @@ impl<'a> PlainOverlay<'a> {
                             start: char_range.start + 2,
                             end: char_range.end - 1,
                         };
-                        Self::track(&s, SourceRange::Direct(char_range), &mut plain, &mut mapping);
+                        Self::track(
+                            &s,
+                            SourceRange::Direct(char_range),
+                            &mut plain,
+                            &mut mapping,
+                        );
                     }
                 }
                 Event::SoftBreak => {
@@ -342,55 +366,58 @@ impl<'a> PlainOverlay<'a> {
                     false
                 }
             })
-            .fold(IndexMap::<Range, Span>::with_capacity(n), |mut acc, (sub, raw)| {
-                fn recombine(range: Range, offset: usize, len: usize) -> Range {
-                    Range {
-                        start: range.start + offset,
-                        end: range.start + offset + len,
+            .fold(
+                IndexMap::<Range, Span>::with_capacity(n),
+                |mut acc, (sub, raw)| {
+                    fn recombine(range: Range, offset: usize, len: usize) -> Range {
+                        Range {
+                            start: range.start + offset,
+                            end: range.start + offset + len,
+                        }
                     }
-                }
 
-                let _ = if sub.contains(&start) {
-                    // calculate the offset between our `condensed_range.start` and
-                    // the `sub` which is one entry in the mappings
-                    let offset = start - sub.start;
-                    let overlay_range =  if sub.contains(&(end - 1)) {
-                        // complete start to end
-                        active = false;
-                        start..end
+                    let _ = if sub.contains(&start) {
+                        // calculate the offset between our `condensed_range.start` and
+                        // the `sub` which is one entry in the mappings
+                        let offset = start - sub.start;
+                        let overlay_range = if sub.contains(&(end - 1)) {
+                            // complete start to end
+                            active = false;
+                            start..end
+                        } else {
+                            // only start, continue taking until end
+                            active = true;
+                            start..sub.end
+                        };
+                        let raw = recombine(raw.range(), offset, overlay_range.len());
+                        Some((overlay_range, raw))
+                    // TODO must be implemented properly
+                    // } else if active {
+                    //     let offset = sub.end - end;
+                    //     if sub.contains(&(end - 1)) {
+                    //         active = false;
+                    //         Some((sub.start..end, offset))
+                    //     } else {
+                    //         Some((sub.clone(), offset))
+                    //     }
                     } else {
-                        // only start, continue taking until end
-                        active = true;
-                        start..sub.end
-                    };
-                    let raw = recombine(raw.range(), offset, overlay_range.len());
-                    Some((overlay_range, raw))
-                // TODO must be implemented properly
-                // } else if active {
-                //     let offset = sub.end - end;
-                //     if sub.contains(&(end - 1)) {
-                //         active = false;
-                //         Some((sub.start..end, offset))
-                //     } else {
-                //         Some((sub.clone(), offset))
-                //     }
-                } else {
-                    None
-                }
-                .and_then(|(sub, raw)| {
-                    trace!("convert:  cmark-erased={:?} -> raw={:?}", sub, raw);
-
-                    if raw.len() > 0 {
-                        let resolved = self.raw.find_spans(raw.clone());
-                        trace!("cmark-erased range to spans: {:?} -> {:?}", raw, resolved);
-                        acc.extend(resolved.into_iter());
-                    } else {
-                        warn!("linear range to spans: {:?} empty!", raw);
+                        None
                     }
-                    Some(())
-                });
-                acc
-            })
+                    .and_then(|(sub, raw)| {
+                        trace!("convert:  cmark-erased={:?} -> raw={:?}", sub, raw);
+
+                        if raw.len() > 0 {
+                            let resolved = self.raw.find_spans(raw.clone());
+                            trace!("cmark-erased range to spans: {:?} -> {:?}", raw, resolved);
+                            acc.extend(resolved.into_iter());
+                        } else {
+                            warn!("linear range to spans: {:?} empty!", raw);
+                        }
+                        Some(())
+                    });
+                    acc
+                },
+            )
     }
 
     /// Obtains a reference to the plain, cmark erased representation.
