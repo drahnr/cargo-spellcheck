@@ -20,7 +20,7 @@ include = [
 ]
 
 [build-dependencies]
-nlprule-build = { version = "0.5.3", optional = true }
+nlprule-build = { version = "0.6", optional = true }
 # compress the nlprule artifacts to be under the 10 MB limit
 # that cargo enforces
 xz2 = "0.1"
@@ -66,7 +66,7 @@ url = { version = "2", features = ["serde"] }
 hunspell-rs = { version = "0.3", optional = true }
 
 # full grammar check, but also tokenization and disambiguation
-nlprule = { version = "0.5.3", optional = true }
+nlprule = { version = "0.6", optional = true }
 
 [dev-dependencies]
 # for stripping ansi color codes

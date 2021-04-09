@@ -1017,9 +1017,9 @@ dependencies = [
 
 [[package]]
 name = "nlprule"
-version = "0.5.3"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f405e1008bc70602877de524f256318154f1f95fd7859eb77c72eefa08b057f"
+checksum = "6070118ec24f21255d62e64c800af6529c9e444d953d44b13d6f3fae736f20a2"
 dependencies = [
  "aho-corasick",
  "bimap",
@@ -1053,9 +1053,9 @@ dependencies = [
 
 [[package]]
 name = "nlprule-build"
-version = "0.5.3"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c66a3564c7b14c1601a7ff490d83d0c8cfaebf844c2a9f873703f3c2df02aac5"
+checksum = "944e3c70e82730d50c858b96166f82a2d746a790d7e8870298ba040e7ca4b139"
 dependencies = [
  "directories",
  "flate2",
