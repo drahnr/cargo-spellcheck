@@ -91,7 +91,7 @@ impl<'a> PlainOverlay<'a> {
                 plain_acc.push_str(alias16);
                 Range {
                     start: cursor,
-                    end: cursor + alias.chars().count(),
+                    end: cursor + alias16.chars().count(),
                 }
             }
             SourceRange::Direct(_range) => {
