@@ -82,7 +82,13 @@ impl<'a> PlainOverlay<'a> {
         let cursor = plain_acc.chars().count();
         let plain_range = match &cmark_range {
             SourceRange::Alias(_range, alias) => {
-                plain_acc.push_str(&alias);
+                if alias.is_empty() {
+                    log::debug!("Alias for {:?} was empty. Ignoring.", s);
+                    return;
+                }
+                // limit the lias names to 16 chars
+                let alias16 = &alias[..std::cmp::min(alias.len(), 16)];
+                plain_acc.push_str(alias16);
                 Range {
                     start: cursor,
                     end: cursor + alias.chars().count(),
