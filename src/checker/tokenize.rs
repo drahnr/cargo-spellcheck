@@ -20,14 +20,14 @@ lazy_static! {
 }
 
 fn tokenizer_inner<P: AsRef<Path>>(override_path: Option<P>) -> Result<Tokenizer> {
-    info!("Loading tokenizer...");
+    info!("🧮 Loading tokenizer...");
     let tokenizer = if let Some(path) = override_path.as_ref() {
         let f = fs::File::open(path.as_ref())?;
         Tokenizer::from_reader(f)
     } else {
         Tokenizer::from_reader(&mut &*DEFAULT_TOKENIZER_BYTES)
     }?;
-    info!("Loaded tokenizer.");
+    info!("🧮 Loaded tokenizer.");
     Ok(tokenizer)
 }
 
@@ -50,14 +50,14 @@ pub(crate) fn tokenizer<P: AsRef<Path> + Clone>(
 }
 
 fn rules_inner<P: AsRef<Path>>(override_path: Option<P>) -> Result<Rules> {
-    info!("Loading rules...");
+    info!("🧮 Loading rules...");
     let rules = if let Some(override_path) = override_path.as_ref() {
         let f = fs::File::open(override_path.as_ref())?;
         Rules::from_reader(f)
     } else {
         Rules::from_reader(&mut &*DEFAULT_RULES_BYTES)
     }?;
-    info!("Loaded rules.");
+    info!("🧮 Loaded rules.");
     Ok(rules)
 }
 
