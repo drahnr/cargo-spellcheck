@@ -55,14 +55,16 @@ fn cache_builtin_inner(
     data: &[u8],
 ) -> Result<PathBuf> {
     let path = cache_dir.as_ref().join(format!(
-        "{}_{}.{}",
+        "cargo-spellcheck/{}/{}.{}",
         env!("CARGO_PKG_VERSION"),
         "en_US",
         extension
     ));
-    if path.exists() {
+    fs::create_dir_all(path.parent().unwrap())?;
+    // check if file exists
+    if let Ok(f) = fs::File::open(&path) {
         // in case somebody else is currently writing to it
-        let f = fs::OpenOptions::new().read(true).open(&path)?;
+        // wait for that to complete
         let mut flock = fd_lock::FdLock::new(f);
         let _ = flock.lock()?;
         return Ok(path);
