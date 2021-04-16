@@ -243,7 +243,7 @@ fn extract_products(
         .map(|path_str| CheckEntity::Source(manifest_dir.join(path_str), true))
         .collect::<HashSet<CheckEntity>>();
 
-    trace!("manifest products {:?}", &items);
+    trace!("📜 manifest products {:?}", &items);
     Ok(items)
 }
 
@@ -259,7 +259,7 @@ fn extract_readme(
                 acc.insert(CheckEntity::Markdown(manifest_dir.join(readme)));
             } else {
                 warn!(
-                    "README.md defined in Cargo.toml {} is not a file",
+                    "📜 read-me file declared in Cargo.toml {} is not a file",
                     readme.display()
                 );
             }
@@ -276,7 +276,7 @@ fn handle_manifest<P: AsRef<Path>>(
     skip_readme: bool,
 ) -> Result<HashSet<CheckEntity>> {
     let manifest_dir = to_manifest_dir(manifest_dir)?;
-    trace!("Handle manifest in dir: {}", manifest_dir.display());
+    trace!("📜 Handle manifest in dir: {}", manifest_dir.display());
 
     let manifest_dir = manifest_dir.as_path();
     let manifest = load_manifest(manifest_dir).map_err(|e| {

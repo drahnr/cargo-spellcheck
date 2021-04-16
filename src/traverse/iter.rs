@@ -98,14 +98,14 @@ impl TraverseModulesIter {
 
     pub fn collect_modules(&mut self, path: &Path, level: usize) -> Result<()> {
         if path.is_file() {
-            trace!("collecting mods declared in file {}", path.display());
+            trace!("🥞 collecting mods declared in file {}", path.display());
             self.queue.extend(
                 extract_modules_from_file(path)?
                     .into_iter()
                     .map(|item| (item, level)),
             );
         } else {
-            warn!("Only dealing with files, dropping {}", path.display());
+            warn!("🥞 Only dealing with files, dropping {}", path.display());
         }
         Ok(())
     }
