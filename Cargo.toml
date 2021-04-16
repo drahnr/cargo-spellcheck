@@ -27,7 +27,7 @@ xz2 = "0.1"
 
 [dependencies]
 anyhow = "1"
-cargo_toml = "0.8"
+cargo_toml = "0.9"
 console = "0.14"
 crossterm = "0.19"
 # for the config file
