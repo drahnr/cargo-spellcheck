@@ -160,7 +160,10 @@ To increase verbosity add `-v` (multiple) to increase verbosity.
 
 ## Installation
 
-`cargo install cargo-spellcheck`
+`cargo install --locked cargo-spellcheck`
+
+The `--locked` flag is currently required due to [an issue with `ra` dependency
+`rowan`](https://github.com/rust-analyzer/rust-analyzer/issues/8438).
 
 ### Checkers
 
