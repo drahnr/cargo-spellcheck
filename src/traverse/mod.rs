@@ -312,15 +312,19 @@ fn handle_manifest<P: AsRef<Path>>(
             .members
             .into_iter()
             .try_for_each::<_, Result<()>>(|member_entry_glob| {
+                let member_dir_glob = manifest_dir.join(&member_entry_glob);
 
-                let member_entries = glob::glob(&member_entry_glob)?;
-                for member_entry in member_entries {
-                    let member_entry = member_entry?;
-                    let member_dir = manifest_dir.join(&member_entry);
+                let back_to_glob = member_dir_glob.as_os_str().to_str()
+                .ok_or_else(|| anyhow!(
+                    "Failed to convert path to str for member directory {}",
+                    member_dir_glob.display()
+                ))?;
+                let member_dirs = glob::glob(back_to_glob)?;
+                debug!("🪆 Handing manifest member: {}", &member_entry_glob);
+                for member_dir in member_dirs {
+                    let member_dir = member_dir?;
                     trace!(
-                        "Handling manifest member {}: {} -> {}",
-                        &member_entry_glob,
-                        member_entry.display(),
+                        "🪆 Handling manifest member glob resolved: {}",
                         member_dir.display()
                     );
                     if let Ok(member_manifest) = load_manifest(&member_dir).map_err(|e| {
@@ -333,10 +337,10 @@ fn handle_manifest<P: AsRef<Path>>(
                         if let Ok(member) = extract_products(&member_manifest, &member_dir) {
                             acc.extend(member.into_iter());
                         } else {
-                            bail!("Workspace member {} product extraction failed", member_entry.display());
+                            bail!("Workspace member {} product extraction failed", member_dir.display());
                         }
                     } else {
-                        warn!("Opening manifest from member failed {}", member_entry.display());
+                        warn!("🪆 Opening manifest from member failed {}", member_dir.display());
                     }
                 }
                 Ok(())
@@ -570,6 +574,23 @@ mod tests {
         };
     }
 
+    macro_rules! assert_hashset_eq_pretty {
+        ($left:expr, $right:expr) => {
+            let left: HashSet<_> = $left;
+            let right: HashSet<_> = $right;
+            let delta = left.difference(&right).collect::<Vec<_>>();
+            let gamma = right.difference(&left).collect::<Vec<_>>();
+
+            if !delta.is_empty() {
+                eprintln!("Left does not contain {:?}", &delta[..]);
+            }
+            if !gamma.is_empty() {
+                eprintln!("Right does not contain {:?}", &gamma[..]);
+            }
+            assert_eq!(left, right);
+        };
+    }
+
     macro_rules! extract_test {
 
         ($name:ident, [ $( $path:literal ),* $(,)?] + $recurse: expr => [ $( $file:literal ),* $(,)?] ) => {
@@ -598,7 +619,8 @@ mod tests {
                 &Config::default(),
             )
             .expect("Must be able to extract demo dir");
-            assert_eq!(
+
+            assert_hashset_eq_pretty!(
                 into_hashset(
                     docs.into_iter()
                         .map(|x| {
@@ -631,6 +653,7 @@ mod tests {
             "src/nested/justone.rs",
             "src/nested/justtwo.rs",
             "src/nested/mod.rs",
+            "member/true/lib.rs",
         ]);
     }
 
@@ -663,6 +686,7 @@ mod tests {
         "src/nested/justone.rs",
         "src/nested/justtwo.rs",
         "src/nested/mod.rs",
+        "member/true/lib.rs",
     ]);
 
     extract_test!(traverse_manifest_rec, ["Cargo.toml"] + true => [
@@ -677,6 +701,7 @@ mod tests {
         "src/nested/justone.rs",
         "src/nested/justtwo.rs",
         "src/nested/mod.rs",
+        "member/true/lib.rs",
     ]);
 
     extract_test!(traverse_nested_mod_rs_1, ["src/nested/mod.rs"] + false => [
