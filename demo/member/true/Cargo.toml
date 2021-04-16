@@ -1,0 +1,17 @@
+[package]
+name = "cargo-spellcheck-demo-inner"
+version = "1.0.0"
+authors = ["Bernhard Schuster <bernhard@ahoi.io>"]
+edition = "2018"
+publish = false
+description = "Inner member of the demo"
+readme = "README.md"
+
+[lib]
+crate-type = ["staticlib"]
+path = "lib.rs"
+bench = false
+test = false
+
+
+[dependencies]
