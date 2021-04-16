@@ -5,6 +5,10 @@ lang = "en_US"
 search_dirs = ["."]
 extra_dictionaries = ["lingo.dic"]
 
+skip_os_lookups = true
+use_builtin = true
+
+
 [Hunspell.quirks]
 # transforms words that are provided by the tokenizer
 # into word fragments based on the capture groups which are to be checked.
