@@ -45,7 +45,7 @@ impl Checker for NlpRulesChecker {
                     Some("misspelling") => false,
                     // Anything quotes related is not relevant
                     // for code documentation.
-                    Some("typography") => false,
+                    Some("typographical") => false,
                     _other => true,
                 }
             })
