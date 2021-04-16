@@ -311,27 +311,33 @@ fn handle_manifest<P: AsRef<Path>>(
         workspace
             .members
             .into_iter()
-            .try_for_each::<_, Result<()>>(|item| {
-                let member_dir = manifest_dir.join(&item);
-                trace!(
-                    "Handling manifest member {} -> {}",
-                    &item,
-                    member_dir.display()
-                );
-                if let Ok(member_manifest) = load_manifest(&member_dir).map_err(|e| {
-                    anyhow!(
-                        "Failed to load manifest from member directory {}",
+            .try_for_each::<_, Result<()>>(|member_entry_glob| {
+
+                let member_entries = glob::glob(&member_entry_glob)?;
+                for member_entry in member_entries {
+                    let member_entry = member_entry?;
+                    let member_dir = manifest_dir.join(&member_entry);
+                    trace!(
+                        "Handling manifest member {}: {} -> {}",
+                        &member_entry_glob,
+                        member_entry.display(),
                         member_dir.display()
-                    )
-                    .context(e)
-                }) {
-                    if let Ok(member) = extract_products(&member_manifest, &member_dir) {
-                        acc.extend(member.into_iter());
+                    );
+                    if let Ok(member_manifest) = load_manifest(&member_dir).map_err(|e| {
+                        anyhow!(
+                            "Failed to load manifest from member directory {}",
+                            member_dir.display()
+                        )
+                        .context(e)
+                    }) {
+                        if let Ok(member) = extract_products(&member_manifest, &member_dir) {
+                            acc.extend(member.into_iter());
+                        } else {
+                            bail!("Workspace member {} product extraction failed", member_entry.display());
+                        }
                     } else {
-                        warn!("Workspace member {} product extraction failed", item);
+                        warn!("Opening manifest from member failed {}", member_entry.display());
                     }
-                } else {
-                    warn!("Opening manifest from member failed {}", item);
                 }
                 Ok(())
             })?;

@@ -214,6 +214,7 @@ dependencies = [
  "env_logger 0.8.3",
  "fancy-regex",
  "fs-err",
+ "glob",
  "hunspell-rs",
  "indexmap",
  "itertools 0.10.0",

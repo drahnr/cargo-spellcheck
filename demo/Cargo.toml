@@ -21,3 +21,8 @@ test = false
 
 
 [dependencies]
+
+
+
+[workspace]
+members = ["member/*"]
