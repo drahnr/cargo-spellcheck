@@ -24,20 +24,25 @@ fn os_specific_search_dirs() -> &'static [PathBuf] {
     OS_SPECIFIC_LOOKUP_DIRS.as_slice()
 }
 
-/// A collection of search directories, extended by OS specific defaults.
+/// A collection of search directories.
+/// OS specific paths are only provided in the iterator.
 #[derive(Debug, Clone)]
 pub struct SearchDirs(pub Vec<PathBuf>);
 
 impl Default for SearchDirs {
     fn default() -> Self {
-        Self(os_specific_search_dirs().to_vec())
+        Self(Vec::with_capacity(8))
     }
 }
 
-impl std::ops::Deref for SearchDirs {
-    type Target = Vec<PathBuf>;
-    fn deref(&self) -> &Self::Target {
-        &self.0
+impl SearchDirs {
+    pub fn iter(&self, extend_by_os: bool) -> impl Iterator<Item = &PathBuf> {
+        let chained = if extend_by_os {
+            os_specific_search_dirs().iter()
+        } else {
+            [].iter()
+        };
+        self.0.iter().chain(chained)
     }
 }
 
@@ -93,12 +98,7 @@ impl<'de> serde::de::Visitor<'de> for SearchDirVisitor {
     where
         D: serde::de::Deserializer<'de>,
     {
-        let mut seq = deserializer.deserialize_seq(self)?;
-        seq.extend(
-            os_specific_search_dirs()
-                .iter()
-                .map(|path: &PathBuf| PathBuf::from(path)),
-        );
+        let seq = deserializer.deserialize_seq(self)?;
         Ok(seq)
     }
 

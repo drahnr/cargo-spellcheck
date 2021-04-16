@@ -357,23 +357,28 @@ transform_regex = ["^'([^\\s])'$", "^[0-9]+x$"]
             r#"
 [Hunspell]
 search_dirs = ["/search/1", "/search/2"]
+skip_os_lookups = true
 			"#,
         )
         .unwrap();
 
         let hunspell: HunspellConfig = cfg.hunspell.expect("Must contain hunspell cfg");
+        assert!(hunspell.skip_os_lookups);
+
         let search_dirs = hunspell.search_dirs;
-        let search_dirs: Vec<_> = search_dirs.as_ref().clone();
-        assert!(!search_dirs.is_empty());
+        let search_dirs2: Vec<_> = search_dirs.as_ref().clone();
+        assert!(!search_dirs2.is_empty());
+
+        assert_eq!(search_dirs.iter(false).count(), 2);
 
         #[cfg(target_os = "linux")]
-        assert_eq!(search_dirs.len(), 5);
+        assert_eq!(search_dirs.iter(true).count(), 5);
 
         #[cfg(target_os = "windows")]
-        assert_eq!(search_dirs.len(), 2);
+        assert_eq!(search_dirs.iter(true).count(), 2);
 
         #[cfg(target_os = "macos")]
-        assert!(search_dirs.len() >= 3);
+        assert!(search_dirs.iter(true).count() >= 3);
     }
 
     #[test]

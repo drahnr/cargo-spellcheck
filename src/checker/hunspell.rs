@@ -12,6 +12,7 @@ use crate::util::sub_chars;
 use crate::Range;
 
 use fs_err as fs;
+use io::Write;
 use log::{debug, trace};
 use rayon::prelude::*;
 use std::io::{self, BufRead};
@@ -28,8 +29,72 @@ use super::quirks::{
 
 pub struct HunspellWrapper(pub Arc<Hunspell>);
 
+// This is ok, we make sure the state is only run
+// once.
+// TODO remove this and make things explicitly typed
+// TODO this is rather insane.
 unsafe impl Send for HunspellWrapper {}
 unsafe impl Sync for HunspellWrapper {}
+
+static BUILTIN_HUNSPELL_AFF: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/hunspell-data/en_US.aff"
+));
+
+static BUILTIN_HUNSPELL_DIC: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/hunspell-data/en_US.dic"
+));
+
+// XXX hunspell does not provide an API for using in-memory dictionary or
+// XXX affix files
+// XXX https://github.com/hunspell/hunspell/issues/721
+fn cache_builtin_inner(
+    cache_dir: impl AsRef<Path>,
+    extension: &'static str,
+    data: &[u8],
+) -> Result<PathBuf> {
+    let path = cache_dir.as_ref().join(format!(
+        "{}_{}.{}",
+        env!("CARGO_PKG_VERSION"),
+        "en_US",
+        extension
+    ));
+    if path.exists() {
+        // in case somebody else is currently writing to it
+        let f = fs::OpenOptions::new().read(true).open(&path)?;
+        let mut flock = fd_lock::FdLock::new(f);
+        let _ = flock.lock()?;
+        return Ok(path);
+    }
+    let f = fs::OpenOptions::new()
+        .truncate(true)
+        .create(true)
+        .write(true)
+        .open(&path)?;
+    let mut flock = fd_lock::FdLock::new(f);
+    // if there are multiple instances, allow the first to write it all
+    if let Ok(mut f) = flock.try_lock() {
+        f.write_all(data)?;
+        return Ok(path);
+    }
+
+    // .. but block execution until the first completed so
+    // there are no cases of partial data
+    flock.lock()?;
+
+    Ok(path)
+}
+
+fn cache_builtin() -> Result<(PathBuf, PathBuf)> {
+    log::info!("Using builtin en_US hunspell dictionary and affix files");
+    let base = directories::BaseDirs::new().expect("env HOME must be set");
+
+    let cache_dir = base.cache_dir();
+    let path_aff = cache_builtin_inner(&cache_dir, "aff", BUILTIN_HUNSPELL_AFF)?;
+    let path_dic = cache_builtin_inner(&cache_dir, "dic", BUILTIN_HUNSPELL_DIC)?;
+    Ok((path_dic, path_aff))
+}
 
 pub struct HunspellChecker;
 
@@ -81,7 +146,14 @@ impl HunspellChecker {
             })
             .ok_or_else(|| {
                 anyhow!("Failed to find any {lang}.dic / {lang}.aff in any search dir or no search provided",
-                lang = lang)
+                    lang = lang)
+            })
+            .or_else(|e| {
+                if config.use_builtin {
+                    Ok(cache_builtin()?)
+                } else {
+                    Err(e)
+                }
             })?;
 
         let dic = dic.to_str().unwrap();
@@ -100,7 +172,7 @@ impl HunspellChecker {
 
         // suggestion must contain the word itself if it is valid extra dictionary
         // be more strict about the extra dictionaries, they have to exist
-        for extra_dic in config.extra_dictionaries().iter() {
+        for extra_dic in config.extra_dictionaries() {
             debug!("Adding extra dictionary {}", extra_dic.display());
             if !extra_dic.is_file() {
                 bail!("Extra dictionary {} is not a file", extra_dic.display())

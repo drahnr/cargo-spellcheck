@@ -62,6 +62,20 @@ pub struct HunspellConfig {
     // must be option so it can be omitted in the config
     #[serde(default)]
     pub search_dirs: SearchDirs,
+
+    /// Avoid the OS provided dictionaries
+    /// and only use the builtin ones, besides
+    /// those defined in `extra_dictionaries`.
+    #[serde(default)]
+    pub skip_os_lookups: bool,
+
+    /// Use the builtin dictionaries as last resort.
+    /// Usually combined with `skip_os_lookups=true`
+    /// to enforce the `builtin` usage.
+    /// Does not prevent the usage of `extra_dictionaries`.
+    #[serde(default)]
+    pub use_builtin: bool,
+
     /// Additional dictionaries for topic specific lingo.
     #[serde(default)]
     pub extra_dictionaries: Vec<PathBuf>,
@@ -81,6 +95,8 @@ impl Default for HunspellConfig {
             extra_dictionaries: Vec::default(),
             quirks: Quirks::default(),
             tokenization_splitchars: default_tokenization_splitchars(),
+            skip_os_lookups: false,
+            use_builtin: true,
         }
     }
 }
@@ -94,18 +110,18 @@ impl HunspellConfig {
         }
     }
 
-    pub fn search_dirs(&self) -> &[PathBuf] {
-        &self.search_dirs
+    pub fn search_dirs(&self) -> impl Iterator<Item = &PathBuf> {
+        self.search_dirs.iter(!self.skip_os_lookups)
     }
 
-    pub fn extra_dictionaries(&self) -> &[PathBuf] {
-        &self.extra_dictionaries
+    pub fn extra_dictionaries(&self) -> impl Iterator<Item = &PathBuf> {
+        self.extra_dictionaries.iter()
     }
 
     pub fn sanitize_paths(&mut self, base: &Path) -> Result<()> {
         self.search_dirs = self
             .search_dirs
-            .iter()
+            .iter(!self.skip_os_lookups)
             .filter_map(|search_dir| {
                 let abspath = if !search_dir.is_absolute() {
                     base.join(&search_dir)
@@ -129,13 +145,17 @@ impl HunspellConfig {
         // convert all extra dictionaries to absolute paths
 
         'o: for extra_dic in self.extra_dictionaries.iter_mut() {
-            for search_dir in self.search_dirs.iter().filter_map(|search_dir| {
-                if !extra_dic.is_absolute() {
-                    base.join(&search_dir).canonicalize().ok()
-                } else {
-                    Some(search_dir.to_owned())
-                }
-            }) {
+            for search_dir in
+                self.search_dirs
+                    .iter(!self.skip_os_lookups)
+                    .filter_map(|search_dir| {
+                        if !extra_dic.is_absolute() {
+                            base.join(&search_dir).canonicalize().ok()
+                        } else {
+                            Some(search_dir.to_owned())
+                        }
+                    })
+            {
                 let abspath = if !extra_dic.is_absolute() {
                     search_dir.join(&extra_dic)
                 } else {

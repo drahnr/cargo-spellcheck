@@ -314,11 +314,12 @@ fn handle_manifest<P: AsRef<Path>>(
             .try_for_each::<_, Result<()>>(|member_entry_glob| {
                 let member_dir_glob = manifest_dir.join(&member_entry_glob);
 
-                let back_to_glob = member_dir_glob.as_os_str().to_str()
-                .ok_or_else(|| anyhow!(
-                    "Failed to convert path to str for member directory {}",
-                    member_dir_glob.display()
-                ))?;
+                let back_to_glob = member_dir_glob.as_os_str().to_str().ok_or_else(|| {
+                    anyhow!(
+                        "Failed to convert path to str for member directory {}",
+                        member_dir_glob.display()
+                    )
+                })?;
                 let member_dirs = glob::glob(back_to_glob)?;
                 debug!("🪆 Handing manifest member: {}", &member_entry_glob);
                 for member_dir in member_dirs {
@@ -337,10 +338,16 @@ fn handle_manifest<P: AsRef<Path>>(
                         if let Ok(member) = extract_products(&member_manifest, &member_dir) {
                             acc.extend(member.into_iter());
                         } else {
-                            bail!("Workspace member {} product extraction failed", member_dir.display());
+                            bail!(
+                                "Workspace member {} product extraction failed",
+                                member_dir.display()
+                            );
                         }
                     } else {
-                        warn!("🪆 Opening manifest from member failed {}", member_dir.display());
+                        warn!(
+                            "🪆 Opening manifest from member failed {}",
+                            member_dir.display()
+                        );
                     }
                 }
                 Ok(())
