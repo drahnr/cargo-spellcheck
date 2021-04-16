@@ -12,6 +12,7 @@ readme = "README.md"
 build = "build.rs"
 include = [
     "nlprule-data/**/*.bin.xz",
+    "hunspell-data/*",
     "src/**/*.rs",
     "Cargo.toml",
     "build.rs",
