@@ -232,6 +232,7 @@ dependencies = [
  "serde",
  "signal-hook 0.3.8",
  "syn",
+ "thiserror",
  "toml",
  "url",
  "walkdir",
