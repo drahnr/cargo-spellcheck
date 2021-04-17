@@ -1,6 +1,6 @@
 //! Hunspell checker configuration.
 
-use super::{SearchDirs, WrappedRegex};
+use super::{Lang5, SearchDirs, WrappedRegex};
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Result};
@@ -68,8 +68,8 @@ fn default_tokenization_splitchars() -> String {
 #[serde(deny_unknown_fields)]
 pub struct HunspellConfig {
     /// The language we want to check against, used as the dictionary and affixes file name.
-    // TODO impl a custom xx_YY code deserializer based on iso crates
-    pub lang: Option<String>,
+    #[serde(default)]
+    pub lang: Lang5,
     /// Additional search directories for `.dic` and `.aff` files.
     // must be option so it can be omitted in the config
     #[serde(default)]
@@ -102,7 +102,7 @@ pub struct HunspellConfig {
 impl Default for HunspellConfig {
     fn default() -> Self {
         Self {
-            lang: Some("en".to_owned()),
+            lang: Lang5::en_US,
             search_dirs: SearchDirs::default(),
             extra_dictionaries: Vec::default(),
             quirks: Quirks::default(),
@@ -114,12 +114,8 @@ impl Default for HunspellConfig {
 }
 
 impl HunspellConfig {
-    pub fn lang(&self) -> &str {
-        if let Some(ref lang) = self.lang {
-            lang.as_str()
-        } else {
-            "en_US"
-        }
+    pub fn lang(&self) -> Lang5 {
+        self.lang
     }
 
     pub fn search_dirs(&self) -> impl Iterator<Item = &PathBuf> {

@@ -7,6 +7,7 @@
 
 use super::{apply_tokenizer, Checker, Detector, Documentation, Suggestion, SuggestionSet};
 
+use crate::config::Lang5;
 use crate::documentation::{CheckableChunk, ContentOrigin, PlainOverlay};
 use crate::util::sub_chars;
 use crate::Range;
@@ -120,7 +121,8 @@ impl HunspellChecker {
     fn inner_init(config: &<Self as Checker>::Config) -> Result<HunspellWrapper> {
         let search_dirs = config.search_dirs();
 
-        let lang = config.lang();
+        let lang = config.lang().to_string();
+        let lang = lang.as_str();
 
         // lookup paths are really just an attempt to provide a dictionary, so be more forgiving
         // when encountering errors here
@@ -181,7 +183,7 @@ impl HunspellChecker {
         is_valid_hunspell_dic_path(dic)?;
         hunspell.add_dictionary(dic);
 
-        if cfg!(debug_assertions) && lang == "en_US" {
+        if cfg!(debug_assertions) && Lang5::en_US == lang {
             // "Test" is a valid word
             debug_assert!(hunspell.check("Test"));
             // suggestion must contain the word itself if it is valid
