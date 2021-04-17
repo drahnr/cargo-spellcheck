@@ -60,8 +60,8 @@ walkdir = "2"
 # config parsing, must be independent of features
 
 # TODO parse the country codes of dictionaries?
-# iso_country = { version = "0.1" }
-# isolang = { version = "1", features = ["serde_serialize"] }
+iso_country = { version = "0.1", features = ["serde"] }
+isolang = { version = "1", features = ["serde_serialize"] }
 
 url = { version = "2", features = ["serde"] }
 
@@ -77,6 +77,7 @@ nlprule = { version = "0.6.2", optional = true }
 console = "0.14"
 assert_matches = "1"
 maplit = "1"
+serde_plain = "0.3"
 
 [features]
 default = ["hunspell", "nlprules"]

@@ -25,6 +25,9 @@ pub use self::nlprules::*;
 mod search_dirs;
 pub use search_dirs::*;
 
+mod iso;
+pub use iso::*;
+
 use crate::Detector;
 use anyhow::{anyhow, bail, Error, Result};
 use fancy_regex::Regex;
@@ -230,10 +233,7 @@ fn default_nlprules() -> Option<NlpRulesConfig> {
 }
 
 fn default_hunspell() -> Option<HunspellConfig> {
-    Some(HunspellConfig {
-        lang: Some("en_US".to_owned()),
-        ..Default::default()
-    })
+    Some(HunspellConfig::default())
 }
 
 impl Default for Config {
@@ -281,7 +281,7 @@ extra_dictionaries = ["/home/bernhard/test.dic"]
         let _cfg = Config::parse(
             r#"
 [hunspell]
-lang = "en_US"
+lang = "en_GB"
 search_dirs = ["/usr/lib64/hunspell"]
 extra_dictionaries = ["/home/bernhard/test.dic"]
 			"#,
@@ -294,7 +294,7 @@ extra_dictionaries = ["/home/bernhard/test.dic"]
         let cfg = Config::parse(
             r#"
 [Hunspell]
-lang = "en_US"
+lang = "de_AT"
 search_dirs = ["/usr/lib64/hunspell"]
 extra_dictionaries = ["/home/bernhard/test.dic"]
 			"#,
