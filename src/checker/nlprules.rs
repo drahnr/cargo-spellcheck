@@ -30,7 +30,6 @@ impl Checker for NlpRulesChecker {
 
         let rules = rules
             .into_iter()
-            .into_iter()
             .filter(|rule| {
                 match rule
                     .category_type()

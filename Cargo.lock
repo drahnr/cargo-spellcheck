@@ -229,7 +229,7 @@ dependencies = [
  "lazy_static",
  "log",
  "maplit",
- "nlprule",
+ "nlprule 0.6.3-pre",
  "nlprule-build",
  "num_cpus",
  "proc-macro2",
@@ -1115,6 +1115,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "nlprule"
+version = "0.6.3-pre"
+source = "git+https://github.com/bminixhofer/nlprule.git?branch=once_cell#bf3de41bf0f9d7e9c2aa1b6e601e0f1a0a6614eb"
+dependencies = [
+ "aho-corasick",
+ "bimap",
+ "bincode",
+ "cfg-if 1.0.0",
+ "derivative",
+ "either",
+ "enum_dispatch",
+ "fancy-regex",
+ "fs-err",
+ "fst",
+ "half",
+ "itertools 0.10.0",
+ "lazy_static",
+ "log",
+ "once_cell",
+ "onig",
+ "rayon",
+ "rayon-cond",
+ "serde",
+ "serde_json",
+ "srx",
+ "thiserror",
+ "unicase",
+]
+
+[[package]]
 name = "nlprule-build"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1123,7 +1153,7 @@ dependencies = [
  "directories",
  "flate2",
  "fs-err",
- "nlprule",
+ "nlprule 0.6.2",
  "reqwest",
  "thiserror",
  "zip",
@@ -1730,9 +1760,9 @@ checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
 
 [[package]]
 name = "rustls"
-version = "0.19.0"
+version = "0.19.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "064fd21ff87c6e87ed4506e68beb42459caa4a0e2eb144932e6776768556980b"
+checksum = "35edb675feee39aec9c99fa5ff985081995a06d594114ae14cbe797ad7b7a6d7"
 dependencies = [
  "base64",
  "log",
