@@ -104,7 +104,7 @@ fn cache_builtin() -> Result<(PathBuf, PathBuf)> {
 /// or unicode `VULGAR FRACTION`.
 pub fn consists_of_vulgar_fractions_or_emojis(word: &str) -> bool {
     lazy_static! {
-        static ref VULAGAR_OR_EMOJI: regex::RegexSet = regex::RegexSetBuilder::new(&[
+        static ref VULGAR_OR_EMOJI: regex::RegexSet = regex::RegexSetBuilder::new(&[
             r"[\u00BC-\u00BE\u2150-\u215E-\u2189]",
             r"^[\p{Emoji}]+$"
         ])
@@ -112,7 +112,7 @@ pub fn consists_of_vulgar_fractions_or_emojis(word: &str) -> bool {
         .build()
         .expect("REGEX grammar is human checked. qed");
     };
-    return VULAGAR_OR_EMOJI.is_match(word);
+    return VULGAR_OR_EMOJI.is_match(word);
 }
 
 pub struct HunspellChecker;
