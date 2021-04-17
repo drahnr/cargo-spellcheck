@@ -1,11 +1,15 @@
-use std::path::PathBuf;
+use std::{marker::PhantomData, path::PathBuf};
 
 use anyhow::{bail, Result};
 use docopt::Docopt;
 
 use crate::traverse;
 use itertools::Itertools;
+use serde::de::{self, DeserializeOwned, Deserializer};
 use serde::Deserialize;
+use std::fmt;
+use std::result;
+use std::str::FromStr;
 
 use crate::Action;
 
@@ -48,15 +52,77 @@ Options:
 /// Checker types to be derived from the stringly typed arguments.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Deserialize)]
 pub enum CheckerType {
-    #[serde(alias = "hunspell")]
-    #[serde(alias = "hunSpell")]
     Hunspell,
-    #[serde(alias = "nlprules")]
-    #[serde(alias = "nlpRules")]
     NlpRules,
-    #[serde(alias = "ReFlow")]
-    #[serde(alias = "reflow")]
     Reflow,
+}
+
+impl FromStr for CheckerType {
+    type Err = UnknownCheckerTypeVariant;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let s = s.to_lowercase();
+        Ok(match s.as_str() {
+            "nlprules" => Self::NlpRules,
+            "hunspell" => Self::Hunspell,
+            "reflow" => Self::Reflow,
+            _other => return Err(UnknownCheckerTypeVariant(s)),
+        })
+    }
+}
+
+#[derive(Debug, Clone, thiserror::Error)]
+#[error("Unknown checker type variant: {0}")]
+pub struct UnknownCheckerTypeVariant(String);
+
+fn deser_option_vec_from_str_list<'de, T, D>(
+    deserializer: D,
+) -> result::Result<Option<Vec<T>>, D::Error>
+where
+    T: DeserializeOwned + fmt::Debug + FromStr,
+    <T as FromStr>::Err: fmt::Display + fmt::Debug,
+    D: Deserializer<'de>,
+{
+    deserializer.deserialize_option(OptionalVecOf::<T>::new())
+}
+
+#[derive(Debug, Clone, Copy)]
+struct OptionalVecOf<T>(PhantomData<T>);
+
+impl<T> OptionalVecOf<T> {
+    fn new() -> Self {
+        Self(PhantomData)
+    }
+}
+impl<'de, T> de::Visitor<'de> for OptionalVecOf<T>
+where
+    T: fmt::Debug + de::DeserializeOwned + FromStr,
+    <T as FromStr>::Err: fmt::Display + fmt::Debug,
+{
+    type Value = Option<Vec<T>>;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        write!(formatter, "Expected a , separated string vector")
+    }
+
+    fn visit_none<E>(self) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(None)
+    }
+
+    fn visit_some<D>(self, deserializer: D) -> result::Result<Option<Vec<T>>, D::Error>
+    where
+        D: de::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        Ok(s.split(',')
+            .into_iter()
+            .map(|segment| <T as FromStr>::from_str(dbg!(segment)))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(serde::de::Error::custom)?)
+        .map(|v| Some(v))
+    }
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -68,6 +134,7 @@ pub struct Args {
     pub flag_quiet: bool,
     pub flag_version: bool,
     pub flag_help: bool,
+    #[serde(deserialize_with = "deser_option_vec_from_str_list")]
     pub flag_checkers: Option<Vec<CheckerType>>,
     pub flag_cfg: Option<PathBuf>,
     pub flag_force: bool,
@@ -488,6 +555,18 @@ mod tests {
                 })
                 .is_ok());
         }
+    }
+
+    #[test]
+    fn deserialize_multiple_checkers() {
+        let args = Args::parse(commandline_to_iter(
+            "cargo spellcheck check --checkers=nlprules,hunspell",
+        ))
+        .expect("Parsing works. qed");
+        assert_eq!(
+            args.flag_checkers,
+            Some(vec![CheckerType::NlpRules, CheckerType::Hunspell])
+        );
     }
 
     #[test]
