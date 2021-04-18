@@ -229,7 +229,7 @@ dependencies = [
  "lazy_static",
  "log",
  "maplit",
- "nlprule 0.6.3-pre",
+ "nlprule",
  "nlprule-build",
  "num_cpus",
  "proc-macro2",
@@ -1081,43 +1081,9 @@ dependencies = [
 
 [[package]]
 name = "nlprule"
-version = "0.6.2"
+version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "565328bcad06bfe66d02d592537aeab4da1b7e52a4cb28b5eea00c12a137ae89"
-dependencies = [
- "aho-corasick",
- "bimap",
- "bincode",
- "cfg-if 1.0.0",
- "derivative",
- "either",
- "enum_dispatch",
- "fancy-regex",
- "fs-err",
- "fst",
- "half",
- "itertools 0.10.0",
- "lazy_static",
- "lazycell",
- "log",
- "onig",
- "rayon",
- "rayon-cond",
- "regex-syntax",
- "roxmltree",
- "serde",
- "serde-xml-rs",
- "serde_json",
- "srx",
- "thiserror",
- "unicase",
- "xml-rs",
-]
-
-[[package]]
-name = "nlprule"
-version = "0.6.3-pre"
-source = "git+https://github.com/bminixhofer/nlprule.git?branch=once_cell#bf3de41bf0f9d7e9c2aa1b6e601e0f1a0a6614eb"
+checksum = "59490c5314b2cb4ed69b6ff8f45c9a2d61be61adfc2b89d7c4bff423a3a25812"
 dependencies = [
  "aho-corasick",
  "bimap",
@@ -1137,23 +1103,27 @@ dependencies = [
  "onig",
  "rayon",
  "rayon-cond",
+ "regex-syntax",
+ "roxmltree",
  "serde",
+ "serde-xml-rs",
  "serde_json",
  "srx",
  "thiserror",
  "unicase",
+ "xml-rs",
 ]
 
 [[package]]
 name = "nlprule-build"
-version = "0.6.2"
+version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "171c32e77adcfedf2d24d91c9fd439c0cf1d4f8d5b1662984fe815d9b2841e05"
+checksum = "fd824f6a2a3c2779c229835f4658ab1ce014113fbcf7d5207941838abfa5700d"
 dependencies = [
  "directories",
  "flate2",
  "fs-err",
- "nlprule 0.6.2",
+ "nlprule",
  "reqwest",
  "thiserror",
  "zip",
