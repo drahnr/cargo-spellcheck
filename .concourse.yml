@@ -7,6 +7,8 @@ resource_types:
 resources:
 - name: git-clone-resource
   type: git
+  webhook_token: ((cargo-spellcheck-webhook-token))
+  check_every: 12h
   source:
     branch: master
     uri: https://github.com/drahnr/cargo-spellcheck.git
@@ -34,6 +36,8 @@ resources:
 
 - name: github-release
   type: github-release
+  webhook_token: ((cargo-spellcheck-webhook-token))
+  check_every: 12h
   source:
     owner: drahnr
     access_token: ((sirmergealot-github-token))
@@ -41,6 +45,8 @@ resources:
 
 - name: git-tag-resource
   type: git
+  webhook_token: ((cargo-spellcheck-webhook-token))
+  check_every: 12h
   source:
     tag_filter: "v[0-9]*"
     branch: master
@@ -48,6 +54,8 @@ resources:
 
 - name: git-pull-request-resource
   type: pull-request
+  webhook_token: ((cargo-spellcheck-webhook-token))
+  check_every: 12h
   source:
     repository: drahnr/cargo-spellcheck
     access_token: ((sirmergealot-github-token))
