@@ -57,10 +57,16 @@ pub fn get_terminal_size() -> usize {
     match crossterm::terminal::size() {
         Ok((terminal_size, _)) => terminal_size as usize,
         Err(_) => {
-            log::warn!(
-                "Unable to get terminal size. Using default: {}",
-                DEFAULT_TERMINAL_SIZE
-            );
+            use std::sync::Once;
+
+            static WARN_ONCE: Once = Once::new();
+            WARN_ONCE.call_once(|| {
+                log::warn!(
+                    "Unable to get terminal size. Using default: {}",
+                    DEFAULT_TERMINAL_SIZE
+                );
+            });
+
             DEFAULT_TERMINAL_SIZE
         }
     }
