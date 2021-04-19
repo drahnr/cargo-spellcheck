@@ -3,7 +3,7 @@
 [![crates.io](https://img.shields.io/crates/v/cargo_spellcheck.svg)](https://crates.io/crates/cargo-spellcheck)
 [![CI](https://ci.spearow.io/api/v1/teams/main/pipelines/cargo-spellcheck/jobs/master-validate/badge)](https://ci.spearow.io/teams/main/pipelines/cargo-spellcheck/jobs/master-validate)
 ![commits-since](https://img.shields.io/github/commits-since/drahnr/cargo-spellcheck/latest.svg)
-Check your spelling with `hunspell` and/or `languagetool`.
+Check your spelling with `hunspell` and/or `nlprule`.
 
 ## Use Cases
 
@@ -75,7 +75,8 @@ exec cargo spellcheck -m 99 $(git diff-index --cached --name-only --diff-filter=
 * [x] Spell checking using `hunspell`
 * [x] Merge multiline doc comments
 * [x] Handle multiline and fragmented mistakes (i.e. for grammar) [#25](https://github.com/drahnr/cargo-spellcheck/issues/25)
-* [x] Grammar check using `languagetool` http API
+* [x] <del>Grammar check using `languagetool` http API</del>
+* [x] Grammar check using `nlprule`
 * [x] Follow module declarations rather than blindly recurse
 * [x] Be `commonmark`/`markdown` aware
   * [ ] Handle doc-tests with ` ```rust` as virtual files [#43](https://github.com/drahnr/cargo-spellcheck/issues/43)
@@ -106,8 +107,8 @@ skip_readme = false
 # Linux:   /home/alice/.config/cargo_spellcheck/config.toml
 # Windows: C:\Users\Alice\AppData\Roaming\cargo_spellcheck\config.toml
 # macOS:   /Users/Alice/Library/Preferences/cargo_spellcheck/config.toml
-[LanguageTool]
-url = "127.0.0.1:8010"
+
+
 
 [Hunspell]
 # lang and name of `.dic` file
@@ -129,6 +130,21 @@ lang = "en_US"
 # or https://www.systutorials.com/docs/linux/man/4-hunspell/#lbAE
 # on how to define a custom dictionary file.
 extra_dictionaries = []
+
+# If set to `true`, the OS specific default search paths
+# are skipped.
+# This is
+skip_os_lookups = false
+
+# Use the builtin dictionaries if none were found in
+# in the configured lookup paths.
+# Usually combined with `skip_os_lookups=true`
+# to enforce the `builtin` usage for consistent
+# results across distributions and CI runs.
+# Does preclude the usage of `extra_dictionaries = [..]`
+# for topic specific lingo.
+use_builtin = true
+
 
 [Hunspell.quirks]
 # Transforms words that are provided by the tokenizer
@@ -162,8 +178,8 @@ To increase verbosity add `-v` (multiple) to increase verbosity.
 
 `cargo install --locked cargo-spellcheck`
 
-The `--locked` flag is the preferred way of installing to get the tested
-set of dependencies.
+The `--locked` flag is the preferred way of installing to get the tested set of
+dependencies.
 
 ### Checkers
 
@@ -209,9 +225,14 @@ the library that is used for pulling and integrating - details are to be found
 under [crate `nlprule`'s
 README.md](https://github.com/bminixhofer/nlprule#license).
 
-#### LanguageTool
 
-**Deprecated!**
+## 🎈 Contribute!
 
-You must run an instance of the [LanguageTool server i.e. as
-container](https://hub.docker.com/r/erikvl87/languagetool).
+Contributions are very welcome!
+
+Generally the preferred way of doing so, is to comment in an issue that you
+would like to tackle the implementation/fix.
+
+This is usually followed by an initial PR where the implementation is then
+discussed and iteratively refined. No need to get it all correct
+the first time!

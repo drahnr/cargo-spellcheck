@@ -12,6 +12,7 @@ commonmark
 config
 Consumingly
 CXX
+dev
 Docopt
 ellipsize
 enablement
@@ -19,13 +20,18 @@ featureset/MS
 http/s
 hunspell/MS
 iff
+iterative/Y
+io
 LanguageTool/MS
+md
 multiline/S
 nix/MS
+NlpRule/S
 pickable
 pre/MS
 proc_macro2/MS
 recurse
+README
 reflow
 Reflow/MS
 roadmap/MS
