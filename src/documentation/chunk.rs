@@ -4,7 +4,6 @@
 
 use super::*;
 
-use anyhow::{bail, Error, Result};
 use indexmap::IndexMap;
 use std::convert::TryFrom;
 use std::fmt;

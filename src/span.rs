@@ -10,7 +10,7 @@ pub use proc_macro2::LineColumn;
 
 use std::hash::{Hash, Hasher};
 
-use anyhow::{bail, Error, Result};
+use crate::errors::*;
 
 use std::convert::TryFrom;
 

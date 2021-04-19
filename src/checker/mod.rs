@@ -6,7 +6,7 @@
 
 use crate::{Config, Detector, Documentation, Suggestion, SuggestionSet};
 
-use anyhow::Result;
+use crate::errors::*;
 
 use log::debug;
 

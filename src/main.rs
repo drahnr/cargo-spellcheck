@@ -11,6 +11,7 @@ mod action;
 mod checker;
 mod config;
 mod documentation;
+pub mod errors;
 mod reflow;
 mod span;
 mod suggestion;
@@ -24,6 +25,8 @@ pub use self::documentation::*;
 pub use self::span::*;
 pub use self::suggestion::*;
 pub use self::util::*;
+
+use self::errors::*;
 
 use log::{debug, info, trace, warn};
 use serde::Deserialize;
@@ -52,7 +55,7 @@ pub enum ExitCode {
     Signal,
     /// A custom exit code, as specified with `--code=<code>`.
     Custom(u8),
-    // Failure is already default for `Err(anyhow::Error)`
+    // Failure is already default for `Err(_)`
 }
 
 impl ExitCode {
@@ -86,7 +89,7 @@ fn signal_handler() {
 }
 
 /// The inner main.
-fn run() -> anyhow::Result<ExitCode> {
+fn run() -> Result<ExitCode> {
     let args = Args::parse(std::env::args()).unwrap_or_else(|e| e.exit());
 
     let _ = ::rayon::ThreadPoolBuilder::new()
@@ -146,10 +149,10 @@ fn run() -> anyhow::Result<ExitCode> {
                 }
                 ConfigWriteDestination::File { overwrite, path } => {
                     if path.exists() && !overwrite {
-                        return Err(anyhow::anyhow!(
+                        bail!(
                             "Attempting to overwrite {} requires `--force`.",
                             path.display()
-                        ));
+                        );
                     }
 
                     info!("Writing configuration file to {}", path.display());
@@ -195,7 +198,8 @@ fn run() -> anyhow::Result<ExitCode> {
 }
 
 #[allow(missing_docs)]
-fn main() -> anyhow::Result<()> {
+fn main() -> Result<()> {
+    let _ = color_eyre::install()?;
     let val = run()?.as_u8();
     if val != 0 {
         std::process::exit(val as i32)

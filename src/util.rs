@@ -1,5 +1,6 @@
+use crate::errors::*;
 use crate::{LineColumn, Range, Span};
-use anyhow::{anyhow, bail, Result};
+use fs_err as fs;
 use std::io::Read;
 use std::path::Path;
 
@@ -89,14 +90,9 @@ where
 #[allow(unused)]
 pub(crate) fn load_span_from_file(path: impl AsRef<Path>, span: Span) -> Result<String> {
     let path = path.as_ref();
-    let path = path
-        .canonicalize()
-        .map_err(|e| anyhow!("Failed to canonicalize {}", path.display()).context(e))?;
+    let path = fs::canonicalize(&path)?;
 
-    let ro = std::fs::OpenOptions::new()
-        .read(true)
-        .open(&path)
-        .map_err(|e| anyhow!("Failed to open {}", path.display()).context(e))?;
+    let ro = fs::OpenOptions::new().read(true).open(&path)?;
 
     let mut reader = std::io::BufReader::new(ro);
 

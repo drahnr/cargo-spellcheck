@@ -23,7 +23,7 @@ use std::sync::Arc;
 
 use hunspell_rs::Hunspell;
 
-use anyhow::{anyhow, bail, Result};
+use crate::errors::*;
 
 use super::quirks::{
     replacements_contain_dashed, replacements_contain_dashless, transform, Transformed,
@@ -165,7 +165,7 @@ impl HunspellChecker {
                 Some((dic, aff))
             })
             .ok_or_else(|| {
-                anyhow!("Failed to find any {lang}.dic / {lang}.aff in any search dir or no search provided",
+                eyre!("Failed to find any {lang}.dic / {lang}.aff in any search dir or no search provided",
                     lang = lang)
             })
             .or_else(|e| {
@@ -415,12 +415,11 @@ fn is_valid_hunspell_dic(reader: impl BufRead) -> Result<()> {
     let mut iter = reader.lines().enumerate();
     if let Some((_lineno, first)) = iter.next() {
         let first = first?;
-        let _ = first.parse::<u64>().map_err(|e| {
-            anyhow!(
+        let _ = first.parse::<u64>().wrap_err_with(|| {
+            eyre!(
                 "First line of extra dictionary must a number, but is: >{}<",
                 first
             )
-            .context(e)
         })?;
     }
     // Just check the first 10 lines, don't waste much time here

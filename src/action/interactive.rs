@@ -49,7 +49,9 @@ impl ScopedRaw {
     pub fn restore_terminal() -> Result<()> {
         stdout().queue(crossterm::cursor::Show)?;
         crossterm::terminal::disable_raw_mode()?;
-        stdout().flush().map_err(|e| anyhow::anyhow!(e))
+        stdout()
+            .flush()
+            .wrap_err_with(|| eyre!("Failed to restore terminal"))
     }
 }
 
@@ -424,7 +426,7 @@ impl UserPicked {
             }
 
             let event = match crossterm::event::read()
-                .map_err(|e| anyhow::anyhow!("Something unexpected happened on the CLI: {}", e))?
+                .wrap_err_with(|| eyre!("Something unexpected happened on the CLI"))?
             {
                 Event::Key(event) => event,
                 Event::Resize(..) => {

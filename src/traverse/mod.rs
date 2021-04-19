@@ -5,7 +5,7 @@
 use super::*;
 use crate::Documentation;
 
-use anyhow::{anyhow, bail, Error, Result};
+use crate::errors::*;
 use log::{debug, trace, warn};
 
 use fs_err as fs;
@@ -13,7 +13,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 pub(crate) fn cwd() -> Result<PathBuf> {
-    std::env::current_dir().map_err(|_e| anyhow::anyhow!("Missing cwd!"))
+    std::env::current_dir().wrap_err_with(|| eyre!("Missing cwd!"))
 }
 
 #[cfg(test)]
@@ -40,7 +40,7 @@ fn extract_modules_recurse_collect<P: AsRef<Path>>(
         trace!("Parent path of {} is {}", path.display(), base.display());
         base.to_owned()
     } else {
-        return Err(anyhow::anyhow!(
+        return Err(eyre!(
             "Must have a valid parent directory: {}",
             path.display()
         ));
@@ -66,7 +66,7 @@ fn extract_modules_recurse_collect<P: AsRef<Path>>(
             let _ = acc.insert(path3);
         }
         (true, true, _) | (true, _, true) | (_, true, true) => {
-            return Err(anyhow::anyhow!(
+            return Err(eyre!(
                 "Detected both module entry files: {} and {} and {}",
                 path1.display(),
                 path2.display(),
@@ -158,7 +158,7 @@ pub(crate) fn extract_modules_from_file<P: AsRef<Path>>(path: P) -> Result<HashS
     if let Some(path_str) = path.to_str() {
         let s = fs::read_to_string(path_str)?;
         let stream = syn::parse_str::<proc_macro2::TokenStream>(s.as_str())
-            .map_err(|e| Error::from(e).context(anyhow!("File {} has syntax errors", path_str)))?;
+            .wrap_err_with(|| eyre!("File {} has syntax errors", path_str))?;
         let acc = extract_modules_recurse(path.to_owned(), stream)?;
         log::debug!(
             "🥞 Recursed into {} modules from {}",
@@ -176,7 +176,7 @@ pub(crate) fn extract_modules_from_file<P: AsRef<Path>>(path: P) -> Result<HashS
         }
         Ok(acc)
     } else {
-        Err(anyhow::anyhow!("path must have a string representation"))
+        Err(eyre!("path must have a string representation"))
     }
 }
 
@@ -192,9 +192,8 @@ fn load_manifest<P: AsRef<Path>>(manifest_dir: P) -> Result<cargo_toml::Manifest
     let manifest_file = manifest_dir.join("Cargo.toml");
     // read to str first to provide better error messages
     let manifest_content = fs::read_to_string(&manifest_file)?;
-    let mut manifest = cargo_toml::Manifest::from_str(manifest_content.as_str()).map_err(|e| {
-        anyhow::anyhow!("Failed to parse manifest file {}", manifest_file.display()).context(e)
-    })?;
+    let mut manifest = cargo_toml::Manifest::from_str(manifest_content.as_str())
+        .wrap_err_with(|| eyre!("Failed to parse manifest file {}", manifest_file.display()))?;
     // load default products based on whatever exists on the filesystem
     if manifest.complete_from_path(&manifest_file).is_err() {
         if manifest.complete_from_path(manifest_dir).is_err() {
@@ -210,18 +209,13 @@ fn load_manifest<P: AsRef<Path>>(manifest_dir: P) -> Result<cargo_toml::Manifest
 /// can convert manifest with or without Cargo.toml into the directory that contains the manifest
 fn to_manifest_dir<P: AsRef<Path>>(manifest_dir: P) -> Result<PathBuf> {
     let manifest_dir: &Path = manifest_dir.as_ref();
-    if manifest_dir.ends_with("Cargo.toml") {
+    let manifest_dir = if manifest_dir.ends_with("Cargo.toml") {
         manifest_dir.parent().unwrap()
     } else {
         manifest_dir
-    }
-    .canonicalize()
-    .map_err(|e| {
-        Error::from(e).context(anyhow!(
-            "Failed to canonicalize path {}",
-            manifest_dir.display()
-        ))
-    })
+    };
+    fs::canonicalize(&manifest_dir)
+        .wrap_err_with(|| eyre!("Failed to canonicalize path {}", manifest_dir.display()))
 }
 
 /// Extract all cargo manifest products / build targets.
@@ -279,29 +273,26 @@ fn handle_manifest<P: AsRef<Path>>(
     trace!("📜 Handle manifest in dir: {}", manifest_dir.display());
 
     let manifest_dir = manifest_dir.as_path();
-    let manifest = load_manifest(manifest_dir).map_err(|e| {
-        anyhow!(
+    let manifest = load_manifest(manifest_dir).wrap_err_with(|| {
+        eyre!(
             "Failed to load manifest from dir {}",
             manifest_dir.display()
         )
-        .context(e)
     })?;
 
-    let mut acc = extract_products(&manifest, &manifest_dir).map_err(|e| {
-        anyhow!(
+    let mut acc = extract_products(&manifest, &manifest_dir).wrap_err_with(|| {
+        eyre!(
             "Failed to extract products from manifest {}",
             manifest_dir.display()
         )
-        .context(e)
     })?;
 
     if !skip_readme {
-        let v = extract_readme(&manifest, &manifest_dir).map_err(|e| {
-            anyhow!(
+        let v = extract_readme(&manifest, &manifest_dir).wrap_err_with(|| {
+            eyre!(
                 "Failed to extract readme / description from manifest {}",
                 manifest_dir.display()
             )
-            .context(e)
         })?;
         acc.extend(v);
     }
@@ -315,7 +306,7 @@ fn handle_manifest<P: AsRef<Path>>(
                 let member_dir_glob = manifest_dir.join(&member_entry_glob);
 
                 let back_to_glob = member_dir_glob.as_os_str().to_str().ok_or_else(|| {
-                    anyhow!(
+                    eyre!(
                         "Failed to convert path to str for member directory {}",
                         member_dir_glob.display()
                     )
@@ -328,12 +319,11 @@ fn handle_manifest<P: AsRef<Path>>(
                         "🪆 Handling manifest member glob resolved: {}",
                         member_dir.display()
                     );
-                    if let Ok(member_manifest) = load_manifest(&member_dir).map_err(|e| {
-                        anyhow!(
+                    if let Ok(member_manifest) = load_manifest(&member_dir).wrap_err_with(|| {
+                        eyre!(
                             "Failed to load manifest from member directory {}",
                             member_dir.display()
                         )
-                        .context(e)
                     }) {
                         if let Ok(member) = extract_products(&member_manifest, &member_dir) {
                             acc.extend(member.into_iter());
@@ -464,9 +454,7 @@ pub(crate) fn extract(
                             let iter = traverse(path.as_path(), dev_comments)?;
                             docs.extend(iter);
                         } else {
-                            let content: String = fs::read_to_string(&path).map_err(|e| {
-                                anyhow!("Failed to read {}", path.display()).context(e)
-                            })?;
+                            let content: String = fs::read_to_string(&path)?;
                             docs.add_rust(
                                 ContentOrigin::RustSourceFile(path.to_owned()),
                                 content.as_str(),
@@ -478,10 +466,10 @@ pub(crate) fn extract(
                         }
                     }
                     CheckEntity::Markdown(path) => {
-                        let content = fs::read_to_string(&path).map_err(|e| {
-                            anyhow!("Common mark / markdown file does not exist").context(e)
+                        let content = fs::read_to_string(&path).wrap_err_with(|| {
+                            eyre!("Common mark / markdown file does not exist")
                         })?;
-                        if content.len() < 1 {
+                        if content.is_empty() {
                             bail!("Common mark / markdown file is empty")
                         }
                         docs.add_commonmark(

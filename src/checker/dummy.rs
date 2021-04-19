@@ -5,9 +5,9 @@
 // use super::tokenize;
 use super::{apply_tokenizer, Checker};
 use crate::documentation::Documentation;
+use crate::errors::*;
 use crate::suggestion::{Detector, Suggestion, SuggestionSet};
 use crate::util::sub_chars;
-use anyhow::Result;
 use log::trace;
 
 /// A test checker that tokenizes and marks everything as wrong

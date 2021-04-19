@@ -1,6 +1,6 @@
+use crate::errors::*;
 use crate::util::{self, sub_chars};
 use crate::{Range, Span};
-use anyhow::{bail, Result};
 
 use fancy_regex::Regex;
 use lazy_static::lazy_static;
@@ -190,7 +190,7 @@ fn trim_span(content: &str, span: &mut Span, pre: usize, post: usize) {
 }
 
 impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
-    type Error = anyhow::Error;
+    type Error = Error;
     fn try_from((content, literal): (&str, proc_macro2::Literal)) -> Result<Self> {
         // let rendered = literal.to_string();
         // produces pretty unusable garabage, since it modifies the content of `///`

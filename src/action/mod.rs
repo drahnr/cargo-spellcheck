@@ -1,10 +1,10 @@
 //! Covers all user triggered actions (except for signals).
 
 use super::*;
-use anyhow::{anyhow, Result};
+use crate::errors::*;
 use log::{debug, trace};
 
-use std::fs::{self, OpenOptions};
+use fs_err as fs;
 use std::io::{Read, Write};
 
 use std::path::PathBuf;
@@ -262,16 +262,10 @@ impl Action {
         path: PathBuf,
         bandaids: impl IntoIterator<Item = BandAid>,
     ) -> Result<()> {
-        let path = path
-            .as_path()
-            .canonicalize()
-            .map_err(|e| anyhow!("Failed to canonicalize {}", path.display()).context(e))?;
+        let path = fs::canonicalize(path.as_path())?;
         let path = path.as_path();
         trace!("Attempting to open {} as read", path.display());
-        let ro = std::fs::OpenOptions::new()
-            .read(true)
-            .open(path)
-            .map_err(|e| anyhow!("Failed to open {}", path.display()).context(e))?;
+        let ro = fs::OpenOptions::new().read(true).open(path)?;
 
         let mut reader = std::io::BufReader::new(ro);
 
@@ -280,14 +274,11 @@ impl Action {
         let tmp = std::env::current_dir()
             .expect("Must have cwd")
             .join(TEMPORARY);
-        // let tmp = tmp.canonicalize().map_err(|e| { anyhow!("Failed to canonicalize {}", tmp.display() ).context(e) })?;
-        //trace!("Attempting to open {} as read", tmp.display());
-        let wr = OpenOptions::new()
+        let wr = fs::OpenOptions::new()
             .write(true)
             .truncate(true)
             .create(true)
-            .open(&tmp)
-            .map_err(|e| anyhow!("Failed to open {}", path.display()).context(e))?;
+            .open(&tmp)?;
 
         let mut writer = std::io::BufWriter::with_capacity(1024, wr);
 

@@ -3,7 +3,7 @@
 //! Note that for commonmark this might not be possible with links.
 //! The reflow is done based on the comments no matter the content.
 
-use anyhow::{anyhow, Result};
+use crate::errors::*;
 
 use crate::checker::Checker;
 use crate::documentation::{CheckableChunk, Documentation};
@@ -187,7 +187,7 @@ fn reflow_inner<'s>(
     let last_indent = indentations
         .last()
         .copied()
-        .ok_or_else(|| anyhow!("No line indentation present."))?;
+        .ok_or_else(|| eyre!("No line indentation present."))?;
 
     // First line has to be without indent and variant prefix.
     // If there is nothing to reflow, just pretend there was no reflow.

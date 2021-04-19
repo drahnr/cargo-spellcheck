@@ -3,8 +3,8 @@
 use super::{trace, LiteralSet, Spacing, TokenTree, TrimmedLiteral, TryInto};
 use crate::documentation::developer::extract_developer_comments;
 use crate::documentation::Range;
+use crate::errors::*;
 use crate::Span;
-use anyhow::{anyhow, Result};
 use std::convert::TryFrom;
 
 /// Cluster literals for one file
@@ -116,7 +116,7 @@ impl Clusters {
             set: Vec::with_capacity(64),
         };
         let stream = syn::parse_str::<proc_macro2::TokenStream>(source)
-            .map_err(|e| anyhow!("Failed to parse content to stream").context(e))?;
+            .wrap_err_with(|| eyre!("Failed to parse content to stream"))?;
         chunk.parse_token_tree(source, stream)?;
         if dev_comments {
             chunk.parse_developer_comments(source);

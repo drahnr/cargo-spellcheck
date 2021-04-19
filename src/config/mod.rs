@@ -28,11 +28,10 @@ pub use search_dirs::*;
 mod iso;
 pub use iso::*;
 
+use crate::errors::*;
 use crate::Detector;
-use anyhow::{anyhow, bail, Error, Result};
 use fancy_regex::Regex;
 
-use fs::File;
 use fs_err as fs;
 use serde::{Deserialize, Serialize};
 use std::convert::AsRef;
@@ -99,18 +98,15 @@ impl Config {
     }
 
     pub fn load_from<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let mut file = File::open(path.as_ref().to_str().unwrap())
-            .map_err(|e| anyhow!("Failed to open file {}", path.as_ref().display()).context(e))?;
+        let mut file = fs::File::open(path.as_ref().to_str().unwrap())?;
         let mut contents = String::with_capacity(1024);
-        file.read_to_string(&mut contents).map_err(|e| {
-            anyhow!("Failed to read from file {}", path.as_ref().display()).context(e)
-        })?;
+        file.read_to_string(&mut contents)?;
         Self::parse(&contents)
-            .map_err(|e| {
-                e.context(anyhow::anyhow!(
+            .wrap_err_with(|| {
+                eyre!(
                     "Syntax of a given config file({}) is broken",
                     path.as_ref().display()
-                ))
+                )
             })
             .and_then(|mut cfg| {
                 if let Some(base) = path.as_ref().parent() {
@@ -133,7 +129,7 @@ impl Config {
     }
 
     pub fn to_toml(&self) -> Result<String> {
-        toml::to_string(self).map_err(|e| anyhow!("Failed to convert to toml").context(e))
+        toml::to_string(self).wrap_err_with(|| eyre!("Failed to convert to toml"))
     }
 
     pub fn write_values_to<W: std::io::Write>(&self, mut writer: W) -> Result<Self> {
@@ -146,23 +142,22 @@ impl Config {
         let path = path.as_ref();
 
         if let Some(path) = path.parent() {
-            fs::create_dir_all(path).map_err(|e| {
-                anyhow!("Failed to create directories {}", path.display()).context(e)
+            fs::create_dir_all(path).wrap_err_with(|| {
+                eyre!("Failed to create config parent dirs {}", path.display())
             })?;
         }
 
-        let file = std::fs::OpenOptions::new()
+        let file = fs::OpenOptions::new()
             .create(true)
             .write(true)
             .truncate(true)
             .open(path)
-            .map_err(|e| {
-                anyhow!("Failed to write default values to {}", path.display()).context(e)
-            })?;
+            .wrap_err_with(|| eyre!("Failed to write default values to {}", path.display()))?;
+
         let writer = std::io::BufWriter::new(file);
 
         self.write_values_to(writer)
-            .map_err(|e| anyhow!("Failed to write default config to {}", path.display()).context(e))
+            .wrap_err_with(|| eyre!("Failed to write default config to {}", path.display()))
     }
 
     pub fn write_values_to_default_path(&self) -> Result<Self> {

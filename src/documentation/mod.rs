@@ -14,8 +14,8 @@
 
 use super::*;
 
+use crate::errors::*;
 use crate::util::load_span_from;
-use anyhow::{anyhow, Result};
 use indexmap::IndexMap;
 use log::trace;
 pub use proc_macro2::LineColumn;
@@ -149,7 +149,7 @@ impl Documentation {
                 line: linenumber,
                 column: linecontent.chars().count().saturating_sub(1),
             })
-            .ok_or_else(|| anyhow!("Common mark / markdown file does not contain a single line"))?;
+            .ok_or_else(|| eyre!("Common mark / markdown file does not contain a single line"))?;
 
         let span = Span { start, end };
         let source_mapping = indexmap::indexmap! {

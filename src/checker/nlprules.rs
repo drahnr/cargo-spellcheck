@@ -6,7 +6,7 @@
 use super::{Checker, Detector, Documentation, Suggestion, SuggestionSet};
 use crate::{CheckableChunk, ContentOrigin};
 
-use anyhow::Result;
+use crate::errors::*;
 use log::{debug, trace, warn};
 use rayon::prelude::*;
 

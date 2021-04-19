@@ -3,7 +3,7 @@
 use super::{Lang5, SearchDirs, WrappedRegex};
 use std::path::{Path, PathBuf};
 
-use anyhow::{bail, Result};
+use crate::errors::*;
 
 use serde::{Deserialize, Serialize};
 
