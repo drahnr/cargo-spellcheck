@@ -26,7 +26,7 @@ pub struct Quirks {
     /// that contain additional dashes.
     #[serde(default)]
     pub allow_dashes: bool,
-    /// Treats sequences of emojis as ok.
+    /// Treats sequences of emojis as OK.
     #[serde(default = "yes")]
     pub allow_emojis: bool,
 }

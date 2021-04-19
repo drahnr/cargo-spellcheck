@@ -147,7 +147,7 @@ pub fn extract_delimiter<'s>(s: &'s str) -> Option<&'static str> {
 /// `range` denotes the range of the paragraph of interest in the top-level `CheckableChunk`.
 /// `unbreakable_ranges` contains all ranges of words/sequences which must not be split during
 /// the reflow. They are relative to the top-level `CheckableChunk` similar to `range`. The indentation
-/// vec contains the indentation for each line in `s`.
+/// vector contains the indentation for each line in `s`.
 fn reflow_inner<'s>(
     s: &'s str,
     range: Range,
@@ -321,9 +321,9 @@ impl<'s> Indentation<'s> {
     }
 }
 
-/// Collect reflowed Paragraphs in a `Vec` of `Suggestions`.
+/// Collect reflown Paragraphs in a `Vec` of `Suggestions`.
 ///
-/// Note: Leading spaces are skipped by the markdown parser,
+/// Note: Leading spaces are skipped by the CommonMark parser,
 /// which implies for `///` and `//!`, the paragraph for the first
 /// line starting right after `/// ` (note the space here).
 ///
@@ -448,7 +448,7 @@ fn store_suggestion<'s>(
     ))
 }
 
-/// Parses a `CheckableChunk` and performs the rewrapping on contained paragraphs.
+/// Parses a `CheckableChunk` and performs the re-wrapping on contained paragraphs.
 fn reflow<'s>(
     origin: &ContentOrigin,
     chunk: &'s CheckableChunk,

@@ -72,7 +72,7 @@ fn reflow_inner_not_required() {
 
 /// With all patches applied.
 ///
-/// Nothing todo, there is no line in need of a reflow.
+/// Nothing to do, there is no line in need of a reflow.
 ///
 /// Verify the individual patches are as expected.
 macro_rules! reflow_content {

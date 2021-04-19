@@ -181,7 +181,7 @@ impl Args {
 
     /// Set the worker pool job/thread count.
     ///
-    /// Affects the parallel processing intra checkers.
+    /// Affects the parallel processing for a particular checker.
     /// Checkers are always executed in sequence.
     pub fn job_count(&self) -> usize {
         match self.flag_jobs {
@@ -273,7 +273,7 @@ impl Args {
     }
 
     /// Overrides the enablement status of checkers in the configuration
-    /// based on the checkers enabled by arg, if it is set.
+    /// based on the checkers enabled by argument, if it is set.
     ///
     /// Errors of no checkers are left.
     pub fn checker_selection_override(

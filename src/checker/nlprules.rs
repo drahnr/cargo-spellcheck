@@ -1,4 +1,4 @@
-//! A nlp based rule checker base on `nlprule`
+//! A NLP based rule checker base on `nlprule`
 //!
 //! Does check grammar, and is supposed to only check for grammar.
 //! Sentence splitting is done in hand-waving way. To be improved.

@@ -22,7 +22,7 @@ pub(crate) enum SourceRange {
 }
 
 impl SourceRange {
-    /// Apply an offset to `start` and `end` members, qualing a shift of the range.
+    /// Apply an offset to `start` and `end` members, equaling a shift of the range.
     #[allow(dead_code)]
     pub(crate) fn apply_offset(&mut self, offset: usize) {
         match self {

@@ -27,7 +27,7 @@ use std::path::PathBuf;
 /// Range based on `usize`, simplification.
 pub type Range = core::ops::Range<usize>;
 
-/// Apply an offset to `start` and `end` members, qualing a shift of the range.
+/// Apply an offset to `start` and `end` members, equaling a shift of the range.
 pub fn apply_offset(range: &mut Range, offset: usize) {
     range.start = range.start.saturating_add(offset);
     range.end = range.end.saturating_add(offset);

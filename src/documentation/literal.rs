@@ -168,7 +168,7 @@ impl std::hash::Hash for TrimmedLiteral {
     }
 }
 
-/// Adjust the provided span by a numer of `pre` and `post` characters.
+/// Adjust the provided span by a number of `pre` and `post` characters.
 fn trim_span(content: &str, span: &mut Span, pre: usize, post: usize) {
     span.start.column += pre;
     if span.end.column >= post {

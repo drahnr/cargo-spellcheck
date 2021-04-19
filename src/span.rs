@@ -23,9 +23,9 @@ use super::CheckableChunk;
 /// Column values in UTF-8 characters in a line, 0-indexed and inclusive.
 #[derive(Clone, Debug, Copy, PartialEq, Eq)]
 pub struct Span {
-    /// Start of the span, inclusive, see [LineColumn](proc_macro2::LineColumn).
+    /// Start of the span, inclusive, see [`LineColumn`](proc_macro2::LineColumn).
     pub start: LineColumn,
-    /// End of the span, inclusive, see [LineColumn](proc_macro2::LineColumn).
+    /// End of the span, inclusive, see [`LineColumn`](proc_macro2::LineColumn).
     pub end: LineColumn,
 }
 
@@ -39,7 +39,7 @@ impl Hash for Span {
 }
 
 impl Span {
-    /// Converts a span to a range, where `self` is converted to a range reltive to the
+    /// Converts a span to a range, where `self` is converted to a range relative to the
     /// passed span `scope`.
     /// Only works for literals spanning a single line and the scope full contains
     /// `self, otherwise an an `Err(..)` is returned.

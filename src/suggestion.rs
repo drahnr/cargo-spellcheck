@@ -25,7 +25,7 @@ use crate::{Range, Span};
 pub enum Detector {
     /// Hunspell lib based detector.
     Hunspell,
-    /// Language server rules based on nlp detector.
+    /// Language server rules based on NLP detector.
     NlpRules,
     /// Reflow according to a given max column.
     Reflow,
@@ -301,7 +301,7 @@ pub struct Suggestion<'s> {
     /// Range relative to the chunk the current suggestion is located.
     pub range: Range,
     /// Fix suggestions, might be words or the full sentence together with
-    /// leading withespaces for some `CommentVariant`s.
+    /// leading whitespaces for some `CommentVariant`s.
     pub replacements: Vec<String>,
     /// Descriptive reason for the suggestion.
     pub description: Option<String>,
@@ -667,7 +667,7 @@ mod tests {
 
     /// A test helper comparing the output against an expected output.
     ///
-    /// Strips all colour codes from both the expected string and the
+    /// Strips all color codes from both the expected string and the
     /// display-able object.
     fn assert_display_eq<D: fmt::Display, S: AsRef<str>>(display: D, s: S) {
         let expected = s.as_ref();

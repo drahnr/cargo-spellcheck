@@ -101,7 +101,7 @@ impl TokenType {
     }
 }
 
-/// A token from a source string with its variant (TokenType) and the line and column on which it
+/// A token from a source string with its variant (`TokenType`) and the line and column on which it
 /// occurs according to the description for `TokenWithLineColumn`
 #[derive(Debug)]
 struct TokenWithType {
@@ -109,7 +109,7 @@ struct TokenWithType {
     kind: TokenType,
     /// The full contents of this token, including pre/post characters (like '//')
     pub content: String,
-    /// The first line on which the token appears in the source file (1 indexed)  pub line: usize,
+    /// The first line on which the token appears in the source file (1 indexed)  pub line: `usize`,
     pub line: usize,
     /// The column where the first character of this token appears in the source file (0 indexed)
     pub column: usize,

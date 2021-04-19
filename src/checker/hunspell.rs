@@ -101,7 +101,7 @@ fn cache_builtin() -> Result<(PathBuf, PathBuf)> {
 }
 
 /// The value is `true` if string is made of emoji's
-/// or unicode `VULGAR FRACTION`.
+/// or Unicode `VULGAR FRACTION`.
 pub fn consists_of_vulgar_fractions_or_emojis(word: &str) -> bool {
     lazy_static! {
         static ref VULGAR_OR_EMOJI: regex::RegexSet = regex::RegexSetBuilder::new(&[
