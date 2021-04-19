@@ -1,6 +1,6 @@
 [package]
 name = "cargo-spellcheck"
-version = "0.8.1"
+version = "0.8.2-alpha.0"
 authors = ["Bernhard Schuster <bernhard@ahoi.io>"]
 edition = "2018"
 repository = "https://github.com/drahnr/cargo-spellcheck.git"
@@ -27,7 +27,7 @@ nlprule-build = { version = "=0.6.3",  optional = true }
 xz2 = "0.1"
 
 [dependencies]
-anyhow = "1"
+color-eyre = "0.5"
 cargo_toml = "0.9"
 console = "0.14"
 crossterm = "0.19"
