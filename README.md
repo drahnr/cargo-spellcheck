@@ -162,8 +162,8 @@ To increase verbosity add `-v` (multiple) to increase verbosity.
 
 `cargo install --locked cargo-spellcheck`
 
-The `--locked` flag is currently required due to [an issue with `ra` dependency
-`rowan`](https://github.com/rust-analyzer/rust-analyzer/issues/8438).
+The `--locked` flag is the preferred way of installing to get the tested
+set of dependencies.
 
 ### Checkers
 
