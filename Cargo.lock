@@ -1147,9 +1147,9 @@ dependencies = [
 
 [[package]]
 name = "nlprule"
-version = "0.6.3"
+version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "59490c5314b2cb4ed69b6ff8f45c9a2d61be61adfc2b89d7c4bff423a3a25812"
+checksum = "d77e28ea6b9a2cc59fdcf7d9f9da3bec509d18178de7dff7d83574643520f33e"
 dependencies = [
  "aho-corasick",
  "bimap",
@@ -1182,9 +1182,9 @@ dependencies = [
 
 [[package]]
 name = "nlprule-build"
-version = "0.6.3"
+version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd824f6a2a3c2779c229835f4658ab1ce014113fbcf7d5207941838abfa5700d"
+checksum = "697cd18b2576102643561a9889203937e0c117c2a88413659a1fbdbf8cc30480"
 dependencies = [
  "directories",
  "flate2",
@@ -1446,24 +1446,24 @@ dependencies = [
 
 [[package]]
 name = "ra_ap_la-arena"
-version = "0.0.48"
+version = "0.0.49"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a8d5f1b401330b3753e8cce48a8edced9ffaf3243c26287c5f4f0cc129e025e6"
+checksum = "7b476e6041a93cf2cfcfe6d6f8db8caec83a98f06412102301607d031ed404f3"
 
 [[package]]
 name = "ra_ap_parser"
-version = "0.0.48"
+version = "0.0.49"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22a9c2aa9de07ac90b1c468a383abebc464f9cb648481bb5467d40c862b53f51"
+checksum = "541440d7991640252eb96849a2eb9ab2e8f817168a2d9d136301aae31d6706d3"
 dependencies = [
  "drop_bomb",
 ]
 
 [[package]]
 name = "ra_ap_profile"
-version = "0.0.48"
+version = "0.0.49"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9112fa53196eca5a4d2dd450e8a80b36eaa8d2ac66220f4c0ca6006f5def7f54"
+checksum = "628f47599969598c4a785dccd236c4b59b485df05b8a370f9cbd706216c9e929"
 dependencies = [
  "cfg-if 1.0.0",
  "countme",
@@ -1475,18 +1475,21 @@ dependencies = [
 
 [[package]]
 name = "ra_ap_stdx"
-version = "0.0.48"
+version = "0.0.49"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4ac2703a3bc298f55c45134a1be74d94321a6dd3ab3e47493440b06d445d52fd"
+checksum = "6dd8599e5b8d38bc06a4b5912e78b57d60bc58d24b499e577ce936f6d3e62c48"
 dependencies = [
  "always-assert",
+ "libc",
+ "miow",
+ "winapi",
 ]
 
 [[package]]
 name = "ra_ap_syntax"
-version = "0.0.48"
+version = "0.0.49"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "18e80d4601cfe61fe20cf000a6667082339683a746e86460a62c74968bb79dab"
+checksum = "5cae96978d12f61d335c85402e58888bd4956d458c1dd12882daf2a250e3a2b0"
 dependencies = [
  "arrayvec 0.7.0",
  "cov-mark",
@@ -1506,9 +1509,9 @@ dependencies = [
 
 [[package]]
 name = "ra_ap_text_edit"
-version = "0.0.48"
+version = "0.0.49"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a5702abbcbd7e439ad716bae29a2cbb5b85cb2dddaece2d0744efd03bc2fb5b"
+checksum = "314138f396acd30af74427d846009a020626a64a746763f7ab456e6bdd1e75f3"
 dependencies = [
  "text-size",
 ]
