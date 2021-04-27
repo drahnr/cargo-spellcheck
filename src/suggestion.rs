@@ -175,6 +175,8 @@ pub fn condition_display_content(
             .collect::<String>();
 
         let shortened = format!("{}...{}", head_sub, tail_sub);
+        // FIXME if characters width a width of ineq of 1
+        // ISSUE: https://github.com/drahnr/cargo-spellcheck/issues/145
         let marker_size = head_sub_range.len() + CENTER_DOTS.len() + tail_sub_range.len();
 
         (marker_size, shortened)
