@@ -221,7 +221,6 @@ dependencies = [
  "isolang",
  "itertools 0.10.0",
  "lazy_static",
- "linkify",
  "log",
  "maplit",
  "nlprule",
@@ -1021,15 +1020,6 @@ checksum = "6f84d96438c15fcd6c3f244c8fce01d1e2b9c6b5623e9c711dc9286d8fc92d6a"
 dependencies = [
  "cfg-if 1.0.0",
  "winapi",
-]
-
-[[package]]
-name = "linkify"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1986921c3c13e81df623c66a298d4b130c061bcb98a01f5b2d3ac402b1649a7f"
-dependencies = [
- "memchr",
 ]
 
 [[package]]

@@ -28,38 +28,39 @@ impl Checker for LinkCheck {
         'a: 's,
     {
 
-        for (origin, chunks) in docu.iter() {
-            for chunk in chunks {
-                {
-                    let mut suggestion_set = SuggestionSet::<'s>::new();
-                    for link in links {
-                        let response = client.check(link).await;
-                        if !response.status.is_success() {
-                            let suggestion = Suggestion::<'s> {
-                                detector: Detector::LinkCheck,
-                                chunk,
-                                origin: origin.clone(),
-                                span: Span {
-                                    start: LineColumn {
-                                        line: 1usize,
-                                        column: 1usize,
-                                    },
-                                    end: LineColumn {
-                                        line: 1usize,
-                                        column: 1usize,
-                                    }
-                                }, // FIXME
-                                range: 0..1,
-                                replacements: vec![],
-                                description: None,
-                            };
-                            suggestion_set.add(origin.clone(), suggestion);
-                        }
-                    }
-                    Ok(suggestion_set)
-                }
-            }
-        }
+        // for (origin, chunks) in docu.iter() {
+        //     for chunk in chunks {
+        //         {
+        //             let mut suggestion_set = SuggestionSet::<'s>::new();
+        //             for link in links {
+        //                 let response = client.check(link).await;
+        //                 if !response.status.is_success() {
+        //                     let suggestion = Suggestion::<'s> {
+        //                         detector: Detector::LinkCheck,
+        //                         chunk,
+        //                         origin: origin.clone(),
+        //                         span: Span {
+        //                             start: LineColumn {
+        //                                 line: 1usize,
+        //                                 column: 1usize,
+        //                             },
+        //                             end: LineColumn {
+        //                                 line: 1usize,
+        //                                 column: 1usize,
+        //                             }
+        //                         }, // FIXME
+        //                         range: 0..1,
+        //                         replacements: vec![],
+        //                         description: None,
+        //                     };
+        //                     suggestion_set.add(origin.clone(), suggestion);
+        //                 }
+        //             }
+        //             Ok(suggestion_set)
+        //         }
+        //     }
+        // }
+        Ok(SuggestionSet::new())
 
     }
 }

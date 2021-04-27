@@ -57,7 +57,7 @@ glob = "0.3"
 # for the config file
 walkdir = "2"
 
-linkify = "0.6"
+# glinkify = "0.6"
 
 # config parsing, must be independent of features
 iso_country = { version = "0.1", features = ["serde"] }
