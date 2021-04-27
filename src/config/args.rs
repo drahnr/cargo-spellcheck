@@ -148,6 +148,7 @@ pub struct Args {
     pub cmd_fix: bool,
     pub cmd_check: bool,
     pub cmd_reflow: bool,
+    pub cmd_linkcheck: bool,
     pub cmd_config: bool,
 }
 
@@ -176,6 +177,8 @@ impl Args {
         } else if self.cmd_fix || self.flag_fix {
             Action::Fix
         } else if self.cmd_reflow {
+            Action::Reflow
+        } else if self.cmd_linkcheck {
             Action::Reflow
         } else if self.cmd_config {
             Action::Config
