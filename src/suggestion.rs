@@ -29,6 +29,8 @@ pub enum Detector {
     NlpRules,
     /// Reflow according to a given max column.
     Reflow,
+    /// Check all links.
+    LinkCheck,
     /// Detection of nothing, a test helper.
     #[cfg(test)]
     Dummy,
@@ -41,6 +43,7 @@ impl Detector {
             Self::Hunspell => "Hunspell",
             Self::NlpRules => "NlpRules",
             Self::Reflow => "Reflow",
+            Self::LinkCheck => "Reflow",
             #[cfg(test)]
             Self::Dummy => "Dummy",
         }

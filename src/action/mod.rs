@@ -225,6 +225,11 @@ pub enum Action {
     #[serde(alias = "reflow")]
     Reflow,
 
+    /// Check contained links.
+    #[serde(alias = "linkcheck")]
+    #[serde(alias = "link-check")]
+    LinkCheck,
+
     /// Print help and exit.
     #[serde(alias = "help")]
     Help,
@@ -334,7 +339,7 @@ impl Action {
     pub fn run(self, suggestions: SuggestionSet, config: &Config) -> Result<Finish> {
         match self {
             Self::Check => self.check(suggestions, config),
-            Self::Reflow => {
+            Self::LinkCheck | Self::Reflow => {
                 let n = suggestions.len();
 
                 for (origin, suggestions) in suggestions {

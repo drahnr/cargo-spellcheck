@@ -210,6 +210,7 @@ impl Config {
             Detector::Hunspell => self.hunspell.is_some(),
             Detector::NlpRules => self.nlprules.is_some(),
             Detector::Reflow => self.reflow.is_some(),
+            Detector::Lychee => true,
             #[cfg(test)]
             Detector::Dummy => true,
         }
@@ -240,6 +241,7 @@ impl Default for Config {
             hunspell: default_hunspell(),
             nlprules: default_nlprules(),
             reflow: Some(ReflowConfig::default()),
+            linkcheck: None,
         }
     }
 }

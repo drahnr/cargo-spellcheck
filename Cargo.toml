@@ -57,6 +57,10 @@ glob = "0.3"
 # for the config file
 walkdir = "2"
 
+lychee = "0.7"
+tokio = { version = "1.5", features = ["full"] }
+futures = "0.3"
+
 # config parsing, must be independent of features
 
 # TODO parse the country codes of dictionaries?
