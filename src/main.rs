@@ -96,17 +96,9 @@ fn run() -> Result<ExitCode> {
         .num_threads(args.job_count())
         .build_global();
 
-    let verbosity = match args.flag_verbose {
-        _ if args.flag_quiet => log::LevelFilter::Off,
-        n if n > 4 => log::LevelFilter::Trace,
-        4 => log::LevelFilter::Debug,
-        3 => log::LevelFilter::Info,
-        2 => log::LevelFilter::Warn,
-        _ => log::LevelFilter::Error,
-    };
 
     env_logger::Builder::from_env(env_logger::Env::new().filter_or("CARGO_SPELLCHECK", "warn"))
-        .filter_level(verbosity)
+        .filter_level(args.verbosity())
         .filter_module("nlprule", log::LevelFilter::Error)
         .filter_module("mio", log::LevelFilter::Error)
         .init();

@@ -67,6 +67,7 @@ pub struct Config {
     #[serde(alias = "Hunspell")]
     #[serde(default = "default_hunspell")]
     pub hunspell: Option<HunspellConfig>,
+
     #[serde(alias = "Nlp")]
     #[serde(alias = "NLP")]
     #[serde(alias = "nlp")]

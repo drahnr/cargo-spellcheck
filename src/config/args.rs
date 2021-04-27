@@ -154,21 +154,33 @@ pub struct Args {
 impl Args {
     pub const USAGE: &'static str = USAGE;
 
+    /// Extract the verbosity level
+    pub fn verbosity(&self) -> log::LevelFilter {
+        match self.flag_verbose {
+            _ if self.flag_quiet => log::LevelFilter::Off,
+            n if n > 4 => log::LevelFilter::Trace,
+            4 => log::LevelFilter::Debug,
+            3 => log::LevelFilter::Info,
+            2 => log::LevelFilter::Warn,
+            _ => log::LevelFilter::Error,
+        }
+    }
+
     /// Extract the required action.
     pub fn action(&self) -> Action {
         // extract operation mode
-        let action = if self.cmd_fix {
-            Action::Fix
-        } else if self.flag_fix {
+        let action = if self.flag_help {
+            Action::Help
+        } else if self.flag_version {
+            Action::Version
+        } else if self.cmd_fix || self.flag_fix {
             Action::Fix
         } else if self.cmd_reflow {
             Action::Reflow
         } else if self.cmd_config {
             Action::Config
-        } else if self.flag_help {
-            Action::Help
-        } else if self.flag_version {
-            Action::Version
+        } else if self.cmd_check {
+            Action::Check
         } else if self.cmd_check {
             Action::Check
         } else {
