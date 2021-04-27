@@ -1,6 +1,6 @@
-//! Check links of comments if they actually exist.
+//! Check links of comments if they lead anywhere.
 
-use anyhow::{anyhow, Result};
+use crate::errors::*;
 
 use crate::checker::Checker;
 use crate::documentation::{CheckableChunk, Documentation};
@@ -13,47 +13,30 @@ use crate::{CommentVariant, ContentOrigin, Detector, Range, Span, LineColumn, Su
 mod config;
 pub use config::LinkCheckConfig;
 
-use tokio::prelude::*;
-use tokio::runtime::Runtime;
-
-use futures::stream::FuturesUnordered;
-use futures::StreamExt;
-
 #[derive(Debug)]
 pub struct LinkCheck;
 
 impl Checker for LinkCheck {
-    type Config = LinkCheckConfig;
+    type Config = crate::config::LinkCheckConfig;
+
+    fn detector() -> Detector {
+        Detector::LinkCheck
+    }
+
     fn check<'a, 's>(docu: &'a Documentation, config: &Self::Config) -> Result<SuggestionSet<'s>>
     where
         'a: 's,
     {
-        let client = lychee::ClientBuilder::default()
-            .exclude_private_ips(config.exclude_private_ips)
-            .build().unwrap();
 
-        use std::pin::Pin;
-
-        let mut unordered: FuturesUnordered<Pin<Box<dyn futures::Future<Output=Result<SuggestionSet<'s>>>>>> = FuturesUnordered::new();
         for (origin, chunks) in docu.iter() {
             for chunk in chunks {
-                let client = client.clone();
-                let fut = Box::pin(async move {
-                    let ic = lychee::collector::InputContent::from_string(chunk.as_str(), lychee::extract::FileType::Markdown);
-
-                    let links = lychee::collector::collect_links(
-                        &[ic.input],
-                        None,
-                        true,
-                        5_usize,
-                    ).await.unwrap();
-
+                {
                     let mut suggestion_set = SuggestionSet::<'s>::new();
                     for link in links {
                         let response = client.check(link).await;
                         if !response.status.is_success() {
                             let suggestion = Suggestion::<'s> {
-                                detector: Detector::Lychee,
+                                detector: Detector::LinkCheck,
                                 chunk,
                                 origin: origin.clone(),
                                 span: Span {
@@ -74,17 +57,9 @@ impl Checker for LinkCheck {
                         }
                     }
                     Ok(suggestion_set)
-                });
-                unordered.push(fut);
+                }
             }
         }
 
-        let rt  = Runtime::new()?;
-
-        rt.block_on(async {
-            unordered.into_future().await;
-        });
-
-        anyhow::bail!("join all future sets")
     }
 }
