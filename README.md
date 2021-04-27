@@ -75,8 +75,7 @@ exec cargo spellcheck -m 99 $(git diff-index --cached --name-only --diff-filter=
 * [x] Spell checking using `hunspell`
 * [x] Merge multiline doc comments
 * [x] Handle multiline and fragmented mistakes (i.e. for grammar) [#25](https://github.com/drahnr/cargo-spellcheck/issues/25)
-* [x] <del>Grammar check using `languagetool` http API</del>
-* [x] Grammar check using `nlprule`
+* [x] Grammar check using [`nlprule`](https://github.com/bminixhofer/nlprule)
 * [x] Follow module declarations rather than blindly recurse
 * [x] Be `commonmark`/`markdown` aware
   * [ ] Handle doc-tests with ` ```rust` as virtual files [#43](https://github.com/drahnr/cargo-spellcheck/issues/43)
@@ -224,7 +223,6 @@ since the `rules` and `tokenizer` definitions are extracted from `LanguageTool`
 the library that is used for pulling and integrating - details are to be found
 under [crate `nlprule`'s
 README.md](https://github.com/bminixhofer/nlprule#license).
-
 
 ## 🎈 Contribute!
 
