@@ -96,7 +96,6 @@ fn run() -> Result<ExitCode> {
         .num_threads(args.job_count())
         .build_global();
 
-
     env_logger::Builder::from_env(env_logger::Env::new().filter_or("CARGO_SPELLCHECK", "warn"))
         .filter_level(args.verbosity())
         .filter_module("nlprule", log::LevelFilter::Error)
