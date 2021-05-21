@@ -131,8 +131,7 @@ lang = "en_US"
 extra_dictionaries = []
 
 # If set to `true`, the OS specific default search paths
-# are skipped.
-# This is
+# are skipped and only explicitly specified ones are used.
 skip_os_lookups = false
 
 # Use the builtin dictionaries if none were found in
@@ -140,7 +139,8 @@ skip_os_lookups = false
 # Usually combined with `skip_os_lookups=true`
 # to enforce the `builtin` usage for consistent
 # results across distributions and CI runs.
-# Does preclude the usage of `extra_dictionaries = [..]`
+# Setting this will still use the dictionaries
+# specified in `extra_dictionaries = [..]`
 # for topic specific lingo.
 use_builtin = true
 
