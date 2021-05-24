@@ -57,9 +57,9 @@ glob = "0.3"
 # for the config file
 walkdir = "2"
 
-# config parsing, must be independent of features
+# glinkify = "0.6"
 
-# TODO parse the country codes of dictionaries?
+# config parsing, must be independent of features
 iso_country = { version = "0.1", features = ["serde"] }
 isolang = { version = "1", features = ["serde_serialize"] }
 

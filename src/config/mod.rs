@@ -22,6 +22,9 @@ pub use self::hunspell::*;
 mod nlprules;
 pub use self::nlprules::*;
 
+mod linkcheck;
+pub use self::linkcheck::*;
+
 mod search_dirs;
 pub use search_dirs::*;
 
@@ -75,9 +78,14 @@ pub struct Config {
     #[serde(alias = "NlpRules")]
     #[serde(default = "default_nlprules")]
     pub nlprules: Option<NlpRulesConfig>,
+
     #[serde(alias = "ReFlow")]
     #[serde(alias = "Reflow")]
     pub reflow: Option<ReflowConfig>,
+
+    #[serde(alias = "linkCheck")]
+    #[serde(alias = "linkcheck")]
+    pub linkcheck: Option<LinkCheckConfig>,
 }
 
 impl Config {
@@ -210,6 +218,7 @@ impl Config {
             Detector::Hunspell => self.hunspell.is_some(),
             Detector::NlpRules => self.nlprules.is_some(),
             Detector::Reflow => self.reflow.is_some(),
+            Detector::LinkCheck => true,
             #[cfg(test)]
             Detector::Dummy => true,
         }
@@ -240,6 +249,7 @@ impl Default for Config {
             hunspell: default_hunspell(),
             nlprules: default_nlprules(),
             reflow: Some(ReflowConfig::default()),
+            linkcheck: None,
         }
     }
 }

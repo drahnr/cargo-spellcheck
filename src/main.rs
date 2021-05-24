@@ -13,6 +13,7 @@ mod config;
 mod documentation;
 pub mod errors;
 mod reflow;
+mod linkcheck;
 mod span;
 mod suggestion;
 mod traverse;
