@@ -194,13 +194,28 @@ fn load_manifest<P: AsRef<Path>>(manifest_dir: P) -> Result<cargo_toml::Manifest
     let manifest_content = fs::read_to_string(&manifest_file)?;
     let mut manifest = cargo_toml::Manifest::from_str(manifest_content.as_str())
         .wrap_err_with(|| eyre!("Failed to parse manifest file {}", manifest_file.display()))?;
-    // load default products based on whatever exists on the filesystem
-    if manifest.complete_from_path(&manifest_file).is_err() {
-        if manifest.complete_from_path(manifest_dir).is_err() {
-            debug!(
-                "Complete from filesystem did not yield new information for manifest {}",
-                manifest_file.display()
-            );
+
+    // Load default products based on whatever exists on the filesystem.
+    // This works for `src/main.rs` and `src/lib.rs` unless they are specified
+    // in the manifest.
+    if manifest.complete_from_path(&manifest_file).is_err()
+        && manifest.complete_from_path(manifest_dir).is_err()
+    {
+        debug!(
+            "Complete from filesystem did not yield new information for manifest {}",
+            manifest_file.display()
+        );
+    }
+    // Unfortunately we need this, the above does not
+    // complete an existing `[lib]` without a path specified.
+    // BUG: https://gitlab.com/crates.rs/cargo_toml/-/issues/5
+    //
+    // Required to assure the further invariant, that all
+    // products have a valid `path`. Without a path it gets
+    // removed from the product set.
+    if let Some(ref mut lib) = manifest.lib {
+        if lib.path.is_none() {
+            lib.path = Some("src/lib.rs".to_owned())
         }
     }
     Ok(manifest)
@@ -225,19 +240,33 @@ fn extract_products(
 ) -> Result<HashSet<CheckEntity>> {
     let iter = manifest
         .bin
-        .iter()
-        .cloned()
-        .chain(manifest.lib.iter().cloned().map(|x| x));
+        .clone()
+        .into_iter()
+        .chain(manifest.lib.clone().into_iter());
 
     let items = iter
-        .filter(|product| product.doctest)
-        .filter_map(|product| product.path)
+        .filter_map(|product| {
+            if product.path.is_none() {
+                warn!(
+                    "Missing path for product {:?}, should have been filled earlier.",
+                    product.name
+                )
+            }
+            product.path
+        })
         // cargo_toml's complete is not very truthfull
-        .filter(|path_str| manifest_dir.join(path_str).is_file())
+        .filter(|path_str| {
+            let p = manifest_dir.join(PathBuf::from(path_str));
+            let is_file = p.is_file();
+            if !is_file {
+                debug!("File listed by cargo-toml does not exist: {}", p.display());
+            }
+            is_file
+        })
         .map(|path_str| CheckEntity::Source(manifest_dir.join(path_str), true))
         .collect::<HashSet<CheckEntity>>();
 
-    trace!("📜 manifest products {:?}", &items);
+    trace!("📜 explicit manifest products {:?}", &items);
     Ok(items)
 }
 
@@ -298,7 +327,7 @@ fn handle_manifest<P: AsRef<Path>>(
     }
 
     if let Some(workspace) = manifest.workspace {
-        trace!("Handling manifest workspace");
+        trace!("🪆 Handling manifest workspace");
         workspace
             .members
             .into_iter()
@@ -497,7 +526,10 @@ mod tests {
     const TEST_FILE_SIMPLE: &str = "src/nested/fragments/simple.rs";
     #[test]
     fn obtain_modules() {
-        let _ = env_logger::try_init();
+        let _ = env_logger::builder()
+            .is_test(true)
+            .filter(None, log::LevelFilter::Trace)
+            .try_init();
 
         assert_eq!(
             extract_modules_from_file(demo_dir().join(TEST_FILE_FRAGMENTS))
@@ -515,6 +547,11 @@ mod tests {
 
     #[test]
     fn manifest_entries() {
+        let _ = env_logger::builder()
+            .is_test(true)
+            .filter(None, log::LevelFilter::Trace)
+            .try_init();
+
         let (manifest, dir) = demo_dir_manifest();
         assert_eq!(
             extract_products(&manifest, &dir).expect("Must succeed"),
@@ -597,10 +634,10 @@ mod tests {
         };
 
         ([ $( $path:literal ),* $(,)?] + $recurse: expr => [ $( $file:literal ),* $(,)?] ) => {
-                    let _ = env_logger::builder()
-            .is_test(true)
-            .filter(None, log::LevelFilter::Trace)
-            .try_init();
+            let _ = env_logger::builder()
+                .is_test(true)
+                .filter(None, log::LevelFilter::Trace)
+                .try_init();
 
             let docs = extract(
                 vec![
@@ -649,6 +686,7 @@ mod tests {
             "src/nested/justtwo.rs",
             "src/nested/mod.rs",
             "member/true/lib.rs",
+            "member/procmacro/src/lib.rs",
         ]);
     }
 
@@ -682,6 +720,7 @@ mod tests {
         "src/nested/justtwo.rs",
         "src/nested/mod.rs",
         "member/true/lib.rs",
+        "member/procmacro/src/lib.rs",
     ]);
 
     extract_test!(traverse_manifest_rec, ["Cargo.toml"] + true => [
@@ -697,6 +736,7 @@ mod tests {
         "src/nested/justtwo.rs",
         "src/nested/mod.rs",
         "member/true/lib.rs",
+        "member/procmacro/src/lib.rs",
     ]);
 
     extract_test!(traverse_nested_mod_rs_1, ["src/nested/mod.rs"] + false => [
