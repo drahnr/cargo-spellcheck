@@ -88,7 +88,8 @@ exec cargo spellcheck -m 99 $(git diff-index --cached --name-only --diff-filter=
 * [x] Re-flow doc comments [#39](https://github.com/drahnr/cargo-spellcheck/issues/39)
 * [x] Collect dev comments as well [#115](https://github.com/drahnr/cargo-spellcheck/issues/115)
 
-`hunspell` and `languagetool` are currently the two supported featuresets.
+`hunspell` (dictionary based lookups) and `nlprules` (static grammar rules,
+derived from `languagetool`) are currently the two supported checkers.
 
 ## Configuration
 
