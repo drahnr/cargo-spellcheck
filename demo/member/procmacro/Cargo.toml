@@ -1,0 +1,13 @@
+[package]
+name = "cargo-spellcheck-demo-proc-macro"
+version = "1.0.0"
+authors = ["Bernhard Schuster <bernhard@ahoi.io>"]
+edition = "2018"
+publish = false
+description = "Proc-macro member of the demo, with `[lib]` but no path"
+
+[lib]
+proc-macro = true
+# unspecified path
+
+[dependencies]
