@@ -93,7 +93,3 @@ build-override = { opt-level = 2 }
 
 [profile.release]
 debug = true
-
-
-[patch.crates-io]
-pulldown-cmark = { git = "https://github.com/raphlinus/pulldown-cmark.git", branch = "master" }
