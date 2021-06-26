@@ -298,7 +298,7 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
             //^r(#+?)"(?:.*\s*)+(?=(?:"\1))("\1)$
             lazy_static! {
                 static ref BOUNDED_RAW_STR: Regex =
-                    Regex::new(r##"^(r(#+)?")(?:.*\s*)+?(?=(?:"\2))("\2)\s*\]?\s*$"##)
+                    Regex::new(r##"^(r(#*)?")(?:.*\s*)+?(?=(?:"\2))("\2)\s*\]?\s*$"##)
                         .expect("BOUNEDED_RAW_STR regex compiles");
                 static ref BOUNDED_STR: Regex = Regex::new(r##"^"(?:.(?!"\\"))*?"*\s*\]?\s*"$"##)
                     .expect("BOUNEDED_STR regex compiles");
