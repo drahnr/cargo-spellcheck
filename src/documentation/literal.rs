@@ -189,6 +189,130 @@ fn trim_span(content: &str, span: &mut Span, pre: usize, post: usize) {
     }
 }
 
+fn detect_comment_variant(
+    content: &str,
+    rendered: &String,
+    mut span: Span,
+) -> Result<(CommentVariant, Span, usize, usize)> {
+    let prefix_span = Span {
+        start: crate::LineColumn {
+            line: span.start.line,
+            column: 0,
+        },
+        end: crate::LineColumn {
+            line: span.start.line,
+            column: span.start.column.saturating_sub(1),
+        },
+    };
+    let prefix = util::load_span_from(content.as_bytes(), prefix_span)?
+        .trim_start()
+        .to_string();
+
+    let (variant, span, pre, post) = if rendered.starts_with("///") || rendered.starts_with("//!") {
+        let pre = 3; // `///`
+        let post = 0; // trailing `\n` is already accounted for above
+
+        span.start.column += pre;
+
+        // must always be a single line
+        assert_eq!(span.start.line, span.end.line);
+        // if the line includes quotes, the rustc converts them internally
+        // to `#[doc="content"]`, where - if `content` contains `"` will substitute
+        // them as `\"` which will inflate the number columns.
+        // Since we can not distinguish between orignally escaped, we simply
+        // use the content read from source.
+
+        let variant = if rendered.starts_with("///") {
+            CommentVariant::TripleSlash
+        } else {
+            CommentVariant::DoubleSlashEM
+        };
+
+        (variant, span, pre, post)
+    } else if rendered.starts_with("/*") && rendered.ends_with("*/") {
+        let variant = if rendered.starts_with("/*!") {
+            CommentVariant::SlashAsteriskEM
+        } else if rendered.starts_with("/**") {
+            CommentVariant::SlashAsteriskAsterisk
+        } else {
+            CommentVariant::SlashAsterisk
+        };
+
+        let pre = variant.prefix_len();
+        let post = variant.suffix_len();
+
+        #[cfg(debug_assertions)]
+        let orig = span.clone();
+
+        trim_span(rendered, &mut span, pre, post);
+
+        #[cfg(debug_assertions)]
+        {
+            let raw = dbg!(util::load_span_from(&mut content.as_bytes(), orig)?);
+            let adjusted = dbg!(util::load_span_from(&mut content.as_bytes(), span.clone())?);
+            // we know pre and post only consist of single byte characters
+            // so `.len()` is way faster here yet correct.
+            assert_eq!(adjusted.len() + pre + post, raw.len());
+        }
+
+        (variant, span, pre, post)
+    } else {
+        // pre and post are for the rendered content
+        // not necessarily for the span
+
+        //^r(#+?)"(?:.*\s*)+(?=(?:"\1))("\1)$
+        lazy_static! {
+            static ref BOUNDED_RAW_STR: Regex =
+                Regex::new(r##"^(r(#*)")(?:.*\s*)+?(?=(?:"\2))("\2)\s*\]?\s*$"##)
+                    .expect("BOUNEDED_RAW_STR regex compiles");
+            static ref BOUNDED_STR: Regex = Regex::new(r##"^"(?:.(?!"\\"))*?"*\s*\]?\s*"$"##)
+                .expect("BOUNEDED_STR regex compiles");
+        };
+
+        let (pre, post) =
+            if let Some(captures) = BOUNDED_RAW_STR.captures(rendered.as_str()).ok().flatten() {
+                log::trace!("raw str: >{}<", rendered.as_str());
+                let pre = if let Some(prefix) = captures.get(1) {
+                    log::trace!("raw str pre: >{}<", prefix.as_str());
+                    prefix.as_str().len()
+                } else {
+                    bail!("Should have a raw str pre match with a capture group");
+                };
+                let post = if let Some(suffix) = captures.get(captures.len() - 1) {
+                    log::trace!("raw str post: >{}<", suffix.as_str());
+                    suffix.as_str().len()
+                } else {
+                    bail!("Should have a raw str post match with a capture group");
+                };
+
+                // r####" must match "####
+                debug_assert_eq!(pre, post + 1);
+
+                (pre, post)
+            } else if let Some(_captures) = BOUNDED_STR.captures(rendered.as_str()).ok().flatten() {
+                // r####" must match "####
+                let pre = 1;
+                let post = 1;
+                debug_assert_eq!('"', rendered.as_bytes()[0_usize] as char);
+                debug_assert_eq!('"', rendered.as_bytes()[rendered.len() - 1_usize] as char);
+                (pre, post)
+            } else {
+                bail!("Regex should match >{}<", rendered);
+            };
+
+        span.start.column += pre;
+        span.end.column = span.end.column.saturating_sub(post);
+
+        (
+            CommentVariant::MacroDocEq(prefix, pre.saturating_sub(1)),
+            span,
+            pre,
+            post,
+        )
+    };
+    Ok((variant, span, pre, post))
+}
+
 impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
     type Error = Error;
     fn try_from((content, literal): (&str, proc_macro2::Literal)) -> Result<Self> {
@@ -220,19 +344,6 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
         }
 
         let rendered = util::load_span_from(content.as_bytes(), span.clone())?;
-        let prefix_span = Span {
-            start: crate::LineColumn {
-                line: span.start.line,
-                column: 0,
-            },
-            end: crate::LineColumn {
-                line: span.start.line,
-                column: span.start.column.saturating_sub(1),
-            },
-        };
-        let prefix = util::load_span_from(content.as_bytes(), prefix_span)?
-            .trim_start()
-            .to_string();
 
         // TODO cache the offsets for faster processing and avoiding repeated O(n) ops
         // let byteoffset2char = rendered.char_indices().enumerate().collect::<indexmap::IndexMap<_usize, (_usize, char)>>();
@@ -241,111 +352,7 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
         let rendered_len = rendered.chars().count();
 
         log::trace!("extracted from source: >{}< @ {:?}", rendered, span);
-        let (variant, span, pre, post) = if rendered.starts_with("///")
-            || rendered.starts_with("//!")
-        {
-            let pre = 3; // `///`
-            let post = 0; // trailing `\n` is already accounted for above
-
-            span.start.column += pre;
-
-            // must always be a single line
-            assert_eq!(span.start.line, span.end.line);
-            // if the line includes quotes, the rustc converts them internally
-            // to `#[doc="content"]`, where - if `content` contains `"` will substitute
-            // them as `\"` which will inflate the number columns.
-            // Since we can not distinguish between orignally escaped, we simply
-            // use the content read from source.
-
-            let variant = if rendered.starts_with("///") {
-                CommentVariant::TripleSlash
-            } else {
-                CommentVariant::DoubleSlashEM
-            };
-
-            (variant, span, pre, post)
-        } else if rendered.starts_with("/*") && rendered.ends_with("*/") {
-            let variant = if rendered.starts_with("/*!") {
-                CommentVariant::SlashAsteriskEM
-            } else if rendered.starts_with("/**") {
-                CommentVariant::SlashAsteriskAsterisk
-            } else {
-                CommentVariant::SlashAsterisk
-            };
-
-            let pre = variant.prefix_len();
-            let post = variant.suffix_len();
-
-            #[cfg(debug_assertions)]
-            let orig = span.clone();
-
-            trim_span(&rendered, &mut span, pre, post);
-
-            #[cfg(debug_assertions)]
-            {
-                let raw = dbg!(util::load_span_from(&mut content.as_bytes(), orig)?);
-                let adjusted = dbg!(util::load_span_from(&mut content.as_bytes(), span.clone())?);
-                // we know pre and post only consist of single byte characters
-                // so `.len()` is way faster here yet correct.
-                assert_eq!(adjusted.len() + pre + post, raw.len());
-            }
-
-            (variant, span, pre, post)
-        } else {
-            // pre and post are for the rendered content
-            // not necessarily for the span
-
-            //^r(#+?)"(?:.*\s*)+(?=(?:"\1))("\1)$
-            lazy_static! {
-                static ref BOUNDED_RAW_STR: Regex =
-                    Regex::new(r##"^(r(#*)?")(?:.*\s*)+?(?=(?:"\2))("\2)\s*\]?\s*$"##)
-                        .expect("BOUNEDED_RAW_STR regex compiles");
-                static ref BOUNDED_STR: Regex = Regex::new(r##"^"(?:.(?!"\\"))*?"*\s*\]?\s*"$"##)
-                    .expect("BOUNEDED_STR regex compiles");
-            };
-
-            let (pre, post) = if let Some(captures) =
-                BOUNDED_RAW_STR.captures(rendered.as_str()).ok().flatten()
-            {
-                log::trace!("raw str: >{}<", rendered.as_str());
-                let pre = if let Some(prefix) = captures.get(1) {
-                    log::trace!("raw str pre: >{}<", prefix.as_str());
-                    prefix.as_str().len()
-                } else {
-                    bail!("Should have a raw str pre match with a capture group");
-                };
-                let post = if let Some(suffix) = captures.get(captures.len() - 1) {
-                    log::trace!("raw str post: >{}<", suffix.as_str());
-                    suffix.as_str().len()
-                } else {
-                    bail!("Should have a raw str post match with a capture group");
-                };
-
-                // r####" must match "####
-                debug_assert_eq!(pre, post + 1);
-
-                (pre, post)
-            } else if let Some(_captures) = BOUNDED_STR.captures(rendered.as_str()).ok().flatten() {
-                // r####" must match "####
-                let pre = 1;
-                let post = 1;
-                debug_assert_eq!('"', rendered.as_bytes()[0_usize] as char);
-                debug_assert_eq!('"', rendered.as_bytes()[rendered.len() - 1_usize] as char);
-                (pre, post)
-            } else {
-                bail!("Regex should match >{}<", rendered);
-            };
-
-            span.start.column += pre;
-            span.end.column = span.end.column.saturating_sub(post);
-
-            (
-                CommentVariant::MacroDocEq(prefix, pre.saturating_sub(1)),
-                span,
-                pre,
-                post,
-            )
-        };
+        let (variant, span, pre, post) = detect_comment_variant(content, &rendered, span)?;
 
         let len_in_chars = rendered_len.saturating_sub(post + pre);
 
@@ -597,6 +604,27 @@ impl<'a> fmt::Display for TrimmedLiteralDisplay<'a> {
 mod tests {
     use super::*;
     use crate::documentation::tests::annotated_literals_raw;
+    use assert_matches::assert_matches;
+
+    #[test]
+    fn variant_detect() {
+        let content = r###"#[doc=r"foo"]"###.to_owned();
+        let rendered = r##"r"foo""##.to_owned();
+        assert_matches!(
+        detect_comment_variant(content.as_str(), &rendered, Span{
+            start: LineColumn {
+                line: 1,
+                column: 6,
+            },
+            end: LineColumn {
+                line: 1,
+                column: 12 + 1,
+            },
+        }), Ok((CommentVariant::MacroDocEq(prefix, n_pounds), _, _, _)) => {
+            assert_eq!(n_pounds, 1);
+            assert_eq!(prefix, "#[doc=");
+        });
+    }
 
     macro_rules! block_comment_test {
         ($name:ident, $content:literal) => {
