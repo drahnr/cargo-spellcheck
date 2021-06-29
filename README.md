@@ -3,6 +3,8 @@
 [![crates.io](https://img.shields.io/crates/v/cargo_spellcheck.svg)](https://crates.io/crates/cargo-spellcheck)
 [![CI](https://ci.spearow.io/api/v1/teams/main/pipelines/cargo-spellcheck/jobs/master-validate/badge)](https://ci.spearow.io/teams/main/pipelines/cargo-spellcheck/jobs/master-validate)
 ![commits-since](https://img.shields.io/github/commits-since/drahnr/cargo-spellcheck/latest.svg)
+[![rust 1.51.0+ badge](https://img.shields.io/badge/rust-1.51.0+-93450a.svg)](https://blog.rust-lang.org/2021/03/25/Rust-1.51.0.html)
+
 Check your spelling with `hunspell` and/or `nlprule`.
 
 ## Use Cases
