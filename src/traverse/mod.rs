@@ -432,13 +432,39 @@ pub(crate) fn extract(
                 let cargo_toml = to_manifest_dir(&path).unwrap().join("Cargo.toml");
                 if cargo_toml.is_file() {
                     Extraction::Manifest(cargo_toml)
+                } else if recurse {
+                    // keep walking directories and feed the path back
+                    // if recursing is wanted
+                    // and if it doesn't contain a manifest file
+                    match fs::read_dir(path) {
+                        Err(err) => warn!("Listing directory contents {} failed", err),
+                        Ok(entries) => {
+                            for entry in entries {
+                                if let Ok(entry) = entry {
+                                    let path = entry.path();
+                                    // let's try with that path again
+                                    flow.push_back(path);
+                                }
+                            }
+                        }
+                    }
+                    continue;
                 } else {
-                    // TODO should we just collect all .rs files here instead?
-
-                    // we know it's a directory, and we limit the entries to 0 levels,
-                    // will cause to yield all "^.*\.rs$" files in that dir
-                    // which is what we want in this case
-                    flow.extend(TraverseModulesIter::with_depth_limit(&path, 0)?);
+                    match fs::read_dir(path) {
+                        Err(err) => warn!("Listing directory contents {} failed", err),
+                        Ok(entries) => {
+                            for entry in entries {
+                                if let Ok(entry) = entry {
+                                    let path = entry.path();
+                                    // let's try attempt with that .rs file
+                                    // if we end up here, recursion is off already
+                                    if path.is_file() {
+                                        flow.push_back(path);
+                                    }
+                                }
+                            }
+                        }
+                    }
                     continue;
                 }
             } else {
@@ -752,5 +778,12 @@ mod tests {
         "src/nested/justone.rs",
         "src/nested/justtwo.rs",
         "src/nested/mod.rs"
+    ]);
+
+    extract_test!(traverse_dir_wo_manifest, ["member"] + true => [
+        "member/true/lib.rs",
+        "member/true/README.md",
+        "member/procmacro/src/lib.rs",
+        "member/stray.rs",
     ]);
 }
