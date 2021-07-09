@@ -41,7 +41,7 @@ fn main() -> std::result::Result<(), Box<(dyn std::error::Error + 'static)>> {
                             .expect("Extension conversion from OSString to regular string works. qed") })
                             .unwrap_or_else(|| String::with_capacity(4));
 
-                    ext.push_str(".");
+                    ext.push('.');
                     ext.push_str(COMPRESSION_EXTENSION);
                     path.set_extension(ext);
                     Ok(path)

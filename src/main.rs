@@ -2,6 +2,7 @@
 #![deny(missing_docs)]
 #![deny(unused_crate_dependencies)]
 #![warn(clippy::pedantic)]
+#![allow(clippy::non_ascii_literal)]
 
 //! cargo-spellcheck
 //!
