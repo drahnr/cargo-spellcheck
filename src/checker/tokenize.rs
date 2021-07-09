@@ -76,7 +76,6 @@ pub(crate) fn apply_tokenizer<'t, 'z>(
 where
     't: 'z,
 {
-
     tokenizer
         .pipe(text)
         .into_iter()
@@ -101,7 +100,9 @@ where
                         if let Some(upcoming2) = iter.peek() {
                             let s = upcoming2.word().text().as_str();
                             if s.len() == 1 && !upcoming2.has_space_before() {
-                                acc.push(backlog.first().unwrap().start .. upcoming2.span().char().end);
+                                acc.push(
+                                    backlog.first().unwrap().start..upcoming2.span().char().end,
+                                );
                                 backlog.clear();
                                 let _ = iter.next();
                                 continue;
@@ -115,8 +116,6 @@ where
         })
         .flatten()
 }
-
-
 
 #[cfg(test)]
 mod tests {
