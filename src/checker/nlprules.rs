@@ -7,7 +7,7 @@ use super::{Checker, Detector, Documentation, Suggestion, SuggestionSet};
 use crate::{CheckableChunk, ContentOrigin};
 
 use crate::errors::*;
-use log::{debug, trace, warn};
+use log::{debug, trace};
 use rayon::prelude::*;
 
 use nlprule::{Rules, Tokenizer};
@@ -105,7 +105,7 @@ fn check_chunk<'a>(
         let start = fix.span().char().start;
         let end = fix.span().char().end;
         if start > end {
-            warn!("BUG: crate nlprule yielded a negative range {:?} for chunk in {}, please file a bug", start..end, &origin);
+            debug!("BUG: crate nlprule yielded a negative range {:?} for chunk in {}, please file a bug", start..end, &origin);
             continue 'nlp;
         }
         let range = start..end;
