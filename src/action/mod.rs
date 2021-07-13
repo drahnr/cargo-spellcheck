@@ -328,16 +328,14 @@ impl Action {
         let mut count = 0usize;
         for (path, suggestions) in suggestions_per_path {
             let n = suggestions.len();
-            info!(
-                "{} {} contains {} possible spelling mistakes",
-                if n == 0 { '✅' } else { '❌' },
-                path.as_path().display(),
-                n
-            );
-
             count += n;
             for suggestion in suggestions {
                 println!("{}", suggestion);
+            }
+            if n == 0 {
+                info!("✅ {}", path.as_path().display());
+            } else {
+                info!("❌ {} : {}", path.as_path().display(), n);
             }
         }
         Ok(Finish::MistakeCount(count))
