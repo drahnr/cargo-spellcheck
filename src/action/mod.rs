@@ -236,6 +236,11 @@ pub enum Action {
     /// Print the config being in use, default config if none.
     #[serde(alias = "config")]
     Config,
+
+    /// List all files in depth first sorted order in which they
+    /// would be checked.
+    #[serde(alias = "files")]
+    ListFiles,
 }
 
 impl Action {
@@ -365,7 +370,7 @@ impl Action {
                     Ok(Finish::MistakeCount(n))
                 }
             }
-            Self::Config | Self::Version | Self::Help => {
+            Self::Config | Self::Version | Self::Help | Self::ListFiles => {
                 unreachable!("Should have been handled way earlier")
             }
         }
