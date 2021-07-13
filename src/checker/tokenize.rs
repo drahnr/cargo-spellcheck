@@ -89,11 +89,12 @@ where
 
             #[derive(Clone, Copy, Debug)]
             enum Stage {
+                Empty,
                 Pre,
                 Tick,
             }
 
-            let mut stage = Stage::Pre;
+            let mut stage = Stage::Empty;
 
             // special cases all abbreviated variants, i.e. `isn't` such
             // that the tokenizer treats them as a single word.
@@ -106,29 +107,33 @@ where
                 stage = if let Stage::Tick = stage {
                     acc.push(backlog.first().unwrap().start..char_range.end);
                     backlog.clear();
-                    Stage::Pre
+                    Stage::Empty
                 } else if let Some(upcoming) = iter.peek() {
                     let space = upcoming.has_space_before();
                     let s = token.word().as_str();
                     match stage {
+                        Stage::Empty if s != "'" && !space => {
+                            backlog.push(char_range);
+                            Stage::Pre
+                        }
                         Stage::Pre if s == "'" && !space => {
                             backlog.push(char_range);
                             Stage::Tick
                         }
-                        Stage::Pre if !space => {
+                        Stage::Pre if s != "'" && !space => {
                             backlog.push(char_range);
                             Stage::Pre
                         }
                         _ => {
                             acc.extend(backlog.drain(..));
                             acc.push(char_range);
-                            Stage::Pre
+                            Stage::Empty
                         }
                     }
                 } else {
                     acc.extend(backlog.drain(..));
                     acc.push(char_range);
-                    Stage::Pre
+                    Stage::Empty
                 }
             }
             acc.into_iter()
@@ -141,15 +146,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tokenizer_for_abbrev() {
+    fn tokenize_for_abbrev_sentence() {
         let tok = tokenizer::<PathBuf>(None).unwrap();
         let ranges = apply_tokenizer(&tok, "It isn't that different.");
 
         ranges
-            .zip([0_usize..2, 3..8, 9..13, 14..23, 23..24].iter().cloned())
+            .zip([0_usize..2, 3..8, 9..13, 14..23].iter().cloned())
             .for_each(|(is, expect)| {
                 assert_eq!(is, expect);
             });
+    }
+
+    #[test]
+    fn tokenize_for_abbrev_short() {
+        let tok = tokenizer::<PathBuf>(None).unwrap();
+        let mut ranges = apply_tokenizer(&tok, "isn't");
+        assert_eq!(ranges.next(), Some(0_usize..5));
     }
 
     #[test]
@@ -158,5 +170,36 @@ mod tests {
         let mut ranges = apply_tokenizer(&tok, "ink!'s");
 
         assert_eq!(ranges.next(), Some(0_usize..6));
+    }
+
+    #[test]
+    fn tokenize_single_ticks() {
+        let tok = tokenizer::<PathBuf>(None).unwrap();
+        let ranges = apply_tokenizer(&tok, "the 'lock funds' transaction");
+
+        ranges
+            .zip(
+                [0_usize..3, 4..5, 5..9, 10..15, 15..16, 17..28]
+                    .iter()
+                    .cloned(),
+            )
+            .for_each(|(is, expect)| {
+                assert_eq!(is, expect);
+            });
+    }
+    #[test]
+    fn tokenize_double_ticks() {
+        let tok = tokenizer::<PathBuf>(None).unwrap();
+        let ranges = apply_tokenizer(&tok, r#"the "lock funds" transaction"#);
+
+        ranges
+            .zip(
+                [0_usize..3, 4..5, 5..9, 10..15, 15..16, 17..28]
+                    .iter()
+                    .cloned(),
+            )
+            .for_each(|(is, expect)| {
+                assert_eq!(is, expect);
+            });
     }
 }
