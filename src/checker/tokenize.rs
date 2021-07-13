@@ -80,37 +80,56 @@ where
         .pipe(text)
         .into_iter()
         .map(|sentence| {
-            let mut backlog = Vec::with_capacity(4);
+            let mut backlog: Vec<Range> = Vec::with_capacity(4);
             let mut acc = Vec::with_capacity(32);
             let mut iter = sentence
                 .into_iter()
                 .filter(|token| !token.span().char().is_empty())
                 .peekable();
 
+            #[derive(Clone, Copy, Debug)]
+            enum Stage {
+                Pre,
+                Tick,
+            }
+
+            let mut stage = Stage::Pre;
+
             // special cases all abbreviated variants, i.e. `isn't` such
             // that the tokenizer treats them as a single word.
+            //
+            // Also allows i.e. `ink!'s` to be detected as a single
+            // token.
             while let Some(token) = iter.next() {
                 let char_range = token.span().char().clone();
-                backlog.push(char_range);
-                if let Some(upcoming) = iter.peek() {
-                    let s = upcoming.word().text().as_str();
-                    if s == "'" && !upcoming.has_space_before() {
-                        backlog.push(upcoming.span().char().clone());
-                        let _ = iter.next();
-                        if let Some(upcoming2) = iter.peek() {
-                            let s = upcoming2.word().text().as_str();
-                            if s.len() == 1 && !upcoming2.has_space_before() {
-                                acc.push(
-                                    backlog.first().unwrap().start..upcoming2.span().char().end,
-                                );
-                                backlog.clear();
-                                let _ = iter.next();
-                                continue;
-                            }
+
+                stage = if let Stage::Tick = stage {
+                    acc.push(backlog.first().unwrap().start..char_range.end);
+                    backlog.clear();
+                    Stage::Pre
+                } else if let Some(upcoming) = iter.peek() {
+                    let space = upcoming.has_space_before();
+                    let s = token.word().as_str();
+                    match stage {
+                        Stage::Pre if s == "'" && !space => {
+                            backlog.push(char_range);
+                            Stage::Tick
+                        }
+                        Stage::Pre if !space => {
+                            backlog.push(char_range);
+                            Stage::Pre
+                        }
+                        _ => {
+                            acc.extend(backlog.drain(..));
+                            acc.push(char_range);
+                            Stage::Pre
                         }
                     }
+                } else {
+                    acc.extend(backlog.drain(..));
+                    acc.push(char_range);
+                    Stage::Pre
                 }
-                acc.extend(backlog.drain(..));
             }
             acc.into_iter()
         })
@@ -131,5 +150,13 @@ mod tests {
             .for_each(|(is, expect)| {
                 assert_eq!(is, expect);
             });
+    }
+
+    #[test]
+    fn tokenize_ink_bang_tick_s() {
+        let tok = tokenizer::<PathBuf>(None).unwrap();
+        let mut ranges = apply_tokenizer(&tok, "ink!'s");
+
+        assert_eq!(ranges.next(), Some(0_usize..6));
     }
 }
