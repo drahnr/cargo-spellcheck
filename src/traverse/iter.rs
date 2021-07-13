@@ -34,7 +34,7 @@ impl TraverseModulesIter {
         let path = fs::canonicalize(path)?;
         let meta = fs::metadata(&path)?;
         if meta.is_file() {
-            self.queue.push_back((path, level));
+            self.queue.push_front((path, level));
         } else if meta.is_dir() {
             walkdir::WalkDir::new(path)
                 .max_depth(1)
@@ -54,7 +54,7 @@ impl TraverseModulesIter {
                 })
                 .try_for_each::<_, Result<()>>(|path| {
                     trace!("🌱 using path {} as seed recursion dir", path.display());
-                    self.queue.push_back((path, level));
+                    self.queue.push_front((path, level));
                     Ok(())
                 })?;
         }
