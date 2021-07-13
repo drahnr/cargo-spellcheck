@@ -175,6 +175,13 @@ fn run() -> Result<ExitCode> {
                     reflow::Reflow::check(&combined, &config.reflow.clone().unwrap_or_default())?
                 }
                 Action::Check | Action::Fix => checker::check(&combined, &config)?,
+                Action::ListFiles => {
+                    for (origin, _chunks) in combined.iter() {
+                        println!("{}", origin.as_path().display())
+                    }
+                    return Ok(ExitCode::Success);
+                }
+
                 _ => unreachable!("Should never be reached, handled earlier"),
             };
 

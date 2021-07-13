@@ -533,7 +533,7 @@ pub(crate) fn extract(
                         )?;
                     }
                     other => {
-                        warn!("Did not impl handling of {:?} type files", other);
+                        debug!("Did not impl handling of {:?} type files", other);
                         // TODO generate Documentation structs from non-file sources
                     }
                 }

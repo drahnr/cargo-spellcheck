@@ -25,6 +25,7 @@ Usage:
     cargo-spellcheck [(-v...|-q)] [--jobs=<jobs>] fix [--cfg=<cfg>] [--code=<code>] [--dev-comments] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
     cargo-spellcheck [(-v...|-q)] [--jobs=<jobs>] reflow [--cfg=<cfg>] [--code=<code>] [--dev-comments] [--skip-readme] [[--recursive] <paths>... ]
     cargo-spellcheck [(-v...|-q)] [--jobs=<jobs>] config (--user|--stdout|--cfg=<cfg>) [--checkers=<checkers>] [--force]
+    cargo-spellcheck [(-v...|-q)] [--jobs=<jobs>] list-files [--skip-readme] [[--recursive] <paths>... ]
     cargo-spellcheck [(-v...|-q)] [--jobs=<jobs>] [check] [--fix] [--cfg=<cfg>] [--code=<code>] [--dev-comments] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
     cargo-spellcheck --version
     cargo-spellcheck --help
@@ -149,6 +150,7 @@ pub struct Args {
     pub cmd_check: bool,
     pub cmd_reflow: bool,
     pub cmd_config: bool,
+    pub cmd_list_files: bool,
 }
 
 impl Args {
@@ -181,8 +183,8 @@ impl Args {
             Action::Config
         } else if self.cmd_check {
             Action::Check
-        } else if self.cmd_check {
-            Action::Check
+        } else if self.cmd_list_files {
+            Action::ListFiles
         } else {
             // `cargo spellcheck` is short for checking
             Action::Check
