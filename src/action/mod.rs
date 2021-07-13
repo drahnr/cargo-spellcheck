@@ -326,8 +326,16 @@ impl Action {
     /// Purpose was to check, checking complete, so print the results.
     fn check(&self, suggestions_per_path: SuggestionSet, _config: &Config) -> Result<Finish> {
         let mut count = 0usize;
-        for (_path, suggestions) in suggestions_per_path {
-            count += suggestions.len();
+        for (path, suggestions) in suggestions_per_path {
+            let n = suggestions.len();
+            info!(
+                "{} {} contains {} possible spelling mistakes",
+                if n == 0 { '✅' } else { '❌' },
+                path.as_path().display(),
+                n
+            );
+
+            count += n;
             for suggestion in suggestions {
                 println!("{}", suggestion);
             }
