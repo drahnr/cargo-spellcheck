@@ -23,6 +23,10 @@ use_builtin = true
 # snip
 ```
 
+---
+
+Avoiding `nlprule` backend by passing `--checkers=hunspell` might be a good idea,
+since `nlprule` tends to have a few false positives.
 
 ## Examples
 
@@ -63,14 +67,22 @@ Should not be present in doc comments, but only make it into developer comments,
 
 ### markdown: autolink
 
-```md
-<ahoi.io>
+
+```raw
+error: spellcheck(Hunspell)
+   --> test.md:96
+    |
+ 96 | The test coverage in `lcov` can the be published to <codecov.io>.
+    |                                                      ^^^^^^^
+    | - codec
+    |
+    |   Possible spelling mistake found.
 ```
 
 will spellcheck all components of the url, since it is not a _valid_ autolink. Add the protocol type.
 
 ```md
-<https://ahoi.io>
+<https://codecov.io>
 ```
 
 and the content will be omitted from spellchecking.
