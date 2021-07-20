@@ -95,6 +95,37 @@ derived from `languagetool`) are currently the two supported checkers.
 
 ## Configuration
 
+### Source
+
+There are various ways to specify the configuration. The prioritization is as
+follows:
+
+_Explicit_ specification:
+
+1. Command line flags `--cfg=...`.
+1. `Cargo.toml` metadata:
+
+    ```toml
+    [package.metadata.spellcheck]
+    config = "somewhere/cfg.toml"
+    ```
+
+which will fail if specified and not existent on the filesystem.
+
+If neither of those ways of specification is present, continue with the
+_implicit_.
+
+1. Check the first arguments location if present, else the current working directory for `.config/spellcheck.toml`
+1. Fallback to per user configuration files:
+    * Linux:   `/home/alice/.config/cargo_spellcheck/config.toml`
+    * Windows: `C:\Users\Alice\AppData\Roaming\cargo_spellcheck\config.toml`
+    * macOS:   `/Users/Alice/Library/Preferences/cargo_spellcheck/config.toml`
+1. Use the default, builtin configuration (see `config` sub-command).
+
+Since this is rather complex, add `-vv` to your invocation to see the `info`
+level logs printed, which will contain the config path.
+### Format
+
 ```toml
 # Project settings where a Cargo.toml exists and is passed
 # ${CARGO_MANIFEST_DIR}/.config/spellcheck.toml
@@ -104,13 +135,6 @@ dev_comments = false
 
 # Skip the README.md file as defined in the cargo manifest
 skip_readme = false
-
-# Fallback to per use configuration files:
-# Linux:   /home/alice/.config/cargo_spellcheck/config.toml
-# Windows: C:\Users\Alice\AppData\Roaming\cargo_spellcheck\config.toml
-# macOS:   /Users/Alice/Library/Preferences/cargo_spellcheck/config.toml
-
-
 
 [Hunspell]
 # lang and name of `.dic` file
