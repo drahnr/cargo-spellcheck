@@ -104,15 +104,19 @@ where
             while let Some(token) = iter.next() {
                 let char_range = token.span().char().clone();
 
-                stage = if let Stage::Tick = stage {
-                    acc.push(backlog.first().unwrap().start..char_range.end);
-                    backlog.clear();
-                    Stage::Empty
-                } else if let Some(upcoming) = iter.peek() {
-                    let space = upcoming.has_space_before();
-                    let s = token.word().as_str();
+                let space = iter.peek().map(|upcoming| upcoming.has_space_before()).unwrap_or(false);
+                let s = token.word().as_str();
+                let belongs_to_genitive_s = match s {
+                        "(" | ")" | r#"""# => false,
+                        _ => true,
+                };
+                stage = if belongs_to_genitive_s {
                     match stage {
                         Stage::Empty if s != "'" && !space => {
+                            backlog.push(char_range);
+                            Stage::Pre
+                        }
+                        Stage::Pre if s != "'" && !space => {
                             backlog.push(char_range);
                             Stage::Pre
                         }
@@ -120,11 +124,13 @@ where
                             backlog.push(char_range);
                             Stage::Tick
                         }
-                        Stage::Pre if s != "'" && !space => {
-                            backlog.push(char_range);
-                            Stage::Pre
+                        Stage::Tick if s != "'" => {
+                            // combine all in backlog to one
+                            acc.push(backlog.first().unwrap().start..char_range.end);
+                            backlog.clear();
+                            Stage::Empty
                         }
-                        _ => {
+                        _stage => {
                             acc.extend(backlog.drain(..));
                             acc.push(char_range);
                             Stage::Empty
@@ -134,7 +140,7 @@ where
                     acc.extend(backlog.drain(..));
                     acc.push(char_range);
                     Stage::Empty
-                }
+                };
             }
             acc.into_iter()
         })
@@ -165,7 +171,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_ink_bang_tick_s() {
+    fn tokenize_ink_bang_0_tick_s() {
         let tok = tokenizer::<PathBuf>(None).unwrap();
         let mut ranges = apply_tokenizer(&tok, "ink!'s");
 
@@ -173,9 +179,45 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_single_ticks() {
+    fn tokenize_ink_bang_1_tick_s_w_brackets() {
         let tok = tokenizer::<PathBuf>(None).unwrap();
-        let ranges = apply_tokenizer(&tok, "the 'lock funds' transaction");
+        let mut ranges = apply_tokenizer(&tok, "(ink!'s)");
+
+        assert_eq!(ranges.next(), Some(0_usize..1));
+        assert_eq!(ranges.next(), Some(1_usize..7));
+        assert_eq!(ranges.next(), Some(7_usize..8));
+    }
+
+    #[test]
+    fn tokenize_ink_bang_2_tick_s_w_brackets_spaced() {
+        let tok = tokenizer::<PathBuf>(None).unwrap();
+        let mut ranges = apply_tokenizer(&tok, "( ink!'s )");
+
+        assert_eq!(ranges.next(), Some(0_usize..1));
+        assert_eq!(ranges.next(), Some(2_usize..8));
+        assert_eq!(ranges.next(), Some(9_usize..10));
+    }
+
+    #[test]
+    fn tokenize_single_ticks_w_brackets() {
+        let tok = tokenizer::<PathBuf>(None).unwrap();
+        let ranges = apply_tokenizer(&tok, "the ('lock funds') transaction");
+
+        ranges
+            .zip(
+                [0_usize..3, 4..5, 5..6, 6..10, 11..16]
+                    .iter()
+                    .cloned(),
+            )
+            .for_each(|(is, expect)| {
+                assert_eq!(is, expect);
+            });
+    }
+
+    #[test]
+    fn tokenize_double_ticks() {
+        let tok = tokenizer::<PathBuf>(None).unwrap();
+        let ranges = apply_tokenizer(&tok, r#"the "lock funds" transaction"#);
 
         ranges
             .zip(
@@ -187,14 +229,31 @@ mod tests {
                 assert_eq!(is, expect);
             });
     }
+
     #[test]
-    fn tokenize_double_ticks() {
+    fn tokenize_bracketed_w_tick_s_inside() {
         let tok = tokenizer::<PathBuf>(None).unwrap();
-        let ranges = apply_tokenizer(&tok, r#"the "lock funds" transaction"#);
+        let ranges = apply_tokenizer(&tok, r#"the (Xyz's) do"#);
 
         ranges
             .zip(
-                [0_usize..3, 4..5, 5..9, 10..15, 15..16, 17..28]
+                [0_usize..3, 4..5, 5..10, 10..11, 12..14]
+                    .iter()
+                    .cloned(),
+            )
+            .for_each(|(is, expect)| {
+                assert_eq!(is, expect);
+            });
+    }
+
+    #[test]
+    fn tokenize_boring_genetive_s() {
+        let tok = tokenizer::<PathBuf>(None).unwrap();
+        let ranges = apply_tokenizer(&tok, r#"The Y's car is yellow."#);
+
+        ranges
+            .zip(
+                [0_usize..3, 4..7, 8..11]
                     .iter()
                     .cloned(),
             )
