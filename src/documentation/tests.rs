@@ -76,7 +76,7 @@ macro_rules! end2end {
     ($test:expr, $origin:expr, $n:expr, $checker:ty) => {{
         let _ = env_logger::builder()
             .is_test(true)
-            .filter(None, log::LevelFilter::Trace)
+            .filter_level(log::LevelFilter::Trace)
             .try_init();
 
         let origin: ContentOrigin = $origin;
@@ -87,13 +87,14 @@ macro_rules! end2end {
         let chunk = &chunks[0];
         let _plain = chunk.erase_cmark();
 
-        let cfg = Default::default();
-        let suggestion_set =
-            <$checker>::check(&docs, &cfg).expect("Must not fail to extract suggestions");
-        let (_, suggestions) = suggestion_set
+        let cfg = dbg!(Default::default());
+        dbg!(std::any::type_name::<$checker>());
+        let suggestion_set = <$checker as Checker>::check(&docs, &cfg)
+            .expect("Must not fail to extract suggestions");
+        let (_, suggestions) = dbg!(&suggestion_set)
             .iter()
             .next()
-            .expect("Must contain exactly one item");
+            .expect("Suggestion set must not be empty");
         assert_eq!(suggestions.len(), $n);
     }};
 }
