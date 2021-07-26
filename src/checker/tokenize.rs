@@ -104,11 +104,14 @@ where
             while let Some(token) = iter.next() {
                 let char_range = token.span().char().clone();
 
-                let space = iter.peek().map(|upcoming| upcoming.has_space_before()).unwrap_or(false);
+                let space = iter
+                    .peek()
+                    .map(|upcoming| upcoming.has_space_before())
+                    .unwrap_or(false);
                 let s = token.word().as_str();
                 let belongs_to_genitive_s = match s {
-                        "(" | ")" | r#"""# => false,
-                        _ => true,
+                    "(" | ")" | r#"""# => false,
+                    _ => true,
                 };
                 stage = if belongs_to_genitive_s {
                     match stage {
@@ -142,6 +145,7 @@ where
                     Stage::Empty
                 };
             }
+            acc.extend(backlog.drain(..));
             acc.into_iter()
         })
         .flatten()
@@ -204,11 +208,7 @@ mod tests {
         let ranges = apply_tokenizer(&tok, "the ('lock funds') transaction");
 
         ranges
-            .zip(
-                [0_usize..3, 4..5, 5..6, 6..10, 11..16]
-                    .iter()
-                    .cloned(),
-            )
+            .zip([0_usize..3, 4..5, 5..6, 6..10, 11..16].iter().cloned())
             .for_each(|(is, expect)| {
                 assert_eq!(is, expect);
             });
@@ -236,11 +236,7 @@ mod tests {
         let ranges = apply_tokenizer(&tok, r#"the (Xyz's) do"#);
 
         ranges
-            .zip(
-                [0_usize..3, 4..5, 5..10, 10..11, 12..14]
-                    .iter()
-                    .cloned(),
-            )
+            .zip([0_usize..3, 4..5, 5..10, 10..11, 12..14].iter().cloned())
             .for_each(|(is, expect)| {
                 assert_eq!(is, expect);
             });
@@ -252,11 +248,31 @@ mod tests {
         let ranges = apply_tokenizer(&tok, r#"The Y's car is yellow."#);
 
         ranges
-            .zip(
-                [0_usize..3, 4..7, 8..11]
-                    .iter()
-                    .cloned(),
-            )
+            .zip([0_usize..3, 4..7, 8..11].iter().cloned())
+            .for_each(|(is, expect)| {
+                assert_eq!(is, expect);
+            });
+    }
+
+    #[test]
+    fn tokenize_foo_dot() {
+        let tok = tokenizer::<PathBuf>(None).unwrap();
+        let ranges = apply_tokenizer(&tok, r#"Foo."#);
+
+        ranges
+            .zip([0_usize..3, 3..4].iter().cloned())
+            .for_each(|(is, expect)| {
+                assert_eq!(is, expect);
+            });
+    }
+
+    #[test]
+    fn tokenize_foo() {
+        let tok = tokenizer::<PathBuf>(None).unwrap();
+        let ranges = apply_tokenizer(&tok, r#"foo"#);
+
+        ranges
+            .zip([0_usize..3].iter().cloned())
             .for_each(|(is, expect)| {
                 assert_eq!(is, expect);
             });
