@@ -442,7 +442,6 @@ impl Args {
             }
             let config_path = manifest_path.join(".config").join("spellcheck.toml");
             debug!("Using configuration file (3) {}", config_path.display());
-            let config_path = config_path.canonicalize()?;
             if let Some(cfg) = Config::load_from(&config_path)? {
                 return Ok((cfg, Some(config_path)));
             }
