@@ -107,6 +107,7 @@ pub mod dummy;
 #[cfg(test)]
 pub mod tests {
     use super::*;
+    use crate::load_span_from;
     use crate::span::Span;
     use crate::ContentOrigin;
     use crate::LineColumn;
@@ -164,7 +165,14 @@ pub mod tests {
                 vec![format!("replacement_{}", index)],
                 "found vs expected replacement"
             );
-            assert_eq!(suggestion.span, *expected_span, "found vs expected span");
+            let extracts = load_span_from(&mut content.as_bytes(), suggestion.span).unwrap();
+            let expected_extracts =
+                load_span_from(&mut content.as_bytes(), *expected_span).unwrap();
+            assert_eq!(
+                (suggestion.span, extracts),
+                (*expected_span, expected_extracts),
+                "found vs expected span"
+            );
         }
     }
 
