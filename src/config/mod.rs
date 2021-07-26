@@ -99,35 +99,35 @@ impl Config {
     }
 
     pub fn load_from<P: AsRef<Path>>(path: P) -> Result<Option<Self>> {
-        let mut file = match fs::File::open(path.as_ref()) {
+        let (contents, path) = match Self::load_content(path) {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 return Ok(None);
             }
             Err(e) => bail!(e),
-            Ok(file) => file,
+            Ok(contents) => contents,
         };
+        Self::parse(&contents)
+            .wrap_err_with(|| {
+                eyre!(
+                    "Syntax of a given config file({}) is broken",
+                    path.display()
+                )
+            })
+            .and_then(|mut cfg| {
+                if let Some(base) = path.parent() {
+                    cfg.sanitize_paths(base)?;
+                }
+                Ok(Some(cfg))
+            })
+    }
+
+    pub fn load_content<P: AsRef<Path>>(path: P) -> std::io::Result<(String, PathBuf)> {
+        let path = path.as_ref().canonicalize()?;
+        let mut file = fs::File::open(&path)?;
+
         let mut contents = String::with_capacity(1024);
-        if let Err(e) = file.read_to_string(&mut contents) {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                Ok(None)
-            } else {
-                bail!(e)
-            }
-        } else {
-            Self::parse(&contents)
-                .wrap_err_with(|| {
-                    eyre!(
-                        "Syntax of a given config file({}) is broken",
-                        path.as_ref().display()
-                    )
-                })
-                .and_then(|mut cfg| {
-                    if let Some(base) = path.as_ref().parent() {
-                        cfg.sanitize_paths(base)?;
-                    }
-                    Ok(Some(cfg))
-                })
-        }
+        file.read_to_string(&mut contents)?;
+        Ok((contents, path))
     }
 
     pub fn load() -> Result<Option<Self>> {
