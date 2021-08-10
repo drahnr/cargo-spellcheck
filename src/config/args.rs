@@ -52,7 +52,7 @@ Options:
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize)]
 pub struct ManifestMetadata {
-    spellcheck: ManifestMetadataSpellcheck,
+    spellcheck: Option<ManifestMetadataSpellcheck>,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize)]
@@ -419,19 +419,26 @@ impl Args {
             let manifest = fs::read_to_string(manifest_path)?;
             let manifest = cargo_toml::Manifest::<ManifestMetadata>::from_slice_with_metadata(
                 manifest.as_bytes(),
-            )?;
+            )
+            .wrap_err(format!(
+                "Failed to parse cargo manifest: {}",
+                manifest_path.display()
+            ))?;
             if let Some(metadata) = manifest.package.and_then(|package| package.metadata) {
-                let config_path = &metadata.spellcheck.config;
-                let config_path = if config_path.is_absolute() {
-                    config_path.to_owned()
-                } else {
-                    let manifest_dir = manifest_path.parent().expect("File resides in a dir. qed");
-                    manifest_dir.join(config_path)
-                };
-                debug!("Using configuration file (2) {}", config_path.display());
-                let config = Config::load_from(&config_path)?
-                    .ok_or_else(|| eyre!("File does not exist."))?;
-                return Ok((config, Some(config_path)));
+                if let Some(spellcheck) = metadata.spellcheck {
+                    let config_path = &spellcheck.config;
+                    let config_path = if config_path.is_absolute() {
+                        config_path.to_owned()
+                    } else {
+                        let manifest_dir =
+                            manifest_path.parent().expect("File resides in a dir. qed");
+                        manifest_dir.join(config_path)
+                    };
+                    debug!("Using configuration file (2) {}", config_path.display());
+                    let config = Config::load_from(&config_path)?
+                        .ok_or_else(|| eyre!("File does not exist."))?;
+                    return Ok((config, Some(config_path)));
+                }
             }
         };
 
