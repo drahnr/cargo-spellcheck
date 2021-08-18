@@ -1,4 +1,7 @@
-use std::{marker::PhantomData, path::PathBuf};
+use std::{
+    marker::PhantomData,
+    path::{Path, PathBuf},
+};
 
 use crate::errors::*;
 use docopt::Docopt;
@@ -333,6 +336,30 @@ impl Args {
         Ok(())
     }
 
+    fn load_from_manifest_metadata(manifest_path: &Path) -> Result<Option<(Config, PathBuf)>> {
+        let manifest = fs::read_to_string(manifest_path)?;
+        let manifest =
+            cargo_toml::Manifest::<ManifestMetadata>::from_slice_with_metadata(manifest.as_bytes())
+                .wrap_err(format!(
+                    "Failed to parse cargo manifest: {}",
+                    manifest_path.display()
+                ))?;
+        if let Some(metadata) = manifest.package.and_then(|package| package.metadata) {
+            if let Some(spellcheck) = metadata.spellcheck {
+                let config_path = &spellcheck.config;
+                let config_path = if config_path.is_absolute() {
+                    config_path.to_owned()
+                } else {
+                    let manifest_dir = manifest_path.parent().expect("File resides in a dir. qed");
+                    manifest_dir.join(config_path)
+                };
+                debug!("Using configuration file {}", config_path.display());
+                return Ok(Config::load_from(&config_path)?.map(|config| (config, config_path)));
+            }
+        }
+        Ok(None)
+    }
+
     /// Load configuration with fallbacks.
     ///
     /// Does IO checks if files exist.
@@ -375,15 +402,8 @@ impl Args {
             debug!("No cfg flag present");
         }
 
-        // (prep) extract the manifest_path
-        let base_dir = match self.arg_paths.iter().len() {
-            1 => self.arg_paths.iter().next(),
-            0 => Some(&cwd),
-            _ => None,
-        };
-
-        let manifest_path = if let Some(base) = base_dir {
-            if base.is_dir() {
+        fn look_for_cargo_manifest(base: &Path) -> Result<Option<PathBuf>> {
+            Ok(if base.is_dir() {
                 let base = base.join("Cargo.toml");
                 if base.is_file() {
                     let base = base.canonicalize()?;
@@ -408,60 +428,49 @@ impl Args {
                     base.display()
                 );
                 None
-            }
+            })
+        }
+
+        // (prep) determine if there should be attempt to read a cargo manifest from the target dir
+        let single_target_path = match self.arg_paths.iter().len() {
+            1 => self.arg_paths.iter().next(),
+            _ => None,
+        };
+
+        // 2. manifest meta in target dir
+        let manifest_path_in_target_dir = if let Some(base) = single_target_path {
+            look_for_cargo_manifest(&base)?
         } else {
-            warn!("No base dir.");
             None
         };
-
-        // 2. manifest meta
-        if let Some(manifest_path) = &manifest_path {
-            let manifest = fs::read_to_string(manifest_path)?;
-            let manifest = cargo_toml::Manifest::<ManifestMetadata>::from_slice_with_metadata(
-                manifest.as_bytes(),
-            )
-            .wrap_err(format!(
-                "Failed to parse cargo manifest: {}",
-                manifest_path.display()
-            ))?;
-            if let Some(metadata) = manifest.package.and_then(|package| package.metadata) {
-                if let Some(spellcheck) = metadata.spellcheck {
-                    let config_path = &spellcheck.config;
-                    let config_path = if config_path.is_absolute() {
-                        config_path.to_owned()
-                    } else {
-                        let manifest_dir =
-                            manifest_path.parent().expect("File resides in a dir. qed");
-                        manifest_dir.join(config_path)
-                    };
-                    debug!("Using configuration file (2) {}", config_path.display());
-                    let config = Config::load_from(&config_path)?
-                        .ok_or_else(|| eyre!("File does not exist."))?;
-                    return Ok((config, Some(config_path)));
-                }
+        if let Some(manifest_path) = &manifest_path_in_target_dir {
+            if let Some((config, config_path)) = Self::load_from_manifest_metadata(&manifest_path)?
+            {
+                return Ok((config, Some(config_path)));
             }
         };
 
-        // 3. load from `.config/spellcheck.toml` in same dir as `manifest_path`.
-        if let Some(mut manifest_path) = manifest_path.clone() {
-            if manifest_path.is_file() {
-                manifest_path.set_file_name("");
+        // 3. manifest meta in current working dir
+        if let Some(manifest_path) = look_for_cargo_manifest(&cwd)? {
+            if let Some((config, config_path)) = Self::load_from_manifest_metadata(&manifest_path)?
+            {
+                return Ok((config, Some(config_path)));
             }
-            let config_path = manifest_path.join(".config").join("spellcheck.toml");
-            debug!("Using configuration file (3) {}", config_path.display());
-            if let Some(cfg) = Config::load_from(&config_path)? {
-                return Ok((cfg, Some(config_path)));
-            }
-        } else {
-            debug!("No cargo manifest present");
         };
+
+        // 4. load from `.config/spellcheck.toml` from the current working directory.
+        let config_path = cwd.join(".config").join("spellcheck.toml");
+        if let Some(cfg) = Config::load_from(&config_path)? {
+            debug!("Using configuration file (4) {}", config_path.display());
+            return Ok((cfg, Some(config_path)));
+        }
 
         let default_config_path = Config::default_path()?;
-        debug!(
-            "Using configuration file (4) {}",
-            default_config_path.display()
-        );
         if let Some(cfg) = Config::load_from(&default_config_path)? {
+            debug!(
+                "Using configuration file (5) {}",
+                default_config_path.display()
+            );
             return Ok((cfg, Some(default_config_path)));
         } else {
             debug!("No user config present {}", default_config_path.display());
@@ -470,6 +479,7 @@ impl Args {
         debug!("Using configuration default, builtin configuration (5)");
         Ok((Default::default(), None))
     }
+
     fn load_config(&self) -> Result<(Config, Option<PathBuf>)> {
         let (mut config, config_path) = self.load_config_inner()?;
         // mask all disabled checkers, use the default config
