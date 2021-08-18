@@ -67,8 +67,8 @@ fn cache_builtin_inner(
     if let Ok(f) = fs::File::open(&path) {
         // in case somebody else is currently writing to it
         // wait for that to complete
-        let mut flock = fd_lock::FdLock::new(f);
-        let _ = flock.lock()?;
+        let flock = fd_lock::RwLock::new(f);
+        let _ = flock.read()?;
         return Ok(path);
     }
     let f = fs::OpenOptions::new()
@@ -76,16 +76,16 @@ fn cache_builtin_inner(
         .create(true)
         .write(true)
         .open(&path)?;
-    let mut flock = fd_lock::FdLock::new(f);
+    let mut flock = fd_lock::RwLock::new(f);
     // if there are multiple instances, allow the first to write it all
-    if let Ok(mut f) = flock.try_lock() {
+    if let Ok(mut f) = flock.try_write() {
         f.write_all(data)?;
         return Ok(path);
     }
 
     // .. but block execution until the first completed so
     // there are no cases of partial data
-    flock.lock()?;
+    let _ = flock.read()?;
 
     Ok(path)
 }
