@@ -115,7 +115,7 @@ which will fail if specified and not existent on the filesystem.
 If neither of those ways of specification is present, continue with the
 _implicit_.
 
-1. `Cargo.toml` metadata in the currend working dir `CWD`.
+1. `Cargo.toml` metadata in the current working directory `CWD`.
 1. Check the first arguments location if present, else the current working directory for `.config/spellcheck.toml`.
 1. Fallback to per user configuration files:
     * Linux:   `/home/alice/.config/cargo_spellcheck/config.toml`

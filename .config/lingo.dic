@@ -8,6 +8,7 @@ C++
 cargo-spellcheck/M
 checkable/MS
 clang/MS
+cli
 cmark
 commonmark
 CommonMark
@@ -24,6 +25,7 @@ enqueue/GD
 enum
 fallbacks
 featureset/MS
+filesystem/MS
 hardcode/GD
 http/S
 hunspell/MS
@@ -33,6 +35,8 @@ io
 iterative/Y
 LanguageTool/MS
 lookups
+macOS
+metadata
 md
 multiline/S
 nix/MS
