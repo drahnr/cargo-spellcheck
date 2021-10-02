@@ -82,7 +82,6 @@ fn extract_delimiter_inner<'a>(
     newline: &'static str,
 ) -> Option<LineSepStat> {
     if let Some(first) = iter.next() {
-        let first = first;
         let n = iter.count() + 1;
         Some(LineSepStat {
             first_appearance: first,
@@ -134,72 +133,6 @@ pub fn extract_delimiter<'s>(s: &'s str) -> Option<&'static str> {
         })
         .map(|x| x.newline)
 }
-/*
-#[inline(always)]
-fn extract_delimiter_inner<'a>(
-    mut iter: impl Iterator<Item = regex::Match<'a>>,
-    newline: &'static str,
-) -> Option<LineSepStat> {
-    if let Some(first) = iter.next() {
-        let first = first.start();
-        let n = iter.count() + 1;
-        Some(LineSepStat {
-            first_appearance: first,
-            count: n,
-            newline,
-        })
-    } else {
-        None
-    }
-}
-
-/// Extract line delimiter of a string.
-pub fn extract_delimiter<'s>(s: &'s str) -> Option<&'static str> {
-    use regex::Regex;
-
-    // TODO lots of room for optimizations here
-    lazy_static::lazy_static! {
-        static ref LF: Regex = Regex::new(r#"\n"#).expect("LF regex compiles. qed");
-        static ref CR: Regex = Regex::new(r#"\r"#).expect("CR regex compiles. qed");
-        static ref CRLF: Regex = Regex::new(r#"\r\n"#).expect("CRLF regex compiles. qed");
-        static ref LFCR: Regex = Regex::new(r#"\n\r"#).expect("LFCR regex compiles. qed");
-    };
-
-    // first look for two letter line delimiters
-    let lfcr = extract_delimiter_inner(LFCR.find_iter(s), "\n\r");
-    let crlf = extract_delimiter_inner(CRLF.find_iter(s), "\r\n");
-
-    // remove the 2 line line delimiters from the single line line delimiters, since they overlap
-    let lf = extract_delimiter_inner(LF.find_iter(s), "\n").map(|mut stat| {
-        stat.count = stat.count.saturating_sub(std::cmp::max(
-            crlf.as_ref().map(|stat| stat.count).unwrap_or_default(),
-            lfcr.as_ref().map(|stat| stat.count).unwrap_or_default(),
-        ));
-        stat
-    });
-    let cr = extract_delimiter_inner(CR.find_iter(s), "\r").map(|mut stat| {
-        stat.count = stat.count.saturating_sub(std::cmp::max(
-            crlf.as_ref().map(|stat| stat.count).unwrap_or_default(),
-            lfcr.as_ref().map(|stat| stat.count).unwrap_or_default(),
-        ));
-        stat
-    });
-
-    // order is important, `max_by` prefers the latter ones over the earlier ones on equality
-    vec![cr, lf, crlf, lfcr]
-        .into_iter()
-        .filter_map(|x| x)
-        .max_by(|b, a| {
-            if a.count == b.count {
-                a.first_appearance.cmp(&b.first_appearance)
-            } else {
-                b.count.cmp(&a.count)
-            }
-        })
-        .map(|x| x.newline)
-}
-*/
-
 
 /// Reflows a parsed commonmark paragraph contained in `s`.
 ///
