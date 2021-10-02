@@ -253,22 +253,22 @@ impl UserPicked {
     fn print_replacements_list(&self, state: &mut State) -> Result<()> {
         let mut stdout = stdout();
 
-        let tick = ContentStyle::new()
-            .foreground(Color::Green)
-            .attribute(Attribute::Bold);
+        let mut tick = ContentStyle::new();
+        tick.foreground_color = Some(Color::Green);
+        tick.attributes = Attribute::Bold.into();
 
-        let highlight = ContentStyle::new()
-            .background(Color::Black)
-            .foreground(Color::Green)
-            .attribute(Attribute::Bold);
+        let mut highlight = ContentStyle::new();
+        highlight.background_color = Some(Color::Black);
+        highlight.foreground_color = Some(Color::Green);
+        highlight.attributes = Attribute::Bold.into();
 
-        let others = ContentStyle::new()
-            .background(Color::Black)
-            .foreground(Color::Blue);
+        let mut others = ContentStyle::new();
+        others.background_color = Some(Color::Black);
+        others.foreground_color = Some(Color::Blue);
 
-        let custom = ContentStyle::new()
-            .background(Color::Black)
-            .foreground(Color::Yellow);
+        let mut custom = ContentStyle::new();
+        custom.background_color = Some(Color::Black);
+        custom.foreground_color = Some(Color::Yellow);
 
         // render all replacements in a vertical list
 
@@ -367,9 +367,9 @@ impl UserPicked {
         {
             let _guard = ScopedRaw::new();
 
-            let boring = ContentStyle::new()
-                .foreground(Color::Blue)
-                .attribute(Attribute::Bold);
+            let mut boring = ContentStyle::new();
+            boring.foreground_color = Some(Color::Blue);
+            boring.attributes = Attribute::Bold.into();
 
             let question = format!(
                 "({nth}/{of_n}) Apply this suggestion [y,n,q,a,d,j,e,?]?",
