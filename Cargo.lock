@@ -226,6 +226,7 @@ dependencies = [
  "lazy_static",
  "log",
  "maplit",
+ "memchr",
  "nlprule",
  "nlprule-build",
  "num_cpus",
