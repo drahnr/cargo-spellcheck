@@ -1,0 +1,7 @@
+- id: cargo-spellcheck
+  name: cargo-spellcheck 
+  description: Spellcheck rust files
+  entry: cargo-spellcheck
+  language: rust
+  types: [rust]
+  args: ["--code=99", "--"]
