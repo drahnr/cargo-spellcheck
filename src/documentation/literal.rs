@@ -111,6 +111,18 @@ impl CommentVariant {
     }
 }
 
+#[derive(Clone, Hash, PartialEq)]
+pub enum Padding {
+    Padding(String),
+    NoPadding,
+}
+
+impl Default for Padding {
+    fn default() -> Self {
+        Padding::NoPadding
+    }
+}
+
 /// A literal with meta info where the first and list whitespace may be found.
 #[derive(Clone)]
 pub struct TrimmedLiteral {
@@ -118,6 +130,7 @@ pub struct TrimmedLiteral {
     variant: CommentVariant,
     /// The span of rendered content, minus pre and post already applied.
     span: Span,
+    padding: Padding,
     /// the complete rendered string including post and pre.
     rendered: String,
     /// Literal prefix length.
@@ -146,6 +159,9 @@ impl std::cmp::PartialEq for TrimmedLiteral {
         if self.span != other.span {
             return false;
         }
+        if self.padding != other.padding {
+            return false;
+        }
         if self.variant != other.variant {
             return false;
         }
@@ -161,6 +177,7 @@ impl std::hash::Hash for TrimmedLiteral {
         self.variant.hash(hasher);
         self.rendered.hash(hasher);
         self.span.hash(hasher);
+        self.padding.hash(hasher);
         self.pre.hash(hasher);
         self.post.hash(hasher);
         self.len_in_bytes.hash(hasher);
@@ -313,6 +330,19 @@ fn detect_comment_variant(
     Ok((variant, span, pre, post))
 }
 
+fn detect_padding(content: &str) -> Padding {
+    lazy_static! {
+        static ref PADDING_STR: Regex =
+            Regex::new(r##"(?m)^\s\*\s"##).expect("PADDING_STR regex compiles");
+    };
+
+    if let Ok(Some(pad)) = PADDING_STR.find(content) {
+        return Padding::Padding(pad.as_str().to_string());
+    }
+
+    Padding::NoPadding
+}
+
 impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
     type Error = Error;
     fn try_from((content, literal): (&str, proc_macro2::Literal)) -> Result<Self> {
@@ -352,6 +382,7 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
         let rendered_len = rendered.chars().count();
 
         log::trace!("extracted from source: >{}< @ {:?}", rendered, span);
+        let padding = detect_padding(content);
         let (variant, span, pre, post) = detect_comment_variant(content, &rendered, span)?;
 
         let len_in_chars = rendered_len.saturating_sub(post + pre);
@@ -372,6 +403,7 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
             len_in_bytes,
             rendered,
             span,
+            padding,
             pre,
             post,
         };
@@ -403,11 +435,14 @@ impl TrimmedLiteral {
             },
         };
 
+        let padding = detect_padding(content);
+
         trim_span(content, &mut span, pre, post + 1);
 
         Ok(TrimmedLiteral {
             variant,
             span,
+            padding,
             rendered: content.to_string(),
             pre,
             post,
@@ -469,6 +504,10 @@ impl TrimmedLiteral {
     /// Covers only the content, no marker or helper characters.
     pub fn span(&self) -> Span {
         self.span.clone()
+    }
+
+    pub fn padding(&self) -> Padding {
+        self.padding.clone()
     }
 
     /// Access the characters via an iterator.
