@@ -14,6 +14,9 @@ documentation comments in order to avoid nasty typos all over your source tree.
 Meant as a helper simplifying review as well as improving CI checks after a
 learning phase for custom/topic specific lingo.
 
+See [automation.md](docs/automation.md) for instructions on how to use `cargo-spellcheck`
+in automated contexts like CI/CD systems and git hooks.
+
 ### Check For Spelling and/or Grammar Mistakes
 
 ```zsh
@@ -52,22 +55,6 @@ cargo spellcheck fix
    <span style="background-color:#2E3436"><font color="#729FCF">liter</font></span>
  <font color="#8AE234"><b>»</b></font> <span style="background-color:#2E3436"><font color="#FCE94F">a custom replacement literal</font></span>
 </pre>
-
-### Continuous Integration / CI
-
-`cargo spellcheck` can be configured with `-m <code>` to return a non-zero
-return code if mistakes are found instead of `0`.
-
-### git pre-commit hook
-
-```sh
-#!/usr/bin/sh
-
-# Redirect output to stderr.
-exec 1>&2
-
-exec cargo spellcheck -m 99 $(git diff-index --cached --name-only --diff-filter=AM HEAD)
-```
 
 ## Implemented Features + Roadmap
 
