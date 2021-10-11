@@ -111,15 +111,21 @@ impl CommentVariant {
     }
 }
 
-#[derive(Clone, Hash, PartialEq)]
-pub enum Padding {
-    Padding(String),
+/// Track the style of padding for multiline comments
+#[derive(Clone, Debug, Hash, PartialEq)]
+pub enum CommentPaddingStyle {
+    /// " * ", with container for number of spaces
+    AsteriskSpace {
+        /// Number of leading spaces
+        leading_spaces: usize,
+    },
+    /// Absence of padding
     NoPadding,
 }
 
-impl Default for Padding {
+impl Default for CommentPaddingStyle {
     fn default() -> Self {
-        Padding::NoPadding
+        Self::NoPadding
     }
 }
 
@@ -130,7 +136,8 @@ pub struct TrimmedLiteral {
     variant: CommentVariant,
     /// The span of rendered content, minus pre and post already applied.
     span: Span,
-    padding: Padding,
+    /// The style of the padding for comments, if present
+    padding: CommentPaddingStyle,
     /// the complete rendered string including post and pre.
     rendered: String,
     /// Literal prefix length.
@@ -330,17 +337,17 @@ fn detect_comment_variant(
     Ok((variant, span, pre, post))
 }
 
-fn detect_padding(content: &str) -> Padding {
+fn detect_padding(content: &str) -> CommentPaddingStyle {
     lazy_static! {
         static ref PADDING_STR: Regex =
             Regex::new(r##"(?m)^\s\*\s"##).expect("PADDING_STR regex compiles");
     };
 
-    if let Ok(Some(pad)) = PADDING_STR.find(content) {
-        return Padding::Padding(pad.as_str().to_string());
+    if let Ok(Some(_)) = PADDING_STR.find(content) {
+        return CommentPaddingStyle::AsteriskSpace { leading_spaces: 1 };
     }
 
-    Padding::NoPadding
+    CommentPaddingStyle::NoPadding
 }
 
 impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
@@ -435,9 +442,9 @@ impl TrimmedLiteral {
             },
         };
 
-        let padding = detect_padding(content);
-
         trim_span(content, &mut span, pre, post + 1);
+
+        let padding = detect_padding(content);
 
         Ok(TrimmedLiteral {
             variant,
@@ -506,7 +513,8 @@ impl TrimmedLiteral {
         self.span.clone()
     }
 
-    pub fn padding(&self) -> Padding {
+    /// The padding style for this literal.
+    pub fn padding(&self) -> CommentPaddingStyle {
         self.padding.clone()
     }
 
@@ -663,6 +671,18 @@ mod tests {
             assert_eq!(n_pounds, 1);
             assert_eq!(prefix, "#[doc=");
         });
+    }
+
+    #[test]
+    fn padding_style_detect() {
+        assert_matches!(
+            detect_padding("/**\n * doc\n * doc\n */"),
+            CommentPaddingStyle::AsteriskSpace { leading_spaces: 1 }
+        );
+        assert_matches!(
+            detect_padding("/**\n doc\n doc\n */"),
+            CommentPaddingStyle::NoPadding
+        );
     }
 
     macro_rules! block_comment_test {
