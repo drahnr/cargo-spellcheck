@@ -9,8 +9,61 @@ use crate::{CheckableChunk, ContentOrigin};
 use crate::errors::*;
 use log::{debug, trace};
 use rayon::prelude::*;
+use std::collections::{hash_map::Entry, HashMap};
+use std::{
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex},
+};
 
 use nlprule::{Rules, Tokenizer};
+
+use lazy_static::lazy_static;
+
+lazy_static! {
+    static ref RULES: Mutex<HashMap<Option<PathBuf>, Arc<Rules>>> = Mutex::new(HashMap::new());
+}
+
+pub(crate) fn filtered_rules<P: AsRef<Path> + Clone>(
+    override_path: Option<P>,
+) -> Result<Arc<Rules>> {
+    match RULES
+        .lock()
+        .unwrap()
+        .entry(override_path.clone().map(|x| x.as_ref().to_path_buf()))
+    {
+        Entry::Occupied(occupied) => Ok(occupied.get().clone()),
+        Entry::Vacant(empty) => {
+            let rules = super::rules(override_path)?;
+            let rules = rules
+                .rules()
+                .iter()
+                .filter(|rule| {
+                    match rule
+                        .category_type()
+                        .map(str::to_lowercase)
+                        .as_ref()
+                        .map(|x| x as &str)
+                    {
+                        // The hunspell backend is aware of
+                        // custom lingo, which this one is not,
+                        // so there would be a lot of false
+                        // positives.
+                        Some("misspelling") => false,
+                        // Anything quotes related is not relevant
+                        // for code documentation.
+                        Some("typographical") => false,
+                        _other => true,
+                    }
+                })
+                .cloned()
+                .collect::<Rules>();
+
+            let rules = Arc::new(rules);
+            empty.insert(rules.clone());
+            Ok(rules)
+        }
+    }
+}
 
 pub(crate) struct NlpRulesChecker;
 
@@ -21,62 +74,24 @@ impl Checker for NlpRulesChecker {
         Detector::NlpRules
     }
 
-    fn check<'a, 's>(docu: &'a Documentation, config: &Self::Config) -> Result<SuggestionSet<'s>>
+    fn check<'a, 's>(
+        origin: ContentOrigin,
+        chunks: &'a [CheckableChunk],
+        config: &Self::Config,
+    ) -> Result<Vec<Suggestion<'s>>>
     where
         'a: 's,
     {
         let tokenizer = super::tokenizer(config.override_tokenizer.as_ref())?;
-        let rules = super::rules(config.override_tokenizer.as_ref())?;
+        let rules = filtered_rules(config.override_tokenizer.as_ref())?;
 
-        let rules = rules
-            .into_iter()
-            .filter(|rule| {
-                match rule
-                    .category_type()
-                    .map(str::to_lowercase)
-                    .as_ref()
-                    .map(|x| x as &str)
-                {
-                    // The hunspell backend is aware of
-                    // custom lingo, which this one is not,
-                    // so there would be a lot of false
-                    // positives.
-                    Some("misspelling") => false,
-                    // Anything quotes related is not relevant
-                    // for code documentation.
-                    Some("typographical") => false,
-                    _other => true,
-                }
-            })
-            .collect::<Rules>();
+        let mut acc = Vec::with_capacity(chunks.len());
 
-        let rules = &rules;
-        let tokenizer = &tokenizer;
-        let suggestions = docu
-            .par_iter()
-            .try_fold::<SuggestionSet, Result<_>, _, _>(
-                || SuggestionSet::new(),
-                move |mut acc, (origin, chunks)| {
-                    debug!("Processing {}", origin.as_path().display());
+        for chunk in chunks {
+            acc.extend(check_chunk(origin.clone(), chunk, &tokenizer, &rules));
+        }
 
-                    for chunk in chunks {
-                        acc.extend(
-                            origin.clone(),
-                            check_chunk(origin.clone(), chunk, tokenizer, rules),
-                        );
-                    }
-                    Ok(acc)
-                },
-            )
-            .try_reduce(
-                || SuggestionSet::new(),
-                |mut a, b| {
-                    a.join(b);
-                    Ok(a)
-                },
-            )?;
-
-        Ok(suggestions)
+        Ok(acc)
     }
 }
 

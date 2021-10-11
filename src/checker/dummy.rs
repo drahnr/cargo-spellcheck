@@ -20,48 +20,46 @@ impl Checker for DummyChecker {
         Detector::Dummy
     }
 
-    fn check<'a, 's>(docu: &'a Documentation, _: &Self::Config) -> Result<SuggestionSet<'s>>
+    fn check<'a, 's>(
+        origin: ContentOrigin,
+        chunks: &[CheckableChunk],
+        _: &Self::Config,
+    ) -> Result<Vec<Suggestion<'s>>>
     where
         'a: 's,
     {
         let tokenizer = super::tokenizer::<&std::path::PathBuf>(None)?;
 
-        let suggestions = docu.iter().try_fold::<SuggestionSet, _, Result<_>>(
-            SuggestionSet::new(),
-            |mut acc, (origin, chunks)| {
-                let chunk = chunks
-                    .iter()
-                    .next()
-                    .expect("DummyChecker expects at least one chunk");
-                let plain = chunk.erase_cmark();
-                let txt = plain.as_str();
-                for (index, range) in apply_tokenizer(&tokenizer, txt).enumerate() {
-                    trace!("****Token[{}]: >{}<", index, sub_chars(txt, range.clone()));
-                    let detector = Detector::Dummy;
-                    let range2span = plain.find_spans(range.clone());
-                    for (range, span) in range2span {
-                        trace!(
-                            "Suggestion for {:?} -> {}",
-                            range,
-                            chunk.display(range.clone())
-                        );
-                        let replacements = vec![format!("replacement_{}", index)];
-                        let suggestion = Suggestion {
-                            detector,
-                            span,
-                            range,
-                            origin: origin.clone(),
-                            replacements,
-                            chunk,
-                            description: None,
-                        };
-                        acc.add(origin.clone(), suggestion);
-                    }
-                }
-                Ok(acc)
-            },
-        )?;
-
-        Ok(suggestions)
+        let mut acc = Vec::with_capacity(chunks.len());
+        let chunk = chunks
+            .iter()
+            .next()
+            .expect("DummyChecker expects at least one chunk");
+        let plain = chunk.erase_cmark();
+        let txt = plain.as_str();
+        for (index, range) in apply_tokenizer(&tokenizer, txt).enumerate() {
+            trace!("****Token[{}]: >{}<", index, sub_chars(txt, range.clone()));
+            let detector = Detector::Dummy;
+            let range2span = plain.find_spans(range.clone());
+            for (range, span) in range2span {
+                trace!(
+                    "Suggestion for {:?} -> {}",
+                    range,
+                    chunk.display(range.clone())
+                );
+                let replacements = vec![format!("replacement_{}", index)];
+                let suggestion = Suggestion {
+                    detector,
+                    span,
+                    range,
+                    origin: origin.clone(),
+                    replacements,
+                    chunk,
+                    description: None,
+                };
+                acc.add(origin.clone(), suggestion);
+            }
+        }
+        Ok(acc)
     }
 }

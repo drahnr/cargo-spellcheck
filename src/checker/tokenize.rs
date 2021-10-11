@@ -49,6 +49,10 @@ pub(crate) fn tokenizer<P: AsRef<Path> + Clone>(
     }
 }
 
+lazy_static! {
+    static ref RULES: Mutex<HashMap<Option<PathBuf>, Arc<Rules>>> = Mutex::new(HashMap::new());
+}
+
 fn rules_inner<P: AsRef<Path>>(override_path: Option<P>) -> Result<Rules> {
     info!("🧮 Loading rules...");
     let rules = if let Some(override_path) = override_path.as_ref() {
@@ -61,10 +65,20 @@ fn rules_inner<P: AsRef<Path>>(override_path: Option<P>) -> Result<Rules> {
     Ok(rules)
 }
 
-pub(crate) fn rules<P: AsRef<Path> + Clone>(override_path: Option<P>) -> Result<Rules> {
-    // XXX TODO right now `Rules` is not copy and only used in one place
-    // so this is fine for now
-    rules_inner(override_path)
+pub(crate) fn rules<P: AsRef<Path> + Clone>(override_path: Option<P>) -> Result<Arc<Rules>> {
+    match RULES
+        .lock()
+        .unwrap()
+        .entry(override_path.clone().map(|x| x.as_ref().to_path_buf()))
+    {
+        Entry::Occupied(occupied) => Ok(occupied.get().clone()),
+        Entry::Vacant(empty) => {
+            let rules = rules_inner(override_path)?;
+            let rules = Arc::new(rules);
+            empty.insert(rules.clone());
+            Ok(rules)
+        }
+    }
 }
 
 use crate::Range;

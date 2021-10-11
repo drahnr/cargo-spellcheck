@@ -167,25 +167,11 @@ fn run() -> Result<ExitCode> {
                 action, &config, config_path
             );
 
-            let combined = traverse::extract(paths, recursive, skip_readme, dev_comments, &config)?;
+            let documents =
+                traverse::extract(paths, recursive, skip_readme, dev_comments, &config)?;
 
-            // TODO move this into action `fn run()`
-            let suggestion_set = match action {
-                Action::Reflow => {
-                    reflow::Reflow::check(&combined, &config.reflow.clone().unwrap_or_default())?
-                }
-                Action::Check | Action::Fix => checker::check(&combined, &config)?,
-                Action::ListFiles => {
-                    for (origin, _chunks) in combined.iter() {
-                        println!("{}", origin.as_path().display())
-                    }
-                    return Ok(ExitCode::Success);
-                }
-
-                _ => unreachable!("Should never be reached, handled earlier"),
-            };
-
-            let finish = action.run(suggestion_set, &config)?;
+            let rt = tokio::runtime::Runtime::new()?;
+            let finish = rt.block_on(async move { action.run(documents, &config).await })?;
 
             match finish {
                 Finish::MistakeCount(0) => Ok(ExitCode::Success),

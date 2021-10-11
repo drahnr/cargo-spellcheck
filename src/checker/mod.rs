@@ -4,7 +4,9 @@
 //! Contains also helpers to avoid re-implementing generic
 //! algorithms again and again, i.e. tokenization.
 
-use crate::{Config, Detector, Documentation, Suggestion, SuggestionSet};
+use crate::{
+    CheckableChunk, Config, ContentOrigin, Detector, Documentation, Suggestion, SuggestionSet,
+};
 
 use crate::errors::*;
 
@@ -28,41 +30,52 @@ pub(crate) trait Checker {
 
     fn detector() -> Detector;
 
-    fn check<'a, 's>(docu: &'a Documentation, config: &Self::Config) -> Result<SuggestionSet<'s>>
+    fn check<'a, 's>(
+        origin: ContentOrigin,
+        chunks: &'a [CheckableChunk],
+        config: &'a Self::Config,
+    ) -> Result<Vec<Suggestion<'s>>>
     where
         'a: 's;
 }
 
 fn invoke_checker_inner<'a, 's, T>(
-    documentation: &'a Documentation,
-    config: Option<&T::Config>,
-    collective: &mut SuggestionSet<'s>,
+    origin: ContentOrigin,
+    chunks: &'a [CheckableChunk],
+    config: Option<&'a T::Config>,
+    collective: &mut Vec<Suggestion<'s>>,
 ) -> Result<()>
 where
     'a: 's,
+    CheckableChunk: 'a,
     T: Checker,
 {
     let config = config
         .as_ref()
         .expect("Must be Some(Config) if is_enabled returns true");
 
-    let suggestions = T::check(documentation, *config)?;
-    collective.join(suggestions);
+    let suggestions = T::check(origin, chunks, *config)?;
+    collective.extend(suggestions);
     Ok(())
 }
 
 macro_rules! invoke_checker {
-    ($feature:literal, $checker:ty, $documentation:ident, $config:expr, $config_inner:expr, $collective:expr) => {
+    ($feature:literal, $checker:ty, $origin:expr, $chunks:expr, $config:expr, $checker_config:expr, $collective:expr) => {
         if !cfg!(feature = $feature) {
             debug!("Feature {} is disabled by compilation.", $feature);
         } else {
             #[cfg(feature = $feature)]
             {
-                let detector = <$checker>::detector();
                 let config = $config;
+                let detector = <$checker>::detector();
                 if config.is_enabled(detector) {
                     debug!("Running {} checks.", detector);
-                    invoke_checker_inner::<$checker>($documentation, $config_inner, $collective)?;
+                    invoke_checker_inner::<$checker>(
+                        $origin,
+                        $chunks,
+                        $checker_config,
+                        $collective,
+                    )?;
                 } else {
                     debug!("Checker {} is disabled by configuration.", detector);
                 }
@@ -72,16 +85,21 @@ macro_rules! invoke_checker {
 }
 
 /// Check a full document for violations using the tools we have.
-pub fn check<'a, 's>(documentation: &'a Documentation, config: &Config) -> Result<SuggestionSet<'s>>
+pub fn check<'a, 's>(
+    origin: ContentOrigin,
+    chunks: &'a [CheckableChunk],
+    config: &'a Config,
+) -> Result<Vec<Suggestion<'s>>>
 where
     'a: 's,
 {
-    let mut collective = SuggestionSet::<'s>::new();
+    let mut collective = Vec::<Suggestion<'s>>::with_capacity(chunks.len());
 
     invoke_checker!(
         "nlprules",
         self::nlprules::NlpRulesChecker,
-        documentation,
+        origin,
+        chunks,
         config,
         config.nlprules.as_ref(),
         &mut collective
@@ -90,7 +108,8 @@ where
     invoke_checker!(
         "hunspell",
         self::hunspell::HunspellChecker,
-        documentation,
+        origin,
+        chunks,
         config,
         config.hunspell.as_ref(),
         &mut collective

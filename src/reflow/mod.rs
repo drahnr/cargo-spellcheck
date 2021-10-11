@@ -32,38 +32,26 @@ impl Checker for Reflow {
         Detector::Reflow
     }
 
-    fn check<'a, 's>(docu: &'a Documentation, config: &Self::Config) -> Result<SuggestionSet<'s>>
+    fn check<'a, 's>(
+        origin: ContentOrigin,
+        chunks: &'a [CheckableChunk],
+        config: &Self::Config,
+    ) -> Result<Vec<Suggestion<'s>>>
     where
         'a: 's,
     {
-        let suggestions = docu
-            .par_iter()
-            .try_fold::<SuggestionSet, Result<SuggestionSet>, _, _>(
-                || SuggestionSet::new(),
-                |mut acc, (origin, chunks)| {
-                    'c: for chunk in chunks {
-                        match chunk.variant() {
-                            CommentVariant::SlashAsterisk
-                            | CommentVariant::SlashAsteriskAsterisk
-                            | CommentVariant::SlashAsteriskEM => {
-                                continue 'c;
-                            }
-                            _ => {}
-                        }
-                        let suggestions = reflow(origin, chunk, config)?;
-                        acc.extend(origin.clone(), suggestions);
-                    }
-                    Ok(acc)
-                },
-            )
-            .try_reduce(
-                || SuggestionSet::new(),
-                |mut a, b| {
-                    a.join(b);
-                    Ok(a)
-                },
-            )?;
-        Ok(suggestions)
+        let mut acc = Vec::with_capacity(chunks.len());
+        for chunk in chunks {
+            match chunk.variant() {
+                CommentVariant::SlashAsterisk
+                | CommentVariant::SlashAsteriskAsterisk
+                | CommentVariant::SlashAsteriskEM => continue,
+                _ => {}
+            }
+            let suggestions = reflow(&origin, chunk, config)?;
+            acc.extend(suggestions);
+        }
+        Ok(acc)
     }
 }
 

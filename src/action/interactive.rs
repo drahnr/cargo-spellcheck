@@ -183,8 +183,7 @@ impl UserPicked {
     }
 
     /// Apply multiple bandaids.
-    #[allow(unused)]
-    fn add_bandaids<I>(&mut self, origin: &ContentOrigin, fixes: I)
+    pub fn add_bandaids<I>(&mut self, origin: &ContentOrigin, fixes: I)
     where
         I: IntoIterator<Item = BandAid>,
     {
@@ -193,6 +192,11 @@ impl UserPicked {
             .entry(origin.clone())
             .or_insert_with(|| Vec::with_capacity(iter.size_hint().0))
             .extend(iter);
+    }
+
+    /// Join two `UserPick`s.
+    pub fn extend(&mut self, other: Self) {
+        self.bandaids.extend(other.into_iter());
     }
 
     /// Provide a replacement that was not provided by the backend
@@ -363,7 +367,12 @@ impl UserPicked {
     }
 
     /// Wait for user input and process it into a `UserSelection` enum.
-    fn user_input(&self, state: &mut State, running_idx: (usize, usize)) -> Result<UserSelection> {
+    fn user_input(
+        &self,
+        state: &mut State,
+        running_idx: usize,
+        total: usize,
+    ) -> Result<UserSelection> {
         {
             let _guard = ScopedRaw::new();
 
@@ -373,8 +382,8 @@ impl UserPicked {
 
             let question = format!(
                 "({nth}/{of_n}) Apply this suggestion [y,n,q,a,d,j,e,?]?",
-                nth = running_idx.0 + 1,
-                of_n = running_idx.1
+                nth = running_idx + 1,
+                of_n = total
             );
 
             // a new suggestion, so prepare for the number of items that are visible
@@ -493,75 +502,68 @@ impl UserPicked {
     }
 
     pub(super) fn select_interactive<'s>(
-        suggestions_per_path: SuggestionSet<'s>,
-        _config: &Config,
+        origin: ContentOrigin,
+        suggestions: Vec<Suggestion<'s>>,
     ) -> Result<(Self, UserSelection)> {
         let mut picked = UserPicked::default();
 
-        trace!("Select the ones to actully use");
+        let mut suggestions_it = suggestions.iter();
 
-        for (origin, suggestions) in suggestions_per_path {
-            let count = suggestions.len();
-            trace!("Path is {} and has {}", origin, count);
+        // TODO juck, uggly
+        let mut direction = Direction::Forward;
+        loop {
+            let opt: Option<(usize, Suggestion)> = match direction {
+                Direction::Forward => suggestions_it.next(),
+                Direction::Backward => suggestions_it.next_back(), // FIXME TODO this is just plain wrong
+            };
 
-            // TODO juck, uggly
-            let mut suggestions_it = suggestions.clone().into_iter().enumerate();
+            trace!("next() ---> {:?}", &opt);
 
-            let mut direction = Direction::Forward;
-            loop {
-                let opt: Option<(usize, Suggestion)> = match direction {
-                    Direction::Forward => suggestions_it.next(),
-                    Direction::Backward => suggestions_it.next_back(), // FIXME TODO this is just plain wrong
-                };
-
-                trace!("next() ---> {:?}", &opt);
-
-                if opt.is_none() {
-                    match direction {
-                        Direction::Forward => {
-                            trace!("completed file, continue to next");
-                            break; // we completed this file, move on to the next
-                        }
-                        Direction::Backward => {
-                            trace!("went back, now back at the beginning");
-                            suggestions_it = suggestions.clone().into_iter().enumerate();
-                            continue;
-                        } // go to the start
+            if opt.is_none() {
+                match direction {
+                    Direction::Forward => {
+                        trace!("completed file, continue to next");
+                        break; // we completed this file, move on to the next
                     }
+                    Direction::Backward => {
+                        trace!("went back, now back at the beginning");
+                        suggestions_it = suggestions.clone().into_iter().enumerate();
+                        continue;
+                    } // go to the start
                 }
-                let (idx, suggestion) = opt.expect("Must be Some(_)");
-                if suggestion.replacements.is_empty() {
-                    trace!("Suggestion did not contain a replacement, skip");
-                    continue;
-                }
-                println!("{}", suggestion);
-
-                let mut state = State::from(&suggestion);
-
-                let mut pick = picked.user_input(&mut state, (idx, count))?;
-                while pick == UserSelection::Help {
-                    println!("{}", HELP);
-                    pick = picked.user_input(&mut state, (idx, count))?;
-                }
-                match pick {
-                    usel @ UserSelection::Abort | usel @ UserSelection::Quit => {
-                        return Ok((picked, usel))
-                    }
-                    UserSelection::SkipFile => break, // break the inner loop
-                    UserSelection::Previous => {
-                        unimplemented!("Requires a iterator which works bidrectionally")
-                    }
-                    UserSelection::Help => {
-                        unreachable!("Help must not be reachable here, it is handled before")
-                    }
-                    UserSelection::Replacement(bandaid) => {
-                        picked.add_bandaid(&origin, bandaid);
-                    }
-                    _ => continue,
-                };
-
-                direction = Direction::Forward;
             }
+            let (idx, suggestion) = opt.expect("Must be Some(_)");
+            if suggestion.replacements.is_empty() {
+                trace!("Suggestion did not contain a replacement, skip");
+                continue;
+            }
+            println!("{}", suggestion);
+
+            let mut state = State::from(&suggestion);
+
+            let mut pick = picked.user_input(&mut state, idx, count)?;
+            while pick == UserSelection::Help {
+                println!("{}", HELP);
+                pick = picked.user_input(&mut state, (idx, count))?;
+            }
+            match pick {
+                usel @ UserSelection::Abort | usel @ UserSelection::Quit => {
+                    return Ok((picked, usel))
+                }
+                UserSelection::SkipFile => break, // break the inner loop
+                UserSelection::Previous => {
+                    unimplemented!("Requires a iterator which works bidrectionally")
+                }
+                UserSelection::Help => {
+                    unreachable!("Help must not be reachable here, it is handled before")
+                }
+                UserSelection::Replacement(bandaid) => {
+                    picked.add_bandaid(&origin, bandaid);
+                }
+                _ => continue,
+            };
+
+            direction = Direction::Forward;
         }
         Ok((picked, UserSelection::Nop))
     }
