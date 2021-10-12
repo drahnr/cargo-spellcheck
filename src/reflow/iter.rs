@@ -18,9 +18,6 @@ pub struct Tokeneer<'s> {
     /// Original source string of continuous lines which are to be wrapped.
     s: &'s str,
 
-    /// A set of matching spans to sub ranges.
-    spans: IndexMap<Range, Span>,
-
     /// If there would occur a line break, that falls within a range of this
     /// the break would only occur afterwards or the whole word gets moved to
     /// the next line.
@@ -43,7 +40,6 @@ impl<'s> Tokeneer<'s> {
         let inner = s.char_indices().enumerate().peekable();
         Self {
             s,
-            spans: Default::default(),
             unbreakable_ranges,
             unbreakable_idx: 0usize,
             inner,
