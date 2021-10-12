@@ -13,8 +13,6 @@ use crate::util::{byte_range_to_char_range, byte_range_to_char_range_many, sub_c
 
 use crate::{CommentVariant, ContentOrigin, Detector, Range, Span, Suggestion, SuggestionSet};
 
-use indexmap::IndexMap;
-
 use pulldown_cmark::{Event, Options, Parser, Tag};
 
 pub use crate::config::ReflowConfig;
