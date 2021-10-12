@@ -13,6 +13,8 @@ use crate::errors::*;
 use log::debug;
 
 mod tokenize;
+use self::hunspell::HunspellChecker;
+use self::nlprules::NlpRulesChecker;
 pub(crate) use self::tokenize::*;
 
 #[cfg(feature = "hunspell")]
@@ -25,99 +27,95 @@ mod nlprules;
 mod quirks;
 
 /// Implementation for a checker
-pub(crate) trait Checker {
+pub trait Checker {
     type Config;
 
     fn detector() -> Detector;
 
     fn check<'a, 's>(
-        origin: ContentOrigin,
+        &self,
+        origin: &ContentOrigin,
         chunks: &'a [CheckableChunk],
-        config: &'a Self::Config,
     ) -> Result<Vec<Suggestion<'s>>>
     where
         'a: 's;
 }
 
-fn invoke_checker_inner<'a, 's, T>(
-    origin: ContentOrigin,
-    chunks: &'a [CheckableChunk],
-    config: Option<&'a T::Config>,
-    collective: &mut Vec<Suggestion<'s>>,
-) -> Result<()>
-where
-    'a: 's,
-    CheckableChunk: 'a,
-    T: Checker,
-{
-    let config = config
-        .as_ref()
-        .expect("Must be Some(Config) if is_enabled returns true");
-
-    let suggestions = T::check(origin, chunks, *config)?;
-    collective.extend(suggestions);
-    Ok(())
-}
-
-macro_rules! invoke_checker {
-    ($feature:literal, $checker:ty, $origin:expr, $chunks:expr, $config:expr, $checker_config:expr, $collective:expr) => {
-        if !cfg!(feature = $feature) {
-            debug!("Feature {} is disabled by compilation.", $feature);
-        } else {
-            #[cfg(feature = $feature)]
-            {
-                let config = $config;
-                let detector = <$checker>::detector();
-                if config.is_enabled(detector) {
-                    debug!("Running {} checks.", detector);
-                    invoke_checker_inner::<$checker>(
-                        $origin,
-                        $chunks,
-                        $checker_config,
-                        $collective,
-                    )?;
-                } else {
-                    debug!("Checker {} is disabled by configuration.", detector);
-                }
-            }
-        }
-    };
-}
-
 /// Check a full document for violations using the tools we have.
-pub fn check<'a, 's>(
-    origin: ContentOrigin,
-    chunks: &'a [CheckableChunk],
-    config: &'a Config,
-) -> Result<Vec<Suggestion<'s>>>
-where
-    'a: 's,
-{
-    let mut collective = Vec::<Suggestion<'s>>::with_capacity(chunks.len());
+///
+/// Only configured checkers are used.
+pub struct Checkers {
+    hunspell: Option<HunspellChecker>,
+    nlprule: Option<NlpRulesChecker>,
+}
 
-    invoke_checker!(
-        "nlprules",
-        self::nlprules::NlpRulesChecker,
-        origin,
-        chunks,
-        config,
-        config.nlprules.as_ref(),
-        &mut collective
-    );
+impl Checkers {
+    pub fn new(config: Config) -> Result<Self> {
+        macro_rules! create_checker {
+            ($feature:literal, $checker:ty, $config:expr, $checker_config:expr) => {
+                if !cfg!(feature = $feature) {
+                    debug!("Feature {} is disabled by compilation.", $feature);
+                    None
+                } else {
+                    #[cfg(feature = $feature)]
+                    {
+                        let config = $config;
+                        let detector = <$checker>::detector();
+                        if config.is_enabled(detector) {
+                            debug!("Enabling {} checks.", detector);
+                            Some(<$checker>::new($checker_config.unwrap())?)
+                        } else {
+                            debug!("Checker {} is disabled by configuration.", detector);
+                            None
+                        }
+                    }
+                }
+            };
+        }
 
-    invoke_checker!(
-        "hunspell",
-        self::hunspell::HunspellChecker,
-        origin,
-        chunks,
-        config,
-        config.hunspell.as_ref(),
-        &mut collective
-    );
+        let hunspell = create_checker!(
+            "hunspell",
+            HunspellChecker,
+            &config,
+            config.hunspell.as_ref()
+        );
+        let nlprule = create_checker!(
+            "nlprules",
+            NlpRulesChecker,
+            &config,
+            config.nlprules.as_ref()
+        );
+        Ok(Self { hunspell, nlprule })
+    }
+}
 
-    collective.sort();
+impl Checker for Checkers {
+    type Config = Config;
 
-    Ok(collective)
+    fn detector() -> Detector {
+        unreachable!()
+    }
+
+    fn check<'a, 's>(
+        &self,
+        origin: &ContentOrigin,
+        chunks: &'a [CheckableChunk],
+    ) -> Result<Vec<Suggestion<'s>>>
+    where
+        'a: 's,
+    {
+        let mut collective = Vec::<Suggestion<'s>>::with_capacity(chunks.len());
+        if let Some(ref hunspell) = self.hunspell {
+            collective.extend(hunspell.check(origin, chunks)?);
+        }
+        if let Some(ref nlprule) = self.nlprule {
+            collective.extend(nlprule.check(origin, chunks)?);
+        }
+
+        collective.sort();
+
+        Ok(collective)
+    }
 }
 
 #[cfg(test)]

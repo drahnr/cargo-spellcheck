@@ -21,9 +21,9 @@ impl Checker for DummyChecker {
     }
 
     fn check<'a, 's>(
-        origin: ContentOrigin,
+        &self,
+        origin: &ContentOrigin,
         chunks: &[CheckableChunk],
-        _: &Self::Config,
     ) -> Result<Vec<Suggestion<'s>>>
     where
         'a: 's,

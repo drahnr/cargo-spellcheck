@@ -65,7 +65,18 @@ pub(crate) fn filtered_rules<P: AsRef<Path> + Clone>(
     }
 }
 
-pub(crate) struct NlpRulesChecker;
+pub(crate) struct NlpRulesChecker {
+    tokenizer: Arc<Tokenizer>,
+    rules: Arc<Rules>,
+}
+
+impl NlpRulesChecker {
+    pub fn new(config: &<Self as Checker>::Config) -> Result<Self> {
+        let tokenizer = super::tokenizer(config.override_tokenizer.as_ref())?;
+        let rules = filtered_rules(config.override_tokenizer.as_ref())?;
+        Ok(Self { tokenizer, rules })
+    }
+}
 
 impl Checker for NlpRulesChecker {
     type Config = crate::config::NlpRulesConfig;
@@ -75,20 +86,22 @@ impl Checker for NlpRulesChecker {
     }
 
     fn check<'a, 's>(
-        origin: ContentOrigin,
+        &self,
+        origin: &ContentOrigin,
         chunks: &'a [CheckableChunk],
-        config: &Self::Config,
     ) -> Result<Vec<Suggestion<'s>>>
     where
         'a: 's,
     {
-        let tokenizer = super::tokenizer(config.override_tokenizer.as_ref())?;
-        let rules = filtered_rules(config.override_tokenizer.as_ref())?;
-
         let mut acc = Vec::with_capacity(chunks.len());
 
         for chunk in chunks {
-            acc.extend(check_chunk(origin.clone(), chunk, &tokenizer, &rules));
+            acc.extend(check_chunk(
+                origin.clone(),
+                chunk,
+                &self.tokenizer,
+                &self.rules,
+            ));
         }
 
         Ok(acc)

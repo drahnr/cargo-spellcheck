@@ -196,7 +196,7 @@ impl UserPicked {
 
     /// Join two `UserPick`s.
     pub fn extend(&mut self, other: Self) {
-        self.bandaids.extend(other.into_iter());
+        self.bandaids.extend(other.bandaids.into_iter());
     }
 
     /// Provide a replacement that was not provided by the backend
@@ -505,46 +505,49 @@ impl UserPicked {
         origin: ContentOrigin,
         suggestions: Vec<Suggestion<'s>>,
     ) -> Result<(Self, UserSelection)> {
+        let count = suggestions.len();
         let mut picked = UserPicked::default();
 
-        let mut suggestions_it = suggestions.iter();
+        let mut suggestions_it = suggestions.iter().enumerate();
+        let start = suggestions_it.clone();
 
         // TODO juck, uggly
         let mut direction = Direction::Forward;
         loop {
-            let opt: Option<(usize, Suggestion)> = match direction {
+            let opt_next = match direction {
                 Direction::Forward => suggestions_it.next(),
-                Direction::Backward => suggestions_it.next_back(), // FIXME TODO this is just plain wrong
+                // FIXME TODO this is just plain wrong
+                Direction::Backward => suggestions_it.next_back(),
             };
 
-            trace!("next() ---> {:?}", &opt);
+            trace!("next() ---> {:?}", &opt_next);
 
-            if opt.is_none() {
-                match direction {
+            let (idx, suggestion) = match opt_next {
+                Some(x) => x,
+                None => match direction {
                     Direction::Forward => {
                         trace!("completed file, continue to next");
                         break; // we completed this file, move on to the next
                     }
                     Direction::Backward => {
                         trace!("went back, now back at the beginning");
-                        suggestions_it = suggestions.clone().into_iter().enumerate();
+                        suggestions_it = start.clone();
                         continue;
                     } // go to the start
-                }
-            }
-            let (idx, suggestion) = opt.expect("Must be Some(_)");
+                },
+            };
             if suggestion.replacements.is_empty() {
-                trace!("Suggestion did not contain a replacement, skip");
+                trace!("BUG: Suggestion did not contain a replacement, skip");
                 continue;
             }
             println!("{}", suggestion);
 
-            let mut state = State::from(&suggestion);
+            let mut state = State::from(suggestion);
 
             let mut pick = picked.user_input(&mut state, idx, count)?;
             while pick == UserSelection::Help {
                 println!("{}", HELP);
-                pick = picked.user_input(&mut state, (idx, count))?;
+                pick = picked.user_input(&mut state, idx, count)?;
             }
             match pick {
                 usel @ UserSelection::Abort | usel @ UserSelection::Quit => {

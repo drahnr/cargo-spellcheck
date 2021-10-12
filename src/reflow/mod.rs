@@ -23,7 +23,15 @@ pub use iter::{Gluon, Tokeneer};
 use rayon::prelude::*;
 
 #[derive(Debug)]
-pub struct Reflow;
+pub struct Reflow {
+    config: ReflowConfig,
+}
+
+impl Reflow {
+    pub fn new(config: ReflowConfig) -> Result<Self> {
+        Ok(Self { config })
+    }
+}
 
 impl Checker for Reflow {
     type Config = ReflowConfig;
@@ -33,9 +41,9 @@ impl Checker for Reflow {
     }
 
     fn check<'a, 's>(
-        origin: ContentOrigin,
+        &self,
+        origin: &ContentOrigin,
         chunks: &'a [CheckableChunk],
-        config: &Self::Config,
     ) -> Result<Vec<Suggestion<'s>>>
     where
         'a: 's,
@@ -48,7 +56,7 @@ impl Checker for Reflow {
                 | CommentVariant::SlashAsteriskEM => continue,
                 _ => {}
             }
-            let suggestions = reflow(&origin, chunk, config)?;
+            let suggestions = reflow(&origin, chunk, &self.config)?;
             acc.extend(suggestions);
         }
         Ok(acc)

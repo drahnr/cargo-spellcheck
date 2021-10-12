@@ -188,6 +188,7 @@ pub enum CheckEntity {
 }
 
 impl CheckEntity {
+    #[allow(dead_code)]
     pub fn as_path(&self) -> &Path {
         match self {
             Self::Markdown(ref path) => path,
