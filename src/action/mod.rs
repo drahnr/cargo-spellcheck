@@ -1,7 +1,5 @@
 //! Covers all user triggered actions (except for signals).
 
-use self::interactive::UserPicked;
-
 use super::*;
 use crate::checker::Checkers;
 use crate::errors::*;
@@ -19,6 +17,8 @@ pub mod bandaid;
 pub mod interactive;
 
 pub(crate) use bandaid::*;
+
+use interactive::{UserPicked, UserSelection};
 
 /// State of conclusion.
 #[derive(Debug, Clone, Copy)]
@@ -368,8 +368,6 @@ impl Action {
         while let Some(result) = pick_stream.next().await {
             match result {
                 Ok((origin, suggestions)) => {
-                    use interactive::{UserPicked, UserSelection};
-
                     let (picked, user_sel) =
                         interactive::UserPicked::select_interactive(origin.clone(), suggestions)?;
 

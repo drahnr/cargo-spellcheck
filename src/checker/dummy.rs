@@ -5,13 +5,19 @@
 // use super::tokenize;
 use super::{apply_tokenizer, Checker};
 use crate::documentation::Documentation;
-use crate::errors::*;
 use crate::suggestion::{Detector, Suggestion, SuggestionSet};
 use crate::util::sub_chars;
+use crate::{errors::*, CheckableChunk, ContentOrigin};
 use log::trace;
 
 /// A test checker that tokenizes and marks everything as wrong
 pub struct DummyChecker;
+
+impl DummyChecker {
+    pub fn new(config: &<Self as Checker>::Config) -> Result<Self> {
+        Ok(Self)
+    }
+}
 
 impl Checker for DummyChecker {
     type Config = ();
@@ -23,7 +29,7 @@ impl Checker for DummyChecker {
     fn check<'a, 's>(
         &self,
         origin: &ContentOrigin,
-        chunks: &[CheckableChunk],
+        chunks: &'a [CheckableChunk],
     ) -> Result<Vec<Suggestion<'s>>>
     where
         'a: 's,
@@ -57,7 +63,7 @@ impl Checker for DummyChecker {
                     chunk,
                     description: None,
                 };
-                acc.add(origin.clone(), suggestion);
+                acc.push(suggestion);
             }
         }
         Ok(acc)

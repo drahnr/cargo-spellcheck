@@ -162,17 +162,13 @@ pub mod tests {
             .try_init();
         let dev_comments = false;
         let d = Documentation::load_from_str(ContentOrigin::TestEntityRust, content, dev_comments);
-        let suggestion_set =
-            dummy::DummyChecker::check(&d, &()).expect("Dummy extraction must never fail");
+        let (origin, chunks) = d.into_iter().next().expect("Contains exactly one file");
+        let suggestions = dummy::DummyChecker
+            .check(&origin, &chunks[..])
+            .expect("Dummy extraction must never fail");
 
-        // one file
-        assert_eq!(suggestion_set.len(), 1);
         // with a known number of suggestions
-        assert_eq!(suggestion_set.total_count(), expected_spans.len());
-        let (_, suggestions) = suggestion_set
-            .iter()
-            .next()
-            .expect("Must have valid 1st suggestion");
+        assert_eq!(suggestions.len(), expected_spans.len());
 
         for (index, (suggestion, expected_span)) in
             suggestions.iter().zip(expected_spans.iter()).enumerate()

@@ -603,7 +603,7 @@ mod tests {
             extract_readme(&manifest, &dir).expect("Must succeed"),
             maplit::hashset![
                 CheckEntity::Markdown(demo_dir().join("README.md")),
-                CheckEntity::ManifestDescription(
+                CheckEntity::ManifestDescription(demo_dir().join("Cargo.toml"),
                     "A silly demo with plenty of spelling mistakes for cargo-spellcheck demos and CI".to_string()
                 ),
             ]
