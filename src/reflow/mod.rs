@@ -76,7 +76,7 @@ struct LineSepStat {
 
 #[inline(always)]
 fn extract_delimiter_inner<'a>(
-    mut iter: impl Iterator<Item=usize>,
+    mut iter: impl Iterator<Item = usize>,
     newline: &'static str,
 ) -> Option<LineSepStat> {
     if let Some(first) = iter.next() {
