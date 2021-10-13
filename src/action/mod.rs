@@ -404,7 +404,7 @@ impl Action {
                 async move { Ok::<_, color_eyre::eyre::Report>((idx, origin, suggestions?)) }
             })
             .buffered(n_cpus)
-            .try_fold(0_usize, |acc, (idx, origin, suggestions)| async move {
+            .try_fold(0_usize, |acc, (_idx, origin, suggestions)| async move {
                 let n = suggestions.len();
                 let path = origin.as_path();
                 if n == 0 {

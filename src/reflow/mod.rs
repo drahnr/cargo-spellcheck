@@ -6,12 +6,12 @@
 use crate::errors::*;
 
 use crate::checker::Checker;
-use crate::documentation::{CheckableChunk, Documentation};
+use crate::documentation::CheckableChunk;
 #[cfg(debug_assertions)]
 use crate::util::load_span_from;
 use crate::util::{byte_range_to_char_range, byte_range_to_char_range_many, sub_char_range};
 
-use crate::{CommentVariant, ContentOrigin, Detector, Range, Span, Suggestion, SuggestionSet};
+use crate::{CommentVariant, ContentOrigin, Detector, Range, Span, Suggestion};
 
 use pulldown_cmark::{Event, Options, Parser, Tag};
 
@@ -19,8 +19,6 @@ pub use crate::config::ReflowConfig;
 
 mod iter;
 pub use iter::{Gluon, Tokeneer};
-
-use rayon::prelude::*;
 
 #[derive(Debug)]
 pub struct Reflow {

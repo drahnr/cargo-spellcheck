@@ -5,23 +5,20 @@
 //! the defined affixes.
 //! Can handle multiple dictionaries.
 
-use super::{apply_tokenizer, Checker, Detector, Documentation, Suggestion, SuggestionSet};
+use super::{apply_tokenizer, Checker, Detector, Suggestion};
 
-use crate::checker::tokenizer;
 use crate::config::{Lang5, WrappedRegex};
 use crate::documentation::{CheckableChunk, ContentOrigin, PlainOverlay};
 use crate::util::sub_chars;
-use crate::{HunspellConfig, Range};
+use crate::Range;
 
-use fancy_regex::Regex;
 use fs_err as fs;
 use io::Write;
-use lazy_static::{__Deref, lazy_static};
+use lazy_static::lazy_static;
 use log::{debug, trace};
 use nlprule::Tokenizer;
-use rayon::prelude::*;
 use std::io::{self, BufRead};
-use std::ops::DerefMut;
+
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 

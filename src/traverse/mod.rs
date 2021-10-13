@@ -513,7 +513,7 @@ pub(crate) fn extract(
         })?;
 
     // stage 4 - expand from the passed source files, if recursive, recurse down the module train
-    let mut docs =
+    let docs =
         files_to_check
             .into_iter()
             .try_fold(Documentation::new(), |mut docs, check_entity| {

@@ -3,12 +3,11 @@
 //! Does check grammar, and is supposed to only check for grammar.
 //! Sentence splitting is done in hand-waving way. To be improved.
 
-use super::{Checker, Detector, Documentation, Suggestion, SuggestionSet};
+use super::{Checker, Detector, Suggestion};
 use crate::{CheckableChunk, ContentOrigin};
 
 use crate::errors::*;
 use log::{debug, trace};
-use rayon::prelude::*;
 use std::collections::{hash_map::Entry, HashMap};
 use std::{
     path::{Path, PathBuf},

@@ -13,8 +13,8 @@
 
 use crate::documentation::{CheckableChunk, ContentOrigin};
 
+use std::cmp;
 use std::convert::TryFrom;
-use std::{arch::x86_64::_CMP_NLE_US, cmp};
 
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 

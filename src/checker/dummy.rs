@@ -4,8 +4,8 @@
 
 // use super::tokenize;
 use super::{apply_tokenizer, Checker};
-use crate::documentation::Documentation;
-use crate::suggestion::{Detector, Suggestion, SuggestionSet};
+
+use crate::suggestion::{Detector, Suggestion};
 use crate::util::sub_chars;
 use crate::{errors::*, CheckableChunk, ContentOrigin};
 use log::trace;
@@ -14,7 +14,7 @@ use log::trace;
 pub struct DummyChecker;
 
 impl DummyChecker {
-    pub fn new(config: &<Self as Checker>::Config) -> Result<Self> {
+    pub fn new(_config: &<Self as Checker>::Config) -> Result<Self> {
         Ok(Self)
     }
 }

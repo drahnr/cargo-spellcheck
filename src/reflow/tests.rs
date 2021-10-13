@@ -1,7 +1,7 @@
 use super::*;
 use crate::util::load_span_from;
 use crate::{chyrp_up, fluff_up};
-use crate::{LineColumn, Span};
+use crate::{Documentation, LineColumn, Span};
 
 macro_rules! verify_reflow_inner {
     ($n:literal break [ $( $line:literal ),+ $(,)?] => $expected:literal) => {

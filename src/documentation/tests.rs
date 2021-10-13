@@ -111,6 +111,7 @@ macro_rules! end2end_file_rust {
 }
 
 /// Declare an end-to-end test case based on an existing common mark file.
+#[allow(unused_macros)]
 macro_rules! end2end_file_cmark {
     ($path: literal, $n: expr) => {{
         let path2 = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/", $path));

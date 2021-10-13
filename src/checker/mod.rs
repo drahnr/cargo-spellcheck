@@ -4,9 +4,7 @@
 //! Contains also helpers to avoid re-implementing generic
 //! algorithms again and again, i.e. tokenization.
 
-use crate::{
-    CheckableChunk, Config, ContentOrigin, Detector, Documentation, Suggestion, SuggestionSet,
-};
+use crate::{CheckableChunk, Config, ContentOrigin, Detector, Suggestion};
 
 use crate::errors::*;
 
@@ -127,6 +125,7 @@ pub mod tests {
     use crate::load_span_from;
     use crate::span::Span;
     use crate::ContentOrigin;
+    use crate::Documentation;
     use crate::LineColumn;
     use crate::Range;
     use std::path::PathBuf;
