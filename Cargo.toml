@@ -1,6 +1,6 @@
 [package]
 name = "cargo-spellcheck"
-version = "0.8.14-alpha.0"
+version = "0.8.15-alpha.0"
 authors = ["Bernhard Schuster <bernhard@ahoi.io>"]
 edition = "2018"
 repository = "https://github.com/drahnr/cargo-spellcheck.git"
@@ -28,25 +28,26 @@ xz2 = "0.1"
 
 [dependencies]
 color-eyre = "0.5"
-cargo_toml = "0.9"
+cargo_toml = "0.10.1"
 console = "0.14"
-crossterm = "0.19"
+crossterm = "0.21.0"
 # for the config file
-directories = "3"
+directories = "4.0.1"
 docopt = "1"
-env_logger = "0.8"
-fancy-regex = "0.6"
+env_logger = "0.9.0"
+fancy-regex = "0.7.1"
 fs-err = "2"
 indexmap = { version = "1", features=["rayon", "serde"] }
 itertools = "0.10"
 lazy_static = "1"
+memchr = "2"
 log = "0.4"
 num_cpus = "1.13"
 proc-macro2 = { version = "1", features = ["span-locations"] }
 pulldown-cmark = "0.8.0"
-ra_ap_syntax = "0.0.61"
+ra_ap_syntax = "0.0.75"
 rayon = "1.5"
-regex = "1.4"
+regex = "1.5"
 serde = { version = "1", features = ["derive"] }
 signal-hook = "0.3"
 syn = { version = "1", features = ["full"] }

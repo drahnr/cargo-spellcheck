@@ -76,11 +76,10 @@ struct LineSepStat {
 
 #[inline(always)]
 fn extract_delimiter_inner<'a>(
-    mut iter: impl Iterator<Item = regex::Match<'a>>,
+    mut iter: impl Iterator<Item = usize>,
     newline: &'static str,
 ) -> Option<LineSepStat> {
     if let Some(first) = iter.next() {
-        let first = first.start();
         let n = iter.count() + 1;
         Some(LineSepStat {
             first_appearance: first,
@@ -94,29 +93,24 @@ fn extract_delimiter_inner<'a>(
 
 /// Extract line delimiter of a string.
 pub fn extract_delimiter<'s>(s: &'s str) -> Option<&'static str> {
-    use regex::Regex;
-
     // TODO lots of room for optimizations here
-    lazy_static::lazy_static! {
-        static ref LF: Regex = Regex::new(r#"\n"#).expect("LF regex compiles. qed");
-        static ref CR: Regex = Regex::new(r#"\r"#).expect("CR regex compiles. qed");
-        static ref CRLF: Regex = Regex::new(r#"\r\n"#).expect("CRLF regex compiles. qed");
-        static ref LFCR: Regex = Regex::new(r#"\n\r"#).expect("LFCR regex compiles. qed");
-    };
-
+    let lf = memchr::memchr_iter(b'\n', s.as_bytes());
+    let cr = memchr::memchr_iter(b'\r', s.as_bytes());
+    let crlf = memchr::memmem::find_iter(s.as_bytes(), "\r\n");
+    let lfcr = memchr::memmem::find_iter(s.as_bytes(), "\n\r");
     // first look for two letter line delimiters
-    let lfcr = extract_delimiter_inner(LFCR.find_iter(s), "\n\r");
-    let crlf = extract_delimiter_inner(CRLF.find_iter(s), "\r\n");
+    let lfcr = extract_delimiter_inner(lfcr, "\n\r");
+    let crlf = extract_delimiter_inner(crlf, "\r\n");
 
     // remove the 2 line line delimiters from the single line line delimiters, since they overlap
-    let lf = extract_delimiter_inner(LF.find_iter(s), "\n").map(|mut stat| {
+    let lf = extract_delimiter_inner(lf, "\n").map(|mut stat| {
         stat.count = stat.count.saturating_sub(std::cmp::max(
             crlf.as_ref().map(|stat| stat.count).unwrap_or_default(),
             lfcr.as_ref().map(|stat| stat.count).unwrap_or_default(),
         ));
         stat
     });
-    let cr = extract_delimiter_inner(CR.find_iter(s), "\r").map(|mut stat| {
+    let cr = extract_delimiter_inner(cr, "\r").map(|mut stat| {
         stat.count = stat.count.saturating_sub(std::cmp::max(
             crlf.as_ref().map(|stat| stat.count).unwrap_or_default(),
             lfcr.as_ref().map(|stat| stat.count).unwrap_or_default(),
