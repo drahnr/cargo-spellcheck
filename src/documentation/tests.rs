@@ -86,15 +86,12 @@ macro_rules! end2end {
         assert_eq!(dbg!(chunks).len(), 1);
         let chunk = &chunks[0];
         let _plain = chunk.erase_cmark();
-
         let cfg = dbg!(Default::default());
         dbg!(std::any::type_name::<$checker>());
-        let suggestion_set = <$checker as Checker>::check(&docs, &cfg)
+        let checker = <$checker>::new(&cfg).expect("Checker construction works");
+        let suggestions = checker
+            .check(&origin, &chunks[..])
             .expect("Must not fail to extract suggestions");
-        let (_, suggestions) = dbg!(&suggestion_set)
-            .iter()
-            .next()
-            .expect("Suggestion set must not be empty");
         assert_eq!(suggestions.len(), $n);
     }};
 }
@@ -114,6 +111,7 @@ macro_rules! end2end_file_rust {
 }
 
 /// Declare an end-to-end test case based on an existing common mark file.
+#[allow(unused_macros)]
 macro_rules! end2end_file_cmark {
     ($path: literal, $n: expr) => {{
         let path2 = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/", $path));
@@ -177,14 +175,11 @@ mod e2e {
             let origin: ContentOrigin = $origin;
 
             let docs = Documentation::load_from_str(origin.clone(), $source, false);
-            let suggestion_set =
-                dbg!(DummyChecker::check(&docs, &())).expect("Dummy checker never fails. qed");
+            let (origin2, chunks) = docs.into_iter().next().expect("Contains a document");
+            let suggestions =
+                dbg!(DummyChecker.check(&origin, &chunks[..])).expect("Dummy checker never fails. qed");
 
-            let (origin2, chunks) = docs
-                .iter()
-                .next()
-                .expect("Introduced exactly one source. qed");
-            assert_eq!(&origin, origin2);
+            assert_eq!(origin, origin2);
 
             let chunk = chunks
                 .iter()
@@ -196,9 +191,6 @@ mod e2e {
 
             let plain = dbg!(chunk.erase_cmark());
             assert_eq!(dbg!($plain), plain.as_str());
-
-            let mut it = suggestion_set.iter();
-            let (_, suggestions) = it.next().expect("Dummy checker produces one error per tokenized word. qed");
 
             let mut it = suggestions.into_iter();
 

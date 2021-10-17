@@ -6,12 +6,12 @@
 use crate::errors::*;
 
 use crate::checker::Checker;
-use crate::documentation::{CheckableChunk, Documentation};
+use crate::documentation::CheckableChunk;
 #[cfg(debug_assertions)]
 use crate::util::load_span_from;
 use crate::util::{byte_range_to_char_range, byte_range_to_char_range_many, sub_char_range};
 
-use crate::{CommentVariant, ContentOrigin, Detector, Range, Span, Suggestion, SuggestionSet};
+use crate::{CommentVariant, ContentOrigin, Detector, Range, Span, Suggestion};
 
 use pulldown_cmark::{Event, Options, Parser, Tag};
 
@@ -20,10 +20,16 @@ pub use crate::config::ReflowConfig;
 mod iter;
 pub use iter::{Gluon, Tokeneer};
 
-use rayon::prelude::*;
-
 #[derive(Debug)]
-pub struct Reflow;
+pub struct Reflow {
+    config: ReflowConfig,
+}
+
+impl Reflow {
+    pub fn new(config: ReflowConfig) -> Result<Self> {
+        Ok(Self { config })
+    }
+}
 
 impl Checker for Reflow {
     type Config = ReflowConfig;
@@ -32,38 +38,26 @@ impl Checker for Reflow {
         Detector::Reflow
     }
 
-    fn check<'a, 's>(docu: &'a Documentation, config: &Self::Config) -> Result<SuggestionSet<'s>>
+    fn check<'a, 's>(
+        &self,
+        origin: &ContentOrigin,
+        chunks: &'a [CheckableChunk],
+    ) -> Result<Vec<Suggestion<'s>>>
     where
         'a: 's,
     {
-        let suggestions = docu
-            .par_iter()
-            .try_fold::<SuggestionSet, Result<SuggestionSet>, _, _>(
-                || SuggestionSet::new(),
-                |mut acc, (origin, chunks)| {
-                    'c: for chunk in chunks {
-                        match chunk.variant() {
-                            CommentVariant::SlashAsterisk
-                            | CommentVariant::SlashAsteriskAsterisk
-                            | CommentVariant::SlashAsteriskEM => {
-                                continue 'c;
-                            }
-                            _ => {}
-                        }
-                        let suggestions = reflow(origin, chunk, config)?;
-                        acc.extend(origin.clone(), suggestions);
-                    }
-                    Ok(acc)
-                },
-            )
-            .try_reduce(
-                || SuggestionSet::new(),
-                |mut a, b| {
-                    a.join(b);
-                    Ok(a)
-                },
-            )?;
-        Ok(suggestions)
+        let mut acc = Vec::with_capacity(chunks.len());
+        for chunk in chunks {
+            match chunk.variant() {
+                CommentVariant::SlashAsterisk
+                | CommentVariant::SlashAsteriskAsterisk
+                | CommentVariant::SlashAsteriskEM => continue,
+                _ => {}
+            }
+            let suggestions = reflow(&origin, chunk, &self.config)?;
+            acc.extend(suggestions);
+        }
+        Ok(acc)
     }
 }
 

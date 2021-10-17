@@ -184,7 +184,19 @@ pub(crate) fn extract_modules_from_file<P: AsRef<Path>>(path: P) -> Result<HashS
 pub enum CheckEntity {
     Markdown(PathBuf),
     Source(PathBuf, bool), // recurse is the bool
-    ManifestDescription(String),
+    ManifestDescription(PathBuf, String),
+}
+
+impl CheckEntity {
+    #[allow(dead_code)]
+    pub fn as_path(&self) -> &Path {
+        match self {
+            Self::Markdown(ref path) => path,
+            Self::Source(ref path, _) => path,
+            Self::ManifestDescription(ref path, _) => path,
+        }
+        .as_path()
+    }
 }
 
 fn load_manifest<P: AsRef<Path>>(manifest_dir: P) -> Result<cargo_toml::Manifest> {
@@ -288,7 +300,10 @@ fn extract_readme(
             }
         }
         if let Some(description) = package.description {
-            acc.insert(CheckEntity::ManifestDescription(description.to_owned()));
+            acc.insert(CheckEntity::ManifestDescription(
+                manifest_dir.join("Cargo.toml"),
+                description.to_owned(),
+            ));
         }
     }
     Ok(acc)
@@ -498,26 +513,25 @@ pub(crate) fn extract(
         })?;
 
     // stage 4 - expand from the passed source files, if recursive, recurse down the module train
-    let combined: Documentation = files_to_check
-        .into_iter()
-        .try_fold::<Documentation, _, Result<Documentation>>(
-            Documentation::new(),
-            |mut docs, item| {
-                match item {
+    let docs =
+        files_to_check
+            .into_iter()
+            .try_fold(Documentation::new(), |mut docs, check_entity| {
+                match check_entity {
                     CheckEntity::Source(path, recurse) => {
+                        let content: String = fs::read_to_string(&path)?;
+                        docs.add_rust(
+                            ContentOrigin::RustSourceFile(path.to_owned()),
+                            content.as_str(),
+                            dev_comments,
+                        )
+                        .unwrap_or_else(|_e| {
+                            log::error!("BUG: Failed to create cluster for {}", path.display())
+                        });
+
                         if recurse {
                             let iter = traverse(path.as_path(), dev_comments)?;
                             docs.extend(iter);
-                        } else {
-                            let content: String = fs::read_to_string(&path)?;
-                            docs.add_rust(
-                                ContentOrigin::RustSourceFile(path.to_owned()),
-                                content.as_str(),
-                                dev_comments,
-                            )
-                            .unwrap_or_else(|_e| {
-                                log::error!("BUG: Failed to create cluster for {}", path.display())
-                            });
                         }
                     }
                     CheckEntity::Markdown(path) => {
@@ -538,10 +552,9 @@ pub(crate) fn extract(
                     }
                 }
                 Ok(docs)
-            },
-        )?;
+            })?;
 
-    Ok(combined)
+    Ok(docs)
 }
 
 #[cfg(test)]
@@ -590,7 +603,7 @@ mod tests {
             extract_readme(&manifest, &dir).expect("Must succeed"),
             maplit::hashset![
                 CheckEntity::Markdown(demo_dir().join("README.md")),
-                CheckEntity::ManifestDescription(
+                CheckEntity::ManifestDescription(demo_dir().join("Cargo.toml"),
                     "A silly demo with plenty of spelling mistakes for cargo-spellcheck demos and CI".to_string()
                 ),
             ]

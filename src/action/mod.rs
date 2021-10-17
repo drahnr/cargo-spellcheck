@@ -1,12 +1,16 @@
 //! Covers all user triggered actions (except for signals).
 
 use super::*;
+use crate::checker::Checkers;
 use crate::errors::*;
+use crate::reflow::Reflow;
 use log::{debug, trace};
 
 use fs_err as fs;
-use std::io::{Read, Write};
+use futures::stream::{self, StreamExt, TryStreamExt};
+use rayon::iter::ParallelIterator;
 
+use std::io::{Read, Write};
 use std::path::PathBuf;
 
 pub mod bandaid;
@@ -14,9 +18,13 @@ pub mod interactive;
 
 pub(crate) use bandaid::*;
 
+use interactive::{UserPicked, UserSelection};
+
 /// State of conclusion.
 #[derive(Debug, Clone, Copy)]
 pub enum Finish {
+    /// Operation ran to the end, successfully.
+    Success,
     /// Abort is user requested, either by signal or key stroke.
     Abort,
     /// Completion of the check run, with the resulting number of
@@ -310,7 +318,6 @@ impl Action {
     pub fn write_user_pick_changes_to_disk(
         &self,
         userpicked: interactive::UserPicked,
-        _config: &Config,
     ) -> Result<()> {
         if userpicked.total_count() > 0 {
             debug!("Writing changes back to disk");
@@ -322,64 +329,129 @@ impl Action {
         }
         Ok(())
     }
-
-    /// Purpose was to check, checking complete, so print the results.
-    fn check(&self, suggestions_per_path: SuggestionSet, _config: &Config) -> Result<Finish> {
-        let mut count = 0usize;
-        for (path, suggestions) in suggestions_per_path {
-            let n = suggestions.len();
-            count += n;
-            for suggestion in suggestions {
-                println!("{}", suggestion);
+    /// Run the requested action.
+    pub async fn run(self, documents: Documentation, config: Config) -> Result<Finish> {
+        let fin = match self {
+            Self::ListFiles => self.run_list_files(documents, &config).await?,
+            Self::Reflow => self.run_reflow(documents, config).await?,
+            Self::Check => self.run_check(documents, config).await?,
+            Self::Fix => self.run_fix_interactive(documents, config).await?,
+            Self::Config | Self::Version | Self::Help => {
+                unreachable!("qed")
             }
-            if n == 0 {
-                info!("✅ {}", path.as_path().display());
-            } else {
-                info!("❌ {} : {}", path.as_path().display(), n);
-            }
-        }
-        Ok(Finish::MistakeCount(count))
+        };
+        Ok(fin)
     }
 
     /// Run the requested action.
-    pub fn run(self, suggestions: SuggestionSet, config: &Config) -> Result<Finish> {
-        match self {
-            Self::Check => self.check(suggestions, config),
-            Self::Reflow => {
-                let n = suggestions.len();
+    async fn run_list_files(self, documents: Documentation, _config: &Config) -> Result<Finish> {
+        for (origin, _chunks) in documents.iter() {
+            println!("{}", origin.as_path().display())
+        }
+        Ok(Finish::Success)
+    }
 
-                for (origin, suggestions) in suggestions {
-                    let bandaids = suggestions
-                        .into_iter()
-                        .filter_map(|suggestion| {
-                            suggestion.replacements.first().map(|replacement| {
-                                let bandaid = super::BandAid::from((
-                                    replacement.to_owned(),
-                                    &suggestion.span,
-                                ));
-                                bandaid
-                            })
-                        })
-                        .collect::<Vec<_>>();
-                    self.write_changes_to_disk(origin, bandaids)?;
+    /// Run the requested action.
+    async fn run_fix_interactive(self, documents: Documentation, config: Config) -> Result<Finish> {
+        let n_cpus = num_cpus::get();
+
+        let checkers = Checkers::new(config)?;
+
+        let mut pick_stream = stream::iter(documents.iter())
+            .map(|(origin, chunks)| {
+                let suggestions = checkers.check(origin, &chunks[..]);
+                async move { Ok::<_, color_eyre::eyre::Report>((origin, suggestions?)) }
+            })
+            .buffered(n_cpus);
+
+        let mut collected_picks = UserPicked::default();
+        while let Some(result) = pick_stream.next().await {
+            match result {
+                Ok((origin, suggestions)) => {
+                    let (picked, user_sel) =
+                        interactive::UserPicked::select_interactive(origin.clone(), suggestions)?;
+
+                    match user_sel {
+                        UserSelection::Quit | UserSelection::Abort => return Ok(Finish::Abort),
+                        UserSelection::Nop => collected_picks.extend(picked),
+                        _ => unreachable!(
+                            "All other variants are only internal to `select_interactive`. qed"
+                        ),
+                    }
                 }
-                Ok(Finish::MistakeCount(n))
-            }
-            Self::Fix => {
-                let (picked, user_sel) =
-                    interactive::UserPicked::select_interactive(suggestions, config)?;
-                if user_sel == interactive::UserSelection::Abort {
-                    Ok(Finish::Abort)
-                } else {
-                    let n = picked.total_count();
-                    self.write_user_pick_changes_to_disk(picked, config)?;
-                    Ok(Finish::MistakeCount(n))
-                }
-            }
-            Self::Config | Self::Version | Self::Help | Self::ListFiles => {
-                unreachable!("Should have been handled way earlier")
+                Err(e) => Err(e)?,
             }
         }
+        let total = collected_picks.total_count();
+        // clustering per file is not reasonable
+        // since user abort (`<CTRL>-C` or `q`) should not
+        // leave any residue on disk.
+        self.write_user_pick_changes_to_disk(collected_picks)?;
+
+        Ok(Finish::MistakeCount(total))
+    }
+
+    /// Run the requested action.
+    async fn run_check(self, documents: Documentation, config: Config) -> Result<Finish> {
+        let n_cpus = num_cpus::get();
+
+        let checkers = Checkers::new(config)?;
+
+        // TODO per file clustering might make sense here
+        let mistakes_count = stream::iter(documents.iter().enumerate())
+            .map(move |(idx, (origin, chunks))| {
+                let suggestions = checkers.check(origin, &chunks[..]);
+                async move { Ok::<_, color_eyre::eyre::Report>((idx, origin, suggestions?)) }
+            })
+            .buffered(n_cpus)
+            .try_fold(0_usize, |acc, (_idx, origin, suggestions)| async move {
+                let n = suggestions.len();
+                let path = origin.as_path();
+                if n == 0 {
+                    info!("✅ {}", path.display());
+                } else {
+                    info!("❌ {} : {}", path.display(), n);
+                }
+                for suggestion in suggestions {
+                    println!("{}", suggestion);
+                }
+                Ok::<_, color_eyre::eyre::Report>(acc + n)
+            })
+            .await?;
+        if mistakes_count > 0 {
+            Ok(Finish::MistakeCount(mistakes_count))
+        } else {
+            Ok(Finish::Success)
+        }
+    }
+
+    /// Run the requested action.
+    async fn run_reflow(self, documents: Documentation, config: Config) -> Result<Finish> {
+        let reflow_config = config.reflow.clone().unwrap_or_default();
+        let reflow = Reflow::new(reflow_config)?;
+
+        let _ = documents
+            .into_par_iter()
+            .map(|(origin, chunks)| {
+                let mut picked = UserPicked::default();
+                let suggestions = reflow.check(&origin, &chunks[..])?;
+                for suggestion in suggestions {
+                    let bandaids = suggestion.replacements.first().map(|replacement| {
+                        let bandaid =
+                            super::BandAid::from((replacement.to_owned(), &suggestion.span));
+                        bandaid
+                    });
+
+                    picked.add_bandaids(&origin, bandaids);
+                }
+                Ok::<_, color_eyre::eyre::Report>(picked)
+            })
+            .try_for_each(move |picked| {
+                self.write_user_pick_changes_to_disk(picked?)?;
+                Ok::<_, color_eyre::eyre::Report>(())
+            })?;
+
+        Ok(Finish::Success)
     }
 }
 

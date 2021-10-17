@@ -515,6 +515,23 @@ impl<'s> fmt::Debug for Suggestion<'s> {
     }
 }
 
+impl<'s> Ord for Suggestion<'s> {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
+        let cmp = self.span.start.cmp(&other.span.start);
+        if cmp != std::cmp::Ordering::Equal {
+            return cmp;
+        }
+        let cmp = self.span.end.cmp(&other.span.end);
+        return cmp;
+    }
+}
+
+impl<'s> PartialOrd for Suggestion<'s> {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 /// A set of suggestions across multiple files, clustered per file
 #[derive(Debug, Clone)]
 pub struct SuggestionSet<'s> {

@@ -4,13 +4,15 @@
 //! Contains also helpers to avoid re-implementing generic
 //! algorithms again and again, i.e. tokenization.
 
-use crate::{Config, Detector, Documentation, Suggestion, SuggestionSet};
+use crate::{CheckableChunk, Config, ContentOrigin, Detector, Suggestion};
 
 use crate::errors::*;
 
 use log::debug;
 
 mod tokenize;
+use self::hunspell::HunspellChecker;
+use self::nlprules::NlpRulesChecker;
 pub(crate) use self::tokenize::*;
 
 #[cfg(feature = "hunspell")]
@@ -23,82 +25,95 @@ mod nlprules;
 mod quirks;
 
 /// Implementation for a checker
-pub(crate) trait Checker {
+pub trait Checker {
     type Config;
 
     fn detector() -> Detector;
 
-    fn check<'a, 's>(docu: &'a Documentation, config: &Self::Config) -> Result<SuggestionSet<'s>>
+    fn check<'a, 's>(
+        &self,
+        origin: &ContentOrigin,
+        chunks: &'a [CheckableChunk],
+    ) -> Result<Vec<Suggestion<'s>>>
     where
         'a: 's;
 }
 
-fn invoke_checker_inner<'a, 's, T>(
-    documentation: &'a Documentation,
-    config: Option<&T::Config>,
-    collective: &mut SuggestionSet<'s>,
-) -> Result<()>
-where
-    'a: 's,
-    T: Checker,
-{
-    let config = config
-        .as_ref()
-        .expect("Must be Some(Config) if is_enabled returns true");
-
-    let suggestions = T::check(documentation, *config)?;
-    collective.join(suggestions);
-    Ok(())
-}
-
-macro_rules! invoke_checker {
-    ($feature:literal, $checker:ty, $documentation:ident, $config:expr, $config_inner:expr, $collective:expr) => {
-        if !cfg!(feature = $feature) {
-            debug!("Feature {} is disabled by compilation.", $feature);
-        } else {
-            #[cfg(feature = $feature)]
-            {
-                let detector = <$checker>::detector();
-                let config = $config;
-                if config.is_enabled(detector) {
-                    debug!("Running {} checks.", detector);
-                    invoke_checker_inner::<$checker>($documentation, $config_inner, $collective)?;
-                } else {
-                    debug!("Checker {} is disabled by configuration.", detector);
-                }
-            }
-        }
-    };
-}
-
 /// Check a full document for violations using the tools we have.
-pub fn check<'a, 's>(documentation: &'a Documentation, config: &Config) -> Result<SuggestionSet<'s>>
-where
-    'a: 's,
-{
-    let mut collective = SuggestionSet::<'s>::new();
+///
+/// Only configured checkers are used.
+pub struct Checkers {
+    hunspell: Option<HunspellChecker>,
+    nlprule: Option<NlpRulesChecker>,
+}
 
-    invoke_checker!(
-        "nlprules",
-        self::nlprules::NlpRulesChecker,
-        documentation,
-        config,
-        config.nlprules.as_ref(),
-        &mut collective
-    );
+impl Checkers {
+    pub fn new(config: Config) -> Result<Self> {
+        macro_rules! create_checker {
+            ($feature:literal, $checker:ty, $config:expr, $checker_config:expr) => {
+                if !cfg!(feature = $feature) {
+                    debug!("Feature {} is disabled by compilation.", $feature);
+                    None
+                } else {
+                    #[cfg(feature = $feature)]
+                    {
+                        let config = $config;
+                        let detector = <$checker>::detector();
+                        if config.is_enabled(detector) {
+                            debug!("Enabling {} checks.", detector);
+                            Some(<$checker>::new($checker_config.unwrap())?)
+                        } else {
+                            debug!("Checker {} is disabled by configuration.", detector);
+                            None
+                        }
+                    }
+                }
+            };
+        }
 
-    invoke_checker!(
-        "hunspell",
-        self::hunspell::HunspellChecker,
-        documentation,
-        config,
-        config.hunspell.as_ref(),
-        &mut collective
-    );
+        let hunspell = create_checker!(
+            "hunspell",
+            HunspellChecker,
+            &config,
+            config.hunspell.as_ref()
+        );
+        let nlprule = create_checker!(
+            "nlprules",
+            NlpRulesChecker,
+            &config,
+            config.nlprules.as_ref()
+        );
+        Ok(Self { hunspell, nlprule })
+    }
+}
 
-    collective.sort();
+impl Checker for Checkers {
+    type Config = Config;
 
-    Ok(collective)
+    fn detector() -> Detector {
+        unreachable!()
+    }
+
+    fn check<'a, 's>(
+        &self,
+        origin: &ContentOrigin,
+        chunks: &'a [CheckableChunk],
+    ) -> Result<Vec<Suggestion<'s>>>
+    where
+        'a: 's,
+    {
+        let mut collective = Vec::<Suggestion<'s>>::with_capacity(chunks.len());
+        if let Some(ref hunspell) = self.hunspell {
+            collective.extend(hunspell.check(origin, chunks)?);
+        }
+        if let Some(ref nlprule) = self.nlprule {
+            collective.extend(nlprule.check(origin, chunks)?);
+        }
+
+        collective.sort();
+
+        Ok(collective)
+    }
 }
 
 #[cfg(test)]
@@ -110,6 +125,7 @@ pub mod tests {
     use crate::load_span_from;
     use crate::span::Span;
     use crate::ContentOrigin;
+    use crate::Documentation;
     use crate::LineColumn;
     use crate::Range;
     use std::path::PathBuf;
@@ -145,17 +161,13 @@ pub mod tests {
             .try_init();
         let dev_comments = false;
         let d = Documentation::load_from_str(ContentOrigin::TestEntityRust, content, dev_comments);
-        let suggestion_set =
-            dummy::DummyChecker::check(&d, &()).expect("Dummy extraction must never fail");
+        let (origin, chunks) = d.into_iter().next().expect("Contains exactly one file");
+        let suggestions = dummy::DummyChecker
+            .check(&origin, &chunks[..])
+            .expect("Dummy extraction must never fail");
 
-        // one file
-        assert_eq!(suggestion_set.len(), 1);
         // with a known number of suggestions
-        assert_eq!(suggestion_set.total_count(), expected_spans.len());
-        let (_, suggestions) = suggestion_set
-            .iter()
-            .next()
-            .expect("Must have valid 1st suggestion");
+        assert_eq!(suggestions.len(), expected_spans.len());
 
         for (index, (suggestion, expected_span)) in
             suggestions.iter().zip(expected_spans.iter()).enumerate()
