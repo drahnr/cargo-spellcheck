@@ -1,7 +1,7 @@
 //! Reflow documentation comments to a desired line width.
 //!
-//! Note that for commonmark this might not be possible with links.
-//! The reflow is done based on the comments no matter the content.
+//! Note that for commonmark this might not be possible with links. The reflow
+//! is done based on the comments no matter the content.
 
 use crate::errors::*;
 
@@ -128,12 +128,14 @@ pub fn extract_delimiter<'s>(s: &'s str) -> Option<&'static str> {
 
 /// Reflows a parsed commonmark paragraph contained in `s`.
 ///
-/// Returns the `Some(replacement)` string if a reflow has been performed and `None` otherwise.
+/// Returns the `Some(replacement)` string if a reflow has been performed and
+/// `None` otherwise.
 ///
-/// `range` denotes the range of the paragraph of interest in the top-level `CheckableChunk`.
-/// `unbreakable_ranges` contains all ranges of words/sequences which must not be split during
-/// the reflow. They are relative to the top-level `CheckableChunk` similar to `range`. The indentation
-/// vector contains the indentation for each line in `s`.
+/// `range` denotes the range of the paragraph of interest in the top-level
+/// `CheckableChunk`. `unbreakable_ranges` contains all ranges of
+/// words/sequences which must not be split during the reflow. They are relative
+/// to the top-level `CheckableChunk` similar to `range`. The indentation vector
+/// contains the indentation for each line in `s`.
 fn reflow_inner<'s>(
     s: &'s str,
     range: Range,
@@ -309,9 +311,9 @@ impl<'s> Indentation<'s> {
 
 /// Collect reflown Paragraphs in a `Vec` of `Suggestions`.
 ///
-/// Note: Leading spaces are skipped by the CommonMark parser,
-/// which implies for `///` and `//!`, the paragraph for the first
-/// line starting right after `/// ` (note the space here).
+/// Note: Leading spaces are skipped by the CommonMark parser, which implies for
+/// `///` and `//!`, the paragraph for the first line starting right after `///
+/// ` (note the space here).
 ///
 ///
 /// Returns: end of processed range and Suggestion, if reflow happened.
@@ -434,7 +436,8 @@ fn store_suggestion<'s>(
     ))
 }
 
-/// Parses a `CheckableChunk` and performs the re-wrapping on contained paragraphs.
+/// Parses a `CheckableChunk` and performs the re-wrapping on contained
+/// paragraphs.
 fn reflow<'s>(
     origin: &ContentOrigin,
     chunk: &'s CheckableChunk,

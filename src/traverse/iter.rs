@@ -12,7 +12,8 @@ use std::path::{Path, PathBuf};
 pub struct TraverseModulesIter {
     /// state for enqueuing child files and the depth at which they are found
     queue: VecDeque<(PathBuf, usize)>,
-    /// zero limits to the provided path, if it is a directory, all children are collected
+    /// zero limits to the provided path, if it is a directory, all children are
+    /// collected
     max_depth: usize,
 }
 
@@ -121,8 +122,8 @@ impl Iterator for TraverseModulesIter {
     }
 }
 
-/// traverse path with a depth limit, if the path is a directory all its children will be collected
-/// instead
+/// traverse path with a depth limit, if the path is a directory all its
+/// children will be collected instead
 // TODO should not read the documentation, that is out of scope.
 // TODO should not have knowledge of `dev_comments`.
 pub(crate) fn traverse(
@@ -132,8 +133,8 @@ pub(crate) fn traverse(
     traverse_with_depth_limit(path, usize::MAX, dev_comments)
 }
 
-/// traverse path with a depth limit, if the path is a directory all its children will be collected
-/// as depth 0 instead
+/// traverse path with a depth limit, if the path is a directory all its
+/// children will be collected as depth 0 instead
 pub(crate) fn traverse_with_depth_limit(
     path: &Path,
     max_depth: usize,

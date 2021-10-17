@@ -22,9 +22,8 @@ pub enum CommentVariant {
     SlashAsteriskAsterisk,
     /// `/*`
     SlashAsterisk,
-    /// `#[doc=` with actual prefix like `#[doc=` and
-    /// the total length of `r###` etc. including `r`
-    /// but without `"`
+    /// `#[doc=` with actual prefix like `#[doc=` and the total length of `r###`
+    /// etc. including `r` but without `"`
     MacroDocEq(String, usize),
     /// Commonmark File
     CommonMark,
@@ -380,9 +379,10 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
 }
 
 impl TrimmedLiteral {
-    /// Creates a new (single line) literal from the variant, the content, the size of the
-    /// pre & post and the line/column on which it starts. Fails if provided with multiline content
-    /// (i.e. if the content contains a line-break).
+    /// Creates a new (single line) literal from the variant, the content, the
+    /// size of the pre & post and the line/column on which it starts. Fails if
+    /// provided with multiline content (i.e. if the content contains a
+    /// line-break).
     pub fn from(
         variant: CommentVariant,
         content: &str,
@@ -452,14 +452,16 @@ impl TrimmedLiteral {
 
     /// Obtain the number of characters in `pre()`.
     ///
-    /// Since all pre characters are ASCII, this is equivalent to the number of bytes in `pre()`.
+    /// Since all pre characters are ASCII, this is equivalent to the number of
+    /// bytes in `pre()`.
     pub fn pre(&self) -> usize {
         self.pre
     }
 
     /// Obtain the number of characters in `post()`.
     ///
-    /// Since all pre characters are ASCII, this is equivalent to the number of bytes in `post()`.
+    /// Since all pre characters are ASCII, this is equivalent to the number of
+    /// bytes in `post()`.
     pub fn post(&self) -> usize {
         self.post
     }
@@ -476,7 +478,8 @@ impl TrimmedLiteral {
         self.as_str().chars()
     }
 
-    /// The string variant type, see [`CommentVariant`](self::CommentVariant) for details.
+    /// The string variant type, see [`CommentVariant`](self::CommentVariant)
+    /// for details.
     pub fn variant(&self) -> CommentVariant {
         self.variant.clone()
     }
@@ -509,7 +512,8 @@ impl fmt::Debug for TrimmedLiteral {
 ///
 /// Allows better display of coverage results without code duplication.
 ///
-/// Consists of literal reference and a relative range to the start of the literal.
+/// Consists of literal reference and a relative range to the start of the
+/// literal.
 #[derive(Debug, Clone)]
 pub struct TrimmedLiteralDisplay<'a>(pub &'a TrimmedLiteral, pub Range);
 

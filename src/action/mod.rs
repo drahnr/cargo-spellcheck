@@ -27,8 +27,8 @@ pub enum Finish {
     Success,
     /// Abort is user requested, either by signal or key stroke.
     Abort,
-    /// Completion of the check run, with the resulting number of
-    /// mistakes accumulated.
+    /// Completion of the check run, with the resulting number of mistakes
+    /// accumulated.
     MistakeCount(usize),
 }
 
@@ -47,8 +47,9 @@ impl Finish {
 /// Has intentionally no awareness of any rust or cmark/markdown semantics.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub(crate) enum Patch {
-    /// Replace the area spanned by `replace` with `replacement`.
-    /// Since `Span` is inclusive, `Replace` will always replace a character in the original sources.
+    /// Replace the area spanned by `replace` with `replacement`. Since `Span`
+    /// is inclusive, `Replace` will always replace a character in the original
+    /// sources.
     Replace {
         replace_span: Span,
         replacement: String,
@@ -84,9 +85,9 @@ impl From<BandAid> for Patch {
 
 /// Correct lines by applying patches.
 ///
-/// Assumes all `BandAids` do not overlap when replacing.
-/// Inserting multiple times at a particular `LineColumn` is OK,
-/// but replacing overlapping `Span`s of the original source is not.
+/// Assumes all `BandAids` do not overlap when replacing. Inserting multiple
+/// times at a particular `LineColumn` is OK, but replacing overlapping `Span`s
+/// of the original source is not.
 ///
 /// This function is not concerned with _any_ semantics or comments or
 /// whatsoever at all, it blindly replaces what is given to it.
@@ -245,8 +246,8 @@ pub enum Action {
     #[serde(alias = "config")]
     Config,
 
-    /// List all files in depth first sorted order in which they
-    /// would be checked.
+    /// List all files in depth first sorted order in which they would be
+    /// checked.
     #[serde(alias = "files")]
     ListFiles,
 }
@@ -269,7 +270,8 @@ impl Action {
         }
     }
 
-    /// assumes suggestions are sorted by line number and column number and must be non overlapping
+    /// assumes suggestions are sorted by line number and column number and must
+    /// be non overlapping
     fn correct_file(
         &self,
         path: PathBuf,
@@ -316,8 +318,8 @@ impl Action {
 
     /// Consumingly apply the user picked changes to a file.
     ///
-    /// **Attention**: Must be consuming, repeated usage causes shifts in spans and
-    /// would destroy the file structure!
+    /// **Attention**: Must be consuming, repeated usage causes shifts in spans
+    /// and would destroy the file structure!
     pub fn write_user_pick_changes_to_disk(
         &self,
         userpicked: interactive::UserPicked,

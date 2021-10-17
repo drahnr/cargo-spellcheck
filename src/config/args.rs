@@ -208,8 +208,8 @@ impl Args {
 
     /// Set the worker pool job/thread count.
     ///
-    /// Affects the parallel processing for a particular checker.
-    /// Checkers are always executed in sequence.
+    /// Affects the parallel processing for a particular checker. Checkers are
+    /// always executed in sequence.
     pub fn job_count(&self) -> usize {
         match self.flag_jobs {
             _ if cfg!(debug_assertions) => {
@@ -246,8 +246,8 @@ impl Args {
 
     /// Adjust the raw arguments for call variants.
     ///
-    /// The program could be called like `cargo-spellcheck`, `cargo spellcheck` or
-    /// `cargo spellcheck check` and even ``cargo-spellcheck check`.
+    /// The program could be called like `cargo-spellcheck`, `cargo spellcheck`
+    /// or `cargo spellcheck check` and even ``cargo-spellcheck check`.
     pub fn parse(argv_iter: impl IntoIterator<Item = String>) -> Result<Self, docopt::Error> {
         Docopt::new(USAGE).and_then(|d| {
             // if ends with file name `cargo-spellcheck`
@@ -299,8 +299,8 @@ impl Args {
         })
     }
 
-    /// Overrides the enablement status of checkers in the configuration
-    /// based on the checkers enabled by argument, if it is set.
+    /// Overrides the enablement status of checkers in the configuration based
+    /// on the checkers enabled by argument, if it is set.
     ///
     /// Errors of no checkers are left.
     pub fn checker_selection_override(
@@ -364,9 +364,8 @@ impl Args {
     ///
     /// Does IO checks if files exist.
     ///
-    /// Provides a config and where it was retrieved from,
-    /// if no config file exists, a default is provided
-    /// and the config path becomes `None`.
+    /// Provides a config and where it was retrieved from, if no config file
+    /// exists, a default is provided and the config path becomes `None`.
     ///
     /// 1. explicitly specified cli flag, error if it does not exist or parse
     /// 2. `Cargo.toml` metadata (unimplemented), error if it does not exist or parse
@@ -505,9 +504,8 @@ impl Args {
         Ok((config, config_path))
     }
 
-    /// Evaluate the configuration flags, overwrite
-    /// config values as needed and provide a new,
-    /// unified config struct.
+    /// Evaluate the configuration flags, overwrite config values as needed and
+    /// provide a new, unified config struct.
     pub fn unified(self) -> Result<(UnifiedArgs, Config)> {
         let (config, config_path) = self.load_config()?;
 
@@ -553,10 +551,8 @@ pub enum ConfigWriteDestination {
 
 /// Unified arguments with configuration fallbacks.
 ///
-/// Only contains options which are either
-/// only present in the arguments, or
-/// are present in the arguments and have a fallback
-/// in the configuration.
+/// Only contains options which are either only present in the arguments, or are
+/// present in the arguments and have a fallback in the configuration.
 #[derive(Debug, Clone)]
 pub enum UnifiedArgs {
     Config {

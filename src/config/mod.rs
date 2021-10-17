@@ -2,8 +2,8 @@
 //!
 //! Supports `Hunspell` and `LanguageTool` scopes.
 //!
-//! A default configuration will be generated in the default
-//! location by default. Default. Default default default.
+//! A default configuration will be generated in the default location by
+//! default. Default. Default default default.
 
 // TODO pendeng refactor, avoid spending time on documenting the status quo.
 #![allow(missing_docs)]
@@ -85,8 +85,7 @@ impl Config {
     const ORGANIZATION: &'static str = "spearow";
     const APPLICATION: &'static str = "cargo_spellcheck";
 
-    /// Sanitize all relative paths to absolute paths
-    /// in relation to `base`.
+    /// Sanitize all relative paths to absolute paths in relation to `base`.
     fn sanitize_paths(&mut self, base: &Path) -> Result<()> {
         if let Some(ref mut hunspell) = self.hunspell {
             hunspell.sanitize_paths(base)?;

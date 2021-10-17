@@ -16,8 +16,8 @@ impl LanguageToolConfig {
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 #[serde(deny_unknown_fields)]
 pub struct NlpRulesConfig {
-    /// Location to use for an initial lookup
-    /// of alternate tokenizer and rules data.
+    /// Location to use for an initial lookup of alternate tokenizer and rules
+    /// data.
     pub override_rules: Option<PathBuf>,
     pub override_tokenizer: Option<PathBuf>,
 }

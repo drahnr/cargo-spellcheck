@@ -32,10 +32,10 @@ pub enum ContentOrigin {
 impl ContentOrigin {
     /// Represent the content origin as [path](std::path::PathBuf).
     ///
-    /// For unit and integration tests, two additional hardcoded variants
-    /// are available, which resolve to static paths:
-    /// `TestEntityRust` variant becomes `/tmp/test/entity.rs`,
-    /// `TestEntityCommonMark` variant becomes `/tmp/test/entity.md`.
+    /// For unit and integration tests, two additional hardcoded variants are
+    /// available, which resolve to static paths: `TestEntityRust` variant
+    /// becomes `/tmp/test/entity.rs`, `TestEntityCommonMark` variant becomes
+    /// `/tmp/test/entity.md`.
     pub fn as_path(&self) -> &Path {
         match self {
             Self::CommonMarkFile(path) => path.as_path(),
@@ -68,12 +68,13 @@ impl fmt::Display for ContentOrigin {
 /// A chunk of documentation that is supposed to be checked.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct CheckableChunk {
-    /// Rendered contents of a literal set or just content of a markdown file, e.g. a comment of two lines is
-    /// represented as ' First Line\n second line' in `rendered` where the whitespaces are preserved.
+    /// Rendered contents of a literal set or just content of a markdown file,
+    /// e.g. a comment of two lines is represented as ' First Line\n second
+    /// line' in `rendered` where the whitespaces are preserved.
     content: String,
-    /// Mapping from range within `content` and
-    /// `Span` referencing the location within the source file.
-    /// For a markdown file i.e. this would become a single entry spanning from start to end.
+    /// Mapping from range within `content` and `Span` referencing the location
+    /// within the source file. For a markdown file i.e. this would become a
+    /// single entry spanning from start to end.
     source_mapping: IndexMap<Range, Span>,
     /// Track what kind of comment the chunk is.
     variant: CommentVariant,
@@ -91,7 +92,8 @@ impl std::hash::Hash for CheckableChunk {
 }
 
 impl CheckableChunk {
-    /// Specific to rust source code, either as part of doc test comments or file scope.
+    /// Specific to rust source code, either as part of doc test comments or
+    /// file scope.
     pub fn from_literalset(set: LiteralSet) -> Self {
         set.into_chunk()
     }
@@ -118,10 +120,9 @@ impl CheckableChunk {
         }
     }
 
-    /// Find which part of the range maps to which span.
-    /// Note that Range can very well be split into multiple fragments
-    /// where each of them can be mapped to a potentially non-continuous
-    /// span.
+    /// Find which part of the range maps to which span. Note that Range can
+    /// very well be split into multiple fragments where each of them can be
+    /// mapped to a potentially non-continuous span.
     ///
     /// Example:
     ///
@@ -238,8 +239,8 @@ impl CheckableChunk {
             .collect::<IndexMap<_, _>>()
     }
 
-    /// Extract all spans which at least partially overlap with range,
-    /// i.e. report all spans that either
+    /// Extract all spans which at least partially overlap with range, i.e.
+    /// report all spans that either
     ///  - contain `range.start`
     ///  - contain `range.end`
     ///  - are totally enclosed in `range`
@@ -255,10 +256,9 @@ impl CheckableChunk {
     ///
     /// Attention:
     ///
-    /// For large `#[doc="long multiline text"]` comments,
-    /// the covered span might be large (i.e. just one single)
-    /// which leads to a surprising result of just one span
-    /// for a relatively small input `range`.
+    /// For large `#[doc="long multiline text"]` comments, the covered span
+    /// might be large (i.e. just one single) which leads to a surprising result
+    /// of just one span for a relatively small input `range`.
     ///
     /// Below setup results in `[s0]`
     ///
@@ -324,7 +324,8 @@ impl CheckableChunk {
         acc
     }
 
-    /// Extract the overall length of all covered lines as they appear in the origin.
+    /// Extract the overall length of all covered lines as they appear in the
+    /// origin.
     pub fn extract_line_lengths(&self) -> Result<Vec<usize>> {
         let line_ranges = self.find_covered_lines(0..self.len_in_chars());
         let lengths = line_ranges
@@ -363,13 +364,13 @@ impl CheckableChunk {
 
     /// Number of fragments.
     ///
-    /// A fragment is a continuous sub-string which is not
-    /// split up any further.
+    /// A fragment is a continuous sub-string which is not split up any further.
     pub fn fragment_count(&self) -> usize {
         self.source_mapping.len()
     }
 
-    /// Obtain an accessor object containing mapping and string representation, removing the markdown annotations.
+    /// Obtain an accessor object containing mapping and string representation,
+    /// removing the markdown annotations.
     pub fn erase_cmark(&self) -> PlainOverlay {
         PlainOverlay::erase_cmark(self)
     }
@@ -385,8 +386,8 @@ impl CheckableChunk {
     }
 }
 
-/// Convert the clusters of one file into a source description as well
-/// as well as vector of checkable chunks.
+/// Convert the clusters of one file into a source description as well as well
+/// as vector of checkable chunks.
 impl From<Clusters> for Vec<CheckableChunk> {
     fn from(clusters: Clusters) -> Vec<CheckableChunk> {
         clusters
@@ -401,7 +402,8 @@ impl From<Clusters> for Vec<CheckableChunk> {
 ///
 /// Allows better display of coverage results without code duplication.
 ///
-/// Consists of literal reference and a relative range to the start of the literal.
+/// Consists of literal reference and a relative range to the start of the
+/// literal.
 #[derive(Debug, Clone)]
 pub struct ChunkDisplay<'a>(pub &'a CheckableChunk, pub Range);
 

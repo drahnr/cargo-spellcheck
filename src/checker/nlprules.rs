@@ -1,7 +1,7 @@
 //! A NLP based rule checker base on `nlprule`
 //!
-//! Does check grammar, and is supposed to only check for grammar.
-//! Sentence splitting is done in hand-waving way. To be improved.
+//! Does check grammar, and is supposed to only check for grammar. Sentence
+//! splitting is done in hand-waving way. To be improved.
 
 use super::{Checker, Detector, Suggestion};
 use crate::{CheckableChunk, ContentOrigin};
@@ -107,8 +107,7 @@ impl Checker for NlpRulesChecker {
     }
 }
 
-/// Check the plain text contained in chunk,
-/// which can be one or more sentences.
+/// Check the plain text contained in chunk, which can be one or more sentences.
 fn check_chunk<'a>(
     origin: ContentOrigin,
     chunk: &'a CheckableChunk,

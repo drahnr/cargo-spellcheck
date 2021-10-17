@@ -14,8 +14,8 @@ pub struct Clusters {
 }
 
 impl Clusters {
-    /// Only works if the file is processed line by line, otherwise
-    /// requires a adjacency list.
+    /// Only works if the file is processed line by line, otherwise requires a
+    /// adjacency list.
     fn process_literal(&mut self, source: &str, literal: proc_macro2::Literal) -> Result<()> {
         let literal = TrimmedLiteral::try_from((source, literal))?;
         if let Some(cls) = self.set.last_mut() {
@@ -95,8 +95,8 @@ impl Clusters {
         Ok(())
     }
 
-    /// From the given source text, extracts developer comments to `LiteralSet`s and adds them
-    /// to this `Clusters`
+    /// From the given source text, extracts developer comments to `LiteralSet`s
+    /// and adds them to this `Clusters`
     fn parse_developer_comments(&mut self, source: &str) {
         let developer_comments = extract_developer_comments(source);
         for comment in developer_comments {
@@ -104,13 +104,15 @@ impl Clusters {
         }
     }
 
-    /// Sort the `LiteralSet`s in this `Cluster` by start line descending, to ensure that the
-    /// comments higher up in the source file appear first to the user
+    /// Sort the `LiteralSet`s in this `Cluster` by start line descending, to
+    /// ensure that the comments higher up in the source file appear first to
+    /// the user
     fn ensure_sorted(&mut self) {
         self.set.sort_by(|ls1, ls2| ls1.coverage.cmp(&ls2.coverage));
     }
 
-    /// Load clusters from a `&str`. Optionally loads developer comments as well.
+    /// Load clusters from a `&str`. Optionally loads developer comments as
+    /// well.
     pub(crate) fn load_from_str(source: &str, dev_comments: bool) -> Result<Self> {
         let mut chunk = Self {
             set: Vec::with_capacity(64),

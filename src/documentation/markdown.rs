@@ -12,9 +12,9 @@ use crate::documentation::{CheckableChunk, Range};
 use crate::util::sub_chars;
 use crate::Span;
 
-/// Describes whether there is a matching segment in the source,
-/// of if it is a placeholder for i.e. a code block or inline code.
-/// These placeholders are required for grammar checks.
+/// Describes whether there is a matching segment in the source, of if it is a
+/// placeholder for i.e. a code block or inline code. These placeholders are
+/// required for grammar checks.
 #[derive(Debug, Clone)]
 pub(crate) enum SourceRange {
     Direct(Range),
@@ -22,7 +22,8 @@ pub(crate) enum SourceRange {
 }
 
 impl SourceRange {
-    /// Apply an offset to `start` and `end` members, equaling a shift of the range.
+    /// Apply an offset to `start` and `end` members, equaling a shift of the
+    /// range.
     #[allow(dead_code)]
     pub(crate) fn apply_offset(&mut self, offset: usize) {
         match self {
@@ -66,8 +67,8 @@ pub struct PlainOverlay<'a> {
 }
 
 impl<'a> PlainOverlay<'a> {
-    /// Track the origin of the annotation free content string fragments in the common mark
-    /// formatted text, to the fragments in the plain string.
+    /// Track the origin of the annotation free content string fragments in the
+    /// common mark formatted text, to the fragments in the plain string.
     fn track(
         s: &str,
         cmark_range: SourceRange,
@@ -335,7 +336,8 @@ impl<'a> PlainOverlay<'a> {
         (plain, mapping)
     }
 
-    /// Create a common mark overlay based on the provided `CheckableChunk` reference.
+    /// Create a common mark overlay based on the provided `CheckableChunk`
+    /// reference.
     // TODO consider returning a Vec<PlainOverlay<'a>> to account for list items
     // or other non-linear information which might not pass a grammar check as a whole
     pub fn erase_cmark(chunk: &'a CheckableChunk) -> Self {
@@ -347,9 +349,9 @@ impl<'a> PlainOverlay<'a> {
         }
     }
 
-    /// Since most checkers will operate on the plain data, an indirection to map cmark reduced / plain
-    /// back to raw ranges, which are then mapped back to `Span`s.
-    /// The returned key `Ranges` are in the condensed domain.
+    /// Since most checkers will operate on the plain data, an indirection to
+    /// map cmark reduced / plain back to raw ranges, which are then mapped back
+    /// to `Span`s. The returned key `Ranges` are in the condensed domain.
     pub fn find_spans(&self, condensed_range: Range) -> IndexMap<Range, Span> {
         let mut active = false;
         let Range { start, end } = condensed_range;

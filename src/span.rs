@@ -1,7 +1,7 @@
 //! `Span` annotation, independent yet compatible with `proc_macro2::Span`
 //!
-//! Re-uses `LineColumn`, where `.line` is 1-indexed, and `.column`s are 0-indexed,
-//! `.end` is inclusive.
+//! Re-uses `LineColumn`, where `.line` is 1-indexed, and `.column`s are
+//! 0-indexed, `.end` is inclusive.
 
 use super::TrimmedLiteral;
 use crate::util;
@@ -16,14 +16,14 @@ use std::convert::TryFrom;
 
 use super::CheckableChunk;
 
-/// Relative span in relation
-/// to the beginning of a doc comment.
+/// Relative span in relation to the beginning of a doc comment.
 ///
-/// Line values are 1-indexed relative, lines are inclusive.
-/// Column values in UTF-8 characters in a line, 0-indexed and inclusive.
+/// Line values are 1-indexed relative, lines are inclusive. Column values in
+/// UTF-8 characters in a line, 0-indexed and inclusive.
 #[derive(Clone, Debug, Copy, PartialEq, Eq)]
 pub struct Span {
-    /// Start of the span, inclusive, see [`LineColumn`](proc_macro2::LineColumn).
+    /// Start of the span, inclusive, see
+    /// [`LineColumn`](proc_macro2::LineColumn).
     pub start: LineColumn,
     /// End of the span, inclusive, see [`LineColumn`](proc_macro2::LineColumn).
     pub end: LineColumn,
@@ -39,10 +39,10 @@ impl Hash for Span {
 }
 
 impl Span {
-    /// Converts a span to a range, where `self` is converted to a range relative to the
-    /// passed span `scope`.
-    /// Only works for literals spanning a single line and the scope full contains
-    /// `self, otherwise an an `Err(..)` is returned.
+    /// Converts a span to a range, where `self` is converted to a range
+    /// relative to the passed span `scope`. Only works for literals spanning a
+    /// single line and the scope full contains `self, otherwise an an `Err(..)`
+    /// is returned.
     pub fn relative_to<X: Into<Span>>(&self, scope: X) -> Result<Range> {
         let scope: Span = scope.into();
         let scope: Range = scope.try_into()?;
@@ -84,8 +84,8 @@ impl Span {
 
     /// Convert a given span `self` into a `Range`
     ///
-    /// The `Chunk` has a associated `Span` (or a set of `Range` -> `Span` mappings)
-    /// which are used to map.
+    /// The `Chunk` has a associated `Span` (or a set of `Range` -> `Span`
+    /// mappings) which are used to map.
     pub fn to_content_range(&self, chunk: &CheckableChunk) -> Result<Range> {
         if chunk.fragment_count() == 0 {
             bail!("Chunk contains 0 fragments")
@@ -214,8 +214,8 @@ impl From<&TrimmedLiteral> for Span {
 //     }
 // }
 
-/// extract a `Range` which maps to `self` as
-/// `span` maps to `range`, where `range` is relative to `full_content`
+/// extract a `Range` which maps to `self` as `span` maps to `range`, where
+/// `range` is relative to `full_content`
 fn extract_sub_range_from_span(
     full_content: &str,
     span: Span,

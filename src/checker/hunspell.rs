@@ -1,9 +1,8 @@
 //! A dictionary check with affixes, backed by `libhunspell`
 //!
-//! Does not check grammar, but tokenizes the documentation chunk,
-//! and checks the individual tokens against the dictionary using
-//! the defined affixes.
-//! Can handle multiple dictionaries.
+//! Does not check grammar, but tokenizes the documentation chunk, and checks
+//! the individual tokens against the dictionary using the defined affixes. Can
+//! handle multiple dictionaries.
 
 use super::{apply_tokenizer, Checker, Detector, Suggestion};
 
@@ -92,8 +91,8 @@ fn cache_builtin() -> Result<(PathBuf, PathBuf)> {
     Ok((path_dic, path_aff))
 }
 
-/// The value is `true` if string is made of emoji's
-/// or Unicode `VULGAR FRACTION`.
+/// The value is `true` if string is made of emoji's or Unicode
+/// `VULGAR FRACTION`.
 pub fn consists_of_vulgar_fractions_or_emojis(word: &str) -> bool {
     lazy_static! {
         static ref VULGAR_OR_EMOJI: regex::RegexSet = regex::RegexSetBuilder::new(&[

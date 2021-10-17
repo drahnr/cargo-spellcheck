@@ -1,10 +1,13 @@
-//! Abstracts the combination of language code and country code
-//! into one convenient type.
+//! Abstracts the combination of language code and country code into one
+//! convenient type.
 //!
-//! Language code follows the [ISO 639-1](https://en.wikipedia.org/wiki/ISO_639-1) format.
-//! Country code follows the [Alpha-2 ISO_3166-1](https://en.wikipedia.org/wiki/ISO_3166-1) format.
+//! Language code follows the
+//! [ISO 639-1](https://en.wikipedia.org/wiki/ISO_639-1) format. Country code
+//! follows the [Alpha-2 ISO_3166-1](https://en.wikipedia.org/wiki/ISO_3166-1)
+//! format.
 //!
-//! It results in a mildly adapted [IETF language tag](https://en.wikipedia.org/wiki/IETF_language_tag).
+//! It results in a mildly adapted [IETF language
+//! tag](https://en.wikipedia.org/wiki/IETF_language_tag).
 
 use iso_country::Country;
 use isolang::Language;
