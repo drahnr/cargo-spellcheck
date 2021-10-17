@@ -553,7 +553,7 @@ impl UserPicked {
                 usel @ UserSelection::Abort | usel @ UserSelection::Quit => {
                     return Ok((picked, usel))
                 }
-                UserSelection::SkipFile => break, // break the inner loop
+                UserSelection::SkipFile => break,
                 UserSelection::Previous => {
                     unimplemented!("Requires a iterator which works bidrectionally")
                 }
