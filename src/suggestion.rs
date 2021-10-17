@@ -1,5 +1,5 @@
-//! Suggestions are individual correctable items where items are either words, punctuation
-//! or even complete sentences.
+//! Suggestions are individual correctable items where items are either words,
+//! punctuation or even complete sentences.
 //!
 //! ```raw
 //! error[spellcheck]: Spelling
@@ -49,8 +49,8 @@ impl Detector {
 
 /// Terminal size in characters.
 ///
-/// Returns `80usize` for tests and in case the terminal size
-/// can not be retrieved.
+/// Returns `80usize` for tests and in case the terminal size can not be
+/// retrieved.
 pub fn get_terminal_size() -> usize {
     const DEFAULT_TERMINAL_SIZE: usize = 80;
     #[cfg(not(test))]
@@ -546,8 +546,8 @@ impl<'s> SuggestionSet<'s> {
         }
     }
 
-    /// Iterate over all suggestions tupled with the content origin of the file the
-    /// suggestion relates to.
+    /// Iterate over all suggestions tupled with the content origin of the file
+    /// the suggestion relates to.
     pub fn iter<'a>(
         &'a self,
     ) -> impl DoubleEndedIterator<Item = (&'a ContentOrigin, &'a Vec<Suggestion<'s>>)> {

@@ -24,8 +24,8 @@ fn os_specific_search_dirs() -> &'static [PathBuf] {
     OS_SPECIFIC_LOOKUP_DIRS.as_slice()
 }
 
-/// A collection of search directories.
-/// OS specific paths are only provided in the iterator.
+/// A collection of search directories. OS specific paths are only provided in
+/// the iterator.
 #[derive(Debug, Clone)]
 pub struct SearchDirs(pub Vec<PathBuf>);
 
@@ -84,7 +84,8 @@ impl From<Vec<PathBuf>> for SearchDirs {
     }
 }
 
-/// A search directory visitor, auto extending the search directory with OS defaults.
+/// A search directory visitor, auto extending the search directory with OS
+/// defaults.
 struct SearchDirVisitor;
 
 impl<'de> serde::de::Visitor<'de> for SearchDirVisitor {

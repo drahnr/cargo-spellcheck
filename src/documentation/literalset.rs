@@ -23,7 +23,8 @@ impl LiteralSet {
         }
     }
 
-    /// Add a literal to a literal set, if the previous lines literal already exists.
+    /// Add a literal to a literal set, if the previous lines literal already
+    /// exists.
     ///
     /// Returns literal within the Err variant if not adjacent
     pub fn add_adjacent(&mut self, literal: TrimmedLiteral) -> Result<(), TrimmedLiteral> {
@@ -143,8 +144,8 @@ pub(crate) mod tests {
         }
     }
 
-    /// A helper macro creating valid doc string using
-    /// the macro syntax `#[doc=r#"..."#]`.
+    /// A helper macro creating valid doc string using the macro syntax
+    /// `#[doc=r#"..."#]`.
     ///
     /// Example:
     ///
@@ -166,8 +167,8 @@ pub(crate) mod tests {
         };
     }
 
-    /// A helper macro creating valid doc string using
-    /// the macro syntax `/// ...`.
+    /// A helper macro creating valid doc string using the macro syntax
+    /// `/// ...`.
     ///
     /// Example:
     ///

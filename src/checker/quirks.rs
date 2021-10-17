@@ -4,7 +4,8 @@ use crate::Range;
 use fancy_regex::Regex;
 use log::{trace, warn};
 
-/// Returns `true` iff the replacements contains a variant of `word` without dashes.
+/// Returns `true` iff the replacements contains a variant of `word` without
+/// dashes.
 pub(crate) fn replacements_contain_dashless<T: AsRef<str>>(word: &str, replacements: &[T]) -> bool {
     let dashless = word.chars().filter(|c| *c != '-').collect::<String>();
     // if the word does not contain any dashes, skip the replacement iterations
@@ -18,7 +19,8 @@ pub(crate) fn replacements_contain_dashless<T: AsRef<str>>(word: &str, replaceme
         .is_some()
 }
 
-/// Returns `true` iff the replacements contains a variant of `word` with additional dashes.
+/// Returns `true` iff the replacements contains a variant of `word` with
+/// additional dashes.
 pub(crate) fn replacements_contain_dashed<T: AsRef<str>>(word: &str, replacements: &[T]) -> bool {
     // before doing lots of work, check if the word itself contains a dash, if so
     // the below logic cannot yield and positive results

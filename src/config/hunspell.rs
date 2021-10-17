@@ -13,17 +13,18 @@ const fn yes() -> bool {
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Quirks {
-    /// A regular expression, whose capture groups will be checked, instead of the initial token.
-    /// Only the first one that matches will be used to split the word.
+    /// A regular expression, whose capture groups will be checked, instead of
+    /// the initial token. Only the first one that matches will be used to split
+    /// the word.
     #[serde(default)]
     pub transform_regex: Vec<WrappedRegex>,
-    /// Allow concatenated words instead of dashed connection.
-    /// Note that this only applies, if one of the suggested replacements has an item that is
+    /// Allow concatenated words instead of dashed connection. Note that this
+    /// only applies, if one of the suggested replacements has an item that is
     /// equivalent except for addition dashes (`-`).
     #[serde(default)]
     pub allow_concatenation: bool,
-    /// The counterpart of `allow_concatenation`. Accepts words which have replacement suggestions
-    /// that contain additional dashes.
+    /// The counterpart of `allow_concatenation`. Accepts words which have
+    /// replacement suggestions that contain additional dashes.
     #[serde(default)]
     pub allow_dashes: bool,
     /// Treats sequences of emojis as OK.
@@ -67,7 +68,8 @@ fn default_tokenization_splitchars() -> String {
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct HunspellConfig {
-    /// The language we want to check against, used as the dictionary and affixes file name.
+    /// The language we want to check against, used as the dictionary and
+    /// affixes file name.
     #[serde(default)]
     pub lang: Lang5,
     /// Additional search directories for `.dic` and `.aff` files.
@@ -75,16 +77,14 @@ pub struct HunspellConfig {
     #[serde(default)]
     pub search_dirs: SearchDirs,
 
-    /// Avoid the OS provided dictionaries
-    /// and only use the builtin ones, besides
-    /// those defined in `extra_dictionaries`.
+    /// Avoid the OS provided dictionaries and only use the builtin ones,
+    /// besides those defined in `extra_dictionaries`.
     #[serde(default)]
     pub skip_os_lookups: bool,
 
-    /// Use the builtin dictionaries as last resort.
-    /// Usually combined with `skip_os_lookups=true`
-    /// to enforce the `builtin` usage.
-    /// Does not prevent the usage of `extra_dictionaries`.
+    /// Use the builtin dictionaries as last resort. Usually combined with
+    /// `skip_os_lookups=true` to enforce the `builtin` usage. Does not prevent
+    /// the usage of `extra_dictionaries`.
     #[serde(default)]
     pub use_builtin: bool,
 

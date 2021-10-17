@@ -1,7 +1,7 @@
 //! A mistake bandaid.
 //!
-//! A `BandAid` covers the mistake with a suggested
-//! replacement, as picked by the user.
+//! A `BandAid` covers the mistake with a suggested replacement, as picked by
+//! the user.
 
 use crate::Span;
 

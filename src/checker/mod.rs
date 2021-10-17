@@ -1,8 +1,7 @@
 //! Checker
 //!
-//! Trait to handle additional trackers.
-//! Contains also helpers to avoid re-implementing generic
-//! algorithms again and again, i.e. tokenization.
+//! Trait to handle additional trackers. Contains also helpers to avoid
+//! re-implementing generic algorithms again and again, i.e. tokenization.
 
 use crate::{CheckableChunk, Config, ContentOrigin, Detector, Suggestion};
 
@@ -192,7 +191,8 @@ pub mod tests {
     fn extract_suggestions_simple() {
         const SIMPLE: &'static str = fluff_up!("two literals");
 
-        /// keep in mind, `Span` bounds are inclusive, unlike Ranges, where `range.end` is _exclusive_
+        /// keep in mind, `Span` bounds are inclusive, unlike Ranges, where
+        /// `range.end` is _exclusive_
         const EXPECTED_SPANS: &[Span] = &[
             Span {
                 start: LineColumn { line: 1, column: 4 },
@@ -213,7 +213,8 @@ pub mod tests {
     fn extract_suggestions_left_aligned() {
         const SIMPLE: &'static str = fluff_up!("two  literals ");
 
-        /// keep in mind, `Span` bounds are inclusive, unlike Ranges, where `range.end` is _exclusive_
+        /// keep in mind, `Span` bounds are inclusive, unlike Ranges, where
+        /// `range.end` is _exclusive_
         const EXPECTED_SPANS: &[Span] = &[
             Span {
                 start: LineColumn { line: 1, column: 4 },
@@ -234,7 +235,8 @@ pub mod tests {
     fn extract_suggestions_3spaces() {
         const SIMPLE: &'static str = fluff_up!("  third  testcase ");
 
-        /// keep in mind, `Span` bounds are inclusive, unlike Ranges, where `range.end` is _exclusive_
+        /// keep in mind, `Span` bounds are inclusive, unlike Ranges, where
+        /// `range.end` is _exclusive_
         const EXPECTED_SPANS: &[Span] = &[
             Span {
                 start: LineColumn { line: 1, column: 6 },

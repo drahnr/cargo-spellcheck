@@ -2,15 +2,14 @@
 //!
 //! So to speak documentation of project as whole.
 //!
-//! A `literal` is a token provided by `proc_macro2`, which is then
-//! converted by means of `TrimmedLiteral` using `Cluster`ing
-//! into a `CheckableChunk` (mostly named just `chunk`).
+//! A `literal` is a token provided by `proc_macro2`, which is then converted by
+//! means of `TrimmedLiteral` using `Cluster`ing into a `CheckableChunk` (mostly
+//! named just `chunk`).
 //!
-//! `CheckableChunk`s can consist of multiple fragments, where
-//! each fragment can span multiple lines, yet each fragment
-//! is covering a consecutive `Span` in the origin content.
-//! Each fragment also has a direct mapping to the `CheckableChunk` internal
-//! string representation.
+//! `CheckableChunk`s can consist of multiple fragments, where each fragment can
+//! span multiple lines, yet each fragment is covering a consecutive `Span` in
+//! the origin content. Each fragment also has a direct mapping to the
+//! `CheckableChunk` internal string representation.
 
 use super::*;
 

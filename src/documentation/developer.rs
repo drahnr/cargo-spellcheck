@@ -33,29 +33,34 @@ lazy_static::lazy_static! {
           Please check this regex!");
 }
 
-/// A string token from a source string with the location at which it occurs in the source string
-/// in 0 indexed bytes
+/// A string token from a source string with the location at which it occurs in
+/// the source string in 0 indexed bytes
 #[derive(Debug)]
 struct TokenWithLocation {
-    /// The full contents of this token, including pre/post characters (like '//')
+    /// The full contents of this token, including pre/post characters (like
+    /// '//')
     content: String,
     /// The location of the start of this token in the source string, in bytes
     location: usize,
 }
 
-/// A string token from a source string with the location at which it occurs in the source string
-/// as line on which it occurs (1 indexed) and the column of its first character (0 indexed)
+/// A string token from a source string with the location at which it occurs in
+/// the source string as line on which it occurs (1 indexed) and the column of
+/// its first character (0 indexed)
 #[derive(Debug)]
 struct TokenWithLineColumn {
-    /// The full contents of this token, including pre/post characters (like '//')
+    /// The full contents of this token, including pre/post characters (like
+    /// '//')
     content: String,
     /// The first line on which the token appears in the source file (1 indexed)
     line: usize,
-    /// The column where the first character of this token appears in the source file (0 indexed)
+    /// The column where the first character of this token appears in the source
+    /// file (0 indexed)
     column: usize,
 }
 
-/// Is a token of type (developer) block comment, (developer) line comment or something else
+/// Is a token of type (developer) block comment, (developer) line comment or
+/// something else
 #[derive(Debug, Eq, PartialEq)]
 enum TokenType {
     BlockComment,
@@ -101,23 +106,29 @@ impl TokenType {
     }
 }
 
-/// A token from a source string with its variant (`TokenType`) and the line and column on which it
-/// occurs according to the description for `TokenWithLineColumn`
+/// A token from a source string with its variant (`TokenType`) and the line and
+/// column on which it occurs according to the description for
+/// `TokenWithLineColumn`
 #[derive(Debug)]
 struct TokenWithType {
-    /// Is the token a block developer comment, line developer comment or something else
+    /// Is the token a block developer comment, line developer comment or
+    /// something else
     kind: TokenType,
-    /// The full contents of this token, including pre/post characters (like '//')
+    /// The full contents of this token, including pre/post characters (like
+    /// '//')
     pub content: String,
-    /// The first line on which the token appears in the source file (1 indexed)  pub line: `usize`,
+    /// The first line on which the token appears in the source file (1 indexed)
+    /// pub line: `usize`,
     pub line: usize,
-    /// The column where the first character of this token appears in the source file (0 indexed)
+    /// The column where the first character of this token appears in the source
+    /// file (0 indexed)
     pub column: usize,
 }
 
 impl TokenWithType {
-    /// Convert a `TokenWithLineColumn` to a `TokenWithType`. The kind is worked out from the content
-    /// by checking against the developer block comment & line comment regexps.
+    /// Convert a `TokenWithLineColumn` to a `TokenWithType`. The kind is worked
+    /// out from the content by checking against the developer block comment &
+    /// line comment regexps.
     fn from(token: TokenWithLineColumn) -> Self {
         let kind = if BLOCK_COMMENT.is_match(&token.content) {
             TokenType::BlockComment
@@ -135,8 +146,9 @@ impl TokenWithType {
     }
 }
 
-/// A convenience method that runs the complete 'pipeline' from string `source` file to all
-/// `LiteralSet`s that can be created from developer comments in the source
+/// A convenience method that runs the complete 'pipeline' from string `source`
+/// file to all `LiteralSet`s that can be created from developer comments in the
+/// source
 pub fn extract_developer_comments(source: &str) -> Vec<LiteralSet> {
     let tokens = source_to_tokens_with_location(source);
     let tokens = tokens_with_location_to_tokens_with_line_and_column(source, tokens);
@@ -165,8 +177,8 @@ fn source_to_tokens_with_location(source: &str) -> Vec<TokenWithLocation> {
     tokens
 }
 
-/// Converts a series of `TokenWithLocation`s to `TokenWithLineColumn`s. Requires the source string
-/// to calculate line & column from location.
+/// Converts a series of `TokenWithLocation`s to `TokenWithLineColumn`s.
+/// Requires the source string to calculate line & column from location.
 fn tokens_with_location_to_tokens_with_line_and_column(
     source: &str,
     tokens_in: Vec<TokenWithLocation>,
@@ -181,14 +193,14 @@ fn tokens_with_location_to_tokens_with_line_and_column(
         .collect()
 }
 
-/// Given a string, calculates the 1 indexed line number of the line on which the final character
-/// of the string appears
+/// Given a string, calculates the 1 indexed line number of the line on which
+/// the final character of the string appears
 fn count_lines(fragment: &str) -> usize {
     fragment.chars().into_iter().filter(|c| *c == '\n').count() + 1
 }
 
-/// Given a string, calculates the 0 indexed column number of the character *just after* the final
-/// character in the string
+/// Given a string, calculates the 0 indexed column number of the character
+/// *just after* the final character in the string
 fn calculate_column(fragment: &str) -> usize {
     match fragment.rfind('\n') {
         Some(p) => fragment.chars().count() - fragment[..p].chars().count() - 1,
@@ -206,8 +218,9 @@ fn token_with_line_column_to_token_with_type(
         .collect()
 }
 
-/// Attempts to convert all `TokenWithType` with kind `TokenType::BlockComment` in the input into
-/// literal sets, returning those successful or otherwise logging the errors
+/// Attempts to convert all `TokenWithType` with kind `TokenType::BlockComment`
+/// in the input into literal sets, returning those successful or otherwise
+/// logging the errors
 fn literal_sets_from_block_comments(tokens: Vec<&TokenWithType>) -> Vec<LiteralSet> {
     let mut literal_sets = vec![];
     let only_block_comments: Vec<&TokenWithType> = tokens
@@ -225,9 +238,10 @@ fn literal_sets_from_block_comments(tokens: Vec<&TokenWithType>) -> Vec<LiteralS
     literal_sets
 }
 
-/// Attempts to create a `LiteralSet` from a token assuming it is block comment. Returns `None` if
-/// the token kind is not `TokenKind::BlockComment`, if the token content does not match the
-/// block comment regex, or if any line cannot be added by `LiteralSet::add_adjacent`
+/// Attempts to create a `LiteralSet` from a token assuming it is block comment.
+/// Returns `None` if the token kind is not `TokenKind::BlockComment`, if the
+/// token content does not match the block comment regex, or if any line cannot
+/// be added by `LiteralSet::add_adjacent`
 fn literal_set_from_block_comment(token: &TokenWithType) -> Result<LiteralSet, String> {
     if token.kind != TokenType::BlockComment {
         return Err(format!(
@@ -321,8 +335,9 @@ fn literal_set_from_block_comment(token: &TokenWithType) -> Result<LiteralSet, S
     }
 }
 
-/// Attempt to create a literal from a developer line comment token. Returns `None` if the token's
-/// kind is not `TokenType::LineComment` or if the call to `TrimmedLiteral::from` fails.
+/// Attempt to create a literal from a developer line comment token. Returns
+/// `None` if the token's kind is not `TokenType::LineComment` or if the call to
+/// `TrimmedLiteral::from` fails.
 fn literal_from_line_comment(token: &TokenWithType) -> Result<TrimmedLiteral, String> {
     match token.kind {
         TokenType::LineComment => TrimmedLiteral::from(
@@ -341,8 +356,9 @@ fn literal_from_line_comment(token: &TokenWithType) -> Result<TrimmedLiteral, St
     }
 }
 
-/// Converts a vector of tokens into a vector of `LiteralSet`s based on the developer line comments
-/// in the input, ignoring all other tokens in the input.
+/// Converts a vector of tokens into a vector of `LiteralSet`s based on the
+/// developer line comments in the input, ignoring all other tokens in the
+/// input.
 fn literal_sets_from_line_comments(tokens: Vec<&TokenWithType>) -> Vec<LiteralSet> {
     let mut sets = vec![];
     for token in tokens {
@@ -430,7 +446,8 @@ mod tests {
         }
     }
 
-    /// Convenience function to convert from source to tokens with line & column for tests
+    /// Convenience function to convert from source to tokens with line & column
+    /// for tests
     fn source_to_tokens_with_line_column(source: &str) -> Vec<TokenWithLineColumn> {
         let tokens = source_to_tokens_with_location(source);
         tokens_with_location_to_tokens_with_line_and_column(source, tokens)
@@ -519,8 +536,8 @@ mod tests {
         }
     }
 
-    /// Convenience function to create a single `TokenWithLineColumn` with given string content
-    /// at line 0 and column 0
+    /// Convenience function to create a single `TokenWithLineColumn` with given
+    /// string content at line 0 and column 0
     fn token_with_line_column_at_start(content: &str) -> TokenWithLineColumn {
         TokenWithLineColumn {
             content: content.to_string(),
@@ -609,7 +626,8 @@ mod tests {
         }
     }
 
-    /// Convenience function to convert a source string into a set of `TokenWithType`s
+    /// Convenience function to convert a source string into a set of
+    /// `TokenWithType`s
     fn source_to_tokens_with_type(source: &str) -> Vec<TokenWithType> {
         let tokens = source_to_tokens_with_line_column(source);
         token_with_line_column_to_token_with_type(tokens)
@@ -757,8 +775,8 @@ mod tests {
         }
     }
 
-    /// Convenience method that returns a vector containing only the tokens from the input vector
-    /// which are developer comments
+    /// Convenience method that returns a vector containing only the tokens from
+    /// the input vector which are developer comments
     fn retain_only_developer_comments(tokens: Vec<TokenWithType>) -> Vec<TokenWithType> {
         tokens
             .into_iter()
@@ -813,8 +831,9 @@ mod tests {
         }
     }
 
-    /// A convenience method to convert a source string into a set of `TokenWithType`s and filter
-    /// out any tokens which are not developer comments
+    /// A convenience method to convert a source string into a set of
+    /// `TokenWithType`s and filter out any tokens which are not developer
+    /// comments
     fn source_to_developer_comment_tokens_with_type(source: &str) -> Vec<TokenWithType> {
         let tokens = source_to_tokens_with_type(source);
         retain_only_developer_comments(tokens)

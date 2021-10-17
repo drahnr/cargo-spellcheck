@@ -38,7 +38,8 @@ pub fn iter_with_line_column_from<'a>(
         })
 }
 
-/// Iterate over annotated chars starting from line 1 and column 0 assuming `s` starts there.
+/// Iterate over annotated chars starting from line 1 and column 0 assuming `s`
+/// starts there.
 pub fn iter_with_line_column<'a>(
     s: &'a str,
 ) -> impl Iterator<Item = (char, usize, usize, LineColumn)> + 'a {
@@ -99,8 +100,7 @@ pub(crate) fn load_span_from_file(path: impl AsRef<Path>, span: Span) -> Result<
     load_span_from(reader, span)
 }
 
-/// Extract a subset of chars by iterating.
-/// Range must be in characters.
+/// Extract a subset of chars by iterating. Range must be in characters.
 pub fn sub_chars(s: &str, range: Range) -> String {
     s.chars()
         .skip(range.start)
@@ -110,11 +110,11 @@ pub fn sub_chars(s: &str, range: Range) -> String {
 
 use core::ops::{Bound, RangeBounds};
 
-/// Convert a given byte range of a string, that is known to be
-/// at valid char bounds, to a character range.
+/// Convert a given byte range of a string, that is known to be at valid char
+/// bounds, to a character range.
 ///
-/// If the bounds are not bounded by a character, it will take the
-/// bounding characters that are intersected inclusive.
+/// If the bounds are not bounded by a character, it will take the bounding
+/// characters that are intersected inclusive.
 pub fn byte_range_to_char_range<R>(s: &str, byte_range: R) -> Option<Range>
 where
     R: RangeBounds<usize>,
@@ -216,8 +216,7 @@ where
     acc
 }
 
-/// Extract a subset of chars by iterating.
-/// Range must be in characters.
+/// Extract a subset of chars by iterating. Range must be in characters.
 pub fn sub_char_range<'s, R>(s: &'s str, range: R) -> &'s str
 where
     R: RangeBounds<usize>,

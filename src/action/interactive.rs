@@ -36,8 +36,8 @@ pub struct ScopedRaw;
 impl ScopedRaw {
     /// Enter raw terminal mode.
     ///
-    /// Must be left before using `log::info!(..)` or any
-    /// other printing macros or functions.
+    /// Must be left before using `log::info!(..)` or any other printing macros
+    /// or functions.
     fn new() -> Result<Self> {
         crossterm::terminal::enable_raw_mode()?;
         Ok(Self)
@@ -135,8 +135,7 @@ where
         self.pick_idx = (self.pick_idx + self.n_items - 1).rem_euclid(self.n_items);
     }
 
-    /// Select the custom line, which is by definition the
-    /// last selectable.
+    /// Select the custom line, which is by definition the last selectable.
     pub fn select_custom(&mut self) {
         self.pick_idx = self.n_items - 1;
     }

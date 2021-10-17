@@ -64,8 +64,8 @@ fn parse_and_construct() {
 
 use crate::documentation::Documentation;
 
-/// Declare an end-to-end test case, ranging from input content
-/// down to the number expected issues given a checker type.
+/// Declare an end-to-end test case, ranging from input content down to the
+/// number expected issues given a checker type.
 #[macro_export]
 /// End-to-end tests for different Checkers
 macro_rules! end2end {

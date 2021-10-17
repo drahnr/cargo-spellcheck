@@ -1,11 +1,9 @@
-//! Iterate over a documentation comments and
-//! extract allowable content.
+//! Iterate over a documentation comments and extract allowable content.
 //!
-//! Operates on strings and ranges referring to the
-//! original content. Parses the Commonmark syntax and
-//! tracks slices which must not be broken up. Result
-//! is a restructured string where the lines are smaller
-//! than the maximum allowed line length.
+//! Operates on strings and ranges referring to the original content. Parses the
+//! Commonmark syntax and tracks slices which must not be broken up. Result is a
+//! restructured string where the lines are smaller than the maximum allowed
+//! line length.
 
 use super::*;
 
@@ -18,11 +16,10 @@ pub struct Tokeneer<'s> {
     /// Original source string of continuous lines which are to be wrapped.
     s: &'s str,
 
-    /// If there would occur a line break, that falls within a range of this
-    /// the break would only occur afterwards or the whole word gets moved to
-    /// the next line.
-    /// MUST be sorted by `.start` value.
-    /// Ranges must be in characters!
+    /// If there would occur a line break, that falls within a range of this the
+    /// break would only occur afterwards or the whole word gets moved to the
+    /// next line. MUST be sorted by `.start` value. Ranges must be in
+    /// characters!
     unbreakable_ranges: Vec<Range>,
     unbreakable_idx: usize,
 
@@ -156,18 +153,19 @@ impl<'s> Iterator for Tokeneer<'s> {
 /// Re-glue all tokenized items under the constrained of a maximum line width
 #[derive(Debug, Clone)]
 pub struct Gluon<'s> {
-    /// Stores a sequence of undividable items as `(char range, cow str)`,
-    /// which are eventually combined to a new line.
+    /// Stores a sequence of undividable items as `(char range, cow str)`, which
+    /// are eventually combined to a new line.
     queue: VecDeque<(Range, std::borrow::Cow<'s, str>)>,
     /// Maximum width in columns to be used before breaking a line.
     max_line_width: usize,
     /// Internal counter for keeping track of the line index with base 1.
     line_counter: usize,
-    /// A set of indentations for considering indentations
-    /// if there are more lines than there are lines, the last
-    /// values in this vector will be reused.
+    /// A set of indentations for considering indentations if there are more
+    /// lines than there are lines, the last values in this vector will be
+    /// reused.
     indentations: &'s [Indentation<'s>],
-    /// The inner iterator which first tokenizes the string into undividable items.
+    /// The inner iterator which first tokenizes the string into undividable
+    /// items.
     inner: Tokeneer<'s>,
 }
 
@@ -298,7 +296,8 @@ impl<'s> Iterator for Gluon<'s> {
 mod tests {
     use super::*;
 
-    /// `indentations` represent the indentation of individual lines in `content`.
+    /// `indentations` represent the indentation of individual lines in
+    /// `content`.
     fn verify_reflow(
         content: &'static str,
         expected: &'static str,
