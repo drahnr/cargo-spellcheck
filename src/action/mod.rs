@@ -284,9 +284,12 @@ impl Action {
 
         const TEMPORARY: &'static str = ".spellcheck.tmp";
 
+        // Avoid issues when processing multiple files in parallel
+        let tmp_name = TEMPORARY.to_owned() + uuid::Uuid::new_v4().to_string().as_str();
+
         let tmp = std::env::current_dir()
             .expect("Must have cwd")
-            .join(TEMPORARY);
+            .join(tmp_name);
         let wr = fs::OpenOptions::new()
             .write(true)
             .truncate(true)

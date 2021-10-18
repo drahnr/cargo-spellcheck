@@ -60,6 +60,8 @@ walkdir = "2"
 tokio = { version = "1", features = ["full"] }
 futures = "0.3"
 
+uuid = { version = "0.8.2", features = ["v4"] }
+
 # config parsing, must be independent of features
 
 # TODO parse the country codes of dictionaries?
