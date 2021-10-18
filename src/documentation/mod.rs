@@ -202,9 +202,9 @@ impl Documentation {
         }
         .unwrap_or_else(move |e| {
             warn!(
-                "BUG! << failed to load content from {} (dev_comments={:?}) >> {}",
+                "BUG: Failed to load content from {} (dev_comments={:?}): {:?}",
                 origin, dev_comments, e
-            )
+            );
         });
         docs
     }
