@@ -29,7 +29,7 @@ xz2 = "0.1"
 [dependencies]
 color-eyre = "0.5"
 cargo_toml = "^0.10.1"
-console = "0.14"
+console = "0.15"
 crossterm = "0.21.0"
 # for the config file
 directories = "4.0.1"
@@ -45,7 +45,7 @@ log = "0.4"
 num_cpus = "1.13"
 proc-macro2 = { version = "1", features = ["span-locations"] }
 pulldown-cmark = "0.8.0"
-ra_ap_syntax = "0.0.75"
+ra_ap_syntax = "0.0.77"
 rayon = "1.5"
 regex = "1.5"
 serde = { version = "1", features = ["derive"] }
@@ -79,7 +79,7 @@ nlprule = { version = "=0.6.4", optional = true }
 
 [dev-dependencies]
 # for stripping ansi color codes
-console = "0.14"
+console = "0.15"
 assert_matches = "1"
 maplit = "1"
 serde_plain = "1"
