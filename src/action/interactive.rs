@@ -114,9 +114,9 @@ impl<'s, 't> From<&'s Suggestion<'t>> for State<'s, 't> {
             suggestion,
             custom_replacement: String::new(),
             cursor_offset: 0,
-            pick_idx: 0usize,
+            pick_idx: 2_usize,
             // all items provided by the checkers plus the user provided
-            n_items: suggestion.replacements.len() + 1,
+            n_items: suggestion.replacements.len() + 2,
         }
     }
 }
@@ -137,12 +137,12 @@ where
 
     /// Select the custom line, which is by definition the last selectable.
     pub fn select_custom(&mut self) {
-        self.pick_idx = self.n_items - 1;
+        self.pick_idx = 0;
     }
 
     /// Checks if the currently selected line is the custom entry.
     pub fn is_custom_entry(&self) -> bool {
-        self.pick_idx + 1 == self.n_items
+        self.pick_idx == 0
     }
 
     /// Convert the replacement to a `BandAid`
@@ -196,6 +196,11 @@ impl UserPicked {
     /// Join two `UserPick`s.
     pub fn extend(&mut self, other: Self) {
         self.bandaids.extend(other.bandaids.into_iter());
+    }
+
+    #[allow(dead_code)]
+    fn wrap_in_ticks(&self, _state: &mut State, _event: KeyEvent) -> Result<UserSelection> {
+        unimplemented!()
     }
 
     /// Provide a replacement that was not provided by the backend
@@ -252,7 +257,7 @@ impl UserPicked {
     // .. suggestion0 [suggestion1] suggestion2 suggestion3 ..
     // arrow left
     // .. suggestion1 [suggestion2] suggestion3 suggestion4 ..
-    // but now it's only a very simple list for now
+    // but now it's only a very simple list
     fn print_replacements_list(&self, state: &mut State) -> Result<()> {
         let mut stdout = stdout();
 
@@ -275,8 +280,9 @@ impl UserPicked {
 
         // render all replacements in a vertical list
 
-        stdout.queue(cursor::SavePosition).unwrap();
-        let _ = stdout.flush();
+        stdout.queue(cursor::SavePosition)?;
+        stdout.flush()?;
+        let _ = stdout.queue(cursor::MoveDown(1))?;
 
         let active_idx = state.pick_idx;
 
@@ -285,79 +291,47 @@ impl UserPicked {
         } else {
             state.custom_replacement.as_str()
         };
-        if state.n_items != active_idx + 1 {
-            stdout
-                .queue(cursor::MoveUp(1))
-                .unwrap()
-                .queue(terminal::Clear(terminal::ClearType::CurrentLine))
-                .unwrap()
-                .queue(cursor::MoveToColumn(4))
-                .unwrap()
-                .queue(PrintStyledContent(StyledContent::new(
-                    custom,
-                    custom_content,
-                )))
-                .unwrap();
-        } else {
-            stdout
-                .queue(cursor::MoveUp(1))
-                .unwrap()
-                .queue(terminal::Clear(terminal::ClearType::CurrentLine))
-                .unwrap()
-                .queue(cursor::MoveToColumn(2))
-                .unwrap()
-                .queue(PrintStyledContent(StyledContent::new(tick.clone(), '»')))
-                .unwrap()
-                .queue(cursor::MoveToColumn(4))
-                .unwrap()
-                .queue(PrintStyledContent(StyledContent::new(
-                    custom,
-                    custom_content,
-                )))
-                .unwrap();
-        }
-        let _ = stdout.flush();
 
-        state
-            .suggestion
-            .replacements
-            .iter()
+        let backtick_wrapper = format!("`foo`");
+
+        std::iter::once((&custom, custom_content))
+            .chain(std::iter::once((&others, backtick_wrapper.as_str())))
+            .chain(
+                state
+                    .suggestion
+                    .replacements
+                    .iter()
+                    .map(|s| (&others, s.as_str())),
+            )
             .enumerate()
-            .for_each(|(idx, replacement)| {
-                let idx = idx as u16;
-                if idx != active_idx as u16 {
-                    // TODO figure out a way to deal with those errors better
-                    stdout
-                        .queue(cursor::MoveUp(1))
-                        .unwrap()
-                        .queue(terminal::Clear(terminal::ClearType::CurrentLine))
-                        .unwrap()
-                        .queue(cursor::MoveToColumn(4))
-                        .unwrap()
-                        .queue(PrintStyledContent(StyledContent::new(
-                            others.clone(),
-                            replacement.clone(),
-                        )))
-                        .unwrap();
+            .map(|(idx, (style, content))| {
+                (
+                    idx,
+                    PrintStyledContent(StyledContent::new(style.clone(), content.clone())),
+                )
+            })
+            .try_fold(&mut stdout, |cmd, (idx, mut item)| {
+                let cmd = cmd
+                    .queue(cursor::MoveUp(1))?
+                    .queue(terminal::Clear(terminal::ClearType::CurrentLine))?;
+
+                if idx == active_idx {
+                    *item.0.style_mut() = highlight;
+                    if idx == 0 {
+                        cmd.queue(crossterm::cursor::Show)?;
+                    } else {
+                        cmd.queue(crossterm::cursor::Hide)?;
+                    }
+                    cmd.queue(cursor::MoveToColumn(2))?
+                        .queue(PrintStyledContent(StyledContent::new(tick, '»')))?
+                        .queue(cursor::MoveToColumn(4))?
                 } else {
-                    stdout
-                        .queue(cursor::MoveUp(1))
-                        .unwrap()
-                        .queue(terminal::Clear(terminal::ClearType::CurrentLine))
-                        .unwrap()
-                        .queue(cursor::MoveToColumn(2))
-                        .unwrap()
-                        .queue(PrintStyledContent(StyledContent::new(tick.clone(), '»')))
-                        .unwrap()
-                        .queue(cursor::MoveToColumn(4))
-                        .unwrap()
-                        .queue(PrintStyledContent(StyledContent::new(
-                            highlight.clone(),
-                            replacement.clone(),
-                        )))
-                        .unwrap();
+                    cmd.queue(cursor::MoveToColumn(4))?
                 }
-            });
+                .queue(item)
+            })?;
+
+        let _ = stdout.flush();
 
         stdout.queue(cursor::RestorePosition).unwrap();
 
@@ -550,7 +524,8 @@ impl UserPicked {
             }
             match pick {
                 usel @ UserSelection::Abort | usel @ UserSelection::Quit => {
-                    return Ok((picked, usel))
+                    let _ = ScopedRaw::restore_terminal();
+                    return Ok((picked, usel));
                 }
                 UserSelection::SkipFile => break,
                 UserSelection::Previous => {
