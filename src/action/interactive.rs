@@ -47,9 +47,9 @@ impl ScopedRaw {
     ///
     /// Also called on `drop`.
     pub fn restore_terminal() -> Result<()> {
-        stdout().queue(crossterm::cursor::Show)?;
         crossterm::terminal::disable_raw_mode()?;
         stdout()
+            .queue(crossterm::cursor::Show)?
             .flush()
             .wrap_err_with(|| eyre!("Failed to restore terminal"))
     }
@@ -93,6 +93,7 @@ pub(super) enum UserSelection {
 }
 
 /// Statefulness for the selection process
+#[derive(Debug)]
 struct State<'s, 't>
 where
     't: 's,
@@ -282,7 +283,6 @@ impl UserPicked {
         // render all replacements in a vertical list
 
         stdout.queue(cursor::SavePosition)?;
-        stdout.flush()?;
         let _ = stdout.queue(cursor::MoveDown(1))?;
 
         let active_idx = state.pick_idx;
@@ -293,13 +293,18 @@ impl UserPicked {
             state.custom_replacement.as_str()
         };
 
-        let plain_overlay = state.suggestion.chunk.erase_cmark();
         // TODO only suggest this if this doesn't have spaces and/or parses with `ap_syntax`
         // TODO and check the identifiers against everything we've seen in the codebase
         // TODO this has a few issues though, that partial runs might be unaware of all `Ident`s
         // TODO so there should probably be a strict mode for full runs, that checks the existence
         // TODO and the default, partial mode that is more forgiving
-        let backtick_wrapper = format!("`{}`", sub_chars(plain_overlay.as_str(), state.suggestion.range.clone()));
+        let backtick_wrapper = format!(
+            "`{}`",
+            sub_chars(
+                state.suggestion.chunk.as_str(),
+                state.suggestion.range.clone()
+            )
+        );
 
         std::iter::once((&custom, custom_content))
             .chain(std::iter::once((&others, backtick_wrapper.as_str())))
@@ -338,11 +343,8 @@ impl UserPicked {
                 .queue(item)
             })?;
 
-        let _ = stdout.flush();
+        stdout.queue(cursor::RestorePosition)?.flush()?;
 
-        stdout.queue(cursor::RestorePosition).unwrap();
-
-        let _ = stdout.flush();
         Ok(())
     }
 
@@ -353,7 +355,7 @@ impl UserPicked {
         running_idx: usize,
         total: usize,
     ) -> Result<UserSelection> {
-        {
+        let skip = {
             let _guard = ScopedRaw::new();
 
             let mut boring = ContentStyle::new();
@@ -374,26 +376,20 @@ impl UserPicked {
             // erase this many lines of the regular print
             const ERASE: u16 = 4;
             // lines used by the question
-            const QUESTION: u16 = 4;
-            let extra_rows_to_flush = (state.n_items - (ERASE - QUESTION) as usize) as u16;
+            const QUESTION: u16 = 3;
+            let extra_rows_to_flush =
+                (state.n_items.saturating_sub((ERASE - QUESTION) as usize)) as u16;
             stdout()
-                .queue(cursor::Hide)
-                .unwrap()
-                .queue(cursor::MoveUp(ERASE)) // erase the 5 last lines of suggestion print
-                .unwrap()
-                .queue(terminal::Clear(terminal::ClearType::FromCursorDown))
-                .unwrap()
-                .queue(cursor::MoveDown(1)) // add a space between the question and the error
-                .unwrap()
-                .queue(PrintStyledContent(StyledContent::new(boring, question)))
-                .unwrap()
-                .queue(terminal::ScrollUp(extra_rows_to_flush))
-                .unwrap()
-                .queue(cursor::MoveToColumn(0))
-                .unwrap()
-                .queue(cursor::MoveDown(extra_rows_to_flush))
-                .unwrap();
-        }
+                .queue(cursor::Hide)?
+                .queue(cursor::MoveUp(ERASE))? // erase the 5 last lines of suggestion print
+                .queue(terminal::Clear(terminal::ClearType::FromCursorDown))?
+                .queue(cursor::MoveDown(1))? // add a space between the question and the error
+                .queue(PrintStyledContent(StyledContent::new(boring, question)))?
+                .queue(terminal::ScrollUp(extra_rows_to_flush))?
+                .queue(cursor::MoveToColumn(0))?
+                .queue(cursor::MoveDown(extra_rows_to_flush))?;
+            ERASE - QUESTION
+        };
 
         loop {
             let mut _guard = ScopedRaw::new();
@@ -401,17 +397,12 @@ impl UserPicked {
             self.print_replacements_list(state)?;
 
             if state.is_custom_entry() {
-                info!("Custom entry mode");
-
-                stdout().queue(cursor::SavePosition).unwrap();
+                stdout().queue(cursor::SavePosition)?;
                 stdout()
-                    .queue(cursor::Show)
-                    .unwrap()
-                    .queue(cursor::MoveToPreviousLine(1))
-                    .unwrap()
-                    .queue(cursor::MoveToColumn(4 + state.cursor_offset))
-                    .unwrap();
-                let _ = stdout().flush();
+                    .queue(cursor::Show)?
+                    .queue(cursor::MoveToPreviousLine(1 - skip))?
+                    .queue(cursor::MoveToColumn(4 + state.cursor_offset))?;
+                stdout().flush()?;
             }
 
             let event = match crossterm::event::read()
@@ -436,10 +427,8 @@ impl UserPicked {
                 let pick = self.enter_custom_replacement(state, event)?;
 
                 stdout()
-                    .queue(cursor::Hide)
-                    .unwrap()
-                    .queue(cursor::RestorePosition)
-                    .unwrap();
+                    .queue(cursor::Hide)?
+                    .queue(cursor::RestorePosition)?;
 
                 match pick {
                     UserSelection::Nop => continue,
@@ -491,8 +480,8 @@ impl UserPicked {
         let mut suggestions_it = suggestions.iter().enumerate();
         let start = suggestions_it.clone();
 
-        // TODO juck, uggly
-        let mut direction = Direction::Forward;
+        // TODO make use of it
+        let direction = Direction::Forward;
         'outer: loop {
             let opt_next = match direction {
                 Direction::Forward => suggestions_it.next(),
@@ -541,15 +530,11 @@ impl UserPicked {
                     }
                     UserSelection::Replacement(bandaid) => {
                         picked.add_bandaid(&origin, bandaid);
-                        break 'inner;
                     }
-                    UserSelection::Nop | UserSelection::Skip => {
-                        continue 'outer
-                    }
+                    UserSelection::Nop | UserSelection::Skip => {}
                 };
+                break 'inner;
             }
-
-            direction = Direction::Forward;
         }
         Ok((picked, UserSelection::Nop))
     }
