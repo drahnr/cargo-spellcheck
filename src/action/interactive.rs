@@ -114,6 +114,7 @@ impl<'s, 't> From<&'s Suggestion<'t>> for State<'s, 't> {
             suggestion,
             custom_replacement: String::new(),
             cursor_offset: 0,
+            // start at a suggestion, not the custom field or ticked suggestion
             pick_idx: 2_usize,
             // all items provided by the checkers plus the user provided
             n_items: suggestion.replacements.len() + 2,
@@ -292,7 +293,13 @@ impl UserPicked {
             state.custom_replacement.as_str()
         };
 
-        let backtick_wrapper = format!("`foo`");
+        let plain_overlay = state.suggestion.chunk.erase_cmark();
+        // TODO only suggest this if this doesn't have spaces and/or parses with `ap_syntax`
+        // TODO and check the identifiers against everything we've seen in the codebase
+        // TODO this has a few issues though, that partial runs might be unaware of all `Ident`s
+        // TODO so there should probably be a strict mode for full runs, that checks the existence
+        // TODO and the default, partial mode that is more forgiving
+        let backtick_wrapper = format!("`{}`", sub_chars(plain_overlay.as_str(), state.suggestion.range.clone()));
 
         std::iter::once((&custom, custom_content))
             .chain(std::iter::once((&others, backtick_wrapper.as_str())))
