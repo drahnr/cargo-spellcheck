@@ -523,16 +523,22 @@ pub(crate) fn extract(
                     CheckEntity::Source(path, recurse) => {
                         let content: String = fs::read_to_string(&path)?;
                         docs.add_rust(
-                            ContentOrigin::RustSourceFile(path.to_owned()),
+                            ContentOrigin::RustSourceFile(path.clone()),
                             content.as_str(),
                             dev_comments,
-                        )
-                        .unwrap_or_else(|_e| {
-                            log::error!("BUG: Failed to create cluster for {}", path.display())
-                        });
+                        )?;
 
                         if recurse {
-                            let iter = traverse(path.as_path(), dev_comments)?;
+                            let iter = traverse(path.as_path(), dev_comments)?
+                                .map(|documentation| {
+                                    // Filter out duplicate _chunks_
+                                    // that `extend` would happily duplicate.
+                                    documentation
+                                        .into_iter()
+                                        .filter(|(origin, _chunks)| !docs.contains_key(origin))
+                                })
+                                .flatten()
+                                .collect::<Vec<_>>();
                             docs.extend(iter);
                         }
                     }
@@ -543,13 +549,10 @@ pub(crate) fn extract(
                         if content.is_empty() {
                             bail!("Common mark / markdown file is empty")
                         }
-                        docs.add_commonmark(
-                            ContentOrigin::CommonMarkFile(path.to_owned()),
-                            content.as_str(),
-                        )?;
+                        docs.add_commonmark(ContentOrigin::CommonMarkFile(path), content.as_str())?;
                     }
                     other => {
-                        debug!("Did not impl handling of {:?} type files", other);
+                        warn!("Did not impl handling of {:?} type files", other);
                         // TODO generate Documentation structs from non-file sources
                     }
                 }

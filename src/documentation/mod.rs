@@ -59,6 +59,11 @@ impl Documentation {
         }
     }
 
+    /// Check if a particular key is contained.
+    pub fn contains_key(&self, key: &ContentOrigin) -> bool {
+        self.index.contains_key(key)
+    }
+
     /// Check if the document contains any checkable items.
     #[inline(always)]
     pub fn is_empty(&self) -> bool {
@@ -77,37 +82,23 @@ impl Documentation {
     }
 
     /// Consuming iterator across content origins and associated sets of chunks.
-    #[inline(always)]
-    pub fn into_iter(self) -> impl Iterator<Item = (ContentOrigin, Vec<CheckableChunk>)> {
-        self.index.into_iter()
-    }
-
-    /// Consuming iterator across content origins and associated sets of chunks.
     pub fn into_par_iter(
         self,
     ) -> impl ParallelIterator<Item = (ContentOrigin, Vec<CheckableChunk>)> {
         self.index.into_par_iter()
     }
 
-    /// Join `self` with another doc to form a new one.
-    pub fn join(&mut self, other: Documentation) -> &mut Self {
+    /// Extend `self` by joining in other `Documentation`s.
+    pub fn extend<I, J>(&mut self, other: I)
+    where
+        I: IntoIterator<Item = (ContentOrigin, Vec<CheckableChunk>), IntoIter = J>,
+        J: Iterator<Item = (ContentOrigin, Vec<CheckableChunk>)>,
+    {
         other
             .into_iter()
             .for_each(|(origin, chunks): (_, Vec<CheckableChunk>)| {
                 let _ = self.add_inner(origin, chunks);
             });
-        self
-    }
-
-    /// Extend `self` by joining in other `Documentation`s.
-    pub fn extend<I, J>(&mut self, docs: I)
-    where
-        I: IntoIterator<Item = Documentation, IntoIter = J>,
-        J: Iterator<Item = Documentation>,
-    {
-        docs.into_iter().for_each(|other| {
-            self.join(other);
-        });
     }
 
     /// Adds a set of `CheckableChunk`s to the documentation to be checked.
@@ -206,6 +197,15 @@ impl Documentation {
             );
         });
         docs
+    }
+}
+
+impl IntoIterator for Documentation {
+    type Item = (ContentOrigin, Vec<CheckableChunk>);
+    type IntoIter = indexmap::map::IntoIter<ContentOrigin, Vec<CheckableChunk>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.index.into_iter()
     }
 }
 
