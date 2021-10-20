@@ -493,7 +493,7 @@ impl UserPicked {
 
         // TODO juck, uggly
         let mut direction = Direction::Forward;
-        loop {
+        'outer: loop {
             let opt_next = match direction {
                 Direction::Forward => suggestions_it.next(),
                 // FIXME TODO this is just plain wrong
@@ -524,28 +524,30 @@ impl UserPicked {
 
             let mut state = State::from(suggestion);
 
-            let mut pick = picked.user_input(&mut state, idx, count)?;
-            while pick == UserSelection::Help {
-                println!("{}", HELP);
-                pick = picked.user_input(&mut state, idx, count)?;
+            'inner: loop {
+                match picked.user_input(&mut state, idx, count)? {
+                    usel @ UserSelection::Abort | usel @ UserSelection::Quit => {
+                        let _ = ScopedRaw::restore_terminal();
+                        return Ok((picked, usel));
+                    }
+                    UserSelection::SkipFile => break 'outer,
+                    UserSelection::Previous => {
+                        warn!("Requires a iterator which works bidrectionally");
+                        continue 'inner;
+                    }
+                    UserSelection::Help => {
+                        println!("{}", HELP);
+                        continue 'inner;
+                    }
+                    UserSelection::Replacement(bandaid) => {
+                        picked.add_bandaid(&origin, bandaid);
+                        break 'inner;
+                    }
+                    UserSelection::Nop | UserSelection::Skip => {
+                        continue 'outer
+                    }
+                };
             }
-            match pick {
-                usel @ UserSelection::Abort | usel @ UserSelection::Quit => {
-                    let _ = ScopedRaw::restore_terminal();
-                    return Ok((picked, usel));
-                }
-                UserSelection::SkipFile => break,
-                UserSelection::Previous => {
-                    unimplemented!("Requires a iterator which works bidrectionally")
-                }
-                UserSelection::Help => {
-                    unreachable!("Help must not be reachable here, it is handled before")
-                }
-                UserSelection::Replacement(bandaid) => {
-                    picked.add_bandaid(&origin, bandaid);
-                }
-                _ => continue,
-            };
 
             direction = Direction::Forward;
         }
