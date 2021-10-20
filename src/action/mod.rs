@@ -356,7 +356,7 @@ impl Action {
         Ok(Finish::Success)
     }
 
-    /// Run the requested action.
+    /// Run the requested action _interactively_, waiting for user input.
     async fn run_fix_interactive(self, documents: Documentation, config: Config) -> Result<Finish> {
         let n_cpus = num_cpus::get();
 
@@ -377,7 +377,8 @@ impl Action {
                         interactive::UserPicked::select_interactive(origin.clone(), suggestions)?;
 
                     match user_sel {
-                        UserSelection::Quit | UserSelection::Abort => return Ok(Finish::Abort),
+                        UserSelection::Quit => break,
+                        UserSelection::Abort => return Ok(Finish::Abort),
                         UserSelection::Nop => collected_picks.extend(picked),
                         _ => unreachable!(
                             "All other variants are only internal to `select_interactive`. qed"
