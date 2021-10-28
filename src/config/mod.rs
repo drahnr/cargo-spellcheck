@@ -259,6 +259,13 @@ impl Default for Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use assert_matches::assert_matches;
+
+    #[test]
+    fn can_serialize_to_toml() {
+        let config = dbg!(Config::full());
+        assert_matches!(config.to_toml(), Ok(_s));
+    }
 
     #[test]
     fn all() {

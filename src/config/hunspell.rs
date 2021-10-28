@@ -88,15 +88,15 @@ pub struct HunspellConfig {
     #[serde(default)]
     pub use_builtin: bool,
 
+    #[serde(default = "default_tokenization_splitchars")]
+    pub tokenization_splitchars: String,
+
     /// Additional dictionaries for topic specific lingo.
     #[serde(default)]
     pub extra_dictionaries: Vec<PathBuf>,
     /// Additional quirks besides dictionary lookups.
     #[serde(default)]
     pub quirks: Quirks,
-
-    #[serde(default = "default_tokenization_splitchars")]
-    pub tokenization_splitchars: String,
 }
 
 impl Default for HunspellConfig {
