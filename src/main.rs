@@ -33,6 +33,8 @@ use self::errors::*;
 use log::{debug, info, trace, warn};
 use serde::Deserialize;
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 #[cfg(not(target_os = "windows"))]
 use signal_hook::{
     consts::signal::{SIGINT, SIGQUIT, SIGTERM},
@@ -70,6 +72,8 @@ impl ExitCode {
     }
 }
 
+static WRITE_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+
 /// Handle incoming signals.
 ///
 /// Only relevant for *-nix platforms.
@@ -80,6 +84,10 @@ fn signal_handler() {
     for s in signals.forever() {
         match s {
             SIGTERM | SIGINT | SIGQUIT => {
+                // Wait for potential writing to disk is finished.
+                while WRITE_IN_PROGRESS.load(Ordering::Acquire) {
+                    std::hint::spin_loop();
+                }
                 if let Err(e) = action::interactive::ScopedRaw::restore_terminal() {
                     warn!("Failed to restore terminal: {}", e);
                 }
