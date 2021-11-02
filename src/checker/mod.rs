@@ -10,8 +10,8 @@ use crate::errors::*;
 use log::debug;
 
 mod tokenize;
-use self::hunspell::HunspellChecker;
-use self::nlprules::NlpRulesChecker;
+pub(crate) use self::hunspell::HunspellChecker;
+pub(crate) use self::nlprules::NlpRulesChecker;
 pub(crate) use self::tokenize::*;
 
 #[cfg(feature = "hunspell")]
