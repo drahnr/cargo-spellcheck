@@ -73,7 +73,14 @@ macro_rules! end2end {
         end2end!($test, ContentOrigin::TestEntityRust, $n, DummyChecker);
     }};
 
-    ($test:expr, $origin:expr, $n:expr, $checker:ty) => {{
+    ($test:expr, $origin:expr, $n:expr, $checker:ty) => {
+        {
+            let cfg = dbg!(Default::default());
+            end2end!($test, $origin, $n, $checker, cfg);
+        }
+    };
+
+    ($test:expr, $origin:expr, $n:expr, $checker:ty, $cfg:expr) => {{
         let _ = env_logger::builder()
             .is_test(true)
             .filter_level(log::LevelFilter::Trace)
@@ -86,7 +93,7 @@ macro_rules! end2end {
         assert_eq!(dbg!(chunks).len(), 1);
         let chunk = &chunks[0];
         let _plain = chunk.erase_cmark();
-        let cfg = dbg!(Default::default());
+        let cfg = $cfg;
         dbg!(std::any::type_name::<$checker>());
         let checker = <$checker>::new(&cfg).expect("Checker construction works");
         let suggestions = checker
@@ -146,6 +153,57 @@ mod e2e {
     #[test]
     fn macro_doc_two_lines() {
         end2end!(chyrp_up!(["Alphy", "Beto"]), 2);
+    }
+
+    use crate::checker::HunspellChecker;
+
+    #[test]
+    fn issue_226() {
+        use crate::config::*;
+        use fancy_regex::Regex;
+
+        let transform_regex = [r#"\\\[()?:[1-9][0-9]*\\\]"#]
+            .iter().map(|&x| {
+            WrappedRegex(Regex::new(x).unwrap())
+        }).collect::<Vec<_>>();
+
+        let cfg = crate::config::HunspellConfig {
+            // FIXME splitchars
+            quirks: crate::config::Quirks {
+                transform_regex,
+                .. Default::default()
+            },
+            .. Default::default()
+        };
+
+        end2end!(
+            r####"
+/// X is [\[1790\]]
+///
+/// [\[1790\]]: https://ahoi.io
+struct X;
+            "####,
+            ContentOrigin::TestEntityRust,
+            0,
+            HunspellChecker,
+            cfg
+        );
+    }
+
+    #[test]
+    fn issue_227() {
+        // The test
+        end2end!(
+            r####"
+/// ```
+/// use std::path::PathBuf as A;
+#[doc = "// Hello"]
+/// use std::path::PathBuf as B;
+/// ```
+struct X;
+            "####,
+            0
+        );
     }
 
     #[test]
