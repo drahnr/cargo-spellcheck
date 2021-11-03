@@ -8,6 +8,15 @@ use proc_macro2::LineColumn;
 use std::convert::TryFrom;
 use std::fmt;
 
+/// Determine if a `CommentVariant`
+/// is a doc comment or not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommentVariantKlass {
+    Doc,
+    Dev,
+    CommonMark,
+}
+
 /// Track what kind of comment the literal is
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 #[non_exhaustive]
@@ -42,6 +51,18 @@ impl Default for CommentVariant {
 }
 
 impl CommentVariant {
+    /// Obtain the comment variant klass.
+    pub fn klass(&self) -> CommentVariantKlass {
+        match self {
+            Self::TripleSlash => CommentVariantKlass::Doc,
+            Self::DoubleSlashEM => CommentVariantKlass::Doc,
+            Self::MacroDocEq(_, _) => CommentVariantKlass::Doc,
+            Self::SlashAsteriskEM => CommentVariantKlass::Doc,
+            Self::SlashAsteriskAsterisk => CommentVariantKlass::Doc,
+            Self::CommonMark => CommentVariantKlass::CommonMark,
+            _ => CommentVariantKlass::Dev,
+        }
+    }
     /// Return the prefix string.
     ///
     /// Does not include whitespaces for `///` and `//!` variants!
