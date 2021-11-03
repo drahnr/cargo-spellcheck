@@ -73,12 +73,10 @@ macro_rules! end2end {
         end2end!($test, ContentOrigin::TestEntityRust, $n, DummyChecker);
     }};
 
-    ($test:expr, $origin:expr, $n:expr, $checker:ty) => {
-        {
-            let cfg = dbg!(Default::default());
-            end2end!($test, $origin, $n, $checker, cfg);
-        }
-    };
+    ($test:expr, $origin:expr, $n:expr, $checker:ty) => {{
+        let cfg = dbg!(Default::default());
+        end2end!($test, $origin, $n, $checker, cfg);
+    }};
 
     ($test:expr, $origin:expr, $n:expr, $checker:ty, $cfg:expr) => {{
         let _ = env_logger::builder()
@@ -163,17 +161,17 @@ mod e2e {
         use fancy_regex::Regex;
 
         let transform_regex = [r#"\\\[()?:[1-9][0-9]*\\\]"#]
-            .iter().map(|&x| {
-            WrappedRegex(Regex::new(x).unwrap())
-        }).collect::<Vec<_>>();
+            .iter()
+            .map(|&x| WrappedRegex(Regex::new(x).unwrap()))
+            .collect::<Vec<_>>();
 
         let cfg = crate::config::HunspellConfig {
             // FIXME splitchars
             quirks: crate::config::Quirks {
                 transform_regex,
-                .. Default::default()
+                ..Default::default()
             },
-            .. Default::default()
+            ..Default::default()
         };
 
         end2end!(
@@ -202,7 +200,10 @@ struct X;
 /// ```
 struct X;
             "####,
-            0
+            ContentOrigin::TestEntityRust,
+            0,
+            DummyChecker,
+            Default::default()
         );
     }
 

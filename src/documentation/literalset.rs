@@ -28,11 +28,11 @@ impl LiteralSet {
     ///
     /// Returns literal within the Err variant if not adjacent
     pub fn add_adjacent(&mut self, literal: TrimmedLiteral) -> Result<(), TrimmedLiteral> {
-        if literal.variant() != self.variant {
+        if literal.variant().klass() != self.variant.klass() {
             log::debug!(
                 "Adjacent literal is not the same comment variant: {:?} vs {:?}",
-                literal.variant(),
-                self.variant
+                literal.variant().klass(),
+                self.variant.klass()
             );
             return Err(literal);
         }
