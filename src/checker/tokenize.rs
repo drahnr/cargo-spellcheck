@@ -116,13 +116,20 @@ where
             // Also allows i.e. `ink!'s` to be detected as a single
             // token.
             while let Some(token) = iter.next() {
-                let char_range = token.span().char().clone();
+                let char_range = dbg!(&token).span().char().clone();
 
                 let space = iter
                     .peek()
                     .map(|upcoming| upcoming.has_space_before())
                     .unwrap_or(false);
                 let s = token.word().as_str();
+                // TODO workaround for a bug in srx
+                // TODO that does not split `[7f` after `[` as expected
+                if s.starts_with('[') && char_range.len() > 1 {
+                    acc.push((char_range.start)..(char_range.start + 1));
+                    acc.push((char_range.start + 1)..(char_range.end));
+                    continue;
+                }
                 let belongs_to_genitive_s = match s {
                     "(" | ")" | r#"""# => false,
                     _ => true,
@@ -167,6 +174,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use crate::sub_chars;
+
     use super::*;
 
     #[test]
@@ -288,6 +297,20 @@ mod tests {
         ranges
             .zip([0_usize..3].iter().cloned())
             .for_each(|(is, expect)| {
+                assert_eq!(is, expect);
+            });
+    }
+
+    #[test]
+    fn tokenize_square_bracket_foo_square_bracket() {
+        let text = r#"[1337]"#;
+        let tok = tokenizer::<PathBuf>(None).unwrap();
+        let ranges = apply_tokenizer(&tok, text);
+
+        ranges
+            .zip([0_usize..1, 1..5, 5..6].iter().cloned())
+            .for_each(|(is, expect)| {
+                dbg!((sub_chars(text, is.clone()), sub_chars(text, expect.clone())));
                 assert_eq!(is, expect);
             });
     }
