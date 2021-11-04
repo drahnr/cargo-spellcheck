@@ -30,7 +30,7 @@ Usage:
     cargo-spellcheck [(-v...|-q)] [--jobs=<jobs>] config (--user|--stdout|--cfg=<cfg>) [--checkers=<checkers>] [--force]
     cargo-spellcheck [(-v...|-q)] [--jobs=<jobs>] list-files [--skip-readme] [[--recursive] <paths>... ]
     cargo-spellcheck [(-v...|-q)] [--jobs=<jobs>] [check] [--fix] [--cfg=<cfg>] [--code=<code>] [--dev-comments] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
-    cargo-spellcheck --version
+    cargo-spellcheck --version [-v...]
     cargo-spellcheck --help
 
 Options:
