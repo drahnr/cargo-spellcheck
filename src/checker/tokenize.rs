@@ -116,7 +116,7 @@ where
             // Also allows i.e. `ink!'s` to be detected as a single
             // token.
             while let Some(token) = iter.next() {
-                let char_range = dbg!(&token).span().char().clone();
+                let char_range = token.span().char().clone();
 
                 let space = iter
                     .peek()
