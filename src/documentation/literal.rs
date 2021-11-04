@@ -12,8 +12,11 @@ use std::fmt;
 /// is a doc comment or not.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommentVariantKlass {
+    /// Comment variant will end up in documentation.
     Doc,
+    /// Comment variant is only visible in source code.
     Dev,
+    /// It's a common mark file, and we actually don't know.
     CommonMark,
 }
 
