@@ -9,9 +9,9 @@ use std::convert::TryFrom;
 use std::fmt;
 
 /// Determine if a `CommentVariant`
-/// is a doc comment or not.
+/// is a documentation comment or not.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CommentVariantKlass {
+pub enum CommentVariantCategory {
     /// Comment variant will end up in documentation.
     Doc,
     /// Comment variant is only visible in source code.
@@ -54,16 +54,16 @@ impl Default for CommentVariant {
 }
 
 impl CommentVariant {
-    /// Obtain the comment variant klass.
-    pub fn klass(&self) -> CommentVariantKlass {
+    /// Obtain the comment variant category.
+    pub fn category(&self) -> CommentVariantCategory {
         match self {
-            Self::TripleSlash => CommentVariantKlass::Doc,
-            Self::DoubleSlashEM => CommentVariantKlass::Doc,
-            Self::MacroDocEq(_, _) => CommentVariantKlass::Doc,
-            Self::SlashAsteriskEM => CommentVariantKlass::Doc,
-            Self::SlashAsteriskAsterisk => CommentVariantKlass::Doc,
-            Self::CommonMark => CommentVariantKlass::CommonMark,
-            _ => CommentVariantKlass::Dev,
+            Self::TripleSlash => CommentVariantCategory::Doc,
+            Self::DoubleSlashEM => CommentVariantCategory::Doc,
+            Self::MacroDocEq(_, _) => CommentVariantCategory::Doc,
+            Self::SlashAsteriskEM => CommentVariantCategory::Doc,
+            Self::SlashAsteriskAsterisk => CommentVariantCategory::Doc,
+            Self::CommonMark => CommentVariantCategory::CommonMark,
+            _ => CommentVariantCategory::Dev,
         }
     }
     /// Return the prefix string.
