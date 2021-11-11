@@ -79,5 +79,5 @@ the first time!
 - [Features and Roadmap](docs/features.md)
 - [Remedies for common issues](docs/remedies.md)
 - [Configuration](docs/configuration.md)
-- [Availabble Checkers](docs/checkers.md)
+- [Available Checkers](docs/checkers.md)
 - [Automation of `cargo-spellcheck`](docs/automation.md)

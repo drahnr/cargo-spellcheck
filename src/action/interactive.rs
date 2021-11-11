@@ -103,7 +103,7 @@ where
     /// The content the user provided for the suggestion, if any.
     pub custom_replacement: String,
     pub cursor_offset: u16,
-    /// Back ticked orignal content
+    /// Back ticked original content
     pub backticked_original: String,
     /// Which index to show as highlighted.
     pub pick_idx: usize,
