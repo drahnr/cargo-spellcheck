@@ -134,6 +134,24 @@ impl CommentVariant {
     }
 }
 
+/// Track the style of padding for multiline comments
+#[derive(Clone, Debug, Hash, PartialEq)]
+pub enum CommentPaddingStyle {
+    /// " * ", with container for number of spaces
+    AsteriskSpace {
+        /// Number of leading spaces
+        leading_spaces: usize,
+    },
+    /// Absence of padding
+    NoPadding,
+}
+
+impl Default for CommentPaddingStyle {
+    fn default() -> Self {
+        Self::NoPadding
+    }
+}
+
 /// A literal with meta info where the first and list whitespace may be found.
 #[derive(Clone)]
 pub struct TrimmedLiteral {
@@ -141,13 +159,15 @@ pub struct TrimmedLiteral {
     variant: CommentVariant,
     /// The span of rendered content, minus pre and post already applied.
     span: Span,
+    /// The style of the padding for comments, if present
+    padding_style: CommentPaddingStyle,
     /// the complete rendered string including post and pre.
     rendered: String,
     /// Literal prefix length.
     pre: usize,
     /// Literal postfix length.
     post: usize,
-    /// Length of rendered **minus** `pre` and `post` in UTF-8 characters.
+    /// Length of rendered **minus** `pre`, `post`, and `padding` in UTF-8 characters.
     len_in_chars: usize,
     len_in_bytes: usize,
 }
@@ -169,6 +189,9 @@ impl std::cmp::PartialEq for TrimmedLiteral {
         if self.span != other.span {
             return false;
         }
+        if self.padding_style != other.padding_style {
+            return false;
+        }
         if self.variant != other.variant {
             return false;
         }
@@ -184,6 +207,7 @@ impl std::hash::Hash for TrimmedLiteral {
         self.variant.hash(hasher);
         self.rendered.hash(hasher);
         self.span.hash(hasher);
+        self.padding_style.hash(hasher);
         self.pre.hash(hasher);
         self.post.hash(hasher);
         self.len_in_bytes.hash(hasher);
@@ -336,6 +360,24 @@ fn detect_comment_variant(
     Ok((variant, span, pre, post))
 }
 
+fn detect_and_remove_padding(content: &str) -> (CommentPaddingStyle, usize) {
+    lazy_static! {
+        static ref PADDING_STR: Regex =
+            Regex::new(r##"(?m)^\s\*\s"##).expect("PADDING_STR regex compiles");
+    };
+
+    if let Ok(Some(_)) = PADDING_STR.find(content) {
+        let padding = CommentPaddingStyle::AsteriskSpace { leading_spaces: 1 };
+        let clean_content = PADDING_STR.replace_all(content, "");
+        return (
+            padding,
+            content.chars().count() - clean_content.chars().count(),
+        );
+    }
+
+    (CommentPaddingStyle::NoPadding, content.len())
+}
+
 impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
     type Error = Error;
     fn try_from((content, literal): (&str, proc_macro2::Literal)) -> Result<Self> {
@@ -377,6 +419,14 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
         log::trace!("extracted from source: >{}< @ {:?}", rendered, span);
         let (variant, span, pre, post) = detect_comment_variant(content, &rendered, span)?;
 
+        let (padding_style, padding) = match variant {
+            CommentVariant::SlashStar
+            | CommentVariant::SlashAsterisk
+            | CommentVariant::SlashAsteriskEM
+            | CommentVariant::SlashAsteriskAsterisk => detect_and_remove_padding(content),
+            _ => (CommentPaddingStyle::NoPadding, 0),
+        };
+
         let len_in_chars = rendered_len.saturating_sub(post + pre);
 
         if let Some(span_len) = span.one_line_len() {
@@ -395,6 +445,7 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
             len_in_bytes,
             rendered,
             span,
+            padding_style,
             pre,
             post,
         };
@@ -432,6 +483,7 @@ impl TrimmedLiteral {
         Ok(TrimmedLiteral {
             variant,
             span,
+            padding_style: CommentPaddingStyle::NoPadding,
             rendered: content.to_string(),
             pre,
             post,
@@ -495,6 +547,11 @@ impl TrimmedLiteral {
     /// Covers only the content, no marker or helper characters.
     pub fn span(&self) -> Span {
         self.span.clone()
+    }
+
+    /// The padding style for this literal.
+    pub fn padding_style(&self) -> CommentPaddingStyle {
+        self.padding_style.clone()
     }
 
     /// Access the characters via an iterator.
@@ -654,6 +711,23 @@ mod tests {
         });
     }
 
+    #[test]
+    fn padding_style_detect() {
+        let result = "/**\ndoc\ndoc\n */".to_string();
+        assert_matches!(
+            detect_and_remove_padding("/**\n * doc\n * doc\n */"),
+            (
+                CommentPaddingStyle::AsteriskSpace { leading_spaces: 1 },
+                result
+            )
+        );
+        let content = "/**\n doc\n doc\n */".to_string();
+        assert_matches!(
+            detect_and_remove_padding(&content),
+            (CommentPaddingStyle::NoPadding, content)
+        );
+    }
+
     macro_rules! block_comment_test {
         ($name:ident, $content:literal) => {
             #[test]
@@ -684,7 +758,7 @@ mod tests {
     block_comment_test!(
         trimmed_multi_doc,
         "/**
-mood
+ * mood
 */"
     );
     block_comment_test!(
