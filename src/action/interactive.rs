@@ -103,6 +103,8 @@ where
     /// The content the user provided for the suggestion, if any.
     pub custom_replacement: String,
     pub cursor_offset: u16,
+    /// Back ticked orignal content
+    pub backticked_original: String,
     /// Which index to show as highlighted.
     pub pick_idx: usize,
     /// Total number of pickable slots.
@@ -115,6 +117,15 @@ impl<'s, 't> From<&'s Suggestion<'t>> for State<'s, 't> {
             suggestion,
             custom_replacement: String::new(),
             cursor_offset: 0,
+            // TODO only suggest this if this doesn't have spaces and/or parses with `ap_syntax`
+            // TODO and check the identifiers against everything we've seen in the codebase
+            // TODO this has a few issues though, that partial runs might be unaware of all `Ident`s
+            // TODO so there should probably be a strict mode for full runs, that checks the existence
+            // TODO and the default, partial mode that is more forgiving
+            backticked_original: format!(
+                "`{}`",
+                sub_chars(suggestion.chunk.as_str(), suggestion.range.clone())
+            ),
             // start at a suggestion, not the custom field or ticked suggestion
             pick_idx: 2_usize,
             // all items provided by the checkers plus the user provided
@@ -147,16 +158,22 @@ where
         self.pick_idx == 0
     }
 
+    pub fn is_ticked_entry(&self) -> bool {
+        self.pick_idx == 1
+    }
+
     /// Convert the replacement to a `BandAid`
     pub fn to_bandaid(&self) -> BandAid {
-        if self.is_custom_entry() {
+        if self.is_ticked_entry() {
+            BandAid::from((self.backticked_original.clone(), &self.suggestion.span))
+        } else if self.is_custom_entry() {
             BandAid::from((self.custom_replacement.clone(), &self.suggestion.span))
         } else {
             let replacement = self
                 .suggestion
                 .replacements
                 .get(self.pick_idx)
-                .expect("User Pick index is out of bounds");
+                .expect("User Pick index is never out of bounds. qed");
             BandAid::from((replacement.to_owned(), &self.suggestion.span))
         }
     }
@@ -293,21 +310,11 @@ impl UserPicked {
             state.custom_replacement.as_str()
         };
 
-        // TODO only suggest this if this doesn't have spaces and/or parses with `ap_syntax`
-        // TODO and check the identifiers against everything we've seen in the codebase
-        // TODO this has a few issues though, that partial runs might be unaware of all `Ident`s
-        // TODO so there should probably be a strict mode for full runs, that checks the existence
-        // TODO and the default, partial mode that is more forgiving
-        let backtick_wrapper = format!(
-            "`{}`",
-            sub_chars(
-                state.suggestion.chunk.as_str(),
-                state.suggestion.range.clone()
-            )
-        );
-
         std::iter::once((&custom, custom_content))
-            .chain(std::iter::once((&others, backtick_wrapper.as_str())))
+            .chain(std::iter::once((
+                &others,
+                state.backticked_original.as_str(),
+            )))
             .chain(
                 state
                     .suggestion
