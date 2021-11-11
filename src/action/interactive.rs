@@ -127,7 +127,7 @@ impl<'s, 't> From<&'s Suggestion<'t>> for State<'s, 't> {
                 sub_chars(suggestion.chunk.as_str(), suggestion.range.clone())
             ),
             // start at a suggestion, not the custom field or ticked suggestion
-            pick_idx: 2_usize,
+            pick_idx: 1_usize + (!suggestion.replacements.is_empty()) as usize,
             // all items provided by the checkers plus the user provided
             n_items: suggestion.replacements.len() + 2,
         }
@@ -172,7 +172,7 @@ where
             let replacement = self
                 .suggestion
                 .replacements
-                .get(self.pick_idx)
+                .get(self.pick_idx.saturating_sub(2)) // there is a static offset of 2
                 .expect("User Pick index is never out of bounds. qed");
             BandAid::from((replacement.to_owned(), &self.suggestion.span))
         }
@@ -189,7 +189,18 @@ pub struct UserPicked {
 impl UserPicked {
     /// Count the number of suggestions across all files in total.
     pub fn total_count(&self) -> usize {
-        self.bandaids.iter().map(|(_origin, vec)| vec.len()).sum()
+        self.bandaids
+            .iter()
+            .map(|(_origin, bandaids)| bandaids.len())
+            .sum()
+    }
+
+    /// Are there any user picks?
+    pub fn is_empty(&self) -> bool {
+        self.bandaids
+            .iter()
+            .find(|(_origin, bandaids)| !bandaids.is_empty())
+            .is_none()
     }
 
     /// Apply a single `BandAid`

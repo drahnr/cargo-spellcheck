@@ -362,24 +362,41 @@ impl Action {
 
         let checkers = Checkers::new(config)?;
 
-        let mut pick_stream = stream::iter(documents.iter())
-            .map(|(origin, chunks)| {
+        let n = documents.entry_count();
+        log::debug!("Running checkers on all documents {}", n);
+        let mut pick_stream = stream::iter(documents.iter().enumerate())
+            .map(|(mut idx, (origin, chunks))| {
+                // align the debug output with the user output
+                idx += 1;
+                log::trace!("Running checkers on {}/{},{:?}", idx, n, &origin);
                 let suggestions = checkers.check(origin, &chunks[..]);
-                async move { Ok::<_, color_eyre::eyre::Report>((origin, suggestions?)) }
+                async move { Ok::<_, color_eyre::eyre::Report>((idx, origin, suggestions?)) }
             })
-            .buffered(n_cpus);
+            .buffered(n_cpus)
+            .fuse();
 
         let mut collected_picks = UserPicked::default();
         while let Some(result) = pick_stream.next().await {
             match result {
-                Ok((origin, suggestions)) => {
+                Ok((idx, origin, suggestions)) => {
                     let (picked, user_sel) =
                         interactive::UserPicked::select_interactive(origin.clone(), suggestions)?;
 
                     match user_sel {
                         UserSelection::Quit => break,
                         UserSelection::Abort => return Ok(Finish::Abort),
-                        UserSelection::Nop => collected_picks.extend(picked),
+                        UserSelection::Nop if !picked.is_empty() => {
+                            log::debug!(
+                                "User picked patches to be applied for {}/{},{:?}",
+                                idx,
+                                n,
+                                &origin
+                            );
+                            collected_picks.extend(picked);
+                        }
+                        UserSelection::Nop => {
+                            log::debug!("Nothing to do for {}/{},{:?}", idx, n, &origin);
+                        }
                         _ => unreachable!(
                             "All other variants are only internal to `select_interactive`. qed"
                         ),
