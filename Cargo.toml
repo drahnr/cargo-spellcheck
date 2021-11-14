@@ -83,6 +83,7 @@ console = "0.15"
 assert_matches = "1"
 maplit = "1"
 serde_plain = "1"
+syscalls = "0.5"
 
 [features]
 default = ["hunspell", "nlprules"]
