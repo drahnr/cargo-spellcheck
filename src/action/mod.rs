@@ -625,28 +625,4 @@ Icecream truck"#
         }];
         verify_correction!("A🐢C", patches, "A🐢CQ");
     }
-
-    #[test]
-    #[cfg(not(target_os = "windows"))]
-    fn atomic_file_write() {
-        let _signalthread = std::thread::spawn(signal_handler);
-        use signal_hook::consts::signal::SIGINT;
-        let _ = env_logger::Builder::new()
-            .filter_level(log::LevelFilter::Trace)
-            .is_test(true)
-            .try_init();
-
-        WRITE_IN_PROGRESS.store(true, Ordering::Release);
-        let pid = std::process::id();
-        unsafe {
-            syscalls::syscall2(
-                syscalls::SYS_kill,
-                pid.try_into().unwrap(),
-                SIGINT as usize, //SIGINT.try_into().unwrap(),
-            )
-            .expect("Sending signal works.");
-        }
-        log::info!("not exited yet..");
-        WRITE_IN_PROGRESS.store(false, Ordering::Release);
-    }
 }
