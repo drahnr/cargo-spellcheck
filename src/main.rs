@@ -84,14 +84,14 @@ fn signal_handler() {
     for s in signals.forever() {
         match s {
             SIGTERM | SIGINT | SIGQUIT => {
-                // Wait for potential writing to disk is finished.
+                // Wait for potential writing to disk to be finished.
                 while WRITE_IN_PROGRESS.load(Ordering::Acquire) {
                     std::hint::spin_loop();
                 }
                 if let Err(e) = action::interactive::ScopedRaw::restore_terminal() {
                     warn!("Failed to restore terminal: {}", e);
                 }
-                std::process::exit(130);
+                //std::process::exit(130);
             }
             sig => warn!("Received unhandled signal {}, ignoring", sig),
         }

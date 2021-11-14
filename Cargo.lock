@@ -234,6 +234,7 @@ dependencies = [
  "serde_plain",
  "signal-hook",
  "syn",
+ "syscalls",
  "thiserror",
  "tokio",
  "toml",
@@ -1315,6 +1316,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "paste"
+version = "1.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0744126afe1a6dd7f394cb50a716dbe086cb06e255e53d8d0185d82828358fb5"
+
+[[package]]
 name = "peeking_take_while"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2041,6 +2048,16 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-xid",
+]
+
+[[package]]
+name = "syscalls"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a837f64f72473acde47fbd13431e83fc9081e52ae49ea1430003831536ed04d7"
+dependencies = [
+ "cc",
+ "paste",
 ]
 
 [[package]]
