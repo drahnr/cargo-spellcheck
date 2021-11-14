@@ -630,7 +630,7 @@ Icecream truck"#
     #[cfg(not(target_os = "windows"))]
     fn atomic_file_write() {
         let _signalthread = std::thread::spawn(signal_handler);
-        use signal_hook::consts::signal::{SIGINT, SIGQUIT};
+        use signal_hook::consts::signal::SIGINT;
         let _ = env_logger::Builder::new()
             .filter_level(log::LevelFilter::Trace)
             .is_test(true)
@@ -646,7 +646,7 @@ Icecream truck"#
             )
             .expect("Sending signal works.");
         }
+        log::info!("not exited yet..");
         WRITE_IN_PROGRESS.store(false, Ordering::Release);
-        signalthread.join().expect("Joining threads works");
     }
 }

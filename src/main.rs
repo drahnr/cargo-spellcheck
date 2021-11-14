@@ -91,7 +91,7 @@ fn signal_handler() {
                 if let Err(e) = action::interactive::ScopedRaw::restore_terminal() {
                     warn!("Failed to restore terminal: {}", e);
                 }
-                //std::process::exit(130);
+                std::process::exit(130);
             }
             sig => warn!("Received unhandled signal {}, ignoring", sig),
         }
