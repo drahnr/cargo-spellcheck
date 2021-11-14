@@ -105,3 +105,7 @@ debug = true
 
 [package.metadata.spellcheck]
 config = ".config/spellcheck.toml"
+
+[[bin]]
+name = "signal-handler-test"
+path = "test/signal_handler.rs"
