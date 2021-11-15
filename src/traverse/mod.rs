@@ -551,9 +551,11 @@ pub(crate) fn extract(
                         }
                         docs.add_commonmark(ContentOrigin::CommonMarkFile(path), content.as_str())?;
                     }
-                    other => {
-                        warn!("Did not impl handling of {:?} type files", other);
-                        // TODO generate Documentation structs from non-file sources
+                    CheckEntity::ManifestDescription(path, content) => {
+                        if content.is_empty() {
+                            bail!("Cargo.toml manifest description field is empty")
+                        }
+                        docs.add_cargo_manifest_description(path, content.as_str())?;
                     }
                 }
                 Ok(docs)
@@ -609,7 +611,7 @@ mod tests {
             maplit::hashset![
                 CheckEntity::Markdown(demo_dir().join("README.md")),
                 CheckEntity::ManifestDescription(demo_dir().join("Cargo.toml"),
-                    "A silly demo with plenty of spelling mistakes for cargo-spellcheck demos and CI".to_string()
+                    "A silly demo with plenty of spelling misteakes for cargo-spellcheck demos and CI".to_string()
                 ),
             ]
         );
@@ -718,6 +720,7 @@ mod tests {
     #[test]
     fn traverse_manifest_1() {
         extract_test!(["Cargo.toml"] + false => [
+            "Cargo.toml",
             "README.md",
             "src/lib.rs",
             "src/main.rs",
@@ -752,6 +755,7 @@ mod tests {
     ]);
 
     extract_test!(traverse_manifest_dir_rec, ["."] + true => [
+        "Cargo.toml",
         "README.md",
         "src/lib.rs",
         "src/main.rs",
@@ -768,6 +772,7 @@ mod tests {
     ]);
 
     extract_test!(traverse_manifest_rec, ["Cargo.toml"] + true => [
+        "Cargo.toml",
         "README.md",
         "src/lib.rs",
         "src/main.rs",
