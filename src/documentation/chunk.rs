@@ -15,6 +15,8 @@ use crate::{util::sub_chars, Range, Span};
 /// Definition of the source of a checkable chunk
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub enum ContentOrigin {
+    /// A `Cargo.toml` manifest that contains a `description` field.
+    CargoManifestDescription(PathBuf),
     /// A common mark file at given path.
     CommonMarkFile(PathBuf),
     /// A rustdoc comment, part of file reference by path in span.
@@ -38,6 +40,7 @@ impl ContentOrigin {
     /// `/tmp/test/entity.md`.
     pub fn as_path(&self) -> &Path {
         match self {
+            Self::CargoManifestDescription(path) => path.as_path(),
             Self::CommonMarkFile(path) => path.as_path(),
             Self::RustDocTest(path, _) => path.as_path(),
             Self::RustSourceFile(path) => path.as_path(),

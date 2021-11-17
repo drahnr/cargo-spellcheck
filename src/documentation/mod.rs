@@ -126,6 +126,39 @@ impl Documentation {
         Ok(())
     }
 
+    /// Adds a content string to the documentation sourced from the `description`
+    /// field in a `Cargo.toml` manifest.
+    pub fn add_cargo_manifest_description(&mut self, path: PathBuf, content: &str) -> Result<()> {
+        let origin = ContentOrigin::CargoManifestDescription(path);
+        // extract the full content span and range
+        let start = LineColumn { line: 1, column: 0 };
+        let end = content
+            .lines()
+            .enumerate()
+            .last()
+            .map(|(idx, linecontent)| (idx + 1, linecontent))
+            .map(|(linenumber, linecontent)| LineColumn {
+                line: linenumber,
+                column: linecontent.chars().count(),
+            })
+            .ok_or_else(|| {
+                eyre!("Cargo.toml manifest description does not contain a single line")
+            })?;
+        let span = Span { start, end };
+        let source_mapping = indexmap::indexmap! {
+            0..content.chars().count() => span
+        };
+        self.add_inner(
+            origin,
+            vec![CheckableChunk::from_str(
+                content,
+                source_mapping,
+                CommentVariant::Unknown,
+            )],
+        );
+        Ok(())
+    }
+
     /// Adds a common mark content str to the documentation.
     pub fn add_commonmark(&mut self, origin: ContentOrigin, content: &str) -> Result<()> {
         // extract the full content span and range
@@ -183,6 +216,9 @@ impl Documentation {
             }
             origin @ ContentOrigin::RustSourceFile(_) => {
                 docs.add_rust(origin, content, dev_comments)
+            }
+            ContentOrigin::CargoManifestDescription(path) => {
+                docs.add_cargo_manifest_description(path, content)
             }
             origin @ ContentOrigin::CommonMarkFile(_) => docs.add_commonmark(origin, content),
             #[cfg(test)]

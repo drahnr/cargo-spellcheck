@@ -260,6 +260,7 @@ impl Action {
         bandaids: impl IntoIterator<Item = BandAid>,
     ) -> Result<()> {
         match origin {
+            ContentOrigin::CargoManifestDescription(path) => self.correct_file(path, bandaids),
             ContentOrigin::CommonMarkFile(path) => self.correct_file(path, bandaids),
             ContentOrigin::RustSourceFile(path) => self.correct_file(path, bandaids),
             ContentOrigin::RustDocTest(path, _span) => self.correct_file(path, bandaids),
