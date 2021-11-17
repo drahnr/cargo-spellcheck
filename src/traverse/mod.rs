@@ -806,7 +806,9 @@ mod tests {
     extract_test!(traverse_dir_wo_manifest, ["member"] + true => [
         "member/true/lib.rs",
         "member/true/README.md",
+        "member/true/Cargo.toml",
         "member/procmacro/src/lib.rs",
+        "member/procmacro/Cargo.toml",
         "member/stray.rs",
     ]);
 }
