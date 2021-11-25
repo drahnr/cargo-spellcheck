@@ -107,6 +107,10 @@ fn run() -> Result<ExitCode> {
     match args.action() {
         Action::Version => {
             println!("cargo-spellcheck {}", env!("CARGO_PKG_VERSION"));
+            if args.flag_verbose > 0 {
+                println!("hunspell {}", env!("CHECKER_HUNSPELL_VERSION"));
+                println!("nlprules {}", env!("CHECKER_NLPRULE_VERSION"));
+            }
             return Ok(ExitCode::Success);
         }
         Action::Help => {

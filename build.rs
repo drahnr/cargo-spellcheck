@@ -3,6 +3,22 @@ use std::io::BufReader;
 use std::path::PathBuf;
 use xz2::bufread::{XzDecoder, XzEncoder};
 
+fn extract_version<'a>(manifest: &'a cargo_toml::Manifest, pkg_name: &str) -> Option<&'a str> {
+    let (_, dependency) = manifest
+        .dependencies
+        .get_key_value(pkg_name)?;
+    let version = dependency
+        .detail()
+            .map(|x| x.version.as_ref().map(|x| x.as_str())).flatten()?;
+    let version = match version {
+        x if x.starts_with("=") => &version[1..],
+        x if x.starts_with("<=") || x.starts_with(">=") => &version[2..],
+        x if x.starts_with("*") => panic!("Don't be silly."),
+        _ => version,
+    };
+    Some(version)
+}
+
 fn main() -> std::result::Result<(), Box<(dyn std::error::Error + 'static)>> {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=Cargo.toml");
@@ -10,24 +26,46 @@ fn main() -> std::result::Result<(), Box<(dyn std::error::Error + 'static)>> {
     let out = env::var("OUT_DIR").expect("OUT_DIR exists in env vars. qed");
     let out = PathBuf::from(out);
 
+    const MISSING: &str = "NOT COMPILED IN";
+    if !cfg!(feature = "hunspell") {
+        println!("cargo:rustc-env=CHECKER_NLPRULE_VERSION={}", MISSING);
+    }
+    if !cfg!(feature = "nlprules") {
+        println!("cargo:rustc-env=CHECKER_HUNSPELL_VERSION={}", MISSING);
+    }
+
+    // extract the version from the manifest.
+    // only accept defined versions, no git dependencies or whatever
+    let manifest = std::path::PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST exists in env vars. qed")).join("Cargo.toml");
+    let manifest = cargo_toml::Manifest::from_path(manifest)?;
+    #[cfg(feature = "hunspell")]
+    {
+        let version = extract_version(&manifest, "hunspell-rs").expect("Hunspell must be present. qed");
+        println!("cargo:rustc-env=CHECKER_HUNSPELL_VERSION={}", version);
+    }
     #[cfg(feature = "nlprules")]
     {
+        let nlprule_version = extract_version(&manifest, "nlprule").expect("Hunspell must be present. qed");
+        println!("cargo:rustc-env=CHECKER_NLPRULE_VERSION={}", nlprule_version);
+
         const COMPRESSION_EXTENSION: &str = "xz";
         const ARTIFACTS_DIR: &str = "nlprule-data";
 
-        println!("cargo:rerun-if-changed=nlprule-data/en_rules.bin.xz");
-        println!("cargo:rerun-if-changed=nlprule-data/en_tokenizer.bin.xz");
+        let cwd = env::current_dir().expect("Current dir exists. qed");
+        let cache_dir = cwd.join(ARTIFACTS_DIR).join(nlprule_version).join("en");
+        std::fs::create_dir_all(&cache_dir)?;
+        println!("cargo:rerun-if-changed={}/en_rules.bin.{}", cache_dir.display(), COMPRESSION_EXTENSION);
+        println!("cargo:rerun-if-changed={}/en_tokenizer.bin.{}", cache_dir.display(), COMPRESSION_EXTENSION);
 
         println!("cargo:rerun-if-changed={}/en_rules.bin", out.display());
         println!("cargo:rerun-if-changed={}/en_tokenizer.bin", out.display());
 
-        let cwd = env::current_dir().expect("Current dir must exist. qed");
-
-        let cache_dir = Some(cwd.join(ARTIFACTS_DIR));
-
-        nlprule_build::BinaryBuilder::new(&["en"], &out)
+        let builder = nlprule_build::BinaryBuilder::new(&["en"], &out);
+        builder
+            .version(nlprule_version)
+            .out_dir(out)
             .fallback_to_build_dir(false)
-            .cache_dir(cache_dir)
+            .cache_dir(Some(cache_dir))
             .transform(
                 |source, mut sink| {
                     let mut encoder = XzEncoder::new(BufReader::new(source), 9);
