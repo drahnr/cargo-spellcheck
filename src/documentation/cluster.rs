@@ -16,26 +16,26 @@ pub struct Clusters {
 impl Clusters {
     /// Only works if the file is processed line by line, otherwise requires a
     /// adjacency list.
-    fn process_literal(&mut self, source: &str, literal: proc_macro2::Literal) -> Result<()> {
-        let literal = TrimmedLiteral::try_from((source, literal))?;
+    fn process_literal(&mut self, source: &str, span: Span) -> Result<()> {
+        let trimmed_literal = TrimmedLiteral::try_from((source, span))?;
         if let Some(cls) = self.set.last_mut() {
-            if let Err(literal) = cls.add_adjacent(literal) {
+            if let Err(trimmed_literal) = cls.add_adjacent(trimmed_literal) {
                 trace!(target: "documentation",
                     "appending, but failed to append: {:?} to set {:?}",
-                    &literal,
+                    &trimmed_literal,
                     &cls
                 );
-                self.set.push(LiteralSet::from(literal))
+                self.set.push(LiteralSet::from(trimmed_literal))
             } else {
                 trace!("successfully appended to existing: {:?} to set", &cls);
             }
         } else {
-            self.set.push(LiteralSet::from(literal));
+            self.set.push(LiteralSet::from(trimmed_literal));
         }
         Ok(())
     }
 
-    /// Helper function to parse a stream and associated the found literals
+    /// Helper function to parse a stream and associate the found literals.
     fn parse_token_tree(&mut self, source: &str, stream: proc_macro2::TokenStream) -> Result<()> {
         let mut iter = stream.into_iter();
         while let Some(tree) = iter.next() {
@@ -64,26 +64,41 @@ impl Clusters {
                         continue;
                     }
 
-                    let comment = iter.next();
-                    if comment.is_none() {
-                        continue;
-                    }
-                    let comment = comment.unwrap();
-                    if let TokenTree::Literal(literal) = comment {
-                        trace!(target: "documentation",
-                            "Found doc literal at {:?}: {:?}",
-                            <Span as TryInto<Range>>::try_into(Span::from(literal.span())),
-                            literal
-                        );
-                        if let Err(e) = self.process_literal(source, literal) {
-                            log::error!(
-                                "BUG: Failed to guarantee literal content/span integrity: {}",
-                                e
-                            );
-                            continue;
-                        }
+                    let comment = if let Some(comment) = iter.next() {
+                        comment
                     } else {
-                        continue;
+                        continue
+                    };
+
+                    match comment {
+                        TokenTree::Literal(literal) => {
+                            let span = Span::from(literal.span());
+                            trace!(target: "documentation",
+                                "Found doc literal at {:?}: {:?}",
+                                <Span as TryInto<Range>>::try_into(span.clone()),
+                                literal
+                            );
+
+                            // let rendered = literal.to_string();
+                            // produces pretty unusable garabage, since it modifies the content of `///`
+                            // comments which could contain " which will be escaped
+                            // and therefor cause the `span()` to yield something that does
+                            // not align with the rendered literal at all and there are too
+                            // many pitfalls to sanitize all cases, so reading given span
+                            // from the file again, and then determining its type is way safer.
+
+                            if let Err(e) = self.process_literal (source, span) {
+                                log::error!(
+                                    "BUG: Failed to guarantee literal content/span integrity: {}",
+                                    e
+                                );
+                                continue;
+                            }
+                        },
+                        _x => {
+                            dbg!(_x);
+                            continue;
+                        },
                     }
                 }
                 TokenTree::Group(group) => {

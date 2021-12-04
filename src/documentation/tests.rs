@@ -207,6 +207,26 @@ struct X;
         );
     }
 
+
+    #[test]
+    fn issue_234() {
+        // The test
+        end2end!(
+            r####"
+/// ```
+/// use Z;
+#[doc = foo!(xyz)]
+/// struct X;
+/// ```
+struct X;
+"####,
+            ContentOrigin::TestEntityRust,
+            0,
+            DummyChecker,
+            Default::default()
+        );
+    }
+
     #[test]
     fn file_justone() {
         end2end_file_rust!("demo/src/nested/justone.rs", 2);
@@ -1260,7 +1280,8 @@ pub(crate) fn annotated_literals(source: &str) -> Vec<TrimmedLiteral> {
 
     annotated_literals_raw(source)
         .map(|literal| {
-            TrimmedLiteral::try_from((source, literal))
+            let span = Span::from(literal.span());
+            TrimmedLiteral::try_from((source, span))
                 .expect("Literals must be convertable to trimmed literals")
         })
         .collect()
@@ -1376,7 +1397,7 @@ struct Two;
                     column: 6__usize + 9,
                 },
             },
-            variant: CommentVariant::MacroDocEq("#[doc = ".to_string(), 0),
+            variant: CommentVariant::MacroDocEqStr("#[doc = ".to_string(), 0),
         },
         // 3
         Triplet {
@@ -1406,7 +1427,7 @@ struct Three;
                     column: 13__usize + 8,
                 },
             },
-            variant: CommentVariant::MacroDocEq("#[doc=".to_string(), 2),
+            variant: CommentVariant::MacroDocEqStr("#[doc=".to_string(), 2),
         },
         // 4
         Triplet {
@@ -1448,7 +1469,7 @@ lines
                     column: 0__usize,
                 },
             },
-            variant: CommentVariant::MacroDocEq("#[doc = ".to_string(), 3),
+            variant: CommentVariant::MacroDocEqStr("#[doc = ".to_string(), 3),
         },
         // 5
         Triplet {
@@ -1478,7 +1499,7 @@ struct Five;
                     column: 15_usize + 2,
                 },
             },
-            variant: CommentVariant::MacroDocEq("#[doc        =".to_string(), 0),
+            variant: CommentVariant::MacroDocEqStr("#[doc        =".to_string(), 0),
         },
         // 6
         Triplet {
@@ -1591,7 +1612,7 @@ fn unicode(&self) -> bool {
                     column: 0_usize,
                 },
             },
-            variant: CommentVariant::MacroDocEq("#[ doc = ".to_string(), 3),
+            variant: CommentVariant::MacroDocEqStr("#[ doc = ".to_string(), 3),
         },
     ];
 
@@ -1661,25 +1682,25 @@ fn raw_variant_7_unicode_symbols() {
 
 #[test]
 fn variant_to_string() {
-    let variant = CommentVariant::MacroDocEq("#[ doc = ".to_string(), 0);
+    let variant = CommentVariant::MacroDocEqStr("#[ doc = ".to_string(), 0);
     assert_eq!(variant.prefix_string(), r###"#[ doc = ""###);
-    let variant = CommentVariant::MacroDocEq("#[doc = ".to_string(), 1);
+    let variant = CommentVariant::MacroDocEqStr("#[doc = ".to_string(), 1);
     assert_eq!(variant.prefix_string(), r###"#[doc = r""###);
-    let variant = CommentVariant::MacroDocEq("#[ doc =".to_string(), 2);
+    let variant = CommentVariant::MacroDocEqStr("#[ doc =".to_string(), 2);
     assert_eq!(variant.prefix_string(), r###"#[ doc =r#""###);
-    let variant = CommentVariant::MacroDocEq("#[doc=".to_string(), 3);
+    let variant = CommentVariant::MacroDocEqStr("#[doc=".to_string(), 3);
     assert_eq!(variant.prefix_string(), r###"#[doc=r##""###);
 }
 
 #[test]
 fn variant_suffix_string() {
-    let variant = CommentVariant::MacroDocEq("#[ doc= ".to_string(), 0);
+    let variant = CommentVariant::MacroDocEqStr("#[ doc= ".to_string(), 0);
     assert_eq!(variant.suffix_string(), r###""]"###);
-    let variant = CommentVariant::MacroDocEq("#[doc = ".to_string(), 1);
+    let variant = CommentVariant::MacroDocEqStr("#[doc = ".to_string(), 1);
     assert_eq!(variant.suffix_string(), r###""]"###);
-    let variant = CommentVariant::MacroDocEq("#[doc = ".to_string(), 2);
+    let variant = CommentVariant::MacroDocEqStr("#[doc = ".to_string(), 2);
     assert_eq!(variant.suffix_string(), r###""#]"###);
-    let variant = CommentVariant::MacroDocEq("#[ doc =".to_string(), 3);
+    let variant = CommentVariant::MacroDocEqStr("#[ doc =".to_string(), 3);
     assert_eq!(variant.suffix_string(), r###""##]"###);
 }
 
@@ -1689,10 +1710,10 @@ fn variant_consistency() {
         CommentVariant::TripleSlash,
         CommentVariant::DoubleSlashEM,
         CommentVariant::CommonMark,
-        CommentVariant::MacroDocEq("#[ doc= ".to_string(), 0),
-        CommentVariant::MacroDocEq("#[doc = ".to_string(), 1),
-        CommentVariant::MacroDocEq("#[doc = ".to_string(), 2),
-        CommentVariant::MacroDocEq("#[ doc     =".to_string(), 3),
+        CommentVariant::MacroDocEqStr("#[ doc= ".to_string(), 0),
+        CommentVariant::MacroDocEqStr("#[doc = ".to_string(), 1),
+        CommentVariant::MacroDocEqStr("#[doc = ".to_string(), 2),
+        CommentVariant::MacroDocEqStr("#[ doc     =".to_string(), 3),
     ];
 
     for variant in variants {
