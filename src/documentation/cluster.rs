@@ -7,7 +7,8 @@ use crate::errors::*;
 use crate::Span;
 use std::convert::TryFrom;
 
-/// Cluster literals for one file
+/// Cluster comments together, such they appear as continuous
+/// text blocks.
 #[derive(Debug)]
 pub struct Clusters {
     pub(super) set: Vec<LiteralSet>,
