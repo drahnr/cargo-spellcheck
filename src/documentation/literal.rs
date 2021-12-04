@@ -345,6 +345,13 @@ fn detect_comment_variant(
 impl TryFrom<(&str, Span)> for TrimmedLiteral {
     type Error = Error;
     fn try_from((content, mut span): (&str, Span)) -> Result<Self> {
+        // let rendered = literal.to_string();
+        // produces pretty unusable garabage, since it modifies the content of `///`
+        // comments which could contain " which will be escaped
+        // and therefor cause the `span()` to yield something that does
+        // not align with the rendered literal at all and there are too
+        // many pitfalls to sanitize all cases, so reading given span
+        // from the file again, and then determining its type is way safer.
 
         // It's unclear why the trailing `]` character is part of the given span, it shout not be part
         // of it, but the span we obtain from literal seems to be wrong, adding one trailing char.
