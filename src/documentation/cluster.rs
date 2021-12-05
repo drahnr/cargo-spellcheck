@@ -1,13 +1,14 @@
 //! Cluster `proc_macro2::Literal`s into `LiteralSets`
 
+use syn::parse::Parse;
+use syn::parse::ParseStream;
+use syn::punctuated::Punctuated;
+use syn::spanned::Spanned;
 use syn::ExprMacro;
 use syn::LitStr;
 use syn::Macro;
 use syn::Token;
 use syn::TypeMacro;
-use syn::parse::Parse;
-use syn::parse::ParseStream;
-use syn::punctuated::Punctuated;
 
 use super::{trace, LiteralSet, Spacing, TokenTree, TrimmedLiteral, TryInto};
 use crate::documentation::developer::extract_developer_comments;
@@ -15,7 +16,6 @@ use crate::documentation::Range;
 use crate::errors::*;
 use crate::Span;
 use std::convert::TryFrom;
-
 
 mod kw {
     syn::custom_keyword!(doc);
@@ -25,9 +25,19 @@ enum DocContent {
     LitStr(LitStr),
     Macro(Macro),
 }
+impl DocContent {
+    fn span(&self) -> proc_macro2::Span {
+        match self {
+            Self::LitStr(inner) => inner.span(),
+            Self::Macro(inner) => inner.span(),
+        }
+    }
+}
 
 struct DocComment {
+    #[allow(dead_code)]
     doc: kw::doc,
+    #[allow(dead_code)]
     eq_token: Token![=],
     content: DocContent,
 }
@@ -51,16 +61,6 @@ impl syn::parse::Parse for DocComment {
     }
 }
 
-#[test]
-fn test_doc_comment_parse() {
-    let _x : DocComment = syn::parse_str(r########"doc=foo!(bar!(xxx))"########).unwrap();
-    let _x : DocComment = syn::parse_str(r########"doc="s""########).unwrap();
-    let _x : DocComment = syn::parse_str(r########"doc=r#"s"#"########).unwrap();
-    let _x : DocComment = syn::parse_str(r########"doc=r##"s"##"########).unwrap();
-    let _x : DocComment = syn::parse_str(r########"doc=r###"s"###"########).unwrap();
-    let _x : DocComment = syn::parse_str(r########"doc=r####"s"####"########).unwrap();
-}
-
 /// Cluster comments together, such they appear as continuous
 /// text blocks.
 #[derive(Debug)]
@@ -71,8 +71,15 @@ pub struct Clusters {
 impl Clusters {
     /// Only works if the file is processed line by line, otherwise requires a
     /// adjacency list.
-    fn process_literal(&mut self, source: &str, span: Span) -> Result<()> {
-        let trimmed_literal = TrimmedLiteral::try_from((source, span))?;
+    fn process_literal(&mut self, source: &str, comment: DocComment) -> Result<()> {
+
+        let span = Span::from(comment.content.span());
+        let trimmed_literal = match comment.content {
+            DocContent::LitStr(s) => TrimmedLiteral::load_from(source, span)?,
+            DocContent::Macro(_) => {
+                TrimmedLiteral::new_empty(source, span, crate::CommentVariant::MacroDocEqMacro)
+            }
+        };
         if let Some(cls) = self.set.last_mut() {
             if let Err(trimmed_literal) = cls.add_adjacent(trimmed_literal) {
                 trace!(target: "documentation",
@@ -95,31 +102,17 @@ impl Clusters {
         let mut iter = stream.into_iter();
         while let Some(tree) = iter.next() {
             match tree {
-
                 TokenTree::Group(group) => {
-                    self.parse_token_tree(source, dbg!(group).stream())?;
-                    match comment {
-                        TokenTree::Literal(literal) => {
-                            let span = Span::from(literal.span());
-                            trace!(target: "documentation",
-                                "Found doc literal at {:?}: {:?}",
-                                <Span as TryInto<Range>>::try_into(span.clone()),
-                                literal
+                    if let Ok(comment) = syn::parse2::<DocComment>(dbg!(group.stream())) {
+                        if let Err(e) = self.process_literal(source, comment) {
+                            log::error!(
+                                "BUG: Failed to guarantee literal content/span integrity: {}",
+                                e
                             );
-
-
-                            if let Err(e) = self.process_literal (source, span) {
-                                log::error!(
-                                    "BUG: Failed to guarantee literal content/span integrity: {}",
-                                    e
-                                );
-                                continue;
-                            }
-                        },
-                        _x => {
-                            dbg!(_x);
                             continue;
-                        },
+                        }
+                    } else {
+                        self.parse_token_tree(source, group.stream())?;
                     }
                 }
                 _ => {}
@@ -158,5 +151,38 @@ impl Clusters {
         }
         chunk.ensure_sorted();
         Ok(chunk)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn doc_comment_parse() {
+        let _ = syn::parse_str::<DocComment>(r########"doc=foo!(bar!(xxx))"########).unwrap();
+        let _ = syn::parse_str::<DocComment>(r########"doc="s""########).unwrap();
+        let _ = syn::parse_str::<DocComment>(r########"doc=r#"s"#"########).unwrap();
+        let _ = syn::parse_str::<DocComment>(r########"doc=r##"s"##"########).unwrap();
+        let _ = syn::parse_str::<DocComment>(r########"doc=r###"s"###"########).unwrap();
+        let _ = syn::parse_str::<DocComment>(r########"doc=r####"s"####"########).unwrap();
+    }
+
+    #[test]
+    fn create_cluster() {
+        static CONTENT: &str = r#####"
+mod mm_mm {
+
+/// A
+#[doc=foo!(B)]
+/// C
+#[doc=r##"D"##]
+struct X;
+
+}
+"#####;
+        let clusters = Clusters::load_from_str(CONTENT, false).unwrap();
+        assert_eq!(clusters.set.len(), 1);
+        dbg!(&clusters.set[0]);
     }
 }

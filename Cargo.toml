@@ -50,7 +50,7 @@ rayon = "1.5"
 regex = "1.5"
 serde = { version = "1", features = ["derive"] }
 signal-hook = "0.3"
-syn = { version = "1", features = ["derive", "parsing"] }
+syn = { version = "1", features = ["full"] }
 thiserror = "1"
 # for parsing and extracting elements from Cargo.toml
 toml = "0.5"

@@ -207,7 +207,6 @@ struct X;
         );
     }
 
-
     #[test]
     fn issue_234() {
         // The test
@@ -1281,7 +1280,7 @@ pub(crate) fn annotated_literals(source: &str) -> Vec<TrimmedLiteral> {
     annotated_literals_raw(source)
         .map(|literal| {
             let span = Span::from(literal.span());
-            TrimmedLiteral::try_from((source, span))
+            TrimmedLiteral::load_from(source, span)
                 .expect("Literals must be convertable to trimmed literals")
         })
         .collect()

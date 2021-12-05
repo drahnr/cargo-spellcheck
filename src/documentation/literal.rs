@@ -218,6 +218,11 @@ fn trim_span(content: &str, span: &mut Span, pre: usize, post: usize) {
     }
 }
 
+/// Detect the comment variant based on the span based str content.
+///
+/// Became necessary, since the `proc_macro2::Span` does not distinguish
+/// between `#[doc=".."]` and `/// ..` comment variants, and for one,
+/// and the span can't cover both correctly.
 fn detect_comment_variant(
     content: &str,
     rendered: &String,
@@ -342,9 +347,25 @@ fn detect_comment_variant(
     Ok((variant, span, pre, post))
 }
 
-impl TryFrom<(&str, Span)> for TrimmedLiteral {
-    type Error = Error;
-    fn try_from((content, mut span): (&str, Span)) -> Result<Self> {
+impl TrimmedLiteral {
+    /// Create an empty comment.
+    ///
+    /// Prime use case is for `#[doc = foo!()]` cases.
+    pub(crate) fn new_empty(content: impl AsRef<str>, span: Span, variant: CommentVariant) -> Self {
+        Self {
+            /// Track what kind of comment the literal is
+            variant,
+            span,
+            // .
+            rendered: String::new(),
+            pre: 0,
+            post: 0,
+            len_in_chars: 0,
+            len_in_bytes: 0,
+        }
+    }
+
+    pub(crate) fn load_from(content: &str, mut span: Span) -> Result<Self> {
         // let rendered = literal.to_string();
         // produces pretty unusable garabage, since it modifies the content of `///`
         // comments which could contain " which will be escaped
@@ -668,7 +689,7 @@ mod tests {
                 let literal = literals.next().unwrap();
                 assert!(literals.next().is_none());
 
-                let tl = TrimmedLiteral::try_from((CONTENT, Span::from(literal.span()))).unwrap();
+                let tl = TrimmedLiteral::load_from(CONTENT, Span::from(literal.span())).unwrap();
                 assert!(CONTENT.starts_with(tl.prefix()));
                 assert!(CONTENT.ends_with(tl.suffix()));
                 assert_eq!(
