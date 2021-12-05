@@ -1,21 +1,14 @@
 //! Cluster `proc_macro2::Literal`s into `LiteralSets`
 
-use syn::parse::Parse;
-use syn::parse::ParseStream;
-use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::ExprMacro;
 use syn::LitStr;
 use syn::Macro;
 use syn::Token;
-use syn::TypeMacro;
 
-use super::{trace, LiteralSet, Spacing, TokenTree, TrimmedLiteral, TryInto};
+use super::{trace, LiteralSet, TokenTree, TrimmedLiteral};
 use crate::documentation::developer::extract_developer_comments;
-use crate::documentation::Range;
 use crate::errors::*;
 use crate::Span;
-use std::convert::TryFrom;
 
 mod kw {
     syn::custom_keyword!(doc);
@@ -72,10 +65,9 @@ impl Clusters {
     /// Only works if the file is processed line by line, otherwise requires a
     /// adjacency list.
     fn process_literal(&mut self, source: &str, comment: DocComment) -> Result<()> {
-
         let span = Span::from(comment.content.span());
         let trimmed_literal = match comment.content {
-            DocContent::LitStr(s) => TrimmedLiteral::load_from(source, span)?,
+            DocContent::LitStr(_s) => TrimmedLiteral::load_from(source, span)?,
             DocContent::Macro(_) => {
                 TrimmedLiteral::new_empty(source, span, crate::CommentVariant::MacroDocEqMacro)
             }

@@ -1275,8 +1275,6 @@ pub(crate) fn annotated_literals_raw<'a>(
 }
 
 pub(crate) fn annotated_literals(source: &str) -> Vec<TrimmedLiteral> {
-    use std::convert::TryFrom;
-
     annotated_literals_raw(source)
         .map(|literal| {
             let span = Span::from(literal.span());

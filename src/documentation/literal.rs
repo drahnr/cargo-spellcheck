@@ -5,7 +5,7 @@ use crate::{Range, Span};
 use fancy_regex::Regex;
 use lazy_static::lazy_static;
 use proc_macro2::LineColumn;
-use std::convert::TryFrom;
+
 use std::fmt;
 
 /// Determine if a `CommentVariant`
@@ -351,7 +351,11 @@ impl TrimmedLiteral {
     /// Create an empty comment.
     ///
     /// Prime use case is for `#[doc = foo!()]` cases.
-    pub(crate) fn new_empty(content: impl AsRef<str>, span: Span, variant: CommentVariant) -> Self {
+    pub(crate) fn new_empty(
+        _content: impl AsRef<str>,
+        span: Span,
+        variant: CommentVariant,
+    ) -> Self {
         Self {
             /// Track what kind of comment the literal is
             variant,
