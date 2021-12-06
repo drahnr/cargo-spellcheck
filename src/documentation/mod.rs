@@ -18,9 +18,9 @@ use crate::util::load_span_from;
 use indexmap::IndexMap;
 use log::trace;
 pub use proc_macro2::LineColumn;
-use proc_macro2::{Spacing, TokenTree};
+use proc_macro2::TokenTree;
 use rayon::prelude::*;
-use std::convert::TryInto;
+
 use std::path::PathBuf;
 
 /// Range based on `usize`, simplification.

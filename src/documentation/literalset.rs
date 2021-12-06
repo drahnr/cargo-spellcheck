@@ -86,8 +86,13 @@ impl LiteralSet {
                 let span = literal.span();
                 let range = Range { start, end };
 
-                if let Some(span_len) = span.one_line_len() {
-                    assert_eq!(range.len(), span_len);
+                // TODO this does not hold anymore for `#[doc=foo!(..)]`.
+                // TODO where the span is covering `foo!()`, but the
+                // TODO rendered length is 0.
+                if literal.variant() != CommentVariant::MacroDocEqMacro {
+                    if let Some(span_len) = span.one_line_len() {
+                        assert_eq!(range.len(), span_len);
+                    }
                 }
                 // keep zero length values too, to guarantee continuity
                 source_mapping.insert(range, span);

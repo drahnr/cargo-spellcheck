@@ -5,7 +5,7 @@ use crate::{Range, Span};
 use fancy_regex::Regex;
 use lazy_static::lazy_static;
 use proc_macro2::LineColumn;
-use std::convert::TryFrom;
+
 use std::fmt;
 
 /// Determine if a `CommentVariant`
@@ -36,7 +36,9 @@ pub enum CommentVariant {
     SlashAsterisk,
     /// `#[doc=` with actual prefix like `#[doc=` and the total length of `r###`
     /// etc. including `r` but without `"`
-    MacroDocEq(String, usize),
+    MacroDocEqStr(String, usize),
+    /// `#[doc= foo!(..)]`, content will be ignored, but allows clusters to not continue.
+    MacroDocEqMacro,
     /// Commonmark File
     CommonMark,
     /// Developer line comment
@@ -59,7 +61,8 @@ impl CommentVariant {
         match self {
             Self::TripleSlash => CommentVariantCategory::Doc,
             Self::DoubleSlashEM => CommentVariantCategory::Doc,
-            Self::MacroDocEq(_, _) => CommentVariantCategory::Doc,
+            Self::MacroDocEqStr(_, _) => CommentVariantCategory::Doc,
+            Self::MacroDocEqMacro => CommentVariantCategory::Doc,
             Self::SlashAsteriskEM => CommentVariantCategory::Doc,
             Self::SlashAsteriskAsterisk => CommentVariantCategory::Doc,
             Self::CommonMark => CommentVariantCategory::CommonMark,
@@ -73,7 +76,8 @@ impl CommentVariant {
         match self {
             CommentVariant::TripleSlash => "///".into(),
             CommentVariant::DoubleSlashEM => "//!".into(),
-            CommentVariant::MacroDocEq(d, p) => {
+            CommentVariant::MacroDocEqMacro => "".into(),
+            CommentVariant::MacroDocEqStr(d, p) => {
                 let raw = match p {
                     // TODO: make configureable if each line will start with #[doc ="
                     // TODO: but not here!
@@ -100,7 +104,8 @@ impl CommentVariant {
     pub fn prefix_len(&self) -> usize {
         match self {
             CommentVariant::TripleSlash | CommentVariant::DoubleSlashEM => 3,
-            CommentVariant::MacroDocEq(d, p) => d.len() + *p + 1,
+            CommentVariant::MacroDocEqMacro => 0,
+            CommentVariant::MacroDocEqStr(d, p) => d.len() + *p + 1,
             CommentVariant::SlashAsterisk => 2,
             CommentVariant::SlashAsteriskEM | CommentVariant::SlashAsteriskAsterisk => 3,
             _ => self.prefix_string().len(),
@@ -110,11 +115,12 @@ impl CommentVariant {
     /// Return suffix of different comment variants
     pub fn suffix_len(&self) -> usize {
         match self {
-            CommentVariant::MacroDocEq(_, 0) => 2,
-            CommentVariant::MacroDocEq(_, p) => p + 1,
+            CommentVariant::MacroDocEqStr(_, 0) => 2,
+            CommentVariant::MacroDocEqStr(_, p) => p + 1,
             CommentVariant::SlashAsteriskAsterisk
             | CommentVariant::SlashAsteriskEM
             | CommentVariant::SlashAsterisk => 2,
+            CommentVariant::MacroDocEqMacro => 0,
             _ => 0,
         }
     }
@@ -122,8 +128,8 @@ impl CommentVariant {
     /// Return string which will be appended to each line
     pub fn suffix_string(&self) -> String {
         match self {
-            CommentVariant::MacroDocEq(_, p) if *p == 0 || *p == 1 => r#""]"#.to_string(),
-            CommentVariant::MacroDocEq(_, p) => {
+            CommentVariant::MacroDocEqStr(_, p) if *p == 0 || *p == 1 => r#""]"#.to_string(),
+            CommentVariant::MacroDocEqStr(_, p) => {
                 r#"""#.to_string() + &"#".repeat(p.saturating_sub(1)) + "]"
             }
             CommentVariant::SlashAsteriskAsterisk
@@ -212,6 +218,11 @@ fn trim_span(content: &str, span: &mut Span, pre: usize, post: usize) {
     }
 }
 
+/// Detect the comment variant based on the span based str content.
+///
+/// Became necessary, since the `proc_macro2::Span` does not distinguish
+/// between `#[doc=".."]` and `/// ..` comment variants, and for one,
+/// and the span can't cover both correctly.
 fn detect_comment_variant(
     content: &str,
     rendered: &String,
@@ -327,7 +338,7 @@ fn detect_comment_variant(
         span.end.column = span.end.column.saturating_sub(post);
 
         (
-            CommentVariant::MacroDocEq(prefix, pre.saturating_sub(1)),
+            CommentVariant::MacroDocEqStr(prefix, pre.saturating_sub(1)),
             span,
             pre,
             post,
@@ -336,9 +347,29 @@ fn detect_comment_variant(
     Ok((variant, span, pre, post))
 }
 
-impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
-    type Error = Error;
-    fn try_from((content, literal): (&str, proc_macro2::Literal)) -> Result<Self> {
+impl TrimmedLiteral {
+    /// Create an empty comment.
+    ///
+    /// Prime use case is for `#[doc = foo!()]` cases.
+    pub(crate) fn new_empty(
+        _content: impl AsRef<str>,
+        span: Span,
+        variant: CommentVariant,
+    ) -> Self {
+        Self {
+            /// Track what kind of comment the literal is
+            variant,
+            span,
+            // .
+            rendered: String::new(),
+            pre: 0,
+            post: 0,
+            len_in_chars: 0,
+            len_in_bytes: 0,
+        }
+    }
+
+    pub(crate) fn load_from(content: &str, mut span: Span) -> Result<Self> {
         // let rendered = literal.to_string();
         // produces pretty unusable garabage, since it modifies the content of `///`
         // comments which could contain " which will be escaped
@@ -347,7 +378,6 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
         // many pitfalls to sanitize all cases, so reading given span
         // from the file again, and then determining its type is way safer.
 
-        let mut span = Span::from(literal.span());
         // It's unclear why the trailing `]` character is part of the given span, it shout not be part
         // of it, but the span we obtain from literal seems to be wrong, adding one trailing char.
 
@@ -389,7 +419,7 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
         }
 
         let len_in_bytes = rendered.len().saturating_sub(post + pre);
-        let literal = Self {
+        let trimmed_literal = Self {
             variant,
             len_in_chars,
             len_in_bytes,
@@ -398,7 +428,7 @@ impl TryFrom<(&str, proc_macro2::Literal)> for TrimmedLiteral {
             pre,
             post,
         };
-        Ok(literal)
+        Ok(trimmed_literal)
     }
 }
 
@@ -648,7 +678,7 @@ mod tests {
                 line: 1,
                 column: 12 + 1,
             },
-        }), Ok((CommentVariant::MacroDocEq(prefix, n_pounds), _, _, _)) => {
+        }), Ok((CommentVariant::MacroDocEqStr(prefix, n_pounds), _, _, _)) => {
             assert_eq!(n_pounds, 1);
             assert_eq!(prefix, "#[doc=");
         });
@@ -663,7 +693,7 @@ mod tests {
                 let literal = literals.next().unwrap();
                 assert!(literals.next().is_none());
 
-                let tl = TrimmedLiteral::try_from((CONTENT, literal)).unwrap();
+                let tl = TrimmedLiteral::load_from(CONTENT, Span::from(literal.span())).unwrap();
                 assert!(CONTENT.starts_with(tl.prefix()));
                 assert!(CONTENT.ends_with(tl.suffix()));
                 assert_eq!(
