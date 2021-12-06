@@ -1293,10 +1293,12 @@ struct Triplet {
     /// source content
     source: &'static str,
     /// expected doc comment content without modifications
+    #[allow(dead_code)]
     extracted: &'static str,
     /// expected doc comment content after applying trimming rules
     trimmed: &'static str,
     /// expected span as extracted by proc_macro2
+    #[allow(dead_code)]
     extracted_span: Span,
     /// trimmed span, so it is aligned with the proper doc comment
     trimmed_span: Span,
