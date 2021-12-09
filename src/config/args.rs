@@ -489,7 +489,8 @@ impl Args {
         // elided, and cause even worse suggestions.
         // ISSUE: https://github.com/drahnr/cargo-spellcheck/issues/242
         let filter_set = self
-            .flag_checkers.clone()
+            .flag_checkers
+            .clone()
             .unwrap_or_else(|| vec![CheckerType::Hunspell]);
         {
             if filter_set.contains(&CheckerType::Hunspell) {
