@@ -482,8 +482,17 @@ impl Args {
     fn load_config(&self) -> Result<(Config, Option<PathBuf>)> {
         let (mut config, config_path) = self.load_config_inner()?;
         // mask all disabled checkers, use the default config
-        // for those which have one if not enabled already
-        if let Some(filter_set) = &self.flag_checkers {
+        // for those which have one if not enabled already.
+
+        // FIXME: Due to an increase adoption, having `NlpRules` enabled by default,
+        // causes friction for users, especially in presence of inline codes which are
+        // elided, and cause even worse suggestions.
+        // ISSUE: https://github.com/drahnr/cargo-spellcheck/issues/242
+        let filter_set = self
+            .flag_checkers
+            .clone()
+            .unwrap_or_else(|| vec![CheckerType::Hunspell]);
+        {
             if filter_set.contains(&CheckerType::Hunspell) {
                 if config.hunspell.is_none() {
                     config.hunspell = Some(crate::config::HunspellConfig::default());
