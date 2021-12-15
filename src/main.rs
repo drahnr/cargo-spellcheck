@@ -1,6 +1,7 @@
 #![deny(dead_code)]
 #![deny(missing_docs)]
 #![deny(unused_crate_dependencies)]
+#![deny(clippy::dbg_macro)]
 #![warn(clippy::pedantic)]
 #![allow(clippy::non_ascii_literal)]
 
