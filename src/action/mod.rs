@@ -285,7 +285,7 @@ impl Action {
 
         let mut reader = std::io::BufReader::new(ro);
 
-        const TEMPORARY: &'static str = ".spellcheck.tmp";
+        const TEMPORARY: &str = ".spellcheck.tmp";
 
         // Avoid issues when processing multiple files in parallel
         let tmp_name = TEMPORARY.to_owned() + uuid::Uuid::new_v4().to_string().as_str();

@@ -306,18 +306,18 @@ struct X;
     #[test]
     fn word_extraction_rust() {
         // raw source
-        const SOURCE: &'static str = r#"/// A headline.
+        const SOURCE: &str = r#"/// A headline.
 ///
 /// Erronbeous **bold** __uetchkp__
 struct X"#;
 
         // extracted content as present as provided by `chunk.as_str()`
-        const RAW: &'static str = r#" A headline.
+        const RAW: &str = r#" A headline.
 
  Erronbeous **bold** __uetchkp__"#;
 
         // markdown erased residue
-        const PLAIN: &'static str = r#"A headline.
+        const PLAIN: &str = r#"A headline.
 
 Erronbeous bold uetchkp"#;
 
@@ -334,16 +334,16 @@ Erronbeous bold uetchkp"#;
     #[test]
     fn word_extraction_commonmark_small() {
         // raw source
-        const SOURCE: &'static str = r###"## cmark test 1
+        const SOURCE: &str = r###"## cmark test 1
 
 🐢 are _so_ *cute*!
 "###;
 
         // extracted content as present as provided by `chunk.as_str()`
-        const RAW: &'static str = SOURCE;
+        const RAW: &str = SOURCE;
 
         // markdown erased residue
-        const PLAIN: &'static str = r##"cmark test 1
+        const PLAIN: &str = r##"cmark test 1
 
 🐢 are so cute!"##;
 
@@ -367,7 +367,7 @@ Erronbeous bold uetchkp"#;
     #[test]
     fn word_extraction_commonmark_large() {
         // raw source
-        const SOURCE: &'static str = r#"# cmark test
+        const SOURCE: &str = r#"# cmark test
 
 <pre>🌡</pre>
 
@@ -386,10 +386,10 @@ let code = be;
 The end.🐢"#;
 
         // extracted content as present as provided by `chunk.as_str()`
-        const RAW: &'static str = SOURCE;
+        const RAW: &str = SOURCE;
 
         // markdown erased residue
-        const PLAIN: &'static str = r#"cmark test
+        const PLAIN: &str = r#"cmark test
 
 A relly boring test.
 
@@ -431,7 +431,7 @@ The end.🐢"#;
         // TODO FIXME remove the 🍁, and observe early termination
 
         // raw source
-        const SOURCE: &'static str = r#"A
+        const SOURCE: &str = r#"A
 x🌡  in 🍁
 
 ---
@@ -439,10 +439,10 @@ x🌡  in 🍁
 Ef gh"#;
 
         // extracted content as present as provided by `chunk.as_str()`
-        const RAW: &'static str = SOURCE;
+        const RAW: &str = SOURCE;
 
         // markdown erased residue
-        const PLAIN: &'static str = r#"A
+        const PLAIN: &str = r#"A
 x🌡  in 🍁
 
 
@@ -468,7 +468,7 @@ Ef gh"#;
         // TODO FIXME remove the 🍁, and observe early termination
 
         // raw source
-        const SOURCE: &'static str = r#"
+        const SOURCE: &str = r#"
 Ref1
 
 🌡🍁
@@ -485,10 +485,10 @@ Ref4
 "#;
 
         // extracted content as present as provided by `chunk.as_str()`
-        const RAW: &'static str = SOURCE;
+        const RAW: &str = SOURCE;
 
         // markdown erased residue
-        const PLAIN: &'static str = r#"Ref1
+        const PLAIN: &str = r#"Ref1
 
 🌡🍁
 
@@ -548,7 +548,7 @@ fn find_spans_simple() {
         .try_init();
 
     // generate  `///<space>...`
-    const SOURCE: &'static str = fluff_up!(["xyz"]);
+    const SOURCE: &str = fluff_up!(["xyz"]);
     let set = gen_literal_set(SOURCE);
     let chunk = dbg!(CheckableChunk::from_literalset(set));
 
@@ -587,7 +587,7 @@ fn find_spans_multiline() {
         .filter(None, log::LevelFilter::Trace)
         .try_init();
 
-    const SOURCE: &'static str = fluff_up!(["xyz", "second", "third", "Converts a span to a range, where `self` is converted to a range reltive to the",
+    const SOURCE: &str = fluff_up!(["xyz", "second", "third", "Converts a span to a range, where `self` is converted to a range reltive to the",
          "passed span `scope`."] @ "       "
     );
     let set = gen_literal_set(SOURCE);
@@ -671,7 +671,7 @@ fn find_spans_chyrp() {
         .filter(None, log::LevelFilter::Trace)
         .try_init();
 
-    const SOURCE: &'static str = chyrp_up!(["Amsel", "Wacholderdrossel", "Buchfink"]);
+    const SOURCE: &str = chyrp_up!(["Amsel", "Wacholderdrossel", "Buchfink"]);
     let set = gen_literal_set(SOURCE);
     let chunk = dbg!(CheckableChunk::from_literalset(set));
 
@@ -724,7 +724,7 @@ fn find_spans_inclusive() {
         .is_test(true)
         .try_init();
 
-    const SOURCE: &'static str = fluff_up!(["Some random words"]);
+    const SOURCE: &str = fluff_up!(["Some random words"]);
     let set = gen_literal_set(SOURCE);
     let chunk = dbg!(CheckableChunk::from_literalset(set));
     // a range inside the span
@@ -760,7 +760,7 @@ fn find_spans_and_coverage_integrity() -> Result<()> {
         .is_test(true)
         .try_init();
 
-    const SOURCE: &'static str = fluff_up!(
+    const SOURCE: &str = fluff_up!(
         [
             "ü×ä×ß",
             "DEF_HIJ",
@@ -820,7 +820,7 @@ fn find_coverage_multiline() {
         .is_test(true)
         .try_init();
 
-    const SOURCE: &'static str = fluff_up!(
+    const SOURCE: &str = fluff_up!(
         [
             "xyz",
             "second",
@@ -876,7 +876,7 @@ fn find_coverage_multiline() {
 
 #[test]
 fn find_line_lengths_tripple_slash() {
-    const SOURCE: &'static str = fluff_up!(
+    const SOURCE: &str = fluff_up!(
         [
             "xyz",
             "second",
@@ -912,7 +912,7 @@ fn find_line_lengths_tripple_slash() {
 #[test]
 #[ignore = "prefix and suffix are not part of the accounted `extract_lines_lengths"]
 fn find_line_length_docmacro() {
-    const SOURCE: &'static str = chyrp_up!(
+    const SOURCE: &str = chyrp_up!(
         [
             "xyz",
             "second",

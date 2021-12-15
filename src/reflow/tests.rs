@@ -12,7 +12,7 @@ macro_rules! verify_reflow_inner {
             .is_test(true)
             .try_init();
 
-        const CONTENT: &'static str = fluff_up!($( $line ),+);
+        const CONTENT: &str = fluff_up!($( $line ),+);
         let docs = Documentation::load_from_str(ContentOrigin::TestEntityRust, CONTENT, false);
         assert_eq!(docs.entry_count(), 1);
         let chunks = docs.get(&ContentOrigin::TestEntityRust).expect("Must contain dummy path");
@@ -274,12 +274,12 @@ fn reflow_indentations() {
         .is_test(true)
         .try_init();
 
-    const CONTENT: &'static str = r#"
+    const CONTENT: &str = r#"
     /// 🔴 🍁
     /// 🤔
     struct Fluffy {};"#;
 
-    const EXPECTED: &'static str = r#"🔴
+    const EXPECTED: &str = r#"🔴
     /// 🍁
     /// 🤔"#;
 
@@ -315,13 +315,13 @@ fn reflow_indentations() {
 
 #[test]
 fn reflow_doc_indentations() {
-    const CONTENT: &'static str = r##"
+    const CONTENT: &str = r##"
     #[doc = r#"A comment with indentation that spans over
                 two lines and should be rewrapped.
             "#]
     struct Fluffy {};"##;
 
-    const EXPECTED: &'static str = r##"A comment with indentation"#]
+    const EXPECTED: &str = r##"A comment with indentation"#]
     #[doc = r#"that spans over two lines and"#]
     #[doc = r#"should be rewrapped."##;
 
@@ -381,8 +381,7 @@ fn reflow_split_one_into_three() {
 
 #[test]
 fn reflow_markdown_two_paragraphs() {
-    const CONTENT: &'static str =
-        "/// Possible __ways__ to run __rustc__ and request various parts of LTO.
+    const CONTENT: &str = "/// Possible __ways__ to run __rustc__ and request various parts of LTO.
 ///
 /// Some more text after the newline which **represents** a paragraph";
 
@@ -492,8 +491,7 @@ fn reflow_sole_markdown() {
         max_line_length: 60,
     };
 
-    const CONTENT: &'static str =
-        "# Possible __ways__ to run __rustc__ and request various parts of LTO.
+    const CONTENT: &str = "# Possible __ways__ to run __rustc__ and request various parts of LTO.
 
 A short line but long enough such that we reflow it. Yada lorem ipsum stuff needed.
 
@@ -595,7 +593,7 @@ fn reflow_check_span() {
         max_line_length: 27,
     };
 
-    const CONTENT: &'static str = "/// A comment as we have many here and we will always
+    const CONTENT: &str = "/// A comment as we have many here and we will always
 /// have.
 struct Fff;
 ";
@@ -630,7 +628,7 @@ struct Fff;
 #[test]
 fn reflow_readme() {
     // TODO reduce this to the minimal failing test case
-    const README: &'static str = include_str!("../../README.md");
+    const README: &str = include_str!("../../README.md");
 
     reflow_content!(80usize break ContentOrigin::TestEntityCommonMark, README => ok);
 }
@@ -660,7 +658,7 @@ Yada
 "# ] );
 }
 
-const MINIFIED_README: &'static str = r###"# cargo-spellcheck
+const MINIFIED_README: &str = r###"# cargo-spellcheck
 
 [![crates.io](https://img.source/cargo_spellcheck.svg)](https://crates.io)
 
@@ -723,7 +721,7 @@ of `0`.
 
 #[test]
 fn reflow_crlf() {
-    const INPUT: &'static str = "        /// cargo spellcheck can be configured with `-m <code>` to return a non-zero return code.\r\n        struct Foo {}";
+    const INPUT: &str = "        /// cargo spellcheck can be configured with `-m <code>` to return a non-zero return code.\r\n        struct Foo {}";
     println!("{:?}", INPUT);
     reflow_content!(40usize break ContentOrigin::TestEntityRust, INPUT
     => patches [

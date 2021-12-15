@@ -293,7 +293,7 @@ mod tests {
             .filter(None, log::LevelFilter::Trace)
             .try_init();
 
-        const CONTENT: &'static str = fluff_up!("Itsyou!!", " ", "Game-Over!!", " ");
+        const CONTENT: &str = fluff_up!("Itsyou!!", " ", "Game-Over!!", " ");
         let set = gen_literal_set(CONTENT);
         let chunk = dbg!(CheckableChunk::from_literalset(set));
 
@@ -366,7 +366,7 @@ mod tests {
             .try_init();
 
         chyrp_dbg!("Xy fff?? Not.., you again!", "", "AlphaOmega", "");
-        const CONTENT: &'static str = chyrp_up!("Xy fff?? Not.., you again!", "", "AlphaOmega", "");
+        const CONTENT: &str = chyrp_up!("Xy fff?? Not.., you again!", "", "AlphaOmega", "");
         let set = gen_literal_set(dbg!(CONTENT));
         let chunk = dbg!(CheckableChunk::from_literalset(set));
 
@@ -449,7 +449,7 @@ AlphaOmega
 
     #[test]
     fn extraction_fluff() {
-        const CHUNK_S: &'static str = r#" one
+        const CHUNK_S: &str = r#" one
  two
  three"#;
         const FRAGMENT_SPAN: Span = Span {
@@ -475,7 +475,7 @@ AlphaOmega
 
     #[test]
     fn extraction_chyrp() {
-        const CHUNK_S: &'static str = r#"one
+        const CHUNK_S: &str = r#"one
 two
 three"#;
         const FRAGMENT_SPAN: Span = Span {

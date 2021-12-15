@@ -39,7 +39,7 @@ pub(crate) mod tests {
 
     #[test]
     fn span_helper_integrity() {
-        const SOURCE: &'static str = r#"0
+        const SOURCE: &str = r#"0
 abcde
 f
 g
