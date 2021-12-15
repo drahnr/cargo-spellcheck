@@ -95,7 +95,7 @@ impl Clusters {
         while let Some(tree) = iter.next() {
             match tree {
                 TokenTree::Group(group) => {
-                    if let Ok(comment) = syn::parse2::<DocComment>(dbg!(group.stream())) {
+                    if let Ok(comment) = syn::parse2::<DocComment>(group.stream()) {
                         if let Err(e) = self.process_literal(source, comment) {
                             log::error!(
                                 "BUG: Failed to guarantee literal content/span integrity: {}",
