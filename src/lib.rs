@@ -45,7 +45,6 @@ use signal_hook::{
 use signal_hook as _;
 
 #[cfg(not(target_os = "windows"))]
-#[cfg(test)]
 use syscalls as _;
 
 use checker::Checker;
