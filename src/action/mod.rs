@@ -306,7 +306,7 @@ impl Action {
         reader.get_mut().read_to_string(&mut content)?;
 
         // Tell the signal handler that writing to disk is in progress.
-        WRITE_IN_PROGRESS.store(true, Ordering::Release);
+        WRITE_IN_PROGRESS.fetch_add(1, Ordering::Release);
         apply_patches(
             bandaids.into_iter().map(|x| Patch::from(x)),
             content.as_str(), // FIXME for efficiency, correct_lines should integrate with `BufRead` instead of a `String` buffer
@@ -317,7 +317,7 @@ impl Action {
 
         fs::rename(tmp, path)?;
         // Writing for this file is done, re-enable signal handler.
-        WRITE_IN_PROGRESS.store(false, Ordering::Release);
+        WRITE_IN_PROGRESS.fetch_sub(1, Ordering::Release);
 
         Ok(())
     }

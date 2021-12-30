@@ -1,8 +1,7 @@
-
 use std::convert::TryInto;
 use std::sync::atomic::Ordering;
 
-use cargo_spellcheck::{WRITE_IN_PROGRESS, signal_handler};
+use cargo_spellcheck::{signal_handler, WRITE_IN_PROGRESS};
 
 #[cfg(not(target_os = "windows"))]
 fn main() {
@@ -13,7 +12,7 @@ fn main() {
         .is_test(true)
         .try_init();
 
-    WRITE_IN_PROGRESS.store(true, Ordering::Release);
+    WRITE_IN_PROGRESS.fetch_add(1, Ordering::Release);
     let pid = std::process::id();
     unsafe {
         syscalls::syscall2(
@@ -23,8 +22,7 @@ fn main() {
         )
         .expect("Sending signal works.");
     }
-    assert_eq!(1,1);
-    WRITE_IN_PROGRESS.store(false, Ordering::Release);
-    //assert_eq!(1, 0);
+    assert_eq!(1, 1);
+    WRITE_IN_PROGRESS.fetch_sub(1, Ordering::Release);
+    panic!("Signal handler exits before panic.");
 }
-

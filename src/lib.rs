@@ -33,7 +33,7 @@ use self::errors::{Result, bail};
 use log::{debug, info, trace, warn};
 use serde::Deserialize;
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicU16, Ordering};
 
 #[cfg(not(target_os = "windows"))]
 use signal_hook::{
@@ -77,7 +77,7 @@ impl ExitCode {
 }
 
 /// Global atomic to signal a file write is currently in progress.
-pub static WRITE_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+pub static WRITE_IN_PROGRESS: AtomicU16 = AtomicU16::new(0);
 
 /// Handle incoming signals.
 ///
@@ -90,7 +90,7 @@ pub fn signal_handler() {
         match s {
             SIGTERM | SIGINT | SIGQUIT => {
                 // Wait for potential writing to disk to be finished.
-                while WRITE_IN_PROGRESS.load(Ordering::Acquire) {
+                while WRITE_IN_PROGRESS.load(Ordering::Acquire) > 0 {
                     std::hint::spin_loop();
                 }
                 if let Err(e) = action::interactive::ScopedRaw::restore_terminal() {
