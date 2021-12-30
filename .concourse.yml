@@ -200,6 +200,40 @@ jobs:
             context: unit-tests
             status: failure
 
+      - task: binary-test-pr
+        timeout: 40m
+        image: env-glibc
+        config:
+          platform: linux
+          inputs:
+          - name: git-pull-request-resource
+          run:
+            # user: root
+            path: sh
+            args:
+            - -exc
+            - |
+              export CARGO_HOME="$(pwd)/../cargo"
+              sudo chown $(whoami): -Rf ${CARGO_HOME} .
+              rustc +stable --version --verbose
+              cargo +stable r --bin signal-handler-test; (($? == 130))
+            dir: git-pull-request-resource
+          caches:
+          - path: cargo
+
+        on_success:
+          put: git-pull-request-resource
+          params:
+            path: git-pull-request-resource
+            context: binary-tests
+            status: success
+        on_failure:
+          put: git-pull-request-resource
+          params:
+            path: git-pull-request-resource
+            context: binary-tests
+            status: failure
+
       - task: pr-win64-cross-build
         timeout: 40m
         image: env-glibc
