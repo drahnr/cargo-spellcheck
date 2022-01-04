@@ -17,7 +17,8 @@ include = [
     "Cargo.toml",
     "build.rs",
     "/LICENSE-*",
-    "/README.md"
+    "/README.md",
+    "tests/**/*.rs"
 ]
 
 [build-dependencies]
@@ -44,7 +45,7 @@ memchr = "2"
 log = "0.4"
 num_cpus = "1.13"
 proc-macro2 = { version = "1", features = ["span-locations"] }
-pulldown-cmark = "0.8.0"
+pulldown-cmark = "0.9.0"
 ra_ap_syntax = "0.0.84"
 rayon = "1.5"
 regex = "1.5"
@@ -66,7 +67,7 @@ uuid = { version = "0.8.2", features = ["v4"] }
 
 # TODO parse the country codes of dictionaries?
 iso_country = { version = "0.1", features = ["serde"] }
-isolang = { version = "1", features = ["serde_serialize"] }
+isolang = { version = "2", features = ["serde"] }
 
 url = { version = "2", features = ["serde"] }
 
@@ -77,16 +78,15 @@ fd-lock = { version = "3", optional = true }
 # full grammar check, but also tokenization and disambiguation
 nlprule = { version = "=0.6.4", optional = true }
 
-# TODO: find way to only pull in for [[bin]], there is https://github.com/rust-lang/rfcs/pull/2887
-# but it's stale sind 2015
-syscalls = "0.5"
-
 [dev-dependencies]
 # for stripping ansi color codes
 console = "0.15"
 assert_matches = "1"
 maplit = "1"
 serde_plain = "1"
+# signal-child = "1"
+syscalls = "0.5"
+fork = "0.1"
 
 [features]
 default = ["hunspell", "nlprules"]
@@ -108,7 +108,3 @@ debug = true
 
 [package.metadata.spellcheck]
 config = ".config/spellcheck.toml"
-
-[[bin]]
-name = "signal-handler-test"
-path = "test/signal_handler.rs"

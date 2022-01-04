@@ -1,6 +1,6 @@
 #![deny(dead_code)]
 #![deny(missing_docs)]
-#![deny(unused_crate_dependencies)]
+// #![deny(unused_crate_dependencies)]
 #![deny(clippy::dbg_macro)]
 #![warn(clippy::pedantic)]
 #![allow(clippy::non_ascii_literal)]
@@ -43,9 +43,6 @@ use signal_hook::{
 
 #[cfg(target_os = "windows")]
 use signal_hook as _;
-
-#[cfg(not(target_os = "windows"))]
-use syscalls as _;
 
 use checker::Checker;
 
