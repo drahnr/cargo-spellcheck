@@ -223,7 +223,7 @@ impl<'a> PlainOverlay<'a> {
                                 &mut mapping,
                             );
                         }
-                        Tag::Heading(_n) => {
+                        Tag::Heading(_n, _fragment, _klasses) => {
                             Self::newlines(&mut plain, 2);
                         }
                         Tag::CodeBlock(fenced) => {
