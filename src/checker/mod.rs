@@ -131,7 +131,7 @@ pub mod tests {
 
     use crate::fluff_up;
 
-    const TEXT: &'static str = "With markdown removed, for sure.";
+    const TEXT: &str = "With markdown removed, for sure.";
     lazy_static::lazy_static! {
         static ref TOKENS: Vec<&'static str> = vec![
             "With",
@@ -189,7 +189,7 @@ pub mod tests {
 
     #[test]
     fn extract_suggestions_simple() {
-        const SIMPLE: &'static str = fluff_up!("two literals");
+        const SIMPLE: &str = fluff_up!("two literals");
 
         /// keep in mind, `Span` bounds are inclusive, unlike Ranges, where
         /// `range.end` is _exclusive_
@@ -211,7 +211,7 @@ pub mod tests {
 
     #[test]
     fn extract_suggestions_left_aligned() {
-        const SIMPLE: &'static str = fluff_up!("two  literals ");
+        const SIMPLE: &str = fluff_up!("two  literals ");
 
         /// keep in mind, `Span` bounds are inclusive, unlike Ranges, where
         /// `range.end` is _exclusive_
@@ -233,7 +233,7 @@ pub mod tests {
 
     #[test]
     fn extract_suggestions_3spaces() {
-        const SIMPLE: &'static str = fluff_up!("  third  testcase ");
+        const SIMPLE: &str = fluff_up!("  third  testcase ");
 
         /// keep in mind, `Span` bounds are inclusive, unlike Ranges, where
         /// `range.end` is _exclusive_

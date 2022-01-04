@@ -15,7 +15,7 @@ use crossterm::{
 
 use std::io::stdout;
 
-const HELP: &'static str = r##"y - apply this suggestion
+const HELP: &str = r##"y - apply this suggestion
 n - do not apply the suggested correction
 q - quit; do not stage this hunk or any of the remaining ones
 d - do not apply this suggestion and skip the rest of the file

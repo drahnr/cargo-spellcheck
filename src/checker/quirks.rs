@@ -157,7 +157,7 @@ mod tests {
             .try_init();
 
         const REPLACEMENTS: &'static [&'static str] = &["fffff", "qqq", "z", "zeta-ray"];
-        const WORD: &'static str = "zetaray";
+        const WORD: &str = "zetaray";
         assert!(replacements_contain_dashed(WORD, REPLACEMENTS));
     }
 
@@ -168,7 +168,7 @@ mod tests {
             .filter(None, log::LevelFilter::Trace)
             .try_init();
 
-        const WORD: &'static str = "zeta-ray";
+        const WORD: &str = "zeta-ray";
         const REPLACEMENTS: &'static [&'static str] = &["fffff", "qqq", "z", "zetaray"];
         assert!(replacements_contain_dashless(WORD, REPLACEMENTS));
     }

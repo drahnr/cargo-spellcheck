@@ -200,16 +200,16 @@ pub(crate) mod tests {
 
     #[test]
     fn fluff_one() {
-        const RAW: &'static str = fluff_up!(["a"]);
-        const EXPECT: &'static str = r#"/// a
+        const RAW: &str = fluff_up!(["a"]);
+        const EXPECT: &str = r#"/// a
 struct Fluff;"#;
         assert_eq!(RAW, EXPECT);
     }
 
     #[test]
     fn fluff_multi() {
-        const RAW: &'static str = fluff_up!(["a", "b", "c"]);
-        const EXPECT: &'static str = r#"/// a
+        const RAW: &str = fluff_up!(["a", "b", "c"]);
+        const EXPECT: &str = r#"/// a
 /// b
 /// c
 struct Fluff;"#;

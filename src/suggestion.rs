@@ -124,10 +124,10 @@ pub fn condition_display_content(
     const HEAD_DISPLAY_LEN: usize = 4;
     const TAIL_DISPLAY_LEN: usize = 4;
 
-    const CENTER_DOTS: &'static str = "...";
-    const LEFT_DOTS: &'static str = "..";
-    const RIGHT_DOTS: &'static str = LEFT_DOTS;
-    const NO_DOTS: &'static str = "";
+    const CENTER_DOTS: &str = "...";
+    const LEFT_DOTS: &str = "..";
+    const RIGHT_DOTS: &str = LEFT_DOTS;
+    const NO_DOTS: &str = "";
 
     // guarantees that `marker_size` is always less than the max length.
     assert!(HEAD_DISPLAY_LEN + CENTER_DOTS.len() + TAIL_DISPLAY_LEN <= MAX_MISTAKE_LEN);
@@ -706,7 +706,7 @@ mod tests {
 
     #[test]
     fn fmt_0_single() {
-        const CONTENT: &'static str = " Is it dyrck again?";
+        const CONTENT: &str = " Is it dyrck again?";
         let chunk = CheckableChunk::from_str(
             CONTENT,
             indexmap::indexmap! { 0..18 => Span {
@@ -743,7 +743,7 @@ mod tests {
             description: Some("Possible spelling mistake found.".to_owned()),
         };
 
-        const EXPECTED: &'static str = r#"error: spellcheck(Dummy)
+        const EXPECTED: &str = r#"error: spellcheck(Dummy)
   --> /tmp/test/entity.rs:1
    |
  1 |  Is it dyrck again?
@@ -757,7 +757,7 @@ mod tests {
 
     #[test]
     fn fmt_0_no_suggestion() {
-        const CONTENT: &'static str = " Is it dyrck again?";
+        const CONTENT: &str = " Is it dyrck again?";
         let chunk = CheckableChunk::from_str(
             CONTENT,
             indexmap::indexmap! { 0..18 => Span {
@@ -790,7 +790,7 @@ mod tests {
             description: Some("Possible spelling mistake found.".to_owned()),
         };
 
-        const EXPECTED: &'static str = r#"error: spellcheck(Dummy)
+        const EXPECTED: &str = r#"error: spellcheck(Dummy)
   --> /tmp/test/entity.rs:1
    |
  1 |  Is it dyrck again?
@@ -802,7 +802,7 @@ mod tests {
 
     #[test]
     fn fmt_1_multi() {
-        const CONTENT: &'static str = r#" Line mitake 1
+        const CONTENT: &str = r#" Line mitake 1
  Anowher 2
  Last"#;
 
@@ -866,7 +866,7 @@ mod tests {
             description: Some("Possible spelling mistake found.".to_owned()),
         };
 
-        const EXPECTED: &'static str = r#"error: spellcheck(Dummy)
+        const EXPECTED: &str = r#"error: spellcheck(Dummy)
   --> /tmp/test/entity.rs:1
    |
  1 |  Line mitake 1
@@ -881,7 +881,7 @@ mod tests {
 
     #[test]
     fn fmt_2_multi_80_plus() {
-        const CONTENT: &'static str = r#" Line mitake 1
+        const CONTENT: &str = r#" Line mitake 1
  Suuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuper duuuuuuuuuuuuuuuuuuuuuuuuper too long
  "#;
 
@@ -932,7 +932,7 @@ mod tests {
             description: Some("Possible spelling mistake found.".to_owned()),
         };
 
-        const EXPECTED: &'static str = r#"error: spellcheck(Dummy)
+        const EXPECTED: &str = r#"error: spellcheck(Dummy)
   --> /tmp/test/entity.rs:2
    |
  2 | ..uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuper duuu...uper too long

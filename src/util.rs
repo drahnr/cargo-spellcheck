@@ -272,11 +272,11 @@ mod tests {
     }
     #[test]
     fn iter_chars() {
-        const S: &'static str = r#"
+        const S: &str = r#"
 abc
 d
 "#;
-        const S2: &'static str = r#"c
+        const S2: &str = r#"c
 d"#;
         const EXPECT: &[(LineColumn, char)] = &[
             lcc!(1, 0, '\n'),
@@ -308,10 +308,10 @@ d"#;
 
     #[test]
     fn iter_span_doc_0_trivial() {
-        const SOURCE: &'static str = r##"#[doc=r#"Zebra
+        const SOURCE: &str = r##"#[doc=r#"Zebra
 Schlupfwespe,
 Grünfink"#]"##;
-        const S2: &'static str = r#"Zebra
+        const S2: &str = r#"Zebra
 Schlupfwespe,
 Grünfink"#;
 
@@ -331,10 +331,10 @@ Grünfink"#;
 
     #[test]
     fn iter_span_doc_1_trailing_newline() {
-        const SOURCE: &'static str = r##"#[doc=r#"Zebra
+        const SOURCE: &str = r##"#[doc=r#"Zebra
 Schlupfwespe,
 "#]"##;
-        const S2: &'static str = r#"Zebra
+        const S2: &str = r#"Zebra
 Schlupfwespe,
 "#;
 
@@ -357,8 +357,8 @@ Schlupfwespe,
 
     #[test]
     fn sub_a() {
-        const A: &'static str = "a🐲o🌡i🡴f🕧aodnferntkng";
-        const A_EXPECTED: &'static str = "a🐲o";
+        const A: &str = "a🐲o🌡i🡴f🕧aodnferntkng";
+        const A_EXPECTED: &str = "a🐲o";
 
         assert_eq!(sub_char_range(A, 0..3), A_EXPECTED);
         assert_eq!(sub_char_range(A, ..3), A_EXPECTED);
@@ -367,8 +367,8 @@ Schlupfwespe,
 
     #[test]
     fn sub_b() {
-        const B: &'static str = "fff🦦🡴🕧";
-        const B_EXPECTED: &'static str = "🦦🡴🕧";
+        const B: &str = "fff🦦🡴🕧";
+        const B_EXPECTED: &str = "🦦🡴🕧";
 
         assert_eq!(sub_char_range(B, 3..=5), B_EXPECTED);
         assert_eq!(sub_char_range(B, 3..), B_EXPECTED);
@@ -376,8 +376,8 @@ Schlupfwespe,
 
     #[test]
     fn sub_c() {
-        const B: &'static str = "fff🦦🡴🕧";
-        const B_EXPECTED: &'static str = "";
+        const B: &str = "fff🦦🡴🕧";
+        const B_EXPECTED: &str = "";
 
         assert_eq!(sub_char_range(B, 10..), B_EXPECTED);
         assert_eq!(sub_char_range(B, 15..16), B_EXPECTED);

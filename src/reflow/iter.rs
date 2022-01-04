@@ -345,21 +345,21 @@ mod tests {
 
         #[test]
         fn smilies() {
-            const CONTENT: &'static str = "🍇🌡 🌤";
+            const CONTENT: &str = "🍇🌡 🌤";
             const EXPECTED: &[&'static str] = &["🍇🌡", "🌤"];
             verify(CONTENT, EXPECTED, vec![0..2]);
         }
 
         #[test]
         fn multi_char() {
-            const CONTENT: &'static str = "abc xyz qwert";
+            const CONTENT: &str = "abc xyz qwert";
             const EXPECTED: &[&'static str] = &["abc", "xyz", "qwert"];
             verify(CONTENT, EXPECTED, vec![]);
         }
 
         #[test]
         fn partial_covered_word_unbreakable() {
-            const CONTENT: &'static str = "abc xyz qwert";
+            const CONTENT: &str = "abc xyz qwert";
             const EXPECTED: &[&'static str] = &["abc xyz", "qwert"];
             verify(CONTENT, EXPECTED, vec![2..5]);
         }
@@ -369,15 +369,15 @@ mod tests {
         use super::*;
         #[test]
         fn wrap_too_long_fluid() {
-            const CONTENT: &'static str = "something kinda too long for a single line";
-            const EXPECTED: &'static str = r#"something kinda too long for a
+            const CONTENT: &str = "something kinda too long for a single line";
+            const EXPECTED: &str = r#"something kinda too long for a
 single line"#;
             verify_reflow(CONTENT, EXPECTED, 30usize, vec![], vec![0]);
         }
 
         #[test]
         fn wrap_too_short_fluid() {
-            const CONTENT: &'static str = r#"something
+            const CONTENT: &str = r#"something
 kinda
 too
 short
@@ -386,7 +386,7 @@ a
 single
 line"#;
 
-            const EXPECTED: &'static str = r#"something kinda too short for
+            const EXPECTED: &str = r#"something kinda too short for
 a single line"#;
 
             verify_reflow(CONTENT, EXPECTED, 30usize, vec![], vec![0; 8]);
@@ -394,31 +394,31 @@ a single line"#;
 
         #[test]
         fn wrap_just_fine() {
-            const CONTENT: &'static str = r#"just fine, no action required 🐱"#;
-            const EXPECTED: &'static str = CONTENT;
+            const CONTENT: &str = r#"just fine, no action required 🐱"#;
+            const EXPECTED: &str = CONTENT;
 
             verify_reflow(CONTENT, EXPECTED, 40usize, vec![], vec![0]);
         }
 
         #[test]
         fn wrap_too_long_unbreakable() {
-            const CONTENT: &'static str = "something kinda too Xong for a singlX line";
-            const EXPECTED: &'static str = r#"something kinda too
+            const CONTENT: &str = "something kinda too Xong for a singlX line";
+            const EXPECTED: &str = r#"something kinda too
 Xong for a singlX line"#;
             verify_reflow(CONTENT, EXPECTED, 30usize, vec![20..37], vec![0]);
         }
 
         #[test]
         fn spaces_and_tabs() {
-            const CONTENT: &'static str = "        something     kinda       ";
-            const EXPECTED: &'static str = r#"something kinda"#;
+            const CONTENT: &str = "        something     kinda       ";
+            const EXPECTED: &str = r#"something kinda"#;
             verify_reflow(CONTENT, EXPECTED, 20usize, vec![], vec![0]);
         }
 
         #[test]
         fn deep_indentation_too_long() {
-            const CONTENT: &'static str = r#"deep indentation"#;
-            const EXPECTED: &'static str = r#"deep
+            const CONTENT: &str = r#"deep indentation"#;
+            const EXPECTED: &str = r#"deep
 indentation"#;
             // 20 < 31 = 4 + 1 + 11 + 15
             verify_reflow(CONTENT, EXPECTED, 20usize, vec![], vec![15]);
@@ -431,9 +431,9 @@ indentation"#;
                 .filter(None, log::LevelFilter::Trace)
                 .try_init();
 
-            const CONTENT: &'static str = r#"deep
+            const CONTENT: &str = r#"deep
 indentation"#;
-            const EXPECTED: &'static str = r#"deep indentation"#;
+            const EXPECTED: &str = r#"deep indentation"#;
             // 22 > 21 = 4 + 1 + 11 + 5
             verify_reflow(CONTENT, EXPECTED, 22usize, vec![], vec![5, 5]);
         }
