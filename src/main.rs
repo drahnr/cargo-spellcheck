@@ -1,6 +1,6 @@
 use log::warn;
 
-use cargo_spellcheck::{run, errors::Result, action};
+use cargo_spellcheck::{action, errors::Result, run};
 
 #[allow(missing_docs)]
 fn main() -> Result<()> {

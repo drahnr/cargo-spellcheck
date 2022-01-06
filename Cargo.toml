@@ -78,15 +78,15 @@ fd-lock = { version = "3", optional = true }
 # full grammar check, but also tokenization and disambiguation
 nlprule = { version = "=0.6.4", optional = true }
 
+libc = "0.2"
+
 [dev-dependencies]
 # for stripping ansi color codes
 console = "0.15"
 assert_matches = "1"
 maplit = "1"
 serde_plain = "1"
-# signal-child = "1"
-syscalls = "0.5"
-fork = "0.1"
+nix = "0.23"
 
 [features]
 default = ["hunspell", "nlprules"]
@@ -108,3 +108,8 @@ debug = true
 
 [package.metadata.spellcheck]
 config = ".config/spellcheck.toml"
+
+
+[[test]]
+name = "signal_handler"
+path = "tests/signal_handler.rs"
