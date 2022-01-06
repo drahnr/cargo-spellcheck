@@ -28,7 +28,7 @@ pub use self::span::*;
 pub use self::suggestion::*;
 pub use self::util::*;
 
-use self::errors::{Result, bail};
+use self::errors::{bail, Result};
 
 use log::{debug, info, trace, warn};
 use serde::Deserialize;
@@ -82,22 +82,26 @@ pub static WRITE_IN_PROGRESS: AtomicU16 = AtomicU16::new(0);
 #[cfg(not(target_os = "windows"))]
 pub fn signal_handler() {
     let mut signals =
-        iterator::Signals::new(vec![SIGTERM, SIGINT, SIGQUIT]).expect("Failed to create Signals");
-    for s in signals.forever() {
-        match s {
-            SIGTERM | SIGINT | SIGQUIT => {
-                // Wait for potential writing to disk to be finished.
-                while WRITE_IN_PROGRESS.load(Ordering::Acquire) > 0 {
-                    std::hint::spin_loop();
+        iterator::Signals::new(&[SIGTERM, SIGINT, SIGQUIT]).expect("Failed to create Signals");
+
+    std::thread::spawn(move || {
+        for s in signals.forever() {
+            match s {
+                SIGTERM | SIGINT | SIGQUIT => {
+                    // Wait for potential writing to disk to be finished.
+                    while WRITE_IN_PROGRESS.load(Ordering::Acquire) > 0 {
+                        std::hint::spin_loop();
+                        std::thread::yield_now();
+                    }
+                    if let Err(e) = action::interactive::ScopedRaw::restore_terminal() {
+                        warn!("Failed to restore terminal: {}", e);
+                    }
+                    unsafe { libc::_exit(130) };
                 }
-                if let Err(e) = action::interactive::ScopedRaw::restore_terminal() {
-                    warn!("Failed to restore terminal: {}", e);
-                }
-                std::process::exit(130);
+                sig => warn!("Received unhandled signal {}, ignoring", sig),
             }
-            sig => warn!("Received unhandled signal {}, ignoring", sig),
         }
-    }
+    });
 }
 
 /// The inner main.
@@ -128,7 +132,7 @@ pub fn run() -> Result<ExitCode> {
     }
 
     #[cfg(not(target_os = "windows"))]
-    let _signalthread = std::thread::spawn(move || signal_handler());
+    signal_handler();
 
     let (unified, config) = args.unified()?;
 
