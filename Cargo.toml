@@ -78,8 +78,6 @@ fd-lock = { version = "3", optional = true }
 # full grammar check, but also tokenization and disambiguation
 nlprule = { version = "=0.6.4", optional = true }
 
-libc = "0.2"
-
 [dev-dependencies]
 # for stripping ansi color codes
 console = "0.15"
