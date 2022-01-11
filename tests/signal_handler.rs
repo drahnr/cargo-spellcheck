@@ -1,13 +1,11 @@
 #![cfg(target_os = "linux")]
 
-use std::sync::atomic::Ordering;
-
 use nix::sys::signal::*;
 use nix::sys::wait::*;
 use nix::unistd::Pid;
 use nix::unistd::{fork, ForkResult};
 
-use cargo_spellcheck::{signal_handler, WRITE_IN_PROGRESS};
+use cargo_spellcheck::{signal_handler, TinHat};
 
 #[test]
 fn signal_handler_works() -> Result<(), Box<dyn std::error::Error + 'static>> {
@@ -56,18 +54,16 @@ fn signal_handler_works() -> Result<(), Box<dyn std::error::Error + 'static>> {
     } else {
         signal_handler();
 
-        // signal while in a lock
-        dbg!(WRITE_IN_PROGRESS.load(Ordering::Acquire));
+        // signal while blocking signals
+        {
+            let hat = TinHat::on();
+            println!("[child] Raise signal");
 
-        WRITE_IN_PROGRESS.fetch_add(1, Ordering::Release);
-        println!("[child] Raise signal");
+            kill(Pid::this(), QUIT).unwrap();
 
-        kill(Pid::this(), QUIT).unwrap();
-
-        std::thread::sleep(std::time::Duration::from_millis(1));
-
-        WRITE_IN_PROGRESS.fetch_sub(1, Ordering::Release);
-        dbg!(WRITE_IN_PROGRESS.load(Ordering::Acquire));
+            std::thread::sleep(std::time::Duration::from_millis(1));
+            drop(hat);
+        }
 
         std::thread::sleep(std::time::Duration::from_secs(10_000));
         unreachable!("[child] Signal handler exits before panic.");

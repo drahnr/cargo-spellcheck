@@ -12,7 +12,6 @@ use rayon::iter::ParallelIterator;
 
 use std::io::{Read, Write};
 use std::path::PathBuf;
-use std::sync::atomic::Ordering;
 
 pub mod bandaid;
 pub mod interactive;
@@ -305,19 +304,22 @@ impl Action {
         let mut content = String::with_capacity(2e6 as usize);
         reader.get_mut().read_to_string(&mut content)?;
 
-        // Tell the signal handler that writing to disk is in progress.
-        WRITE_IN_PROGRESS.fetch_add(1, Ordering::Release);
-        apply_patches(
-            bandaids.into_iter().map(|x| Patch::from(x)),
-            content.as_str(), // FIXME for efficiency, correct_lines should integrate with `BufRead` instead of a `String` buffer
-            &mut writer,
-        )?;
+        {
+            let th = crate::TinHat::on();
 
-        writer.flush()?;
+            apply_patches(
+                bandaids.into_iter().map(|x| Patch::from(x)),
+                content.as_str(), // FIXME for efficiency, correct_lines should integrate with `BufRead` instead of a `String` buffer
+                &mut writer,
+            )?;
 
-        fs::rename(tmp, path)?;
-        // Writing for this file is done, re-enable signal handler.
-        WRITE_IN_PROGRESS.fetch_sub(1, Ordering::Release);
+            writer.flush()?;
+
+            fs::rename(tmp, path)?;
+
+            // Writing for this file is done, unblock the signal handler.
+            drop(th);
+        }
 
         Ok(())
     }

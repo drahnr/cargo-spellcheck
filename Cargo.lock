@@ -213,7 +213,6 @@ dependencies = [
  "isolang",
  "itertools 0.10.1",
  "lazy_static",
- "libc",
  "log",
  "maplit",
  "memchr",

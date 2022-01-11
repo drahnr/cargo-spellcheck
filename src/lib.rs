@@ -33,7 +33,7 @@ use self::errors::{bail, Result};
 use log::{debug, info, trace, warn};
 use serde::Deserialize;
 
-use std::sync::atomic::{AtomicU16, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 
 #[cfg(not(target_os = "windows"))]
 use signal_hook::{
@@ -73,8 +73,10 @@ impl ExitCode {
     }
 }
 
-/// Global atomic to signal a file write is currently in progress.
-pub static WRITE_IN_PROGRESS: AtomicU16 = AtomicU16::new(0);
+/// Global atomic to block signal processing while a file write is currently in progress.
+static WRITE_IN_PROGRESS: AtomicU16 = AtomicU16::new(0);
+/// Delay if the signal handler is currently running.
+static SIGNAL_HANDLER_AT_WORK: AtomicBool = AtomicBool::new(false);
 
 /// Handle incoming signals.
 ///
@@ -88,6 +90,7 @@ pub fn signal_handler() {
         for s in signals.forever() {
             match s {
                 SIGTERM | SIGINT | SIGQUIT => {
+                    SIGNAL_HANDLER_AT_WORK.store(true, Ordering::SeqCst);
                     // Wait for potential writing to disk to be finished.
                     while WRITE_IN_PROGRESS.load(Ordering::Acquire) > 0 {
                         std::hint::spin_loop();
@@ -96,12 +99,33 @@ pub fn signal_handler() {
                     if let Err(e) = action::interactive::ScopedRaw::restore_terminal() {
                         warn!("Failed to restore terminal: {}", e);
                     }
-                    unsafe { libc::_exit(130) };
+                    signal_hook::low_level::exit(130);
                 }
                 sig => warn!("Received unhandled signal {}, ignoring", sig),
             }
         }
     });
+}
+
+/// Blocks (unix) signals.
+pub struct TinHat;
+
+impl TinHat {
+    /// Put the tin hat on, and only allow signals being processed once it's dropped.
+    pub fn on() -> Self {
+        while SIGNAL_HANDLER_AT_WORK.load(Ordering::Acquire) {
+            std::hint::spin_loop();
+            std::thread::yield_now();
+        }
+        let _ = WRITE_IN_PROGRESS.fetch_add(1, Ordering::Release);
+        Self
+    }
+}
+
+impl Drop for TinHat {
+    fn drop(&mut self) {
+        let _ = WRITE_IN_PROGRESS.fetch_sub(1, Ordering::Release);
+    }
 }
 
 /// The inner main.
