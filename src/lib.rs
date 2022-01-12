@@ -63,7 +63,7 @@ pub enum ExitCode {
 }
 
 impl ExitCode {
-    /// Convert ExitCode to primitive.
+    /// Convert `ExitCode` to primitive.
     pub fn as_u8(&self) -> u8 {
         match *self {
             Self::Success => 0u8,
@@ -107,7 +107,7 @@ pub fn signal_handler() {
     });
 }
 
-/// Blocks (unix) signals.
+/// Blocks (UNIX) signals.
 pub struct TinHat;
 
 impl TinHat {
