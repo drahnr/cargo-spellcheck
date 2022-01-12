@@ -1,7 +1,8 @@
 use std::fmt;
 use std::fmt::{Display, Formatter};
 
-use ra_ap_syntax::tokenize;
+use ra_ap_syntax::{ast, AstToken};
+
 use regex::Regex;
 
 use super::*;
@@ -163,16 +164,18 @@ pub fn extract_developer_comments(source: &str) -> Vec<LiteralSet> {
 
 /// Creates a series of `TokenWithLocation`s from a source string
 fn source_to_tokens_with_location(source: &str) -> Vec<TokenWithLocation> {
-    let ra_tokens = tokenize(source).0;
+    let parse = ast::SourceFile::parse(source);
+    let node = parse.syntax_node();
     let mut tokens = vec![];
-    let mut location = 0;
-    for token in ra_tokens {
-        let length = usize::from(token.len);
+    for token in node.children_with_tokens().filter_map(|x| {
+        x.into_token()
+            .and_then(ast::Comment::cast)
+            .filter(|comment| !comment.is_doc())
+    }) {
         tokens.push(TokenWithLocation {
-            content: source[location..location + length].to_string(),
-            location,
+            content: dbg!(token.text()).to_owned(),
+            location: usize::from(dbg!(token.syntax().text_range()).start()),
         });
-        location += length;
     }
     tokens
 }
@@ -418,31 +421,19 @@ mod tests {
     #[test]
     fn test_source_to_token_with_location_calculates_correct_locations() {
         {
-            let tokens = source_to_tokens_with_location("/* test */\n// test");
-            assert_eq!(tokens.get(0).unwrap().location, 0); // Block comment
-            assert_eq!(tokens.get(1).unwrap().location, 10); // Whitespace
-            assert_eq!(tokens.get(2).unwrap().location, 11); // Line comment
+            let mut tokens = source_to_tokens_with_location("/* test */\n// test").into_iter();
+            assert_eq!(tokens.next().unwrap().location, 0); // Block comment
+            assert_eq!(tokens.next().unwrap().location, 11); // Line comment
         }
         {
-            let tokens = source_to_tokens_with_location("/* te中st */\n// test");
-            assert_eq!(tokens.get(0).unwrap().location, 0); // Block comment
-            assert_eq!(tokens.get(1).unwrap().location, 13); // Whitespace
-            assert_eq!(tokens.get(2).unwrap().location, 14); // Line comment
+            let mut tokens = source_to_tokens_with_location("/* te中st */\n// test").into_iter();
+            assert_eq!(tokens.next().unwrap().location, 0); // Block comment
+            assert_eq!(tokens.next().unwrap().location, 14); // Line comment
         }
         {
-            let tokens = source_to_tokens_with_location("/* te中st */\n// test\nfn 中(){\t}");
-            assert_eq!(tokens.get(0).unwrap().location, 0); // Block comment
-            assert_eq!(tokens.get(1).unwrap().location, 13); // Whitespace
-            assert_eq!(tokens.get(2).unwrap().location, 14); // Line comment
-            assert_eq!(tokens.get(3).unwrap().location, 21); // Whitespace
-            assert_eq!(tokens.get(4).unwrap().location, 22); // Function keyword
-            assert_eq!(tokens.get(5).unwrap().location, 24); // Whitespace
-            assert_eq!(tokens.get(6).unwrap().location, 25); // Function name
-            assert_eq!(tokens.get(7).unwrap().location, 28); // Open bracket
-            assert_eq!(tokens.get(8).unwrap().location, 29); // Close bracket
-            assert_eq!(tokens.get(9).unwrap().location, 30); // Open curly bracket
-            assert_eq!(tokens.get(10).unwrap().location, 31); // Whitespace
-            assert_eq!(tokens.get(11).unwrap().location, 32); // Close curly bracket
+            let mut tokens =
+                source_to_tokens_with_location("/* te中st */\n// test\nfn 中(){\t}").into_iter();
+            assert_eq!(tokens.next().unwrap().location, 0); // Block comment
         }
     }
 
@@ -453,55 +444,69 @@ mod tests {
         tokens_with_location_to_tokens_with_line_and_column(source, tokens)
     }
 
+    use assert_matches::assert_matches;
+
     #[test]
     fn test_tokens_with_line_column_values_set_correctly() {
         {
             let source = "/* test */\n// test";
-            let tokens = source_to_tokens_with_line_column(source);
-            assert_eq!(tokens.get(0).unwrap().line, 1); // Block comment
-            assert_eq!(tokens.get(0).unwrap().column, 0);
-            assert_eq!(tokens.get(1).unwrap().line, 1); // Whitespace
-            assert_eq!(tokens.get(1).unwrap().column, 10);
-            assert_eq!(tokens.get(2).unwrap().line, 2); // Line comment
-            assert_eq!(tokens.get(2).unwrap().column, 0);
+            let mut tokens = source_to_tokens_with_line_column(source).into_iter();
+            assert_matches!(
+                tokens.next().unwrap(),
+                TokenWithLineColumn {
+                    line: 1,
+                    column: 0,
+                    ..
+                }
+            ); // Block comment
+            assert_matches!(
+                tokens.next().unwrap(),
+                TokenWithLineColumn {
+                    line: 2,
+                    column: 0,
+                    ..
+                }
+            ); // Line comment
         }
         {
             let source = "/* te中st */\n// test";
-            let tokens = source_to_tokens_with_line_column(source);
-            assert_eq!(tokens.get(0).unwrap().line, 1); // Block comment
-            assert_eq!(tokens.get(0).unwrap().column, 0);
-            assert_eq!(tokens.get(1).unwrap().line, 1); // Whitespace
-            assert_eq!(tokens.get(1).unwrap().column, 11);
-            assert_eq!(tokens.get(2).unwrap().line, 2); // Line comment
-            assert_eq!(tokens.get(2).unwrap().column, 0);
+            let mut tokens = source_to_tokens_with_line_column(source).into_iter();
+            assert_matches!(
+                tokens.next().unwrap(),
+                TokenWithLineColumn {
+                    line: 1,
+                    column: 0,
+                    ..
+                }
+            ); // Block comment
+            assert_matches!(
+                tokens.next().unwrap(),
+                TokenWithLineColumn {
+                    line: 2,
+                    column: 0,
+                    ..
+                }
+            ); // Line comment
         }
         {
             let source = "/* te中st */\n// test\nfn 中(){\t}";
-            let tokens = source_to_tokens_with_line_column(source);
-            assert_eq!(tokens.get(0).unwrap().line, 1); // Block comment
-            assert_eq!(tokens.get(0).unwrap().column, 0);
-            assert_eq!(tokens.get(1).unwrap().line, 1); // Whitespace
-            assert_eq!(tokens.get(1).unwrap().column, 11);
-            assert_eq!(tokens.get(2).unwrap().line, 2); // Line comment
-            assert_eq!(tokens.get(2).unwrap().column, 0);
-            assert_eq!(tokens.get(3).unwrap().line, 2); // Whitespace
-            assert_eq!(tokens.get(3).unwrap().column, 7);
-            assert_eq!(tokens.get(4).unwrap().line, 3); // Function keyword
-            assert_eq!(tokens.get(4).unwrap().column, 0);
-            assert_eq!(tokens.get(5).unwrap().line, 3); // Whitespace
-            assert_eq!(tokens.get(5).unwrap().column, 2);
-            assert_eq!(tokens.get(6).unwrap().line, 3); // Function name
-            assert_eq!(tokens.get(6).unwrap().column, 3);
-            assert_eq!(tokens.get(7).unwrap().line, 3); // Open bracket
-            assert_eq!(tokens.get(7).unwrap().column, 4);
-            assert_eq!(tokens.get(8).unwrap().line, 3); // Close bracket
-            assert_eq!(tokens.get(8).unwrap().column, 5);
-            assert_eq!(tokens.get(9).unwrap().line, 3); // Open curly bracket
-            assert_eq!(tokens.get(9).unwrap().column, 6);
-            assert_eq!(tokens.get(10).unwrap().line, 3); // Whitespace
-            assert_eq!(tokens.get(10).unwrap().column, 7);
-            assert_eq!(tokens.get(11).unwrap().line, 3); // Close curly bracket
-            assert_eq!(tokens.get(11).unwrap().column, 8);
+            let mut tokens = dbg!(source_to_tokens_with_line_column(source)).into_iter();
+            assert_matches!(
+                tokens.next().unwrap(),
+                TokenWithLineColumn {
+                    line: 1,
+                    column: 0,
+                    ..
+                }
+            ); // Block comment
+            assert_matches!(
+                tokens.next().unwrap(),
+                TokenWithLineColumn {
+                    line: 2,
+                    column: 0,
+                    ..
+                }
+            ); // Block comment
         }
     }
 

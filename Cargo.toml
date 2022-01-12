@@ -45,7 +45,7 @@ log = "0.4"
 num_cpus = "1.13"
 proc-macro2 = { version = "1", features = ["span-locations"] }
 pulldown-cmark = "0.9.0"
-ra_ap_syntax = "0.0.84"
+ra_ap_syntax = "0.0.90"
 rayon = "1.5"
 regex = "1.5"
 serde = { version = "1", features = ["derive"] }
