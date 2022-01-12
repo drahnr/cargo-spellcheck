@@ -17,7 +17,8 @@ include = [
     "Cargo.toml",
     "build.rs",
     "/LICENSE-*",
-    "/README.md"
+    "/README.md",
+    "tests/**/*.rs"
 ]
 
 [build-dependencies]
@@ -83,6 +84,7 @@ console = "0.15"
 assert_matches = "1"
 maplit = "1"
 serde_plain = "1"
+nix = "0.23"
 
 [features]
 default = ["hunspell", "nlprules"]
@@ -104,3 +106,8 @@ debug = true
 
 [package.metadata.spellcheck]
 config = ".config/spellcheck.toml"
+
+
+[[test]]
+name = "signal_handler"
+path = "tests/signal_handler.rs"
