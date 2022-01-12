@@ -1,7 +1,8 @@
 use std::fmt;
 use std::fmt::{Display, Formatter};
 
-use ra_ap_syntax::tokenize;
+use ra_ap_syntax::{ast, AstToken};
+
 use regex::Regex;
 
 use super::*;
@@ -31,17 +32,6 @@ lazy_static::lazy_static! {
   static ref LINE_COMMENT: Regex = Regex::new(r"^//([^[/|!]].*)$")
       .expect("Failed to create regular expression to identify developer line comments. \
           Please check this regex!");
-}
-
-/// A string token from a source string with the location at which it occurs in
-/// the source string in 0 indexed bytes
-#[derive(Debug)]
-struct TokenWithLocation {
-    /// The full contents of this token, including pre/post characters (like
-    /// '//')
-    content: String,
-    /// The location of the start of this token in the source string, in bytes
-    location: usize,
 }
 
 /// A string token from a source string with the location at which it occurs in
@@ -150,47 +140,31 @@ impl TokenWithType {
 /// file to all `LiteralSet`s that can be created from developer comments in the
 /// source
 pub fn extract_developer_comments(source: &str) -> Vec<LiteralSet> {
-    let tokens = source_to_tokens_with_location(source);
-    let tokens = tokens_with_location_to_tokens_with_line_and_column(source, tokens);
-    let tokens = token_with_line_column_to_token_with_type(tokens);
-    let block_comments = literal_sets_from_block_comments(tokens.iter().collect());
-    let line_comments = literal_sets_from_line_comments(tokens.iter().collect());
-    block_comments
-        .into_iter()
-        .chain(line_comments.into_iter())
-        .collect()
+    let tokens = source_to_iter(source).collect::<Vec<_>>();
+    let comments = construct_literal_sets(tokens);
+    comments
 }
 
-/// Creates a series of `TokenWithLocation`s from a source string
-fn source_to_tokens_with_location(source: &str) -> Vec<TokenWithLocation> {
-    let ra_tokens = tokenize(source).0;
-    let mut tokens = vec![];
-    let mut location = 0;
-    for token in ra_tokens {
-        let length = usize::from(token.len);
-        tokens.push(TokenWithLocation {
-            content: source[location..location + length].to_string(),
-            location,
-        });
-        location += length;
-    }
-    tokens
-}
-
-/// Converts a series of `TokenWithLocation`s to `TokenWithLineColumn`s.
-/// Requires the source string to calculate line & column from location.
-fn tokens_with_location_to_tokens_with_line_and_column(
-    source: &str,
-    tokens_in: Vec<TokenWithLocation>,
-) -> Vec<TokenWithLineColumn> {
-    tokens_in
-        .into_iter()
-        .map(|t| TokenWithLineColumn {
-            content: t.content,
-            line: count_lines(&source[..t.location]),
-            column: calculate_column(&source[..t.location]),
+/// Creates a series of `TokenWithType`s from a source string
+fn source_to_iter<'a>(source: &'a str) -> impl Iterator<Item = TokenWithType> + 'a {
+    let parse = ast::SourceFile::parse(source);
+    let node = parse.syntax_node();
+    node.descendants_with_tokens()
+        .filter_map(|nort| {
+            nort.into_token()
+                .and_then(ast::Comment::cast)
+                .filter(|comment| !comment.is_doc())
+            // for now until it's clear whether #[doc=foo!()]
+            // is possible with `ra_ap_syntax`
         })
-        .collect()
+        .map(move |comment| {
+            let location = usize::from(comment.syntax().text_range().start());
+            TokenWithType::from(TokenWithLineColumn {
+                content: comment.text().to_owned(),
+                line: count_lines(&source[..location]),
+                column: calculate_column(&source[..location]),
+            })
+        })
 }
 
 /// Given a string, calculates the 1 indexed line number of the line on which
@@ -208,55 +182,11 @@ fn calculate_column(fragment: &str) -> usize {
     }
 }
 
-/// Converts a series of `TokenWithLineColumn`s to `TokenWithType`s
-fn token_with_line_column_to_token_with_type(
-    tokens_in: Vec<TokenWithLineColumn>,
-) -> Vec<TokenWithType> {
-    tokens_in
-        .into_iter()
-        .map(|t| TokenWithType::from(t))
-        .collect()
-}
-
-/// Attempts to convert all `TokenWithType` with kind `TokenType::BlockComment`
-/// in the input into literal sets, returning those successful or otherwise
-/// logging the errors
-fn literal_sets_from_block_comments(tokens: Vec<&TokenWithType>) -> Vec<LiteralSet> {
-    let mut literal_sets = vec![];
-    let only_block_comments: Vec<&TokenWithType> = tokens
-        .into_iter()
-        .filter(|t| t.kind == TokenType::BlockComment)
-        .collect();
-    for token in only_block_comments {
-        match literal_set_from_block_comment(token) {
-      Ok(ls) => literal_sets.push(ls),
-      Err(e) => log::trace!(
-          "Attempted to convert block comment with content \"{}\" to literal set, failed with \"{}\"",
-          token.content, e)
-    }
-    }
-    literal_sets
-}
-
 /// Attempts to create a `LiteralSet` from a token assuming it is block comment.
 /// Returns `None` if the token kind is not `TokenKind::BlockComment`, if the
 /// token content does not match the block comment regex, or if any line cannot
 /// be added by `LiteralSet::add_adjacent`
 fn literal_set_from_block_comment(token: &TokenWithType) -> Result<LiteralSet, String> {
-    if token.kind != TokenType::BlockComment {
-        return Err(format!(
-            "Got token of type {}, need {}",
-            token.kind,
-            TokenType::BlockComment
-        ));
-    }
-    if !BLOCK_COMMENT.is_match(&token.content) {
-        return Err(format!(
-            "Token claimed to be of type {}, but improperly delimited - actual content \"{}\"",
-            TokenType::BlockComment,
-            token.content
-        ));
-    }
     let number_of_lines = token.content.split("\n").count();
     let mut lines = token.content.split("\n");
     if number_of_lines == 1 {
@@ -359,20 +289,27 @@ fn literal_from_line_comment(token: &TokenWithType) -> Result<TrimmedLiteral, St
 /// Converts a vector of tokens into a vector of `LiteralSet`s based on the
 /// developer line comments in the input, ignoring all other tokens in the
 /// input.
-fn literal_sets_from_line_comments(tokens: Vec<&TokenWithType>) -> Vec<LiteralSet> {
+fn construct_literal_sets(tokens: impl IntoIterator<Item = TokenWithType>) -> Vec<LiteralSet> {
     let mut sets = vec![];
-    for token in tokens {
-        if token.kind != TokenType::LineComment {
-            continue;
-        }
-        let literal = match literal_from_line_comment(token) {
-            Err(s) => {
+    'loopy: for token in tokens {
+        let res = match token.kind {
+            TokenType::LineComment => literal_from_line_comment(&token),
+            TokenType::BlockComment => {
+                if let Ok(set) = literal_set_from_block_comment(&token) {
+                    sets.push(set)
+                }
+                continue 'loopy;
+            }
+            _ => continue 'loopy,
+        };
+        let literal = match res {
+            Err(err) => {
                 log::trace!(
-                    "Failed to create literal from line comment with content \"{}\" due to \"{}\"",
+                    "Failed to create literal from comment with content \"{}\" due to \"{}\"",
                     token.content,
-                    s
+                    err
                 );
-                continue;
+                continue 'loopy;
             }
             Ok(l) => l,
         };
@@ -415,93 +352,69 @@ mod tests {
         assert_eq!(calculate_column("test\ntest中2\n中3"), 2);
     }
 
-    #[test]
-    fn test_source_to_token_with_location_calculates_correct_locations() {
-        {
-            let tokens = source_to_tokens_with_location("/* test */\n// test");
-            assert_eq!(tokens.get(0).unwrap().location, 0); // Block comment
-            assert_eq!(tokens.get(1).unwrap().location, 10); // Whitespace
-            assert_eq!(tokens.get(2).unwrap().location, 11); // Line comment
-        }
-        {
-            let tokens = source_to_tokens_with_location("/* te中st */\n// test");
-            assert_eq!(tokens.get(0).unwrap().location, 0); // Block comment
-            assert_eq!(tokens.get(1).unwrap().location, 13); // Whitespace
-            assert_eq!(tokens.get(2).unwrap().location, 14); // Line comment
-        }
-        {
-            let tokens = source_to_tokens_with_location("/* te中st */\n// test\nfn 中(){\t}");
-            assert_eq!(tokens.get(0).unwrap().location, 0); // Block comment
-            assert_eq!(tokens.get(1).unwrap().location, 13); // Whitespace
-            assert_eq!(tokens.get(2).unwrap().location, 14); // Line comment
-            assert_eq!(tokens.get(3).unwrap().location, 21); // Whitespace
-            assert_eq!(tokens.get(4).unwrap().location, 22); // Function keyword
-            assert_eq!(tokens.get(5).unwrap().location, 24); // Whitespace
-            assert_eq!(tokens.get(6).unwrap().location, 25); // Function name
-            assert_eq!(tokens.get(7).unwrap().location, 28); // Open bracket
-            assert_eq!(tokens.get(8).unwrap().location, 29); // Close bracket
-            assert_eq!(tokens.get(9).unwrap().location, 30); // Open curly bracket
-            assert_eq!(tokens.get(10).unwrap().location, 31); // Whitespace
-            assert_eq!(tokens.get(11).unwrap().location, 32); // Close curly bracket
-        }
-    }
-
-    /// Convenience function to convert from source to tokens with line & column
-    /// for tests
-    fn source_to_tokens_with_line_column(source: &str) -> Vec<TokenWithLineColumn> {
-        let tokens = source_to_tokens_with_location(source);
-        tokens_with_location_to_tokens_with_line_and_column(source, tokens)
-    }
+    use assert_matches::assert_matches;
 
     #[test]
     fn test_tokens_with_line_column_values_set_correctly() {
         {
             let source = "/* test */\n// test";
-            let tokens = source_to_tokens_with_line_column(source);
-            assert_eq!(tokens.get(0).unwrap().line, 1); // Block comment
-            assert_eq!(tokens.get(0).unwrap().column, 0);
-            assert_eq!(tokens.get(1).unwrap().line, 1); // Whitespace
-            assert_eq!(tokens.get(1).unwrap().column, 10);
-            assert_eq!(tokens.get(2).unwrap().line, 2); // Line comment
-            assert_eq!(tokens.get(2).unwrap().column, 0);
+            let mut tokens = source_to_iter(source);
+            assert_matches!(
+                tokens.next(),
+                Some(TokenWithType {
+                    line: 1,
+                    column: 0,
+                    ..
+                })
+            ); // Block comment
+            assert_matches!(
+                tokens.next(),
+                Some(TokenWithType {
+                    line: 2,
+                    column: 0,
+                    ..
+                })
+            ); // Line comment
         }
         {
             let source = "/* te中st */\n// test";
-            let tokens = source_to_tokens_with_line_column(source);
-            assert_eq!(tokens.get(0).unwrap().line, 1); // Block comment
-            assert_eq!(tokens.get(0).unwrap().column, 0);
-            assert_eq!(tokens.get(1).unwrap().line, 1); // Whitespace
-            assert_eq!(tokens.get(1).unwrap().column, 11);
-            assert_eq!(tokens.get(2).unwrap().line, 2); // Line comment
-            assert_eq!(tokens.get(2).unwrap().column, 0);
+            let mut tokens = source_to_iter(source);
+            assert_matches!(
+                tokens.next(),
+                Some(TokenWithType {
+                    line: 1,
+                    column: 0,
+                    ..
+                })
+            ); // Block comment
+            assert_matches!(
+                tokens.next(),
+                Some(TokenWithType {
+                    line: 2,
+                    column: 0,
+                    ..
+                })
+            ); // Line comment
         }
         {
             let source = "/* te中st */\n// test\nfn 中(){\t}";
-            let tokens = source_to_tokens_with_line_column(source);
-            assert_eq!(tokens.get(0).unwrap().line, 1); // Block comment
-            assert_eq!(tokens.get(0).unwrap().column, 0);
-            assert_eq!(tokens.get(1).unwrap().line, 1); // Whitespace
-            assert_eq!(tokens.get(1).unwrap().column, 11);
-            assert_eq!(tokens.get(2).unwrap().line, 2); // Line comment
-            assert_eq!(tokens.get(2).unwrap().column, 0);
-            assert_eq!(tokens.get(3).unwrap().line, 2); // Whitespace
-            assert_eq!(tokens.get(3).unwrap().column, 7);
-            assert_eq!(tokens.get(4).unwrap().line, 3); // Function keyword
-            assert_eq!(tokens.get(4).unwrap().column, 0);
-            assert_eq!(tokens.get(5).unwrap().line, 3); // Whitespace
-            assert_eq!(tokens.get(5).unwrap().column, 2);
-            assert_eq!(tokens.get(6).unwrap().line, 3); // Function name
-            assert_eq!(tokens.get(6).unwrap().column, 3);
-            assert_eq!(tokens.get(7).unwrap().line, 3); // Open bracket
-            assert_eq!(tokens.get(7).unwrap().column, 4);
-            assert_eq!(tokens.get(8).unwrap().line, 3); // Close bracket
-            assert_eq!(tokens.get(8).unwrap().column, 5);
-            assert_eq!(tokens.get(9).unwrap().line, 3); // Open curly bracket
-            assert_eq!(tokens.get(9).unwrap().column, 6);
-            assert_eq!(tokens.get(10).unwrap().line, 3); // Whitespace
-            assert_eq!(tokens.get(10).unwrap().column, 7);
-            assert_eq!(tokens.get(11).unwrap().line, 3); // Close curly bracket
-            assert_eq!(tokens.get(11).unwrap().column, 8);
+            let mut tokens = source_to_iter(source);
+            assert_matches!(
+                tokens.next(),
+                Some(TokenWithType {
+                    line: 1,
+                    column: 0,
+                    ..
+                })
+            ); // Block comment
+            assert_matches!(
+                tokens.next(),
+                Some(TokenWithType {
+                    line: 2,
+                    column: 0,
+                    ..
+                })
+            ); // Block comment
         }
     }
 
@@ -549,15 +462,6 @@ mod tests {
     #[test]
     fn test_identify_token_type_assigns_other_type_to_non_developer_comments() {
         let not_developer_comments = vec![
-            token_with_line_column_at_start("fn"),
-            token_with_line_column_at_start(" "),
-            token_with_line_column_at_start("\n"),
-            token_with_line_column_at_start("function_name"),
-            token_with_line_column_at_start("("),
-            token_with_line_column_at_start(")"),
-            token_with_line_column_at_start(";"),
-            token_with_line_column_at_start("{"),
-            token_with_line_column_at_start("}"),
             token_with_line_column_at_start("/// Outer documentation comment"),
             token_with_line_column_at_start("//! Inner documentation comment"),
         ];
@@ -566,7 +470,7 @@ mod tests {
         }
     }
 
-    fn concatenate_with_line_breaks(includes: Vec<&&str>, excludes: Vec<&&str>) -> String {
+    fn concatenate_with_line_breaks(includes: &[&str], excludes: &[&str]) -> String {
         let mut building = String::new();
         for piece in includes {
             building = building + piece + "\n";
@@ -583,9 +487,8 @@ mod tests {
         let excludes = vec![
             "fn", "func中", "(", ")", "{", "1", "+", "2", ";", "}", "\n", " ",
         ];
-        let source =
-            concatenate_with_line_breaks(includes.iter().collect(), excludes.iter().collect());
-        let tokens = source_to_developer_comment_tokens_with_type(&source);
+        let source = concatenate_with_line_breaks(&includes, &excludes);
+        let tokens = source_to_iter(&source);
         for token in tokens {
             for content in &excludes {
                 assert_ne!(&token.content, content);
@@ -600,9 +503,8 @@ mod tests {
             "//! An inner documentation comment",
             "/// An outer documentation comment",
         ];
-        let source =
-            concatenate_with_line_breaks(includes.iter().collect(), excludes.iter().collect());
-        let tokens = source_to_developer_comment_tokens_with_type(&source);
+        let source = concatenate_with_line_breaks(&includes, &excludes);
+        let tokens = source_to_iter(&source);
         for token in tokens {
             for content in &excludes {
                 assert_ne!(&token.content, content);
@@ -616,28 +518,22 @@ mod tests {
         let excludes = vec![
             "fn", "func中", "(", ")", "{", "1", "+", "2", ";", "}", "\n", " ",
         ];
-        let source =
-            concatenate_with_line_breaks(includes.iter().collect(), excludes.iter().collect());
-        let tokens = source_to_developer_comment_tokens_with_type(&source);
+        let source = concatenate_with_line_breaks(&includes, &excludes);
+        let tokens = source_to_iter(&source).collect::<Vec<_>>();
         for content in includes {
-            let matches: Vec<&TokenWithType> =
-                tokens.iter().filter(|t| t.content == content).collect();
-            assert!(matches.len() > 0);
+            let tokens = tokens
+                .iter()
+                .filter(|t| t.content == content)
+                .collect::<Vec<_>>();
+            assert!(!tokens.is_empty());
         }
-    }
-
-    /// Convenience function to convert a source string into a set of
-    /// `TokenWithType`s
-    fn source_to_tokens_with_type(source: &str) -> Vec<TokenWithType> {
-        let tokens = source_to_tokens_with_line_column(source);
-        token_with_line_column_to_token_with_type(tokens)
     }
 
     #[test]
     fn test_block_comments_to_literal_sets_converter_keeps_block_comment_tokens() {
         let source = "/* block comment */\n/*\n * multi line block comment\n */\n";
-        let tokens = source_to_tokens_with_type(source);
-        let literal_sets = literal_sets_from_block_comments(tokens.iter().collect());
+        let tokens = source_to_iter(source);
+        let literal_sets = construct_literal_sets(tokens);
         assert_eq!(literal_sets.len(), 2);
     }
 
@@ -645,18 +541,18 @@ mod tests {
     fn test_block_comments_to_literal_sets_converter_ignores_other_token_types() {
         let source = "/// line comment\n/// outer documentation\npub fn test() -> i32 \
         {\n  //! inner documentation\n  1 + 2\n}";
-        let tokens = source_to_tokens_with_type(source);
-        let literal_sets = literal_sets_from_block_comments(tokens.iter().collect());
+        let tokens = source_to_iter(source);
+        let literal_sets = construct_literal_sets(tokens);
         assert_eq!(literal_sets.len(), 0);
     }
 
     #[test]
     fn test_single_line_block_comment_literal_correctly_created() {
         let source = "/* block 种 comment */";
-        let tokens = source_to_tokens_with_type(source);
+        let tokens = source_to_iter(source).collect::<Vec<_>>();
         assert_eq!(tokens.len(), 1);
-        let token = tokens.into_iter().last().unwrap();
-        let literal_set = literal_set_from_block_comment(&token);
+        let token = tokens.last().unwrap();
+        let literal_set = literal_set_from_block_comment(token);
         assert!(literal_set.is_ok());
         let literal_set = literal_set.unwrap();
         assert_eq!(literal_set.len(), 1);
@@ -675,9 +571,9 @@ mod tests {
     #[test]
     fn test_single_line_indented_block_comment_literal_correctly_created() {
         let source = "    /* block 种 comment */";
-        let tokens = source_to_tokens_with_type(source);
+        let tokens = source_to_iter(source).collect::<Vec<_>>();
         assert!(tokens.len() > 0);
-        let token = tokens.into_iter().last().unwrap();
+        let token = tokens.last().unwrap();
         let literal_set = literal_set_from_block_comment(&token);
         assert!(literal_set.is_ok());
         let literal_set = literal_set.unwrap();
@@ -701,7 +597,7 @@ mod tests {
     #[test]
     fn test_multi_line_block_comment_literal_correctly_created() {
         let source = "/* block\n 种 \ncomment */";
-        let tokens = source_to_tokens_with_type(source);
+        let tokens = source_to_iter(source).collect::<Vec<_>>();
         assert_eq!(tokens.len(), 1);
         let token = tokens.into_iter().last().unwrap();
         let literal_set = literal_set_from_block_comment(&token);
@@ -748,19 +644,19 @@ mod tests {
     }
 
     #[test]
-    fn test_not_developer_comments_block_comment_converter_does_not_create_literals() {
+    fn outer_inner_mix() {
         let source = "// line comment\n/// Outer documentation\nfn test(){\n \
         //! Inner documentation\n\tlet i = 1 + 2;\n}";
-        let tokens = source_to_tokens_with_type(source);
-        for token in tokens {
-            assert!(literal_set_from_block_comment(&token).is_err());
-        }
+        let tokens = source_to_iter(source);
+        let sets = construct_literal_sets(tokens);
+        // we only track dev comments
+        assert_eq!(sets.len(), 1);
     }
 
     #[test]
     fn test_non_line_comment_tokens_line_comment_to_literal_does_not_create_literals() {
         let source = "/* Block comment */\nfn test(i: usize) {\n  let j = 1 + i;\n  j\n}";
-        let tokens = source_to_tokens_with_type(source);
+        let tokens = source_to_iter(source);
         for token in tokens {
             assert!(literal_from_line_comment(&token).is_err());
         }
@@ -769,27 +665,17 @@ mod tests {
     #[test]
     fn test_documentation_line_comment_tokens_line_comment_to_literal_does_not_create_literals() {
         let source = "/// Outer \nfn(){\n//! Inner \n}";
-        let tokens = source_to_tokens_with_type(source);
+        let tokens = source_to_iter(source);
         for token in tokens {
             assert!(literal_from_line_comment(&token).is_err());
         }
-    }
-
-    /// Convenience method that returns a vector containing only the tokens from
-    /// the input vector which are developer comments
-    fn retain_only_developer_comments(tokens: Vec<TokenWithType>) -> Vec<TokenWithType> {
-        tokens
-            .into_iter()
-            .filter(|t| t.kind != TokenType::Other)
-            .collect()
     }
 
     #[test]
     fn test_developer_line_comment_tokens_line_comment_to_literal_create_literals_with_correct_data(
     ) {
         let source = "// First line comment\nconst ZERO: usize = 0; // A constant ";
-        let tokens = source_to_tokens_with_type(source);
-        let filtered = retain_only_developer_comments(tokens);
+        let filtered = source_to_iter(source).collect::<Vec<_>>();
         assert_eq!(filtered.len(), 2);
         let literals: Vec<Result<TrimmedLiteral, String>> = filtered
             .into_iter()
@@ -831,20 +717,12 @@ mod tests {
         }
     }
 
-    /// A convenience method to convert a source string into a set of
-    /// `TokenWithType`s and filter out any tokens which are not developer
-    /// comments
-    fn source_to_developer_comment_tokens_with_type(source: &str) -> Vec<TokenWithType> {
-        let tokens = source_to_tokens_with_type(source);
-        retain_only_developer_comments(tokens)
-    }
-
     #[test]
     fn test_single_line_comment_put_in_one_literal_set() {
         let content = " line comment";
         let source = format!("//{}", content);
-        let tokens = source_to_developer_comment_tokens_with_type(&source);
-        let literal_sets = literal_sets_from_line_comments(tokens.iter().collect());
+        let tokens = source_to_iter(&source);
+        let literal_sets = construct_literal_sets(tokens);
         assert_eq!(literal_sets.len(), 1);
         let literal_set = literal_sets.get(0).unwrap();
         let all_literals = literal_set.literals();
@@ -859,8 +737,8 @@ mod tests {
         let content_1 = " line comment 1 ";
         let content_2 = " line comment 2 ";
         let source = format!("//{}\n//{}", content_1, content_2);
-        let tokens = source_to_developer_comment_tokens_with_type(&source);
-        let literal_sets = literal_sets_from_line_comments(tokens.iter().collect());
+        let tokens = source_to_iter(&source);
+        let literal_sets = construct_literal_sets(tokens);
         assert_eq!(literal_sets.len(), 1);
         let literal_set = literal_sets.get(0).unwrap();
         let all_literals = literal_set.literals();
@@ -880,8 +758,8 @@ mod tests {
         let content_1 = " line comment 1 ";
         let content_2 = " line comment 2 ";
         let source = format!("//{}\nfn(){{}}\n//{}", content_1, content_2);
-        let tokens = source_to_developer_comment_tokens_with_type(&source);
-        let literal_sets = literal_sets_from_line_comments(tokens.iter().collect());
+        let tokens = source_to_iter(&source);
+        let literal_sets = construct_literal_sets(tokens);
         assert_eq!(literal_sets.len(), 2);
         {
             let literal_set = literal_sets.get(0).unwrap();
