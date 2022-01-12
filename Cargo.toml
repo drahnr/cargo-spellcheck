@@ -44,7 +44,7 @@ memchr = "2"
 log = "0.4"
 num_cpus = "1.13"
 proc-macro2 = { version = "1", features = ["span-locations"] }
-pulldown-cmark = "0.8.0"
+pulldown-cmark = "0.9.0"
 ra_ap_syntax = "0.0.84"
 rayon = "1.5"
 regex = "1.5"
@@ -66,7 +66,7 @@ uuid = { version = "0.8.2", features = ["v4"] }
 
 # TODO parse the country codes of dictionaries?
 iso_country = { version = "0.1", features = ["serde"] }
-isolang = { version = "1", features = ["serde_serialize"] }
+isolang = { version = "2", features = ["serde"] }
 
 url = { version = "2", features = ["serde"] }
 
