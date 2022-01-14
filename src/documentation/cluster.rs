@@ -117,9 +117,7 @@ impl Clusters {
     /// and adds them to this `Clusters`
     fn parse_developer_comments(&mut self, source: &str) {
         let developer_comments = extract_developer_comments(source);
-        for comment in developer_comments {
-            self.set.push(comment);
-        }
+        self.set.extend(developer_comments.into_iter());
     }
 
     /// Sort the `LiteralSet`s in this `Cluster` by start line descending, to

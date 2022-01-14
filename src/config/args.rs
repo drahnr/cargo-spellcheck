@@ -524,7 +524,7 @@ impl Args {
                     None if self.flag_stdout => ConfigWriteDestination::Stdout,
                     Some(path) => ConfigWriteDestination::File {
                         overwrite: self.flag_force,
-                        path: path.to_owned(),
+                        path,
                     },
                     None if self.flag_user => ConfigWriteDestination::File {
                         overwrite: self.flag_force,
