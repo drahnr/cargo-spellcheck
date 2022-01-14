@@ -293,8 +293,11 @@ jobs:
 
               "${EXE}" --version
               "${EXE}" demo/Cargo.toml || echo "$? - Found some errors"
+              "${EXE}" --dev-comments demo/Cargo.toml || echo "$? - Found some errors"
               "${EXE}" demo/src/main.rs || echo "$? - Found some errors"
+              "${EXE}" --dev-comments demo/src/main.rs || echo "$? - Found some errors"
               "${EXE}" demo/ || echo "$? - Found some errors"
+              "${EXE}" --dev-comments demo/ || echo "$? - Found some errors"
               # assure pipes work
               "${EXE}" | grep -C 10 "F"
               "${EXE}" > dump
@@ -596,9 +599,13 @@ jobs:
               sudo chmod +x "${EXE}"
               "${EXE}" --version
               "${EXE}" spellcheck demo/Cargo.toml
+              "${EXE}" --dev-comments spellcheck demo/Cargo.toml
               "${EXE}" spellcheck spellcheck -vvvv demo/src/main.rs
+              "${EXE}" --dev-comments spellcheck spellcheck -vvvv demo/src/main.rs
               "${EXE}" spellcheck demo
+              "${EXE}" --dev-comments spellcheck demo
               "${EXE}" spellcheck
+              "${EXE}" --dev-comments spellcheck
               "${EXE}"
 
             dir: git-repo
