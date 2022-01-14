@@ -150,7 +150,7 @@ impl TokenWithType {
 /// A convenience method that runs the complete 'pipeline' from string `source`
 /// file to all `LiteralSet`s that can be created from developer comments in the
 /// source
-pub fn extract_developer_comments(source: &str) -> Vec<LiteralSet> {
+pub fn extract_comments(source: &str) -> Vec<LiteralSet> {
     let tokens = source_to_tokens_with_location(source);
     let tokens = tokens_with_location_to_tokens_with_line_and_column(source, tokens);
     let tokens = token_with_line_column_to_token_with_type(tokens);
@@ -163,21 +163,25 @@ pub fn extract_developer_comments(source: &str) -> Vec<LiteralSet> {
 }
 
 /// Creates a series of `TokenWithLocation`s from a source string
-fn source_to_tokens_with_location(source: &str) -> Vec<TokenWithLocation> {
+fn source_to_comments(source: &str, dev_comments: bool) -> impl Iterator<Item=TokenWithType> {
     let parse = ast::SourceFile::parse(source);
     let node = parse.syntax_node();
     let mut tokens = vec![];
-    for token in node.children_with_tokens().filter_map(|x| {
+    node.children_with_tokens()
+    .filter_map(|x| {
         x.into_token()
             .and_then(ast::Comment::cast)
-            .filter(|comment| !comment.is_doc())
-    }) {
-        tokens.push(TokenWithLocation {
-            content: dbg!(token.text()).to_owned(),
-            location: usize::from(dbg!(token.syntax().text_range()).start()),
-        });
-    }
-    tokens
+            .filter(|comment| dev_comments || comment.is_doc())
+    }).map(|comment| {
+        let kind = comment.kind();
+        TokenWithLocation {
+            content: dbg!(comment.text()).to_owned(),
+            location: usize::from(dbg!(comment.syntax().text_range()).start()),
+    }}).map(|token| TokenWithType::from(TokenWithLineColumn {
+            content: token.content,
+            line: count_lines(&source[..token.location]),
+            column: calculate_column(&source[..token.location]),
+    }))
 }
 
 /// Converts a series of `TokenWithLocation`s to `TokenWithLineColumn`s.
@@ -206,25 +210,13 @@ fn count_lines(fragment: &str) -> usize {
 /// *just after* the final character in the string
 fn calculate_column(fragment: &str) -> usize {
     match fragment.rfind('\n') {
-        Some(p) => fragment.chars().count() - fragment[..p].chars().count() - 1,
+        Some(p) => fragment.chars().count().saturating_sub(fragment[..p].chars().count()).saturating_sub(1),
         None => fragment.chars().count(),
     }
 }
 
-/// Converts a series of `TokenWithLineColumn`s to `TokenWithType`s
-fn token_with_line_column_to_token_with_type(
-    tokens_in: Vec<TokenWithLineColumn>,
-) -> Vec<TokenWithType> {
-    tokens_in
-        .into_iter()
-        .map(|t| TokenWithType::from(t))
-        .collect()
-}
 
-/// Attempts to convert all `TokenWithType` with kind `TokenType::BlockComment`
-/// in the input into literal sets, returning those successful or otherwise
-/// logging the errors
-fn literal_sets_from_block_comments(tokens: Vec<&TokenWithType>) -> Vec<LiteralSet> {
+fn literal_sets_from_comments(tokens: impl IntoIterator<Item=&TokenWithType>) -> Vec<LiteralSet> {
     let mut literal_sets = vec![];
     let only_block_comments: Vec<&TokenWithType> = tokens
         .into_iter()

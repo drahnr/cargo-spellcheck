@@ -6,7 +6,7 @@ use syn::Macro;
 use syn::Token;
 
 use super::{trace, LiteralSet, TokenTree, TrimmedLiteral};
-use crate::documentation::developer::extract_developer_comments;
+use crate::documentation::developer::extract_comments;
 use crate::errors::*;
 use crate::Span;
 
@@ -62,62 +62,11 @@ pub struct Clusters {
 }
 
 impl Clusters {
-    /// Only works if the file is processed line by line, otherwise requires a
-    /// adjacency list.
-    fn process_literal(&mut self, source: &str, comment: DocComment) -> Result<()> {
-        let span = Span::from(comment.content.span());
-        let trimmed_literal = match comment.content {
-            DocContent::LitStr(_s) => TrimmedLiteral::load_from(source, span)?,
-            DocContent::Macro(_) => {
-                TrimmedLiteral::new_empty(source, span, crate::CommentVariant::MacroDocEqMacro)
-            }
-        };
-        if let Some(cls) = self.set.last_mut() {
-            if let Err(trimmed_literal) = cls.add_adjacent(trimmed_literal) {
-                trace!(target: "documentation",
-                    "appending, but failed to append: {:?} to set {:?}",
-                    &trimmed_literal,
-                    &cls
-                );
-                self.set.push(LiteralSet::from(trimmed_literal))
-            } else {
-                trace!("successfully appended to existing: {:?} to set", &cls);
-            }
-        } else {
-            self.set.push(LiteralSet::from(trimmed_literal));
-        }
-        Ok(())
-    }
-
-    /// Helper function to parse a stream and associate the found literals.
-    fn parse_token_tree(&mut self, source: &str, stream: proc_macro2::TokenStream) -> Result<()> {
-        let mut iter = stream.into_iter();
-        while let Some(tree) = iter.next() {
-            match tree {
-                TokenTree::Group(group) => {
-                    if let Ok(comment) = syn::parse2::<DocComment>(group.stream()) {
-                        if let Err(e) = self.process_literal(source, comment) {
-                            log::error!(
-                                "BUG: Failed to guarantee literal content/span integrity: {}",
-                                e
-                            );
-                            continue;
-                        }
-                    } else {
-                        self.parse_token_tree(source, group.stream())?;
-                    }
-                }
-                _ => {}
-            };
-        }
-        Ok(())
-    }
-
     /// From the given source text, extracts developer comments to `LiteralSet`s
     /// and adds them to this `Clusters`
-    fn parse_developer_comments(&mut self, source: &str) {
-        let developer_comments = extract_developer_comments(source);
-        for comment in developer_comments {
+    fn parse_comments(&mut self, source: &str, dev_comments: bool) {
+        let comments = extract_comments(source);
+        for comment in comments {
             self.set.push(comment);
         }
     }
@@ -135,12 +84,8 @@ impl Clusters {
         let mut chunk = Self {
             set: Vec::with_capacity(64),
         };
-        let stream = syn::parse_str::<proc_macro2::TokenStream>(source)
-            .wrap_err_with(|| eyre!("Failed to parse content to stream"))?;
-        chunk.parse_token_tree(source, stream)?;
-        if dev_comments {
-            chunk.parse_developer_comments(source);
-        }
+
+        chunk.parse_comments(source, dev_comments);
         chunk.ensure_sorted();
         Ok(chunk)
     }
