@@ -128,30 +128,34 @@ impl Documentation {
 
     /// Adds a content string to the documentation sourced from the `description`
     /// field in a `Cargo.toml` manifest.
-    pub fn add_cargo_manifest_description(&mut self, path: PathBuf, content: &str) -> Result<()> {
+    pub fn add_cargo_manifest_description(
+        &mut self,
+        path: PathBuf,
+        description: &str,
+    ) -> Result<()> {
         let origin = ContentOrigin::CargoManifestDescription(path);
         // extract the full content span and range
         let start = LineColumn { line: 1, column: 0 };
-        let end = content
+        let end = description
             .lines()
             .enumerate()
             .last()
             .map(|(idx, linecontent)| (idx + 1, linecontent))
             .map(|(linenumber, linecontent)| LineColumn {
                 line: linenumber,
-                column: linecontent.chars().count(),
+                column: linecontent.chars().count().saturating_sub(1),
             })
             .ok_or_else(|| {
                 eyre!("Cargo.toml manifest description does not contain a single line")
             })?;
         let span = Span { start, end };
         let source_mapping = indexmap::indexmap! {
-            0..content.chars().count() => span
+            0..description.chars().count() => span
         };
         self.add_inner(
             origin,
             vec![CheckableChunk::from_str(
-                content,
+                description,
                 source_mapping,
                 CommentVariant::Unknown,
             )],
