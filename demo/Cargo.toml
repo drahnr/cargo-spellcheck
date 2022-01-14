@@ -4,7 +4,10 @@ version = "1.0.0"
 authors = ["Bernhard Schuster <bernhard@ahoi.io>"]
 edition = "2018"
 publish = false
-description = "A silly demo with plenty of spelling misteakes for cargo-spellcheck demos and CI"
+description =  """\
+  A silly demo with plenty of spelling \
+  misteakes for cargo-spellcheck demos and CI \
+  """
 readme = "README.md"
 
 [lib]
