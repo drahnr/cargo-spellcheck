@@ -456,12 +456,10 @@ pub(crate) fn extract(
                     match fs::read_dir(path) {
                         Err(err) => warn!("Listing directory contents {} failed", err),
                         Ok(entries) => {
-                            for entry in entries {
-                                if let Ok(entry) = entry {
-                                    let path = entry.path();
-                                    // let's try with that path again
-                                    flow.push_back(path);
-                                }
+                            for entry in entries.flatten() {
+                                let path = entry.path();
+                                // let's try with that path again
+                                flow.push_back(path);
                             }
                         }
                     }
@@ -470,14 +468,12 @@ pub(crate) fn extract(
                     match fs::read_dir(path) {
                         Err(err) => warn!("Listing directory contents {} failed", err),
                         Ok(entries) => {
-                            for entry in entries {
-                                if let Ok(entry) = entry {
-                                    let path = entry.path();
-                                    // let's try attempt with that .rs file
-                                    // if we end up here, recursion is off already
-                                    if path.is_file() {
-                                        flow.push_back(path);
-                                    }
+                            for entry in entries.flatten() {
+                                let path = entry.path();
+                                // let's try attempt with that .rs file
+                                // if we end up here, recursion is off already
+                                if path.is_file() {
+                                    flow.push_back(path);
                                 }
                             }
                         }

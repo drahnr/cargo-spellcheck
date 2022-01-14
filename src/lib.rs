@@ -213,10 +213,9 @@ pub fn run() -> Result<ExitCode> {
             let finish = rt.block_on(async move { action.run(documents, config).await })?;
 
             match finish {
-                Finish::MistakeCount(0) => Ok(ExitCode::Success),
+                Finish::Success | Finish::MistakeCount(0) => Ok(ExitCode::Success),
                 Finish::MistakeCount(_n) => Ok(ExitCode::Custom(exit_code_override)),
                 Finish::Abort => Ok(ExitCode::Signal),
-                Finish::Success => Ok(ExitCode::Success),
             }
         }
     }
