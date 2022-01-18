@@ -136,21 +136,25 @@ impl Documentation {
         let origin = ContentOrigin::CargoManifestDescription(path);
         // extract the full content span and range
         let start = LineColumn { line: 1, column: 0 };
-        let end = description
+        let (end, charcnt) = description
             .lines()
             .enumerate()
             .last()
             .map(|(idx, linecontent)| (idx + 1, linecontent))
-            .map(|(linenumber, linecontent)| LineColumn {
-                line: linenumber,
-                column: linecontent.chars().count().saturating_sub(1),
+            .map(|(linenumber, linecontent)| {
+                let charcnt = linecontent.chars().count();
+                (LineColumn {
+                    line: linenumber,
+                    column: charcnt.saturating_sub(1), // subtract one, it's inclusive
+                }, charcnt)
             })
             .ok_or_else(|| {
                 eyre!("Cargo.toml manifest description does not contain a single line")
             })?;
         let span = Span { start, end };
         let source_mapping = indexmap::indexmap! {
-            0..description.chars().count() => span
+            // exclusive end
+            0..charcnt => span
         };
         self.add_inner(
             origin,

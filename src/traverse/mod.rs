@@ -607,7 +607,7 @@ mod tests {
             maplit::hashset![
                 CheckEntity::Markdown(demo_dir().join("README.md")),
                 CheckEntity::ManifestDescription(demo_dir().join("Cargo.toml"),
-                    "A silly demo with plenty of spelling misteakes for cargo-spellcheck demos and CI".to_string()
+                    "A silly demo with plenty of spelling misteakes for cargo-spellcheck demos and CI ".to_string()
                 ),
             ]
         );
