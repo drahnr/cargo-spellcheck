@@ -84,9 +84,10 @@ jobs:
       - get: env-glibc
 
       - get: git-rustlang-rust
+        params: {depth: 3, submodules: none }
 
       - get: git-spearow-juice
-        params: {depth: 3}
+        params: {depth: 3, submodules: none}
 
     - in_parallel:
       - put: git-pull-request-resource
@@ -473,9 +474,10 @@ jobs:
         trigger: true
 
       - get: git-rustlang-rust
+        params: {depth: 3, submodules: none}
 
       - get: git-spearow-juice
-        params: {depth: 3}
+        params: {depth: 3, submodules: none}
 
     - in_parallel:
       - task: compile-master
