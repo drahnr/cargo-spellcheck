@@ -8,8 +8,7 @@ use proc_macro2::LineColumn;
 
 use std::fmt;
 
-/// Determine if a `CommentVariant`
-/// is a documentation comment or not.
+/// Determine if a `CommentVariant` is a documentation comment or not.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommentVariantCategory {
     /// Comment variant will end up in documentation.
@@ -37,7 +36,8 @@ pub enum CommentVariant {
     /// `#[doc=` with actual prefix like `#[doc=` and the total length of `r###`
     /// etc. including `r` but without `"`
     MacroDocEqStr(String, usize),
-    /// `#[doc= foo!(..)]`, content will be ignored, but allows clusters to not continue.
+    /// `#[doc= foo!(..)]`, content will be ignored, but allows clusters to not
+    /// continue.
     MacroDocEqMacro,
     /// Commonmark File
     CommonMark,
@@ -220,9 +220,9 @@ fn trim_span(content: &str, span: &mut Span, pre: usize, post: usize) {
 
 /// Detect the comment variant based on the span based str content.
 ///
-/// Became necessary, since the `proc_macro2::Span` does not distinguish
-/// between `#[doc=".."]` and `/// ..` comment variants, and for one,
-/// and the span can't cover both correctly.
+/// Became necessary, since the `proc_macro2::Span` does not distinguish between
+/// `#[doc=".."]` and `/// ..` comment variants, and for one, and the span can't
+/// cover both correctly.
 fn detect_comment_variant(
     content: &str,
     rendered: &String,

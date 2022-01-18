@@ -126,8 +126,8 @@ impl Documentation {
         Ok(())
     }
 
-    /// Adds a content string to the documentation sourced from the `description`
-    /// field in a `Cargo.toml` manifest.
+    /// Adds a content string to the documentation sourced from the
+    /// `description` field in a `Cargo.toml` manifest.
     pub fn add_cargo_manifest_description(
         &mut self,
         path: PathBuf,
