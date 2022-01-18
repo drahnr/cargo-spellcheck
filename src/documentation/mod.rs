@@ -143,10 +143,13 @@ impl Documentation {
             .map(|(idx, linecontent)| (idx + 1, linecontent))
             .map(|(linenumber, linecontent)| {
                 let charcnt = linecontent.chars().count();
-                (LineColumn {
-                    line: linenumber,
-                    column: charcnt.saturating_sub(1), // subtract one, it's inclusive
-                }, charcnt)
+                (
+                    LineColumn {
+                        line: linenumber,
+                        column: charcnt.saturating_sub(1), // subtract one, it's inclusive
+                    },
+                    charcnt,
+                )
             })
             .ok_or_else(|| {
                 eyre!("Cargo.toml manifest description does not contain a single line")
