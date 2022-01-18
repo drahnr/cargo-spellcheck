@@ -54,8 +54,7 @@ impl syn::parse::Parse for DocComment {
     }
 }
 
-/// Cluster comments together, such they appear as continuous
-/// text blocks.
+/// Cluster comments together, such they appear as continuous text blocks.
 #[derive(Debug)]
 pub struct Clusters {
     pub(super) set: Vec<LiteralSet>,

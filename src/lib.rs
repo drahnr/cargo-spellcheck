@@ -73,7 +73,8 @@ impl ExitCode {
     }
 }
 
-/// Global atomic to block signal processing while a file write is currently in progress.
+/// Global atomic to block signal processing while a file write is currently in
+/// progress.
 static WRITE_IN_PROGRESS: AtomicU16 = AtomicU16::new(0);
 /// Delay if the signal handler is currently running.
 static SIGNAL_HANDLER_AT_WORK: AtomicBool = AtomicBool::new(false);
@@ -111,7 +112,8 @@ pub fn signal_handler() {
 pub struct TinHat;
 
 impl TinHat {
-    /// Put the tin hat on, and only allow signals being processed once it's dropped.
+    /// Put the tin hat on, and only allow signals being processed once it's
+    /// dropped.
     pub fn on() -> Self {
         while SIGNAL_HANDLER_AT_WORK.load(Ordering::Acquire) {
             std::hint::spin_loop();
