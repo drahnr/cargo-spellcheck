@@ -200,7 +200,8 @@ impl CheckEntity {
     }
 }
 
-fn load_manifest<P: AsRef<Path>>(manifest_dir: P) -> Result<cargo_toml::Manifest> {
+/// Returns both the parse manifest struct as well as the raw manifest string.
+fn load_manifest<P: AsRef<Path>>(manifest_dir: P) -> Result<(cargo_toml::Manifest, String)> {
     let manifest_dir = manifest_dir.as_ref();
     let manifest_file = manifest_dir.join("Cargo.toml");
     // read to str first to provide better error messages
@@ -231,7 +232,7 @@ fn load_manifest<P: AsRef<Path>>(manifest_dir: P) -> Result<cargo_toml::Manifest
             lib.path = Some("src/lib.rs".to_owned())
         }
     }
-    Ok(manifest)
+    Ok((manifest, manifest_content))
 }
 
 /// can convert manifest with or without Cargo.toml into the directory that
@@ -287,28 +288,40 @@ fn extract_products(
 fn extract_readme(
     manifest: &cargo_toml::Manifest,
     manifest_dir: &Path,
-) -> Result<HashSet<CheckEntity>> {
-    let mut acc = HashSet::with_capacity(2);
-    if let Some(package) = manifest.package.clone() {
-        if let Some(readme) = package.readme {
+) -> Result<Option<CheckEntity>> {
+    Ok(manifest
+        .package
+        .as_ref()
+        .and_then(|package| package.readme.as_ref())
+        .and_then(|readme| {
             let readme = PathBuf::from(readme);
             if readme.is_file() {
-                acc.insert(CheckEntity::Markdown(manifest_dir.join(readme)));
+                Some(CheckEntity::Markdown(manifest_dir.join(readme)))
             } else {
                 warn!(
                     "📜 read-me file declared in Cargo.toml {} is not a file",
                     readme.display()
                 );
+                None
             }
-        }
-        if let Some(description) = package.description {
-            acc.insert(CheckEntity::ManifestDescription(
+        }))
+}
+
+fn extract_description(
+    manifest: &cargo_toml::Manifest,
+    manifest_dir: &Path,
+    manifest_content: &str,
+) -> Result<Option<CheckEntity>> {
+    Ok(manifest
+        .package
+        .as_ref()
+        .and_then(|package| package.description.as_ref())
+        .and_then(|_description| {
+            Some(CheckEntity::ManifestDescription(
                 manifest_dir.join("Cargo.toml"),
-                description.to_owned(),
-            ));
-        }
-    }
-    Ok(acc)
+                manifest_content.to_owned(),
+            ))
+        }))
 }
 
 fn handle_manifest<P: AsRef<Path>>(
@@ -319,7 +332,7 @@ fn handle_manifest<P: AsRef<Path>>(
     trace!("📜 Handle manifest in dir: {}", manifest_dir.display());
 
     let manifest_dir = manifest_dir.as_path();
-    let manifest = load_manifest(manifest_dir).wrap_err_with(|| {
+    let (manifest, manifest_content) = load_manifest(manifest_dir).wrap_err_with(|| {
         eyre!(
             "Failed to load manifest from dir {}",
             manifest_dir.display()
@@ -336,10 +349,23 @@ fn handle_manifest<P: AsRef<Path>>(
     if !skip_readme {
         let v = extract_readme(&manifest, &manifest_dir).wrap_err_with(|| {
             eyre!(
-                "Failed to extract readme / description from manifest {}",
+                "Failed to extract description from manifest {}",
                 manifest_dir.display()
             )
         })?;
+        acc.extend(v);
+    }
+
+    // TODO not quite ready for prime time
+    if false {
+        let v = extract_description(&manifest, &manifest_dir, &manifest_content).wrap_err_with(
+            || {
+                eyre!(
+                    "Failed to extract description from manifest {}",
+                    manifest_dir.display()
+                )
+            },
+        )?;
         acc.extend(v);
     }
 
@@ -365,12 +391,14 @@ fn handle_manifest<P: AsRef<Path>>(
                         "🪆 Handling manifest member glob resolved: {}",
                         member_dir.display()
                     );
-                    if let Ok(member_manifest) = load_manifest(&member_dir).wrap_err_with(|| {
-                        eyre!(
-                            "Failed to load manifest from member directory {}",
-                            member_dir.display()
-                        )
-                    }) {
+                    if let Ok((member_manifest, _member_manifest_content)) =
+                        load_manifest(&member_dir).wrap_err_with(|| {
+                            eyre!(
+                                "Failed to load manifest from member directory {}",
+                                member_dir.display()
+                            )
+                        })
+                    {
                         if let Ok(member) = extract_products(&member_manifest, &member_dir) {
                             acc.extend(member.into_iter());
                         } else {
@@ -604,13 +632,19 @@ mod tests {
         );
         assert_eq!(
             extract_readme(&manifest, &dir).expect("Must succeed"),
-            maplit::hashset![
-                CheckEntity::Markdown(demo_dir().join("README.md")),
-                CheckEntity::ManifestDescription(demo_dir().join("Cargo.toml"),
-                    "A silly demo with plenty of spelling misteakes for cargo-spellcheck demos and CI ".to_string()
-                ),
-            ]
+            Some(CheckEntity::Markdown(demo_dir().join("README.md")),)
         );
+
+        let manifest_content = include_str!("../../demo/Cargo.toml").to_owned();
+        assert_matches::assert_matches!(
+            extract_description(&manifest, &dir, manifest_content.as_str()),
+            Ok(Some(CheckEntity::ManifestDescription(
+                path,
+                _
+            ))) => {
+                assert_eq!(path, demo_dir().join("Cargo.toml"));
+            }
+        )
     }
 
     fn demo_dir() -> PathBuf {
@@ -619,7 +653,9 @@ mod tests {
 
     fn demo_dir_manifest() -> (cargo_toml::Manifest, PathBuf) {
         (
-            load_manifest(demo_dir()).expect("Demo dir manifest must exist"),
+            load_manifest(demo_dir())
+                .expect("Demo dir manifest must exist")
+                .0,
             demo_dir(),
         )
     }
@@ -716,7 +752,7 @@ mod tests {
     #[test]
     fn traverse_manifest_1() {
         extract_test!(["Cargo.toml"] + false => [
-            "Cargo.toml",
+            // "Cargo.toml",
             "README.md",
             "src/lib.rs",
             "src/main.rs",
@@ -751,7 +787,7 @@ mod tests {
     ]);
 
     extract_test!(traverse_manifest_dir_rec, ["."] + true => [
-        "Cargo.toml",
+        // "Cargo.toml",
         "README.md",
         "src/lib.rs",
         "src/main.rs",
@@ -768,7 +804,7 @@ mod tests {
     ]);
 
     extract_test!(traverse_manifest_rec, ["Cargo.toml"] + true => [
-        "Cargo.toml",
+        // "Cargo.toml",
         "README.md",
         "src/lib.rs",
         "src/main.rs",
@@ -802,9 +838,9 @@ mod tests {
     extract_test!(traverse_dir_wo_manifest, ["member"] + true => [
         "member/true/lib.rs",
         "member/true/README.md",
-        "member/true/Cargo.toml",
+        // "member/true/Cargo.toml",
         "member/procmacro/src/lib.rs",
-        "member/procmacro/Cargo.toml",
+        // "member/procmacro/Cargo.toml",
         "member/stray.rs",
     ]);
 }

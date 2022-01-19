@@ -17,6 +17,8 @@ pub enum CommentVariantCategory {
     Dev,
     /// It's a common mark file, and we actually don't know.
     CommonMark,
+    /// Toml entries and such.
+    Unmergable,
 }
 
 /// Track what kind of comment the literal is
@@ -47,6 +49,8 @@ pub enum CommentVariant {
     SlashStar,
     /// Unknown Variant
     Unknown,
+    /// Toml entry
+    TomlEntry,
 }
 
 impl Default for CommentVariant {
@@ -66,6 +70,7 @@ impl CommentVariant {
             Self::SlashAsteriskEM => CommentVariantCategory::Doc,
             Self::SlashAsteriskAsterisk => CommentVariantCategory::Doc,
             Self::CommonMark => CommentVariantCategory::CommonMark,
+            Self::TomlEntry => CommentVariantCategory::Unmergable,
             _ => CommentVariantCategory::Dev,
         }
     }
@@ -92,6 +97,7 @@ impl CommentVariant {
             CommentVariant::SlashAsterisk => "/*".to_string(),
             CommentVariant::SlashAsteriskEM => "/*!".to_string(),
             CommentVariant::SlashAsteriskAsterisk => "/**".to_string(),
+            CommentVariant::TomlEntry => "".to_owned(),
             unhandled => unreachable!(
                 "String representation for comment variant {:?} exists. qed",
                 unhandled
