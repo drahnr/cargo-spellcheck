@@ -20,6 +20,7 @@ use log::trace;
 pub use proc_macro2::LineColumn;
 use proc_macro2::TokenTree;
 use rayon::prelude::*;
+use toml::Spanned;
 
 use std::path::PathBuf;
 
@@ -131,40 +132,85 @@ impl Documentation {
     pub fn add_cargo_manifest_description(
         &mut self,
         path: PathBuf,
-        description: &str,
+        manifest_content: &str,
     ) -> Result<()> {
-        let origin = ContentOrigin::CargoManifestDescription(path);
-        // extract the full content span and range
-        let start = LineColumn { line: 1, column: 0 };
-        let (end, charcnt) = description
-            .lines()
-            .enumerate()
-            .last()
-            .map(|(idx, linecontent)| (idx + 1, linecontent))
-            .map(|(linenumber, linecontent)| {
-                let charcnt = linecontent.chars().count();
-                (
-                    LineColumn {
-                        line: linenumber,
-                        column: charcnt.saturating_sub(1), // subtract one, it's inclusive
-                    },
-                    charcnt,
-                )
-            })
-            .ok_or_else(|| {
-                eyre!("Cargo.toml manifest description does not contain a single line")
-            })?;
-        let span = Span { start, end };
-        let source_mapping = indexmap::indexmap! {
-            // exclusive end
-            0..charcnt => span
+        fn extract_range_of_description(manifest_content: &str) -> Range {
+            #[derive(Deserialize, Debug)]
+            struct Manifest {
+                package: Spanned<Package>,
+            }
+
+            #[derive(Deserialize, Debug)]
+            struct Package {
+                description: Spanned<String>,
+            }
+
+            let value: Manifest = toml::from_str(dbg!(manifest_content))
+                .expect("It's valid toml, already parsed this before. qed");
+            let d = value.package.into_inner().description;
+            let range = dbg!(d.start()..d.end());
+            range
+        }
+
+        let mut range = extract_range_of_description(&manifest_content);
+        let description = dbg!(sub_char_range(&manifest_content, range.clone()));
+
+        // Attention: `description` does include `\"\"\"` as well as `\\\n`, the latter is not a big issue,
+        // but the trailing start and end delimiters are.
+        // TODO: split into multiple on `\\\n` and create multiple range/span mappings.
+        let description = if range.len() > 6 {
+            if description.starts_with("\"\"\"") {
+                range.start += 3;
+                range.end -= 3;
+                assert!(!range.is_empty());
+            }
+            dbg!(&description[3..(description.len()) - 3])
+        } else {
+            description
         };
+
+        fn convert_range_to_span(content: &str, range: Range) -> Option<Span> {
+            let mut line = 0_usize;
+            let mut column = 0_usize;
+            let mut prev = '\n';
+            let mut start = None;
+            for (offset, c) in content.chars().enumerate() {
+                if prev == '\n' {
+                    column = 0;
+                    line += 1;
+                }
+                prev = c;
+
+                if offset == range.start {
+                    start = Some(LineColumn { line, column });
+                    continue;
+                }
+                // take care of inclusivity
+                if offset + 1 == range.end {
+                    let end = LineColumn { line, column };
+                    return Some(Span {
+                        start: start.unwrap(),
+                        end,
+                    });
+                }
+                column += 1;
+            }
+            None
+        }
+
+        let span = convert_range_to_span(manifest_content, range.clone()).expect(
+            "Description is part of the manifest since it was parsed from the same source. qed",
+        );
+        let origin = ContentOrigin::CargoManifestDescription(path);
+        let source_mapping = dbg!(indexmap::indexmap! {
+            range => span
+        });
         self.add_inner(
             origin,
             vec![CheckableChunk::from_str(
                 description,
                 source_mapping,
-                CommentVariant::Unknown,
+                CommentVariant::TomlEntry,
             )],
         );
         Ok(())
