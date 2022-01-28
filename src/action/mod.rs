@@ -314,7 +314,8 @@ impl Action {
             )?;
 
             writer.flush()?;
-
+            drop(writer);
+            drop(reader);
             fs::rename(tmp, path)?;
 
             // Writing for this file is done, unblock the signal handler.
