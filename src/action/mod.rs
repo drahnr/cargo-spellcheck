@@ -314,6 +314,9 @@ impl Action {
             )?;
 
             writer.flush()?;
+            // Required for windows support, which does not allow
+            // to move a file while it is opened, see
+            // <https://github.com/drahnr/cargo-spellcheck/issues/251>
             drop(writer);
             drop(reader);
             fs::rename(tmp, path)?;
