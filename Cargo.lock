@@ -192,7 +192,7 @@ dependencies = [
 
 [[package]]
 name = "cargo-spellcheck"
-version = "0.10.1-beta.1"
+version = "0.10.1-beta.2"
 dependencies = [
  "assert_matches",
  "cargo_toml",
