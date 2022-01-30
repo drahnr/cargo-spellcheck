@@ -55,7 +55,7 @@ fn parse_and_construct() {
 
     let z: IndexMap<Range, Span> = plain.find_spans(expected_plain_range);
     // FIXME the expected result would be
-    let (_range, _span) = z.iter().next().unwrap().clone();
+    let (_range, _span) = z.first().unwrap().clone();
 
     let chunk = &chunks[0];
     log::trace!("full: {}", chunk.display(expected_raw_range.clone()));
@@ -260,8 +260,7 @@ struct X;
             assert_eq!(origin, origin2);
 
             let chunk = chunks
-                .iter()
-                .next()
+                .first()
                 .expect("Commonmark files always contains a chunk. qed");
 
             assert_eq!(chunks.len(), 1);
@@ -570,7 +569,7 @@ fn find_spans_simple() {
     // assure the range is correct given the chunk
     assert_eq!("xyz", &chunk.as_str()[CHUNK_RANGE.clone()]);
 
-    let (range, span) = dbg!(range2span.iter().next().unwrap());
+    let (range, span) = dbg!(range2span.first().unwrap());
     assert!(CHUNK_RANGE.contains(&(range.start)));
     assert!(CHUNK_RANGE.contains(&(range.end - 1)));
     assert_eq!(
@@ -653,7 +652,7 @@ fn find_spans_multiline() {
         let range2span = chunk.find_spans(query_range.clone());
         // test deals only with a single line, so we know it only is a single entry
         assert_eq!(range2span.len(), 1);
-        let (range, span) = dbg!(range2span.iter().next().unwrap());
+        let (range, span) = dbg!(range2span.first().unwrap());
         assert!(query_range.contains(&(range.start)));
         assert!(query_range.contains(&(range.end - 1)));
         assert_eq!(
@@ -706,7 +705,7 @@ Buchfink"#];
         let range2span = chunk.find_spans(query_range.clone());
         // test deals only with a single line, so we know it only is a single entry
         assert_eq!(range2span.len(), 1);
-        let (range, span) = dbg!(range2span.iter().next().unwrap());
+        let (range, span) = dbg!(range2span.first().unwrap());
         assert!(query_range.contains(&(range.start)));
         assert!(query_range.contains(&(range.end - 1)));
         assert_eq!(

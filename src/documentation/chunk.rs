@@ -152,7 +152,7 @@ impl CheckableChunk {
             })
             .filter(|(fragment_range, _)| {
                 // could possibly happen on empty documentation lines with `///`
-                fragment_range.len() > 0
+                !fragment_range.is_empty()
             })
             .map(|(fragment_range, fragment_span)| {
                 // trim range so we only capture the relevant part

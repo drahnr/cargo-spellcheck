@@ -432,7 +432,7 @@ impl Args {
 
         // (prep) determine if there should be attempt to read a cargo manifest from the target dir
         let single_target_path = match self.arg_paths.iter().len() {
-            1 => self.arg_paths.iter().next(),
+            1 => self.arg_paths.first(),
             _ => None,
         };
 

@@ -107,12 +107,11 @@ macro_rules! reflow_content {
                         bandaid
                     })
             })
-            .map(|x| crate::Patch::from(x))
-            .collect::<Vec<crate::Patch>>();
+            .map(|x| crate::Patch::from(x));
 
         let mut dest = Vec::with_capacity($content.len() * 3 / 2);
         crate::action::apply_patches(
-            patches.into_iter(),
+            patches,
             $content,
             &mut dest,
         ).expect("Patches always apply nicely. qed");
@@ -299,16 +298,14 @@ fn reflow_indentations() {
         reflow(&ContentOrigin::TestEntityRust, chunk, &CONFIG).expect("Reflow is wokring. qed");
 
     let suggestion = suggestion_set
-        .iter()
-        .next()
+        .first()
         .expect("Contains one suggestion. qed");
 
     dbg!(load_span_from(&mut CONTENT.as_bytes(), suggestion.span).unwrap());
 
     let replacement = suggestion
         .replacements
-        .iter()
-        .next()
+        .first()
         .expect("There is a replacement. qed");
     assert_eq!(replacement.as_str(), EXPECTED);
 }
@@ -340,14 +337,12 @@ fn reflow_doc_indentations() {
         reflow(&ContentOrigin::TestEntityRust, chunk, &cfg).expect("Reflow is working. qed");
 
     let suggestions = suggestion_set
-        .iter()
-        .next()
+        .first()
         .expect("Contains one suggestion. qed");
 
     let replacement = suggestions
         .replacements
-        .iter()
-        .next()
+        .first()
         .expect("There is a replacement. qed");
     assert_eq!(replacement.as_str(), EXPECTED);
 }
@@ -410,14 +405,13 @@ fn reflow_markdown_two_paragraphs() {
     };
 
     let suggestion_set =
-        reflow(&ContentOrigin::TestEntityRust, &chunk, &cfg).expect("Reflow is working. qed");
+        reflow(&ContentOrigin::TestEntityRust, chunk, &cfg).expect("Reflow is working. qed");
 
     for (sug, expected) in suggestion_set.iter().zip(expected) {
         assert_eq!(sug.replacements.len(), 1);
         let replacement = sug
             .replacements
-            .iter()
-            .next()
+            .first()
             .expect("An replacement exists. qed");
 
         assert_eq!(replacement.as_str(), expected);
@@ -452,14 +446,10 @@ With a second part that is fine"#
     for (chunk, expect) in chunks.iter().zip(expected) {
         let suggestion_set =
             reflow(&ContentOrigin::TestEntityRust, chunk, &cfg).expect("Reflow is working. qed");
-        let sug = suggestion_set
-            .iter()
-            .next()
-            .expect("Contains a suggestion. qed");
+        let sug = suggestion_set.first().expect("Contains a suggestion. qed");
         let replacement = sug
             .replacements
-            .iter()
-            .next()
+            .first()
             .expect("An replacement exists. qed");
         assert_eq!(replacement.as_str(), expect);
     }
@@ -555,8 +545,7 @@ multiline. Fullstop."#,
         assert_eq!(sug.replacements.len(), 1);
         let replacement = sug
             .replacements
-            .iter()
-            .next()
+            .first()
             .expect("Reflow always provides a replacement string. qed");
 
         assert_eq!(sug.span, expected_span);

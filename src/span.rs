@@ -351,7 +351,7 @@ mod tests {
             assert_eq!(range, *expected);
             // make sure the span covers what we expect it to cover
             assert_eq!(
-                load_span_from(CONTENT.as_bytes(), input.clone()).unwrap(),
+                load_span_from(CONTENT.as_bytes(), *input).unwrap(),
                 fragment.to_owned()
             );
             assert_eq!(&(&chunk.as_str()[range]), fragment);
@@ -440,7 +440,7 @@ AlphaOmega
             assert_eq!(range, *expected);
 
             assert_eq!(
-                load_span_from(CONTENT.as_bytes(), input.clone()).unwrap(),
+                load_span_from(CONTENT.as_bytes(), *input).unwrap(),
                 fragment.to_owned()
             );
             assert_eq!(&(&chunk.as_str()[range]), fragment);

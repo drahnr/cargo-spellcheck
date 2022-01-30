@@ -3,7 +3,7 @@
 //! Note that for commonmark this might not be possible with links. The reflow
 //! is done based on the comments no matter the content.
 
-use crate::errors::*;
+use crate::errors::{eyre, Result};
 
 use crate::checker::Checker;
 use crate::documentation::CheckableChunk;

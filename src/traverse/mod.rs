@@ -644,7 +644,7 @@ mod tests {
             ))) => {
                 assert_eq!(path, demo_dir().join("Cargo.toml"));
             }
-        )
+        );
     }
 
     fn demo_dir() -> PathBuf {

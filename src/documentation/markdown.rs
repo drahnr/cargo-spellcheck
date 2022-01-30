@@ -415,12 +415,12 @@ impl<'a> PlainOverlay<'a> {
                     .and_then(|(sub, raw)| {
                         trace!("convert:  cmark-erased={:?} -> raw={:?}", sub, raw);
 
-                        if raw.len() > 0 {
+                        if raw.is_empty() {
+                            warn!("linear range to spans: {:?} empty!", raw);
+                        } else {
                             let resolved = self.raw.find_spans(raw.clone());
                             trace!("cmark-erased range to spans: {:?} -> {:?}", raw, resolved);
                             acc.extend(resolved.into_iter());
-                        } else {
-                            warn!("linear range to spans: {:?} empty!", raw);
                         }
                         Some(())
                     });

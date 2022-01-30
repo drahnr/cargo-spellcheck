@@ -1,9 +1,15 @@
 #![deny(dead_code)]
 #![deny(missing_docs)]
 // #![deny(unused_crate_dependencies)]
+
+// Prevent the stray dbg! macros
 #![deny(clippy::dbg_macro)]
 #![warn(clippy::pedantic)]
 #![allow(clippy::non_ascii_literal)]
+// be explicit about certain offsets and how they are constructed
+#![allow(clippy::identity_op)]
+// in small cli projects, this is ok for now
+#![allow(clippy::wildcard_imports)]
 
 //! cargo-spellcheck
 //!
@@ -171,7 +177,7 @@ pub fn run() -> Result<ExitCode> {
             trace!("Configuration chore");
             let mut config = Config::full();
             Args::checker_selection_override(
-                checker_filter_set.as_ref().map(|x| x.as_slice()),
+                checker_filter_set.as_ref().map(Vec::as_slice),
                 &mut config,
             )?;
 

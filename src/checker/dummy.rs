@@ -38,8 +38,7 @@ impl Checker for DummyChecker {
 
         let mut acc = Vec::with_capacity(chunks.len());
         let chunk = chunks
-            .iter()
-            .next()
+            .first()
             .expect("DummyChecker expects at least one chunk");
         let plain = chunk.erase_cmark();
         let txt = plain.as_str();

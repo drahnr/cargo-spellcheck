@@ -159,8 +159,9 @@ pub mod tests {
             .is_test(true)
             .try_init();
         let dev_comments = false;
-        let d = Documentation::load_from_str(ContentOrigin::TestEntityRust, content, dev_comments);
-        let (origin, chunks) = d.into_iter().next().expect("Contains exactly one file");
+        let docs =
+            Documentation::load_from_str(ContentOrigin::TestEntityRust, content, dev_comments);
+        let (origin, chunks) = docs.into_iter().next().expect("Contains exactly one file");
         let suggestions = dummy::DummyChecker
             .check(&origin, &chunks[..])
             .expect("Dummy extraction must never fail");

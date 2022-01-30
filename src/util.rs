@@ -288,7 +288,7 @@ d"#;
             lcc!(3, 1, '\n'),
         ];
 
-        iter_with_line_column(S).zip(EXPECT.into_iter()).for_each(
+        iter_with_line_column(S).zip(EXPECT.iter()).for_each(
             |((c, _byte_offset, _idx, lc), (expected_lc, expected_c))| {
                 assert_eq!(lc, expected_lc.clone());
                 assert_eq!(c, expected_c.clone());

@@ -5,7 +5,7 @@
 //! restructured string where the lines are smaller than the maximum allowed
 //! line length.
 
-use super::*;
+use super::{Indentation, Range};
 
 use std::borrow::Cow;
 use std::collections::VecDeque;
@@ -78,7 +78,7 @@ impl<'s> Tokeneer<'s> {
         let char_range = self.previous_char_offset..char_idx + 1;
 
         let item = (
-            char_range.clone(),
+            char_range,
             byte_range.clone(),
             std::borrow::Cow::Borrowed(&self.s[byte_range]),
         );
@@ -103,10 +103,10 @@ impl<'s> Iterator for Tokeneer<'s> {
                 // iff so, just continue until we are out of the weeds
                 if unbreakable.contains(&char_idx) {
                     // watchout for the transition, so we do not overshoot by one!
-                    if !unbreakable.contains(&(char_idx + 1)) {
-                        break 'unbreakable;
-                    } else {
+                    if unbreakable.contains(&(char_idx + 1)) {
                         continue 'outer;
+                    } else {
+                        break 'unbreakable;
                     }
                 }
                 // the current unbreakable index associated range does not cover us
@@ -184,7 +184,7 @@ impl<'s> Gluon<'s> {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     #[allow(unused)]
     pub(crate) fn add_unbreakables(&mut self, unbreakable_ranges: impl IntoIterator<Item = Range>) {
         self.inner.add_unbreakables(unbreakable_ranges);
@@ -194,7 +194,11 @@ impl<'s> Gluon<'s> {
     fn craft_line(&mut self) -> (usize, String, Range) {
         use itertools::Itertools;
         self.line_counter += 1;
+
+        // default to an empty range
+        #[allow(clippy::reversed_empty_ranges)]
         let mut char_range = usize::MAX..0;
+
         let line_content = self
             .queue
             .drain(..)

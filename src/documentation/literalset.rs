@@ -269,8 +269,7 @@ struct Vikings;
         let chunk: CheckableChunk = literal_set.into_chunk();
         let map_range_to_span = chunk.find_spans(EXMALIBU_RANGE);
         let (_range, _span) = map_range_to_span
-            .iter()
-            .next()
+            .first()
             .expect("Must be at least one literal");
 
         let range_for_raw_str = Range {
