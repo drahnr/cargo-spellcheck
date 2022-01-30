@@ -18,7 +18,8 @@ include = [
     "build.rs",
     "/LICENSE-*",
     "/README.md",
-    "tests/**/*.rs"
+    "tests/**/*.rs",
+    "CHANGELOG.md"
 ]
 
 [build-dependencies]
