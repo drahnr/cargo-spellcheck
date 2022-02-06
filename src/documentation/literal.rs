@@ -288,8 +288,9 @@ fn detect_comment_variant(
 
         #[cfg(debug_assertions)]
         {
-            let raw = dbg!(util::load_span_from(&mut content.as_bytes(), orig)?);
-            let adjusted = dbg!(util::load_span_from(&mut content.as_bytes(), span.clone())?);
+            let raw = util::load_span_from(&mut content.as_bytes(), orig)?;
+            let adjusted = util::load_span_from(&mut content.as_bytes(), span.clone())?;
+
             // we know pre and post only consist of single byte characters
             // so `.len()` is way faster here yet correct.
             assert_eq!(adjusted.len() + pre + post, raw.len());
