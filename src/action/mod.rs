@@ -108,7 +108,7 @@ where
     const TARGET: &str = "patch";
     let mut write_to_sink = |topic: &str, data: &str| -> Result<()> {
         log::trace!(target: TARGET, "w<{}>: {}", topic, data.escape_debug());
-        sink.write(data.as_bytes())?;
+        sink.write_all(data.as_bytes())?;
         Ok(())
     };
 

@@ -337,7 +337,7 @@ impl UserPicked {
             .map(|(idx, (style, content))| {
                 (
                     idx,
-                    PrintStyledContent(StyledContent::new(style.clone(), content.clone())),
+                    PrintStyledContent(StyledContent::new(style.clone(), content)),
                 )
             })
             .try_fold(&mut stdout, |cmd, (idx, mut item)| {
