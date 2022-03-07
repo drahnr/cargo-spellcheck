@@ -392,7 +392,7 @@ All notable changes to this project will be documented in this file.
 
 - Use nlprule config where it should be
 - Allow parallel ci verification runs
-- Mask disabled checkers based on flag_checkers
+- Mask disabled checkers based on checkers
 
 ### Documentation
 

@@ -4,7 +4,6 @@ use std::{
 };
 
 use crate::errors::*;
-use docopt::Docopt;
 
 use fs_err as fs;
 use itertools::Itertools;
@@ -139,40 +138,84 @@ where
     }
 }
 
-#[derive(Debug, Deserialize, Default)]
-pub struct Args {
-    pub arg_paths: Vec<PathBuf>,
-    pub flag_fix: bool,
-    pub flag_recursive: bool,
-    pub flag_verbose: usize,
-    pub flag_quiet: bool,
-    pub flag_version: bool,
-    pub flag_help: bool,
-    #[serde(deserialize_with = "deser_option_vec_from_str_list")]
-    pub flag_checkers: Option<Vec<CheckerType>>,
-    pub flag_cfg: Option<PathBuf>,
-    pub flag_force: bool,
-    pub flag_user: bool,
+#[derive(clap::Parser)]
+#[clap(author, version, about, long_about = None)]
+struct Cli {
+    #[clap(short, long)]
+    pub cfg: Option<std::path::PathBuf>,
+
+    #[clap(short, long)]
+    pub user: bool,
+
+    #[clap(short, long)]
+    pub force: bool,
+
+    #[clap(short, long)]
+    pub verbose: usize,
+    // TODO use clap_verbosity_flag::Verbosity
+
+    #[clap(short, long)]
+    pub quiet: bool,
+
+    #[clap(short, long)]
+    pub recursive: bool,
+
     // with fallback from config, so it has to be tri-state
-    pub flag_skip_readme: Option<bool>,
-    pub flag_dev_comments: Option<bool>,
-    pub flag_jobs: Option<usize>,
-    pub flag_code: u8,
-    pub flag_stdout: bool,
-    pub cmd_fix: bool,
-    pub cmd_check: bool,
-    pub cmd_reflow: bool,
-    pub cmd_config: bool,
-    pub cmd_list_files: bool,
+    #[clap(short, long)]
+    pub checkers: Vec<CheckerType>,
+
+    #[clap(short, long)]
+    pub skip_readme: Option<bool>,
+
+
+    #[clap(short, long)]
+    pub dev_comments: Option<bool>,
+
+    #[clap(short, long)]
+    pub jobs: Option<usize>,
+
+    #[clap(short, long, default_value_t = 1_u8)]
+    pub code: u8,
+
+    #[clap(short, long)]
+    pub stdout: bool,
+
+    #[clap(subcommand)]
+    pub command: X,
 }
 
-impl Args {
+
+#[derive(Debug, PartialEq, Eq, clap::Subcommand)]
+enum X {
+    /// Only show check errors, but do not request user input.
+    // `cargo spellcheck` is short for checking.
+    Check,
+
+    /// Interactively choose from checker provided suggestions.
+    Fix,
+
+    /// Reflow doc comments, so they adhere to a given maximum column width.
+    Reflow,
+
+    /// Print the config being in use, default config if none.
+    Config,
+
+    /// List all files in depth first sorted order in which they would be
+    /// checked.
+    ListFiles,
+
+
+    /// Print completions.
+    PrintCompletions,
+}
+
+impl Cli {
     pub const USAGE: &'static str = USAGE;
 
     /// Extract the verbosity level
     pub fn verbosity(&self) -> log::LevelFilter {
-        match self.flag_verbose {
-            _ if self.flag_quiet => log::LevelFilter::Off,
+        match self.verbose {
+            _ if self.quiet => log::LevelFilter::Off,
             n if n > 4 => log::LevelFilter::Trace,
             4 => log::LevelFilter::Debug,
             3 => log::LevelFilter::Info,
@@ -184,23 +227,12 @@ impl Args {
     /// Extract the required action.
     pub fn action(&self) -> Action {
         // extract operation mode
-        let action = if self.flag_help {
-            Action::Help
-        } else if self.flag_version {
-            Action::Version
-        } else if self.cmd_fix || self.flag_fix {
-            Action::Fix
-        } else if self.cmd_reflow {
-            Action::Reflow
-        } else if self.cmd_config {
-            Action::Config
-        } else if self.cmd_check {
-            Action::Check
-        } else if self.cmd_list_files {
-            Action::ListFiles
-        } else {
-            // `cargo spellcheck` is short for checking
-            Action::Check
+        let action = match self.command {
+            X::Check => Action::Check,
+            X::Fix => Action::Fix,
+            X::Reflow => Action::Reflow,
+            X::Config => Action::Config,
+            X::ListFiles => Action::ListFiles,
         };
         log::trace!("Derived action {:?} from flags/args/cmds", action);
         action
@@ -211,7 +243,7 @@ impl Args {
     /// Affects the parallel processing for a particular checker. Checkers are
     /// always executed in sequence.
     pub fn job_count(&self) -> usize {
-        match self.flag_jobs {
+        match self.jobs {
             _ if cfg!(debug_assertions) => {
                 log::warn!("Debug mode always uses 1 thread!");
                 1
@@ -248,8 +280,8 @@ impl Args {
     ///
     /// The program could be called like `cargo-spellcheck`, `cargo spellcheck`
     /// or `cargo spellcheck check` and even ``cargo-spellcheck check`.
-    pub fn parse(argv_iter: impl IntoIterator<Item = String>) -> Result<Self, docopt::Error> {
-        Docopt::new(USAGE).and_then(|d| {
+    pub fn parse(argv_iter: impl IntoIterator<Item = String>) -> Result<Self, clap::Error> {
+        Cli::parse({
             // if ends with file name `cargo-spellcheck`
             let mut argv_iter = argv_iter.into_iter();
             if let Some(arg0) = argv_iter.next() {
@@ -288,14 +320,13 @@ impl Args {
                             None => {}
                         };
                         let collected = next.into_iter().chain(argv_iter);
-                        d.argv(collected)
+                        collected
                     }
-                    _ => d,
+                    _ => argv_iter,
                 }
             } else {
-                d
+                None
             }
-            .deserialize()
         })
     }
 
@@ -378,7 +409,7 @@ impl Args {
         debug!("Attempting to load configuration by priority.");
         let cwd = crate::traverse::cwd()?;
         // 1. explicitly specified
-        let explicit_cfg = self.flag_cfg.as_ref().map(|config_path| {
+        let explicit_cfg = self.cfg.as_ref().map(|config_path| {
             let config_path = if config_path.is_absolute() {
                 config_path.to_owned()
             } else {
@@ -489,7 +520,7 @@ impl Args {
         // elided, and cause even worse suggestions.
         // ISSUE: https://github.com/drahnr/cargo-spellcheck/issues/242
         let filter_set = self
-            .flag_checkers
+            .checkers
             .clone()
             .unwrap_or_else(|| vec![CheckerType::Hunspell]);
         {
@@ -520,31 +551,31 @@ impl Args {
 
         let unified = match self.action() {
             Action::Config => {
-                let dest_config = match self.flag_cfg {
-                    None if self.flag_stdout => ConfigWriteDestination::Stdout,
+                let dest_config = match self.cfg {
+                    None if self.stdout => ConfigWriteDestination::Stdout,
                     Some(path) => ConfigWriteDestination::File {
-                        overwrite: self.flag_force,
+                        overwrite: self.force,
                         path,
                     },
-                    None if self.flag_user => ConfigWriteDestination::File {
-                        overwrite: self.flag_force,
+                    None if self.user => ConfigWriteDestination::File {
+                        overwrite: self.force,
                         path: Config::default_path()?,
                     },
                     _ => bail!("Neither --user or --stdout are given, invalid flags passed."),
                 };
                 UnifiedArgs::Config {
                     dest_config,
-                    checker_filter_set: self.flag_checkers,
+                    checker_filter_set: self.checkers,
                 }
             }
             action => UnifiedArgs::Operate {
                 action,
                 config_path,
-                dev_comments: self.flag_dev_comments.unwrap_or(config.dev_comments),
-                skip_readme: self.flag_skip_readme.unwrap_or(config.skip_readme),
-                recursive: self.flag_recursive,
-                paths: self.arg_paths,
-                exit_code_override: self.flag_code,
+                dev_comments: self.dev_comments.unwrap_or(config.dev_comments),
+                skip_readme: self.skip_readme.unwrap_or(config.skip_readme),
+                recursive: self.recursive,
+                paths: self.paths,
+                exit_code_override: self.code,
             },
         };
 
@@ -620,9 +651,9 @@ mod tests {
     );
 
     #[test]
-    fn docopt() {
+    fn args() {
         for command in SAMPLES.keys() {
-            assert!(Args::parse(commandline_to_iter(command))
+            assert!(Cli::parse(commandline_to_iter(command))
                 .map_err(|e| {
                     println!("Processing > {:?}", command);
                     e
@@ -633,19 +664,19 @@ mod tests {
 
     #[test]
     fn deserialize_multiple_checkers() {
-        let args = Args::parse(commandline_to_iter(
+        let args = Cli::parse(commandline_to_iter(
             "cargo spellcheck check --checkers=nlprules,hunspell",
         ))
         .expect("Parsing works. qed");
         assert_eq!(
-            args.flag_checkers,
+            args.checkers,
             Some(vec![CheckerType::NlpRules, CheckerType::Hunspell])
         );
     }
 
     #[test]
     fn unify_ops_check() {
-        let args = Args::parse(
+        let args = Cli::parse(
             &mut [
                 "cargo",
                 "spellcheck",
@@ -683,7 +714,7 @@ mod tests {
 
     #[test]
     fn unify_config() {
-        let args = Args::parse(
+        let args = Cli::parse(
             &mut [
                 "cargo-spellcheck",
                 "config",
