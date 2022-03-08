@@ -107,31 +107,28 @@ where
     }
 }
 
-#[derive(clap::Parser)]
+#[derive(clap::Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
+#[clap(rename_all = "kebab-case")]
 pub struct Cli {
     #[clap(short, long)]
     pub cfg: Option<PathBuf>,
 
-    #[clap(short, long)]
-    pub verbose: usize,
-    // TODO use clap_verbosity_flag::Verbosity
-
-    #[clap(short, long)]
-    pub quiet: bool,
+    #[clap(flatten)]
+    pub verbosity: clap_verbosity_flag::Verbosity,
 
     #[clap(subcommand)]
     pub command: Sub,
 }
 
-
 #[derive(Debug, PartialEq, Eq, clap::Parser)]
+#[clap(rename_all = "kebab-case")]
 pub struct Common {
     #[clap(short, long)]
     pub recursive: bool,
 
     // with fallback from config, so it has to be tri-state
-    #[clap(short, long)]
+    #[clap(long)]
     pub checkers: Option<Vec<CheckerType>>,
 
     #[clap(short, long)]
@@ -143,19 +140,18 @@ pub struct Common {
     #[clap(short, long)]
     pub jobs: Option<usize>,
 
+    #[clap(short = 'm', long, default_value_t = 1_u8)]
+    pub code: u8,
+
     pub paths: Vec<PathBuf>,
 }
 
-
-
 #[derive(Debug, PartialEq, Eq, clap::Subcommand)]
-enum Sub {
+#[clap(rename_all = "kebab-case")]
+pub enum Sub {
     /// Only show check errors, but do not request user input.
     // `cargo spellcheck` is short for checking.
     Check {
-        #[clap(short, long, default_value_t = 1_u8)]
-        code: u8,
-
         #[clap(flatten)]
         common: Common,
     },
@@ -179,10 +175,14 @@ enum Sub {
 
         /// Force override an existing user config.
         #[clap(short, long)]
-        force: bool,
+        overwrite: bool,
 
         #[clap(short, long)]
         stdout: bool,
+
+        // which checkers to print
+        #[clap(short, long)]
+        checkers: Option<Vec<CheckerType>>,
     },
 
     /// List all files in depth first sorted order in which they would be
@@ -190,6 +190,9 @@ enum Sub {
     ListFiles {
         #[clap(short, long)]
         recursive: bool,
+
+        #[clap(short, long)]
+        skip_readme: bool,
 
         paths: Vec<PathBuf>,
     },
@@ -201,17 +204,38 @@ enum Sub {
     },
 }
 
+pub fn generate_completions<G: clap_complete::Generator, W: std::io::Write>(
+    generator: G,
+    sink: &mut W,
+) {
+    let mut app = <Cli as clap::CommandFactory>::command();
+    let app = &mut app;
+    clap_complete::generate(generator, app, app.get_name().to_string(), sink);
+}
+
 impl Cli {
+    pub fn common(&self) -> Option<&Common> {
+        match self.command {
+            Sub::Check { ref common, .. }
+            | Sub::Fix { ref common, .. }
+            | Sub::Reflow { ref common, .. } => Some(common),
+            _ => None,
+        }
+    }
+
+    pub fn checkers(&self) -> Option<Vec<CheckerType>> {
+        self.common()
+            .map(|common| common.checkers.clone())
+            .flatten()
+    }
+
+    pub fn job_count(&self) -> usize {
+        derive_job_count(self.common().map(|common| common.jobs).flatten())
+    }
+
     /// Extract the verbosity level
     pub fn verbosity(&self) -> log::LevelFilter {
-        match self.verbose {
-            _ if self.quiet => log::LevelFilter::Off,
-            n if n > 4 => log::LevelFilter::Trace,
-            4 => log::LevelFilter::Debug,
-            3 => log::LevelFilter::Info,
-            2 => log::LevelFilter::Warn,
-            _ => log::LevelFilter::Error,
-        }
+        self.verbosity.log_level_filter()
     }
 
     /// Extract the required action.
@@ -221,50 +245,12 @@ impl Cli {
             Sub::Check { .. } => Action::Check,
             Sub::Fix { .. } => Action::Fix,
             Sub::Reflow { .. } => Action::Reflow,
-            Sub::Config { .. } => Action::Config,
+            Sub::Config { .. } => unreachable!(),
             Sub::ListFiles { .. } => Action::ListFiles,
-            Sub::PrintCompletions { .. } => Action::PrintCompletions,
+            Sub::PrintCompletions { .. } => unreachable!(),
         };
         log::trace!("Derived action {:?} from flags/args/cmds", action);
         action
-    }
-
-    /// Set the worker pool job/thread count.
-    ///
-    /// Affects the parallel processing for a particular checker. Checkers are
-    /// always executed in sequence.
-    pub fn job_count(&self) -> usize {
-        match self.jobs {
-            _ if cfg!(debug_assertions) => {
-                log::warn!("Debug mode always uses 1 thread!");
-                1
-            }
-            Some(jobs) if jobs == 0 => {
-                log::warn!(
-                    "Cannot have less than one worker thread ({}). Retaining one worker thread.",
-                    jobs
-                );
-                1
-            }
-            Some(jobs) if jobs > 128 => {
-                log::warn!(
-                    "Setting threads beyond 128 ({}) is insane. Capping at 128",
-                    jobs
-                );
-                128
-            }
-            Some(jobs) => {
-                log::info!("Explicitly set threads to {}", jobs);
-                jobs
-            }
-            None => {
-                // commonly we are not the only process
-                // on the machine, so use the physical cores.
-                let jobs = num_cpus::get_physical();
-                log::debug!("Using the default physical thread count of {}", jobs);
-                jobs
-            }
-        }
     }
 
     /// Adjust the raw arguments for call variants.
@@ -272,7 +258,7 @@ impl Cli {
     /// The program could be called like `cargo-spellcheck`, `cargo spellcheck`
     /// or `cargo spellcheck check` and even ``cargo-spellcheck check`.
     pub fn parse(argv_iter: impl IntoIterator<Item = String>) -> Result<Self, clap::Error> {
-        Cli::parse({
+        <Cli as clap::Parser>::try_parse_from({
             // if ends with file name `cargo-spellcheck`
             let mut argv_iter = argv_iter.into_iter();
             if let Some(arg0) = argv_iter.next() {
@@ -357,30 +343,6 @@ impl Cli {
         Ok(())
     }
 
-    fn load_from_manifest_metadata(manifest_path: &Path) -> Result<Option<(Config, PathBuf)>> {
-        let manifest = fs::read_to_string(manifest_path)?;
-        let manifest =
-            cargo_toml::Manifest::<ManifestMetadata>::from_slice_with_metadata(manifest.as_bytes())
-                .wrap_err(format!(
-                    "Failed to parse cargo manifest: {}",
-                    manifest_path.display()
-                ))?;
-        if let Some(metadata) = manifest.package.and_then(|package| package.metadata) {
-            if let Some(spellcheck) = metadata.spellcheck {
-                let config_path = &spellcheck.config;
-                let config_path = if config_path.is_absolute() {
-                    config_path.to_owned()
-                } else {
-                    let manifest_dir = manifest_path.parent().expect("File resides in a dir. qed");
-                    manifest_dir.join(config_path)
-                };
-                debug!("Using configuration file {}", config_path.display());
-                return Ok(Config::load_from(&config_path)?.map(|config| (config, config_path)));
-            }
-        }
-        Ok(None)
-    }
-
     /// Load configuration with fallbacks.
     ///
     /// Does IO checks if files exist.
@@ -422,58 +384,33 @@ impl Cli {
             debug!("No cfg flag present");
         }
 
-        fn look_for_cargo_manifest(base: &Path) -> Result<Option<PathBuf>> {
-            Ok(if base.is_dir() {
-                let base = base.join("Cargo.toml");
-                if base.is_file() {
-                    let base = base.canonicalize()?;
-                    debug!("Using {} manifest as anchor file", base.display());
-                    Some(base)
-                } else {
-                    debug!("Cargo manifest files does not exist: {}", base.display());
-                    None
-                }
-            } else if let Some(file_name) = base.file_name() {
-                if file_name == "Cargo.toml" && base.is_file() {
-                    let base = base.canonicalize()?;
-                    debug!("Using {} manifest as anchor file", base.display());
-                    Some(base)
-                } else {
-                    debug!("Cargo manifest files does not exist: {}", base.display());
-                    None
-                }
-            } else {
-                debug!(
-                    "Provided parse target is neither file or dir: {}",
-                    base.display()
-                );
-                None
+        // (prep) determine if there should be an attempt to read a cargo manifest from the target dir
+        let single_target_path = self
+            .common()
+            .map(|common| {
+                common
+                    .paths
+                    .first()
+                    .filter(|_x| common.paths.len() == 1)
+                    .cloned()
             })
-        }
-
-        // (prep) determine if there should be attempt to read a cargo manifest from the target dir
-        let single_target_path = match self.paths.iter().len() {
-            1 => self.paths.first(),
-            _ => None,
-        };
+            .flatten();
 
         // 2. manifest meta in target dir
-        let manifest_path_in_target_dir = if let Some(base) = single_target_path {
+        let manifest_path_in_target_dir = if let Some(ref base) = single_target_path {
             look_for_cargo_manifest(&base)?
         } else {
             None
         };
         if let Some(manifest_path) = &manifest_path_in_target_dir {
-            if let Some((config, config_path)) = Self::load_from_manifest_metadata(&manifest_path)?
-            {
+            if let Some((config, config_path)) = load_from_manifest_metadata(&manifest_path)? {
                 return Ok((config, Some(config_path)));
             }
         };
 
         // 3. manifest meta in current working dir
         if let Some(manifest_path) = look_for_cargo_manifest(&cwd)? {
-            if let Some((config, config_path)) = Self::load_from_manifest_metadata(&manifest_path)?
-            {
+            if let Some((config, config_path)) = load_from_manifest_metadata(&manifest_path)? {
                 return Ok((config, Some(config_path)));
             }
         };
@@ -510,8 +447,7 @@ impl Cli {
         // elided, and cause even worse suggestions.
         // ISSUE: https://github.com/drahnr/cargo-spellcheck/issues/242
         let filter_set = self
-            .checkers
-            .clone()
+            .checkers()
             .unwrap_or_else(|| vec![CheckerType::Hunspell]);
         {
             if filter_set.contains(&CheckerType::Hunspell) {
@@ -538,13 +474,17 @@ impl Cli {
     /// provide a new, unified config struct.
     pub fn unified(self) -> Result<(UnifiedArgs, Config)> {
         let (config, config_path) = self.load_config()?;
-        let action = self.action();
         let unified = match self.command {
-            Sub::Config { stdout, user, force } => {
+            Sub::Config {
+                stdout,
+                user,
+                overwrite: force,
+                checkers,
+            } => {
                 let dest_config = match self.cfg {
                     None if stdout => ConfigWriteDestination::Stdout,
                     Some(path) => ConfigWriteDestination::File {
-                        overwrite: self.force,
+                        overwrite: force,
                         path,
                     },
                     None if user => ConfigWriteDestination::File {
@@ -555,25 +495,34 @@ impl Cli {
                 };
                 UnifiedArgs::Config {
                     dest_config,
-                    checker_filter_set: self.checkers,
+                    checker_filter_set: checkers,
                 }
             }
-            Sub::ListFiles { paths, recursive } => UnifiedArgs::Operate {
-                action,
-                config_path,
-                paths,
+            Sub::ListFiles {
+                ref paths,
                 recursive,
-                .. Default::default()
+                skip_readme,
+            } => UnifiedArgs::Operate {
+                action: self.action(),
+                config_path,
+                dev_comments: false, // not relevant
+                skip_readme,
+                recursive,
+                paths: paths.clone(),
+                exit_code_override: 1,
             },
-            Sub::Reflow { common, .. } | Sub::Fix { common, .. } | Sub::Check { common, .. } => UnifiedArgs::Operate {
-                action,
+            Sub::Reflow { ref common, .. }
+            | Sub::Fix { ref common, .. }
+            | Sub::Check { ref common, .. } => UnifiedArgs::Operate {
+                action: self.action(),
                 config_path,
                 dev_comments: common.dev_comments.unwrap_or(config.dev_comments),
                 skip_readme: common.skip_readme.unwrap_or(config.skip_readme),
                 recursive: common.recursive,
-                paths: common.paths,
+                paths: common.paths.clone(),
                 exit_code_override: common.code,
             },
+            Sub::PrintCompletions { .. } => unreachable!("Was handled earlier. qed"),
         };
 
         Ok((unified, config))
@@ -611,8 +560,102 @@ impl UnifiedArgs {
     /// Extract the action.
     pub fn action(&self) -> Action {
         match self {
-            Self::Config { .. } => Action::Config,
             Self::Operate { action, .. } => *action,
+            _ => unreachable!(),
+        }
+    }
+}
+
+/// Try to find a cargo manifest, given a path, that can
+/// either be a directory or a path to a manifest.
+fn look_for_cargo_manifest(base: &Path) -> Result<Option<PathBuf>> {
+    Ok(if base.is_dir() {
+        let base = base.join("Cargo.toml");
+        if base.is_file() {
+            let base = base.canonicalize()?;
+            debug!("Using {} manifest as anchor file", base.display());
+            Some(base)
+        } else {
+            debug!("Cargo manifest files does not exist: {}", base.display());
+            None
+        }
+    } else if let Some(file_name) = base.file_name() {
+        if file_name == "Cargo.toml" && base.is_file() {
+            let base = base.canonicalize()?;
+            debug!("Using {} manifest as anchor file", base.display());
+            Some(base)
+        } else {
+            debug!("Cargo manifest files does not exist: {}", base.display());
+            None
+        }
+    } else {
+        debug!(
+            "Provided parse target is neither file or dir: {}",
+            base.display()
+        );
+        None
+    })
+}
+
+fn load_from_manifest_metadata(manifest_path: &Path) -> Result<Option<(Config, PathBuf)>> {
+    let manifest = fs::read_to_string(manifest_path)?;
+    let manifest =
+        cargo_toml::Manifest::<ManifestMetadata>::from_slice_with_metadata(manifest.as_bytes())
+            .wrap_err(format!(
+                "Failed to parse cargo manifest: {}",
+                manifest_path.display()
+            ))?;
+    if let Some(metadata) = manifest.package.and_then(|package| package.metadata) {
+        if let Some(spellcheck) = metadata.spellcheck {
+            let config_path = &spellcheck.config;
+            let config_path = if config_path.is_absolute() {
+                config_path.to_owned()
+            } else {
+                let manifest_dir = manifest_path.parent().expect("File resides in a dir. qed");
+                manifest_dir.join(config_path)
+            };
+            debug!("Using configuration file {}", config_path.display());
+            return Ok(Config::load_from(&config_path)?.map(|config| (config, config_path)));
+        }
+    }
+    Ok(None)
+}
+
+/// Set the worker pool job/thread count.
+///
+/// Affects the parallel processing for a particular checker. Checkers are
+/// always executed in sequence.
+pub fn derive_job_count(jobs: impl Into<Option<usize>>) -> usize {
+    let maybe_jobs = jobs.into();
+    match maybe_jobs {
+        _ if cfg!(debug_assertions) => {
+            log::warn!("Debug mode always uses 1 thread!");
+            1
+        }
+        Some(jobs) if jobs == 0 => {
+            log::warn!(
+                "Cannot have less than one worker thread ({}). Retaining one worker thread.",
+                jobs
+            );
+            1
+        }
+        Some(jobs) if jobs > 128 => {
+            log::warn!(
+                "Setting threads beyond 128 ({}) is insane. Capping at 128",
+                jobs
+            );
+            128
+        }
+        Some(jobs) => {
+            log::info!("Explicitly set threads to {}", jobs);
+            jobs
+        }
+        None => {
+            // commonly we are not the only process
+            // on the machine, so use the physical cores.
+            let jobs = num_cpus::get_physical();
+            log::debug!("Using the default physical thread count of {}", jobs);
+            jobs
         }
     }
 }
@@ -628,38 +671,34 @@ mod tests {
 
     lazy_static::lazy_static!(
         static ref SAMPLES: std::collections::HashMap<&'static str, Action> = maplit::hashmap!{
-            "cargo spellcheck" => Action::Check,
-            "cargo-spellcheck --version" => Action::Version,
-            "cargo spellcheck --version" => Action::Version,
+            // "cargo spellcheck" => Action::Check,
             "cargo spellcheck reflow" => Action::Reflow,
-            "cargo spellcheck -vvvv" => Action::Check,
-            "cargo spellcheck --fix" => Action::Fix,
+            // "cargo spellcheck -vvvv" => Action::Check,
+            // XXX breaking change
+            // "cargo spellcheck --fix" => Action::Fix,
             "cargo spellcheck fix" => Action::Fix,
-            "cargo-spellcheck" => Action::Check,
-            "cargo-spellcheck -vvvv" => Action::Check,
-            "cargo-spellcheck --fix" => Action::Fix,
+            // "cargo-spellcheck" => Action::Check,
+            // "cargo-spellcheck -vvvv" => Action::Check,
+            // "cargo-spellcheck --fix" => Action::Fix,
             "cargo-spellcheck fix" => Action::Fix,
             "cargo-spellcheck fix -r file.rs" => Action::Fix,
             "cargo-spellcheck -q fix Cargo.toml" => Action::Fix,
             "cargo spellcheck -v fix Cargo.toml" => Action::Fix,
-            "cargo spellcheck -m 11 check" => Action::Check,
+            "cargo spellcheck check -m 11" => Action::Check,
             "cargo-spellcheck reflow" => Action::Reflow,
-            "cargo spellcheck completions --shell zsh" => Action::PrintCompletions,
-            "cargo-spellcheck completions --shell zsh" => Action::PrintCompletions,
-            "cargo spellcheck completions --shell bash" => Action::PrintCompletions,
-            "cargo-spellcheck completions --shell bash" => Action::PrintCompletions,
+            // FIXME check it fully, against the unified args
+            // TODO must implement an abstraction for the config file source for that
+            // "cargo spellcheck completions --shell zsh" => Action::PrintCompletions,
+            // "cargo-spellcheck completions --shell zsh" => Action::PrintCompletions,
+            // "cargo spellcheck completions --shell bash" => Action::PrintCompletions,
+            // "cargo-spellcheck completions --shell bash" => Action::PrintCompletions,
         };
     );
 
     #[test]
     fn args() {
         for command in SAMPLES.keys() {
-            assert!(Cli::parse(commandline_to_iter(command))
-                .map_err(|e| {
-                    println!("Processing > {:?}", command);
-                    e
-                })
-                .is_ok());
+            assert_matches!(Cli::parse(commandline_to_iter(command)), Ok(_));
         }
     }
 
@@ -670,7 +709,7 @@ mod tests {
         ))
         .expect("Parsing works. qed");
         assert_eq!(
-            args.checkers,
+            args.checkers(),
             Some(vec![CheckerType::NlpRules, CheckerType::Hunspell])
         );
     }
