@@ -1,15 +1,10 @@
-use std::{
-    marker::PhantomData,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 use crate::errors::*;
 
 use fs_err as fs;
 use itertools::Itertools;
-use serde::de::{self, DeserializeOwned, Deserializer};
 use serde::Deserialize;
-use std::fmt;
 use std::str::FromStr;
 
 use crate::Action;
@@ -49,7 +44,6 @@ impl FromStr for CheckerType {
     }
 }
 
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MultipleCheckerTypes(pub Vec<CheckerType>);
 
@@ -81,14 +75,14 @@ impl FromStr for MultipleCheckerTypes {
         s.split(',')
             .into_iter()
             .map(|segment| <CheckerType as FromStr>::from_str(segment))
-            .collect::<Result<Vec<_>, _>>().map(|vct| MultipleCheckerTypes(vct))
+            .collect::<Result<Vec<_>, _>>()
+            .map(|vct| MultipleCheckerTypes(vct))
     }
 }
 
 #[derive(Debug, Clone, thiserror::Error)]
 #[error("Unknown checker type variant: {0}")]
 pub struct UnknownCheckerTypeVariant(String);
-
 
 #[derive(clap::Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
