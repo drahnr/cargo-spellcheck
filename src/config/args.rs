@@ -455,17 +455,17 @@ impl Cli {
             Sub::Config {
                 stdout,
                 user,
-                overwrite: force,
+                overwrite,
                 checkers,
             } => {
                 let dest_config = match self.cfg {
                     None if stdout => ConfigWriteDestination::Stdout,
                     Some(path) => ConfigWriteDestination::File {
-                        overwrite: force,
+                        overwrite,
                         path,
                     },
                     None if user => ConfigWriteDestination::File {
-                        overwrite: force,
+                        overwrite,
                         path: Config::default_path()?,
                     },
                     _ => bail!("Neither --user or --stdout are given, invalid flags passed."),
@@ -745,8 +745,8 @@ mod tests {
             .map(ToOwned::to_owned),
         )
         .unwrap();
-        let (unified, config) = args.unified().unwrap();
-        assert_matches!(unified,
+        let (unified, config) = dbg!(args).unified().unwrap();
+        assert_matches!(dbg!(unified),
             UnifiedArgs::Config {
                 dest_config: ConfigWriteDestination::File { overwrite, path },
                 checker_filter_set,
@@ -756,11 +756,5 @@ mod tests {
                 assert_eq!(overwrite, true);
             }
         );
-
-        assert_matches!(config.hunspell, None);
-        assert_matches!(config.nlprules, Some(cfg) => {
-            assert_matches!(cfg.override_rules, None);
-            assert_matches!(cfg.override_tokenizer, None);
-        });
     }
 }
