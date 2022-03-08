@@ -460,10 +460,7 @@ impl Cli {
             } => {
                 let dest_config = match self.cfg {
                     None if stdout => ConfigWriteDestination::Stdout,
-                    Some(path) => ConfigWriteDestination::File {
-                        overwrite,
-                        path,
-                    },
+                    Some(path) => ConfigWriteDestination::File { overwrite, path },
                     None if user => ConfigWriteDestination::File {
                         overwrite,
                         path: Config::default_path()?,
