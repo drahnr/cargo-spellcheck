@@ -204,7 +204,7 @@ dependencies = [
  "crossterm",
  "directories 4.0.1",
  "env_logger 0.9.0",
- "fancy-regex 0.7.1",
+ "fancy-regex 0.8.0",
  "fd-lock",
  "fs-err",
  "futures",
@@ -630,9 +630,9 @@ dependencies = [
 
 [[package]]
 name = "fancy-regex"
-version = "0.7.1"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9d6b8560a05112eb52f04b00e5d3790c0dd75d9d980eb8a122fb23b92a623ccf"
+checksum = "d95b4efe5be9104a4a18a9916e86654319895138be727b229820c39257c30dda"
 dependencies = [
  "bit-set",
  "regex",
