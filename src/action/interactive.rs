@@ -228,11 +228,6 @@ impl UserPicked {
         self.bandaids.extend(other.bandaids.into_iter());
     }
 
-    #[allow(dead_code)]
-    fn wrap_in_ticks(&self, _state: &mut State, _event: KeyEvent) -> Result<UserSelection> {
-        unimplemented!()
-    }
-
     /// Provide a replacement that was not provided by the backend
     fn enter_custom_replacement(
         &self,
