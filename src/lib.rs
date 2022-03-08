@@ -170,7 +170,7 @@ pub fn run() -> Result<ExitCode> {
             trace!("Configuration chore");
             let mut config = Config::full();
             Cli::checker_selection_override(
-                checker_filter_set.as_ref().map(Vec::as_slice),
+                checker_filter_set.as_ref().map(AsRef::as_ref),
                 &mut config,
             )?;
 

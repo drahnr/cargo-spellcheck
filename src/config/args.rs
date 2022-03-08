@@ -10,7 +10,6 @@ use itertools::Itertools;
 use serde::de::{self, DeserializeOwned, Deserializer};
 use serde::Deserialize;
 use std::fmt;
-use std::result;
 use std::str::FromStr;
 
 use crate::Action;
@@ -50,62 +49,46 @@ impl FromStr for CheckerType {
     }
 }
 
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct MultipleCheckerTypes(pub Vec<CheckerType>);
+
+impl AsRef<[CheckerType]> for MultipleCheckerTypes {
+    fn as_ref(&self) -> &[CheckerType] {
+        self.0.as_slice()
+    }
+}
+
+impl std::ops::Deref for MultipleCheckerTypes {
+    type Target = [CheckerType];
+    fn deref(&self) -> &Self::Target {
+        self.0.as_slice()
+    }
+}
+
+impl IntoIterator for MultipleCheckerTypes {
+    type Item = CheckerType;
+    type IntoIter = <Vec<Self::Item> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl FromStr for MultipleCheckerTypes {
+    type Err = UnknownCheckerTypeVariant;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        s.split(',')
+            .into_iter()
+            .map(|segment| <CheckerType as FromStr>::from_str(segment))
+            .collect::<Result<Vec<_>, _>>().map(|vct| MultipleCheckerTypes(vct))
+    }
+}
+
 #[derive(Debug, Clone, thiserror::Error)]
 #[error("Unknown checker type variant: {0}")]
 pub struct UnknownCheckerTypeVariant(String);
 
-#[allow(dead_code)]
-fn deser_option_vec_from_str_list<'de, T, D>(
-    deserializer: D,
-) -> result::Result<Option<Vec<T>>, D::Error>
-where
-    T: DeserializeOwned + fmt::Debug + FromStr,
-    <T as FromStr>::Err: fmt::Display + fmt::Debug,
-    D: Deserializer<'de>,
-{
-    deserializer.deserialize_option(OptionalVecOf::<T>::new())
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Clone, Copy)]
-struct OptionalVecOf<T>(PhantomData<T>);
-
-impl<T> OptionalVecOf<T> {
-    fn new() -> Self {
-        Self(PhantomData)
-    }
-}
-impl<'de, T> de::Visitor<'de> for OptionalVecOf<T>
-where
-    T: fmt::Debug + de::DeserializeOwned + FromStr,
-    <T as FromStr>::Err: fmt::Display + fmt::Debug,
-{
-    type Value = Option<Vec<T>>;
-
-    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        write!(formatter, "Expected a , separated string vector")
-    }
-
-    fn visit_none<E>(self) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(None)
-    }
-
-    fn visit_some<D>(self, deserializer: D) -> result::Result<Option<Vec<T>>, D::Error>
-    where
-        D: de::Deserializer<'de>,
-    {
-        let s = String::deserialize(deserializer)?;
-        Ok(s.split(',')
-            .into_iter()
-            .map(|segment| <T as FromStr>::from_str(segment))
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(serde::de::Error::custom)?)
-        .map(|v| Some(v))
-    }
-}
 
 #[derive(clap::Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -129,13 +112,13 @@ pub struct Common {
 
     // with fallback from config, so it has to be tri-state
     #[clap(long)]
-    pub checkers: Option<Vec<CheckerType>>,
+    pub checkers: Option<MultipleCheckerTypes>,
 
     #[clap(short, long)]
-    pub skip_readme: Option<bool>,
+    pub skip_readme: bool,
 
     #[clap(short, long)]
-    pub dev_comments: Option<bool>,
+    pub dev_comments: bool,
 
     #[clap(short, long)]
     pub jobs: Option<usize>,
@@ -182,7 +165,7 @@ pub enum Sub {
 
         // which checkers to print
         #[clap(short, long)]
-        checkers: Option<Vec<CheckerType>>,
+        checkers: Option<MultipleCheckerTypes>,
     },
 
     /// List all files in depth first sorted order in which they would be
@@ -225,7 +208,7 @@ impl Cli {
 
     pub fn checkers(&self) -> Option<Vec<CheckerType>> {
         self.common()
-            .map(|common| common.checkers.clone())
+            .map(|common| common.checkers.as_ref().map(|checkers| checkers.0.clone()))
             .flatten()
     }
 
@@ -516,8 +499,8 @@ impl Cli {
             | Sub::Check { ref common, .. } => UnifiedArgs::Operate {
                 action: self.action(),
                 config_path,
-                dev_comments: common.dev_comments.unwrap_or(config.dev_comments),
-                skip_readme: common.skip_readme.unwrap_or(config.skip_readme),
+                dev_comments: common.dev_comments || config.dev_comments,
+                skip_readme: common.skip_readme || config.skip_readme,
                 recursive: common.recursive,
                 paths: common.paths.clone(),
                 exit_code_override: common.code,
@@ -543,7 +526,7 @@ pub enum ConfigWriteDestination {
 pub enum UnifiedArgs {
     Config {
         dest_config: ConfigWriteDestination,
-        checker_filter_set: Option<Vec<CheckerType>>,
+        checker_filter_set: Option<MultipleCheckerTypes>,
     },
     Operate {
         action: Action,
@@ -775,7 +758,7 @@ mod tests {
                 checker_filter_set,
             } => {
                 assert_eq!(path, PathBuf::from(".config/spellcheck.toml"));
-                assert_eq!(checker_filter_set, Some(vec![CheckerType::NlpRules]));
+                assert_eq!(checker_filter_set, Some(MultipleCheckerTypes(vec![CheckerType::NlpRules])));
                 assert_eq!(overwrite, true);
             }
         );
