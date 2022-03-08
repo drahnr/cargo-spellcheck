@@ -752,15 +752,16 @@ mod tests {
         );
     }
 
+    // FIXME checkers interpretation seems to have changed XXX
     #[test]
     fn unify_config() {
         let args = Cli::parse(
             &mut [
                 "cargo-spellcheck",
-                "config",
                 "--cfg=.config/spellcheck.toml",
+                "config",
                 "--checkers=NlpRules",
-                "--force",
+                "--overwrite",
             ]
             .iter()
             .map(ToOwned::to_owned)
@@ -779,10 +780,10 @@ mod tests {
             }
         );
 
-        assert_matches!(config.hunspell, None => {});
+        assert_matches!(config.hunspell, None);
         assert_matches!(config.nlprules, Some(cfg) => {
-            assert!(cfg.override_rules.is_none());
-            assert!(cfg.override_tokenizer.is_none());
+            assert_matches!(cfg.override_rules, None);
+            assert_matches!(cfg.override_tokenizer, None);
         });
     }
 }
