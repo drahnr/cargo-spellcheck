@@ -19,39 +19,6 @@ use super::Config;
 
 use log::{debug, warn};
 
-/// Docopt usage string.
-const USAGE: &str = r#"
-Spellcheck all your doc comments
-
-Usage:
-    cargo-spellcheck [(-v...|-q)] [--jobs=<jobs>] fix [--cfg=<cfg>] [--code=<code>] [--dev-comments] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
-    cargo-spellcheck [(-v...|-q)] [--jobs=<jobs>] reflow [--cfg=<cfg>] [--code=<code>] [--dev-comments] [--skip-readme] [[--recursive] <paths>... ]
-    cargo-spellcheck [(-v...|-q)] [--jobs=<jobs>] config (--user|--stdout|--cfg=<cfg>) [--checkers=<checkers>] [--force]
-    cargo-spellcheck [(-v...|-q)] [--jobs=<jobs>] list-files [--skip-readme] [[--recursive] <paths>... ]
-    cargo-spellcheck [(-v...|-q)] [--jobs=<jobs>] [check] [--fix] [--cfg=<cfg>] [--code=<code>] [--dev-comments] [--skip-readme] [--checkers=<checkers>] [[--recursive] <paths>... ]
-    cargo-spellcheck --version
-    cargo-spellcheck --help
-
-Options:
-  -h --help                 Show this screen.
-  --version                 Print the version and exit.
-
-  --fix                     Interactively apply spelling and grammer fixes, synonym to `fix` sub-command.
-  -r --recursive            If a path is provided, if recursion into subdirectories is desired.
-  --checkers=<checkers>     Calculate the intersection between
-                            configured by config file and the ones provided on commandline.
-  -f --force                Overwrite any existing configuration file. [default=false]
-  -c --cfg=<cfg>            Use a non default configuration file.
-                            Passing a directory will attempt to open `cargo_spellcheck.toml` in that directory.
-  --user                    Write the configuration file to the default user configuration directory.
-  --stdout                  Print the configuration file to stdout and exit.
-  -v --verbose              Verbosity level.
-  -q --quiet                Silences all printed messages. Overrules `-v`.
-  -j --jobs=<jobs>          The number of threads to use for parallel checking.
-  -m --code=<code>          Overwrite the exit value for a successful run with content mistakes found. [default=0]
-  --skip-readme             Do not attempt to process README.md files listed in Cargo.toml manifests.
-"#;
-
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize)]
 pub struct ManifestMetadata {
     spellcheck: Option<ManifestMetadataSpellcheck>,
@@ -87,6 +54,7 @@ impl FromStr for CheckerType {
 #[error("Unknown checker type variant: {0}")]
 pub struct UnknownCheckerTypeVariant(String);
 
+#[allow(dead_code)]
 fn deser_option_vec_from_str_list<'de, T, D>(
     deserializer: D,
 ) -> result::Result<Option<Vec<T>>, D::Error>
@@ -98,6 +66,7 @@ where
     deserializer.deserialize_option(OptionalVecOf::<T>::new())
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
 struct OptionalVecOf<T>(PhantomData<T>);
 
@@ -140,15 +109,9 @@ where
 
 #[derive(clap::Parser)]
 #[clap(author, version, about, long_about = None)]
-struct Cli {
+pub struct Cli {
     #[clap(short, long)]
-    pub cfg: Option<std::path::PathBuf>,
-
-    #[clap(short, long)]
-    pub user: bool,
-
-    #[clap(short, long)]
-    pub force: bool,
+    pub cfg: Option<PathBuf>,
 
     #[clap(short, long)]
     pub verbose: usize,
@@ -157,16 +120,22 @@ struct Cli {
     #[clap(short, long)]
     pub quiet: bool,
 
+    #[clap(subcommand)]
+    pub command: Sub,
+}
+
+
+#[derive(Debug, PartialEq, Eq, clap::Parser)]
+pub struct Common {
     #[clap(short, long)]
     pub recursive: bool,
 
     // with fallback from config, so it has to be tri-state
     #[clap(short, long)]
-    pub checkers: Vec<CheckerType>,
+    pub checkers: Option<Vec<CheckerType>>,
 
     #[clap(short, long)]
     pub skip_readme: Option<bool>,
-
 
     #[clap(short, long)]
     pub dev_comments: Option<bool>,
@@ -174,44 +143,65 @@ struct Cli {
     #[clap(short, long)]
     pub jobs: Option<usize>,
 
-    #[clap(short, long, default_value_t = 1_u8)]
-    pub code: u8,
-
-    #[clap(short, long)]
-    pub stdout: bool,
-
-    #[clap(subcommand)]
-    pub command: X,
+    pub paths: Vec<PathBuf>,
 }
+
 
 
 #[derive(Debug, PartialEq, Eq, clap::Subcommand)]
-enum X {
+enum Sub {
     /// Only show check errors, but do not request user input.
     // `cargo spellcheck` is short for checking.
-    Check,
+    Check {
+        #[clap(short, long, default_value_t = 1_u8)]
+        code: u8,
+
+        #[clap(flatten)]
+        common: Common,
+    },
 
     /// Interactively choose from checker provided suggestions.
-    Fix,
+    Fix {
+        #[clap(flatten)]
+        common: Common,
+    },
 
     /// Reflow doc comments, so they adhere to a given maximum column width.
-    Reflow,
+    Reflow {
+        #[clap(flatten)]
+        common: Common,
+    },
 
     /// Print the config being in use, default config if none.
-    Config,
+    Config {
+        #[clap(short, long)]
+        user: bool,
+
+        /// Force override an existing user config.
+        #[clap(short, long)]
+        force: bool,
+
+        #[clap(short, long)]
+        stdout: bool,
+    },
 
     /// List all files in depth first sorted order in which they would be
     /// checked.
-    ListFiles,
+    ListFiles {
+        #[clap(short, long)]
+        recursive: bool,
 
+        paths: Vec<PathBuf>,
+    },
 
     /// Print completions.
-    PrintCompletions,
+    PrintCompletions {
+        #[clap(long)]
+        shell: clap_complete::Shell,
+    },
 }
 
 impl Cli {
-    pub const USAGE: &'static str = USAGE;
-
     /// Extract the verbosity level
     pub fn verbosity(&self) -> log::LevelFilter {
         match self.verbose {
@@ -228,11 +218,12 @@ impl Cli {
     pub fn action(&self) -> Action {
         // extract operation mode
         let action = match self.command {
-            X::Check => Action::Check,
-            X::Fix => Action::Fix,
-            X::Reflow => Action::Reflow,
-            X::Config => Action::Config,
-            X::ListFiles => Action::ListFiles,
+            Sub::Check { .. } => Action::Check,
+            Sub::Fix { .. } => Action::Fix,
+            Sub::Reflow { .. } => Action::Reflow,
+            Sub::Config { .. } => Action::Config,
+            Sub::ListFiles { .. } => Action::ListFiles,
+            Sub::PrintCompletions { .. } => Action::PrintCompletions,
         };
         log::trace!("Derived action {:?} from flags/args/cmds", action);
         action
@@ -319,13 +310,12 @@ impl Cli {
                             }
                             None => {}
                         };
-                        let collected = next.into_iter().chain(argv_iter);
-                        collected
+                        Vec::from_iter(next.into_iter().chain(argv_iter))
                     }
-                    _ => argv_iter,
+                    _ => Vec::from_iter(argv_iter),
                 }
             } else {
-                None
+                Vec::new()
             }
         })
     }
@@ -462,8 +452,8 @@ impl Cli {
         }
 
         // (prep) determine if there should be attempt to read a cargo manifest from the target dir
-        let single_target_path = match self.arg_paths.iter().len() {
-            1 => self.arg_paths.first(),
+        let single_target_path = match self.paths.iter().len() {
+            1 => self.paths.first(),
             _ => None,
         };
 
@@ -548,17 +538,17 @@ impl Cli {
     /// provide a new, unified config struct.
     pub fn unified(self) -> Result<(UnifiedArgs, Config)> {
         let (config, config_path) = self.load_config()?;
-
-        let unified = match self.action() {
-            Action::Config => {
+        let action = self.action();
+        let unified = match self.command {
+            Sub::Config { stdout, user, force } => {
                 let dest_config = match self.cfg {
-                    None if self.stdout => ConfigWriteDestination::Stdout,
+                    None if stdout => ConfigWriteDestination::Stdout,
                     Some(path) => ConfigWriteDestination::File {
                         overwrite: self.force,
                         path,
                     },
-                    None if self.user => ConfigWriteDestination::File {
-                        overwrite: self.force,
+                    None if user => ConfigWriteDestination::File {
+                        overwrite: force,
                         path: Config::default_path()?,
                     },
                     _ => bail!("Neither --user or --stdout are given, invalid flags passed."),
@@ -568,14 +558,21 @@ impl Cli {
                     checker_filter_set: self.checkers,
                 }
             }
-            action => UnifiedArgs::Operate {
+            Sub::ListFiles { paths, recursive } => UnifiedArgs::Operate {
                 action,
                 config_path,
-                dev_comments: self.dev_comments.unwrap_or(config.dev_comments),
-                skip_readme: self.skip_readme.unwrap_or(config.skip_readme),
-                recursive: self.recursive,
-                paths: self.paths,
-                exit_code_override: self.code,
+                paths,
+                recursive,
+                .. Default::default()
+            },
+            Sub::Reflow { common, .. } | Sub::Fix { common, .. } | Sub::Check { common, .. } => UnifiedArgs::Operate {
+                action,
+                config_path,
+                dev_comments: common.dev_comments.unwrap_or(config.dev_comments),
+                skip_readme: common.skip_readme.unwrap_or(config.skip_readme),
+                recursive: common.recursive,
+                paths: common.paths,
+                exit_code_override: common.code,
             },
         };
 
@@ -647,6 +644,10 @@ mod tests {
             "cargo spellcheck -v fix Cargo.toml" => Action::Fix,
             "cargo spellcheck -m 11 check" => Action::Check,
             "cargo-spellcheck reflow" => Action::Reflow,
+            "cargo spellcheck completions --shell zsh" => Action::PrintCompletions,
+            "cargo-spellcheck completions --shell zsh" => Action::PrintCompletions,
+            "cargo spellcheck completions --shell bash" => Action::PrintCompletions,
+            "cargo-spellcheck completions --shell bash" => Action::PrintCompletions,
         };
     );
 

@@ -349,12 +349,15 @@ impl Action {
     /// Run the requested action.
     pub async fn run(self, documents: Documentation, config: Config) -> Result<Finish> {
         let fin = match self {
-            Self::ListFiles => self.run_list_files(documents, &config).await?,
-            Self::Reflow => self.run_reflow(documents, config).await?,
-            Self::Check => self.run_check(documents, config).await?,
-            Self::Fix => self.run_fix_interactive(documents, config).await?,
-            Self::Config | Self::Version | Self::Help => {
+            Self::ListFiles { .. } => self.run_list_files(documents, &config).await?,
+            Self::Reflow { .. } => self.run_reflow(documents, config).await?,
+            Self::Check { .. } => self.run_check(documents, config).await?,
+            Self::Fix { ..} => self.run_fix_interactive(documents, config).await?,
+            Self::Config { .. } => {
                 unreachable!("qed")
+            }
+            Self::PrintCompletions { shell } => {
+                unimplemented!()
             }
         };
         Ok(fin)

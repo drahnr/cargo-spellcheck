@@ -198,6 +198,7 @@ dependencies = [
  "cargo_toml",
  "clap 3.1.6",
  "clap-verbosity-flag",
+ "clap_complete",
  "color-eyre",
  "console",
  "crossterm",
@@ -328,6 +329,15 @@ checksum = "17e437250f23cdd03daf3de763093aa27873a026ef9a156800da9ddd617c51d4"
 dependencies = [
  "clap 3.1.6",
  "log",
+]
+
+[[package]]
+name = "clap_complete"
+version = "3.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df6f3613c0a3cddfd78b41b10203eb322cb29b600cbdf808a7d3db95691b8e25"
+dependencies = [
+ "clap 3.1.6",
 ]
 
 [[package]]
