@@ -96,10 +96,6 @@ pub struct Args {
     #[clap(flatten)]
     pub verbosity: clap_verbosity_flag::Verbosity,
 
-    #[clap(subcommand)]
-    /// Available sub-commands.
-    pub command: Option<Sub>,
-
     // is required, but we use `subcommand_negates_reqs`, so it's not
     // when a command exists
     #[clap(flatten)]
@@ -109,6 +105,10 @@ pub struct Args {
     #[clap(short, long)]
     /// Alt for `cargo spellcheck fix` [deprecated].
     pub fix: bool,
+
+    #[clap(subcommand)]
+    /// Available sub-commands.
+    pub command: Option<Sub>,
 }
 
 #[derive(Debug, PartialEq, Eq, clap::Parser)]
@@ -137,7 +137,7 @@ pub struct Common {
     pub jobs: Option<usize>,
 
     #[clap(short = 'm', long, default_value_t = 1_u8)]
-    /// Return code of the application iff spelling mistakes were found [default: 1].
+    /// Return code of the application iff spelling mistakes were found.
     pub code: u8,
 
     /// A list of files and directories to check. See `--recursive`.
@@ -201,7 +201,7 @@ pub enum Sub {
     },
 
     /// Print completions.
-    PrintCompletions {
+    Completions {
         #[clap(long)]
         /// Provide the `shell` for which to generate the completion script.
         shell: clap_complete::Shell,
@@ -251,7 +251,7 @@ impl Args {
             Some(Sub::Reflow { .. }) => Action::Reflow,
             Some(Sub::Config { .. }) => unreachable!(),
             Some(Sub::ListFiles { .. }) => Action::ListFiles,
-            Some(Sub::PrintCompletions { .. }) => unreachable!(),
+            Some(Sub::Completions { .. }) => unreachable!(),
         };
         log::trace!("Derived action {:?} from flags/args/cmds", action);
         action
@@ -535,7 +535,7 @@ impl Args {
                 paths: common.paths.clone(),
                 exit_code_override: common.code,
             },
-            Some(Sub::PrintCompletions { .. }) => unreachable!("Was handled earlier. qed"),
+            Some(Sub::Completions { .. }) => unreachable!("Was handled earlier. qed"),
         };
 
         Ok((unified, config))
@@ -706,10 +706,10 @@ mod tests {
             "cargo spellcheck -v fix Cargo.toml" => Action::Fix,
             // FIXME check it fully, against the unified args
             // TODO must implement an abstraction for the config file source for that
-            // "cargo spellcheck completions --shell zsh" => Action::PrintCompletions,
-            // "cargo-spellcheck completions --shell zsh" => Action::PrintCompletions,
-            // "cargo spellcheck completions --shell bash" => Action::PrintCompletions,
-            // "cargo-spellcheck completions --shell bash" => Action::PrintCompletions,
+            // "cargo spellcheck completions --shell zsh" => Action::Completions,
+            // "cargo-spellcheck completions --shell zsh" => Action::Completions,
+            // "cargo spellcheck completions --shell bash" => Action::Completions,
+            // "cargo-spellcheck completions --shell bash" => Action::Completions,
         };
     );
 

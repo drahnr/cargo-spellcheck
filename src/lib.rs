@@ -154,7 +154,7 @@ pub fn run() -> Result<ExitCode> {
     signal_handler();
 
     let (unified, config) = match &args.command {
-        Some(Sub::PrintCompletions { shell }) => {
+        Some(Sub::Completions { shell }) => {
             generate_completions(*shell, &mut std::io::stdout());
             return Ok(ExitCode::Success);
         }
