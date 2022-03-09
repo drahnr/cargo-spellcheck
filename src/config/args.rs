@@ -87,15 +87,19 @@ pub struct UnknownCheckerTypeVariant(String);
 #[derive(clap::Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 #[clap(rename_all = "kebab-case")]
+#[clap(subcommand_negates_reqs(true))]
 pub struct Cli {
-    #[clap(short, long)]
+    #[clap(short, long, global(true))]
     pub cfg: Option<PathBuf>,
 
     #[clap(flatten)]
     pub verbosity: clap_verbosity_flag::Verbosity,
 
     #[clap(subcommand)]
-    pub command: Sub,
+    pub command: Option<Sub>,
+
+    #[clap(flatten)]
+    pub common: Common,
 }
 
 #[derive(Debug, PartialEq, Eq, clap::Parser)]
@@ -645,21 +649,25 @@ mod tests {
 
     lazy_static::lazy_static!(
         static ref SAMPLES: std::collections::HashMap<&'static str, Action> = maplit::hashmap!{
-            // "cargo spellcheck" => Action::Check,
+            // check (implicit)
+            "cargo spellcheck" => Action::Check,
+            "cargo spellcheck -vvvv" => Action::Check,
+            "cargo-spellcheck" => Action::Check,
+            "cargo-spellcheck -vvvv" => Action::Check,
+            // check (explicit)
+            "cargo spellcheck check -m 11" => Action::Check,
+            "cargo-spellcheck check -m 9" => Action::Check,
+            // reflow
             "cargo spellcheck reflow" => Action::Reflow,
-            // "cargo spellcheck -vvvv" => Action::Check,
+            "cargo-spellcheck reflow" => Action::Reflow,
             // XXX breaking change
             // "cargo spellcheck --fix" => Action::Fix,
-            "cargo spellcheck fix" => Action::Fix,
-            // "cargo-spellcheck" => Action::Check,
-            // "cargo-spellcheck -vvvv" => Action::Check,
             // "cargo-spellcheck --fix" => Action::Fix,
+            "cargo spellcheck fix" => Action::Fix,
             "cargo-spellcheck fix" => Action::Fix,
             "cargo-spellcheck fix -r file.rs" => Action::Fix,
             "cargo-spellcheck -q fix Cargo.toml" => Action::Fix,
             "cargo spellcheck -v fix Cargo.toml" => Action::Fix,
-            "cargo spellcheck check -m 11" => Action::Check,
-            "cargo-spellcheck reflow" => Action::Reflow,
             // FIXME check it fully, against the unified args
             // TODO must implement an abstraction for the config file source for that
             // "cargo spellcheck completions --shell zsh" => Action::PrintCompletions,
