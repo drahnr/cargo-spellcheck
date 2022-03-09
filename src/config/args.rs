@@ -558,8 +558,8 @@ impl UnifiedArgs {
     }
 }
 
-/// Try to find a cargo manifest, given a path, that can
-/// either be a directory or a path to a manifest.
+/// Try to find a cargo manifest, given a path, that can either be a directory
+/// or a path to a manifest.
 fn look_for_cargo_manifest(base: &Path) -> Result<Option<PathBuf>> {
     Ok(if base.is_dir() {
         let base = base.join("Cargo.toml");
