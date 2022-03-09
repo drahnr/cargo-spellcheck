@@ -90,21 +90,24 @@ pub struct UnknownCheckerTypeVariant(String);
 #[clap(subcommand_negates_reqs(true))]
 pub struct Args {
     #[clap(short, long, global(true))]
+    /// Provide a configuration.
     pub cfg: Option<PathBuf>,
 
     #[clap(flatten)]
     pub verbosity: clap_verbosity_flag::Verbosity,
 
     #[clap(subcommand)]
+    /// Available sub-commands.
     pub command: Option<Sub>,
 
     // is required, but we use `subcommand_negates_reqs`, so it's not
     // when a command exists
     #[clap(flatten)]
+    /// Short-cut for `cargo spellcheck check`.
     pub common: Common,
 
-    /// Synonym for the subcommand [deprecated].
     #[clap(short, long)]
+    /// Alt for `cargo spellcheck fix` [deprecated].
     pub fix: bool,
 }
 
@@ -112,24 +115,32 @@ pub struct Args {
 #[clap(rename_all = "kebab-case")]
 pub struct Common {
     #[clap(short, long)]
+    /// Recurse based on the current directory, or all given
+    /// argument paths, and also declared modules in rust files.
     pub recursive: bool,
 
     // with fallback from config, so it has to be tri-state
     #[clap(long)]
+    /// Execute the given subset of checkers.
     pub checkers: Option<MultipleCheckerTypes>,
 
     #[clap(short, long)]
+    /// Do not check the referenced key `readme=` or default `README.md`.
     pub skip_readme: bool,
 
     #[clap(short, long)]
+    /// Also check developer comments besides documentation comments.
     pub dev_comments: bool,
 
     #[clap(short, long)]
+    /// The number of worker threads to spawn for the actual processing text.
     pub jobs: Option<usize>,
 
     #[clap(short = 'm', long, default_value_t = 1_u8)]
+    /// Return code of the application iff spelling mistakes were found [default: 1].
     pub code: u8,
 
+    /// A list of files and directories to check. See `--recursive`.
     pub paths: Vec<PathBuf>,
 }
 
@@ -158,35 +169,41 @@ pub enum Sub {
     /// Print the config being in use, default config if none.
     Config {
         #[clap(short, long)]
+        /// Write to the default user configuration file path.
         user: bool,
 
-        /// Force override an existing user config.
         #[clap(short, long)]
+        /// Force overwrite an existing user config.
         overwrite: bool,
 
         #[clap(short, long)]
+        /// Write to `stdout`.
         stdout: bool,
 
-        // which checkers to print
         #[clap(long)]
-        checkers: Option<MultipleCheckerTypes>,
+        /// Limit checkers to enable in the generated configuration.
+        filter: Option<MultipleCheckerTypes>,
     },
 
-    /// List all files in depth first sorted order in which they would be
+    /// List all files in depth-first-sorted-order in which they would be
     /// checked.
     ListFiles {
         #[clap(short, long)]
+        /// Recurse down directories and module declaration derived paths.
         recursive: bool,
 
         #[clap(short, long)]
+        /// Do not check the referenced key `readme=` or default `README.md`.
         skip_readme: bool,
 
+        /// A list of files and directories to check. See `--recursive`.
         paths: Vec<PathBuf>,
     },
 
     /// Print completions.
     PrintCompletions {
         #[clap(long)]
+        /// Provide the `shell` for which to generate the completion script.
         shell: clap_complete::Shell,
     },
 }
@@ -466,7 +483,7 @@ impl Args {
                 stdout,
                 user,
                 overwrite,
-                checkers,
+                filter: checkers,
             }) => {
                 let dest_config = match self.cfg {
                     None if stdout => ConfigWriteDestination::Stdout,
