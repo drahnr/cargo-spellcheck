@@ -138,7 +138,7 @@ impl Drop for TinHat {
 
 /// The inner main.
 pub fn run() -> Result<ExitCode> {
-    let args = Cli::parse(std::env::args()).unwrap_or_else(|e| e.exit());
+    let args = Args::parse(std::env::args()).unwrap_or_else(|e| e.exit());
 
     let _ = ::rayon::ThreadPoolBuilder::new()
         .num_threads(args.job_count())
@@ -154,7 +154,7 @@ pub fn run() -> Result<ExitCode> {
     signal_handler();
 
     let (unified, config) = match &args.command {
-        Sub::PrintCompletions { shell } => {
+        Some(Sub::PrintCompletions { shell }) => {
             generate_completions(*shell, &mut std::io::stdout());
             return Ok(ExitCode::Success);
         }
@@ -169,7 +169,7 @@ pub fn run() -> Result<ExitCode> {
         } => {
             trace!("Configuration chore");
             let mut config = Config::full();
-            Cli::checker_selection_override(
+            Args::checker_selection_override(
                 checker_filter_set.as_ref().map(AsRef::as_ref),
                 &mut config,
             )?;

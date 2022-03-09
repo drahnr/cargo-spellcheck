@@ -88,7 +88,7 @@ pub struct UnknownCheckerTypeVariant(String);
 #[clap(author, version, about, long_about = None)]
 #[clap(rename_all = "kebab-case")]
 #[clap(subcommand_negates_reqs(true))]
-pub struct Cli {
+pub struct Args {
     #[clap(short, long, global(true))]
     pub cfg: Option<PathBuf>,
 
@@ -98,6 +98,8 @@ pub struct Cli {
     #[clap(subcommand)]
     pub command: Option<Sub>,
 
+    // is required, but we use `subcommand_negates_reqs`, so it's not
+    // when a command exists
     #[clap(flatten)]
     pub common: Common,
 }
@@ -162,7 +164,7 @@ pub enum Sub {
         stdout: bool,
 
         // which checkers to print
-        #[clap(short, long)]
+        #[clap(long)]
         checkers: Option<MultipleCheckerTypes>,
     },
 
@@ -189,17 +191,17 @@ pub fn generate_completions<G: clap_complete::Generator, W: std::io::Write>(
     generator: G,
     sink: &mut W,
 ) {
-    let mut app = <Cli as clap::CommandFactory>::command();
+    let mut app = <Args as clap::CommandFactory>::command();
     let app = &mut app;
     clap_complete::generate(generator, app, app.get_name().to_string(), sink);
 }
 
-impl Cli {
+impl Args {
     pub fn common(&self) -> Option<&Common> {
         match self.command {
-            Sub::Check { ref common, .. }
-            | Sub::Fix { ref common, .. }
-            | Sub::Reflow { ref common, .. } => Some(common),
+            Some(Sub::Check { ref common, .. })
+            | Some(Sub::Fix { ref common, .. })
+            | Some(Sub::Reflow { ref common, .. }) => Some(common),
             _ => None,
         }
     }
@@ -223,12 +225,12 @@ impl Cli {
     pub fn action(&self) -> Action {
         // extract operation mode
         let action = match self.command {
-            Sub::Check { .. } => Action::Check,
-            Sub::Fix { .. } => Action::Fix,
-            Sub::Reflow { .. } => Action::Reflow,
-            Sub::Config { .. } => unreachable!(),
-            Sub::ListFiles { .. } => Action::ListFiles,
-            Sub::PrintCompletions { .. } => unreachable!(),
+            None | Some(Sub::Check { .. }) => Action::Check,
+            Some(Sub::Fix { .. }) => Action::Fix,
+            Some(Sub::Reflow { .. }) => Action::Reflow,
+            Some(Sub::Config { .. }) => unreachable!(),
+            Some(Sub::ListFiles { .. }) => Action::ListFiles,
+            Some(Sub::PrintCompletions { .. }) => unreachable!(),
         };
         log::trace!("Derived action {:?} from flags/args/cmds", action);
         action
@@ -239,7 +241,7 @@ impl Cli {
     /// The program could be called like `cargo-spellcheck`, `cargo spellcheck`
     /// or `cargo spellcheck check` and even ``cargo-spellcheck check`.
     pub fn parse(argv_iter: impl IntoIterator<Item = String>) -> Result<Self, clap::Error> {
-        <Cli as clap::Parser>::try_parse_from({
+        <Args as clap::Parser>::try_parse_from({
             // if ends with file name `cargo-spellcheck`
             let mut argv_iter = argv_iter.into_iter();
             if let Some(arg0) = argv_iter.next() {
@@ -456,12 +458,12 @@ impl Cli {
     pub fn unified(self) -> Result<(UnifiedArgs, Config)> {
         let (config, config_path) = self.load_config()?;
         let unified = match self.command {
-            Sub::Config {
+            Some(Sub::Config {
                 stdout,
                 user,
                 overwrite,
                 checkers,
-            } => {
+            }) => {
                 let dest_config = match self.cfg {
                     None if stdout => ConfigWriteDestination::Stdout,
                     Some(path) => ConfigWriteDestination::File { overwrite, path },
@@ -476,11 +478,11 @@ impl Cli {
                     checker_filter_set: checkers,
                 }
             }
-            Sub::ListFiles {
+            Some(Sub::ListFiles {
                 ref paths,
                 recursive,
                 skip_readme,
-            } => UnifiedArgs::Operate {
+            }) => UnifiedArgs::Operate {
                 action: self.action(),
                 config_path,
                 dev_comments: false, // not relevant
@@ -489,9 +491,21 @@ impl Cli {
                 paths: paths.clone(),
                 exit_code_override: 1,
             },
-            Sub::Reflow { ref common, .. }
-            | Sub::Fix { ref common, .. }
-            | Sub::Check { ref common, .. } => UnifiedArgs::Operate {
+            None => {
+                let common = &self.common;
+                UnifiedArgs::Operate {
+                    action: Action::Check,
+                    config_path,
+                    dev_comments: common.dev_comments || config.dev_comments,
+                    skip_readme: common.skip_readme || config.skip_readme,
+                    recursive: common.recursive,
+                    paths: common.paths.clone(),
+                    exit_code_override: common.code,
+                }
+            }
+            Some(Sub::Reflow { ref common, .. })
+            | Some(Sub::Fix { ref common, .. })
+            | Some(Sub::Check { ref common, .. }) => UnifiedArgs::Operate {
                 action: self.action(),
                 config_path,
                 dev_comments: common.dev_comments || config.dev_comments,
@@ -500,7 +514,7 @@ impl Cli {
                 paths: common.paths.clone(),
                 exit_code_override: common.code,
             },
-            Sub::PrintCompletions { .. } => unreachable!("Was handled earlier. qed"),
+            Some(Sub::PrintCompletions { .. }) => unreachable!("Was handled earlier. qed"),
         };
 
         Ok((unified, config))
@@ -680,13 +694,13 @@ mod tests {
     #[test]
     fn args() {
         for command in SAMPLES.keys() {
-            assert_matches!(Cli::parse(commandline_to_iter(command)), Ok(_));
+            assert_matches!(Args::parse(commandline_to_iter(command)), Ok(_));
         }
     }
 
     #[test]
     fn deserialize_multiple_checkers() {
-        let args = Cli::parse(commandline_to_iter(
+        let args = Args::parse(commandline_to_iter(
             "cargo spellcheck check --checkers=nlprules,hunspell",
         ))
         .expect("Parsing works. qed");
@@ -698,7 +712,7 @@ mod tests {
 
     #[test]
     fn unify_ops_check() {
-        let args = Cli::parse(
+        let args = Args::parse(
             &mut [
                 "cargo",
                 "spellcheck",
@@ -737,7 +751,7 @@ mod tests {
     // FIXME checkers interpretation seems to have changed XXX
     #[test]
     fn unify_config() {
-        let args = Cli::parse(
+        let args = Args::parse(
             &mut [
                 "cargo-spellcheck",
                 "--cfg=.config/spellcheck.toml",
@@ -750,7 +764,7 @@ mod tests {
             .map(ToOwned::to_owned),
         )
         .unwrap();
-        let (unified, config) = dbg!(args).unified().unwrap();
+        let (unified, _config) = dbg!(args).unified().unwrap();
         assert_matches!(dbg!(unified),
             UnifiedArgs::Config {
                 dest_config: ConfigWriteDestination::File { overwrite, path },
