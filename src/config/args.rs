@@ -102,6 +102,10 @@ pub struct Args {
     // when a command exists
     #[clap(flatten)]
     pub common: Common,
+
+    /// Synonym for the subcommand [deprecated].
+    #[clap(short, long)]
+    pub fix: bool,
 }
 
 #[derive(Debug, PartialEq, Eq, clap::Parser)]
@@ -674,9 +678,10 @@ mod tests {
             // reflow
             "cargo spellcheck reflow" => Action::Reflow,
             "cargo-spellcheck reflow" => Action::Reflow,
-            // XXX breaking change
-            // "cargo spellcheck --fix" => Action::Fix,
-            // "cargo-spellcheck --fix" => Action::Fix,
+            // fix (deprecated)
+            "cargo spellcheck --fix" => Action::Fix,
+            "cargo-spellcheck --fix" => Action::Fix,
+            // fix
             "cargo spellcheck fix" => Action::Fix,
             "cargo-spellcheck fix" => Action::Fix,
             "cargo-spellcheck fix -r file.rs" => Action::Fix,
