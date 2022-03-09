@@ -136,7 +136,7 @@ pub struct Common {
     /// The number of worker threads to spawn for the actual processing text.
     pub jobs: Option<usize>,
 
-    #[clap(short = 'm', long, default_value_t = 1_u8)]
+    #[clap(short = 'm', long, default_value_t = 0_u8)]
     /// Return code of the application iff spelling mistakes were found.
     pub code: u8,
 
