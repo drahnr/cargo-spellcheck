@@ -181,6 +181,8 @@ pub enum Sub {
         stdout: bool,
 
         #[clap(long)]
+        // Deprecated alias, will be removed in the future.
+        #[clap(alias = "checkers")]
         /// Limit checkers to enable in the generated configuration.
         filter: Option<MultipleCheckerTypes>,
     },
