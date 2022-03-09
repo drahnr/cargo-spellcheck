@@ -221,34 +221,19 @@ where
 /// Mode in which `cargo-spellcheck` operates.
 ///
 /// Eventually to be used directly in parsing arguments.
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum Action {
     /// Only show errors
-    #[serde(alias = "check")]
     Check,
 
     /// Interactively choose from checker provided suggestions.
-    #[serde(alias = "fix")]
     Fix,
+
     /// Reflow doc comments, so they adhere to a given maximum column width.
-    #[serde(alias = "reflow")]
     Reflow,
-
-    /// Print help and exit.
-    #[serde(alias = "help")]
-    Help,
-
-    /// Print the version info and exit.
-    #[serde(alias = "version")]
-    Version,
-
-    /// Print the config being in use, default config if none.
-    #[serde(alias = "config")]
-    Config,
 
     /// List all files in depth first sorted order in which they would be
     /// checked.
-    #[serde(alias = "files")]
     ListFiles,
 }
 
@@ -349,13 +334,10 @@ impl Action {
     /// Run the requested action.
     pub async fn run(self, documents: Documentation, config: Config) -> Result<Finish> {
         let fin = match self {
-            Self::ListFiles => self.run_list_files(documents, &config).await?,
-            Self::Reflow => self.run_reflow(documents, config).await?,
-            Self::Check => self.run_check(documents, config).await?,
-            Self::Fix => self.run_fix_interactive(documents, config).await?,
-            Self::Config | Self::Version | Self::Help => {
-                unreachable!("qed")
-            }
+            Self::ListFiles { .. } => self.run_list_files(documents, &config).await?,
+            Self::Reflow { .. } => self.run_reflow(documents, config).await?,
+            Self::Check { .. } => self.run_check(documents, config).await?,
+            Self::Fix { .. } => self.run_fix_interactive(documents, config).await?,
         };
         Ok(fin)
     }

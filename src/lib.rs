@@ -150,23 +150,16 @@ pub fn run() -> Result<ExitCode> {
         .filter_module("mio", log::LevelFilter::Error)
         .init();
 
-    // handle the simple variants right away
-    match args.action() {
-        Action::Version => {
-            println!("cargo-spellcheck {}", env!("CARGO_PKG_VERSION"));
-            return Ok(ExitCode::Success);
-        }
-        Action::Help => {
-            println!("{}", Args::USAGE);
-            return Ok(ExitCode::Success);
-        }
-        _ => {}
-    }
-
     #[cfg(not(target_os = "windows"))]
     signal_handler();
 
-    let (unified, config) = args.unified()?;
+    let (unified, config) = match &args.command {
+        Some(Sub::Completions { shell }) => {
+            generate_completions(*shell, &mut std::io::stdout());
+            return Ok(ExitCode::Success);
+        }
+        _ => args.unified()?,
+    };
 
     match unified {
         // must unify first, for the proper paths
@@ -177,7 +170,7 @@ pub fn run() -> Result<ExitCode> {
             trace!("Configuration chore");
             let mut config = Config::full();
             Args::checker_selection_override(
-                checker_filter_set.as_ref().map(Vec::as_slice),
+                checker_filter_set.as_ref().map(AsRef::as_ref),
                 &mut config,
             )?;
 
