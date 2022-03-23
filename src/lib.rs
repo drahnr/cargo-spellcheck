@@ -39,6 +39,7 @@ use self::errors::{bail, Result};
 use log::{debug, info, trace, warn};
 use serde::Deserialize;
 
+use std::io::Write;
 use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 
 #[cfg(not(target_os = "windows"))]
@@ -155,7 +156,9 @@ pub fn run() -> Result<ExitCode> {
 
     let (unified, config) = match &args.command {
         Some(Sub::Completions { shell }) => {
-            generate_completions(*shell, &mut std::io::stdout());
+            let sink = &mut std::io::stdout();
+            generate_completions(*shell, sink);
+            let _ = sink.flush();
             return Ok(ExitCode::Success);
         }
         _ => args.unified()?,

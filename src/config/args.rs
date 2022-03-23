@@ -13,6 +13,8 @@ use super::Config;
 
 use log::{debug, warn};
 
+use clap_complete::Shell;
+
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize)]
 pub struct ManifestMetadata {
     spellcheck: Option<ManifestMetadataSpellcheck>,
@@ -204,10 +206,32 @@ pub enum Sub {
 
     /// Print completions.
     Completions {
-        #[clap(long)]
+        #[clap(long, env="SHELL", parse(try_from_str = load_shell_name))]
         /// Provide the `shell` for which to generate the completion script.
-        shell: clap_complete::Shell,
+        shell: Shell,
     },
+}
+
+#[derive(thiserror::Error, Debug, Clone)]
+enum ShellErr {
+    #[error("Unknown shell: {shell:?}")]
+    UnknownShell { shell: String },
+
+    #[error("Missing SHELL argument")]
+    MissingArg,
+}
+
+/// Either provided as a path with `/` as separator or directly.
+fn load_shell_name(shell: &str) -> Result<Shell, ShellErr> {
+    shell
+        .split('/')
+        .last()
+        .map(|shell| {
+            Shell::from_str(shell).map_err(|unknown_shell| ShellErr::UnknownShell {
+                shell: unknown_shell,
+            })
+        })
+        .unwrap_or_else(|| Err(ShellErr::MissingArg))
 }
 
 pub fn generate_completions<G: clap_complete::Generator, W: std::io::Write>(
@@ -706,12 +730,14 @@ mod tests {
             "cargo-spellcheck fix -r file.rs" => Action::Fix,
             "cargo-spellcheck -q fix Cargo.toml" => Action::Fix,
             "cargo spellcheck -v fix Cargo.toml" => Action::Fix,
+
             // FIXME check it fully, against the unified args
             // TODO must implement an abstraction for the config file source for that
-            // "cargo spellcheck completions --shell zsh" => Action::Completions,
-            // "cargo-spellcheck completions --shell zsh" => Action::Completions,
-            // "cargo spellcheck completions --shell bash" => Action::Completions,
-            // "cargo-spellcheck completions --shell bash" => Action::Completions,
+            // "cargo spellcheck completions --shell zsh" => Sub::Completions { shell: Shell::Zsh },
+            // "cargo spellcheck completions --shell bash" => Sub::Completions { shell: Shell::Bash },
+            // "cargo-spellcheck completions --shell zsh" => Sub::Completions { shell: Shell::Zsh },
+            // "cargo-spellcheck completions --shell bash" => Sub::Completions { shell: Shell::Bash },
+            // "cargo-spellcheck completions" => Sub::Completions { .. },
         };
     );
 
@@ -799,5 +825,33 @@ mod tests {
                 assert_eq!(overwrite, true);
             }
         );
+    }
+
+    #[test]
+    fn shell_check_env() {
+        assert_matches!(load_shell_name("/usr/bin/zsh"), Ok(Shell::Zsh));
+        assert_matches!(load_shell_name("zsh"), Ok(Shell::Zsh));
+        assert_matches!(load_shell_name("fish"), Ok(Shell::Fish));
+
+        static C1: &str = "cargo spellcheck completions --shell zsh";
+        assert_matches!(Args::parse(commandline_to_iter(C1)), Ok(Args {
+            command: Some(Sub::Completions { shell }),
+            ..
+        }) => {
+            assert_eq!(shell.to_string(), "zsh")
+        });
+
+        // `SHELL` is builtin, and hence cannot be unset
+        // so a negative test is impossible, an override works though
+        // `std::env::remove_var("SHELL");`
+        static C2: &str = "cargo spellcheck completions";
+
+        std::env::set_var("SHELL", "/bin/fish");
+        assert_matches!(Args::parse(commandline_to_iter(C2)), Ok(Args {
+            command: Some(Sub::Completions { shell }),
+            ..
+        }) => {
+            assert_eq!(shell.to_string(), "fish")
+        });
     }
 }
