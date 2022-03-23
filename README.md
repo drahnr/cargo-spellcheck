@@ -63,6 +63,24 @@ cargo spellcheck fix
 The `--locked` flag is the preferred way of installing to get the tested set of
 dependencies.
 
+## Completions
+
+`cargo spellcheck completions` for autodetection of your current shell via
+`$SHELL`,
+
+ or
+
+`cargo spellcheck completions --shell zsh`
+
+to explicitly specify your shell type.
+
+Commonly it's use like this from your shell's `.rc*` file:
+
+`source <(cargo spellcheck completion)`
+
+Note: There is a [relevant clap issue (#3508)](https://github.com/clap-rs/clap/issues/3508)
+that makes this fail in some cases.
+
 ## 🎈 Contribute!
 
 Contributions are very welcome!
