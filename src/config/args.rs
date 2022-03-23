@@ -730,12 +730,14 @@ mod tests {
             "cargo-spellcheck fix -r file.rs" => Action::Fix,
             "cargo-spellcheck -q fix Cargo.toml" => Action::Fix,
             "cargo spellcheck -v fix Cargo.toml" => Action::Fix,
+
             // FIXME check it fully, against the unified args
             // TODO must implement an abstraction for the config file source for that
-            // "cargo spellcheck completions --shell zsh" => Action::Completions,
-            // "cargo-spellcheck completions --shell zsh" => Action::Completions,
-            // "cargo spellcheck completions --shell bash" => Action::Completions,
-            // "cargo-spellcheck completions --shell bash" => Action::Completions,
+            // "cargo spellcheck completions --shell zsh" => Sub::Completions { shell: Shell::Zsh },
+            // "cargo spellcheck completions --shell bash" => Sub::Completions { shell: Shell::Bash },
+            // "cargo-spellcheck completions --shell zsh" => Sub::Completions { shell: Shell::Zsh },
+            // "cargo-spellcheck completions --shell bash" => Sub::Completions { shell: Shell::Bash },
+            // "cargo-spellcheck completions" => Sub::Completions { .. },
         };
     );
 
