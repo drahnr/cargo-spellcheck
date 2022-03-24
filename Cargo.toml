@@ -1,6 +1,6 @@
 [package]
 name = "cargo-spellcheck"
-version = "0.11.0-rc.3"
+version = "0.11.0"
 authors = ["Bernhard Schuster <bernhard@ahoi.io>"]
 edition = "2021"
 repository = "https://github.com/drahnr/cargo-spellcheck.git"
