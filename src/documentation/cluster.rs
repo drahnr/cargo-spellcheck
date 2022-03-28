@@ -116,7 +116,7 @@ impl Clusters {
     /// and adds them to this `Clusters`
     fn parse_developer_comments(&mut self, source: &str) {
         let developer_comments = extract_developer_comments(source);
-        self.set.extend(developer_comments.into_iter());
+        self.set.extend(developer_comments);
     }
 
     /// Sort the `LiteralSet`s in this `Cluster` by start line descending, to
@@ -175,7 +175,6 @@ struct X;
         dbg!(&clusters.set[0]);
     }
 
-
     #[test]
     fn space_in_code_block_does_not_break_cluster() {
         static CONTENT: &str = r#####"
@@ -190,5 +189,4 @@ struct DefinitelyNotZ;
         assert_eq!(clusters.set.len(), 1);
         dbg!(&clusters.set[0]);
     }
-
 }
