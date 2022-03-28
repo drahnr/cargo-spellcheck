@@ -29,7 +29,7 @@ lazy_static::lazy_static! {
   static ref BLOCK_COMMENT: Regex = Regex::new(r"^/\*(?s)(?P<content>.*)\*/$")
       .expect("Failed to create regular expression to identify (closed) developer block comments. \
           Please check this regex!");
-  static ref LINE_COMMENT: Regex = Regex::new(r"^//([^[/|!]].*)$")
+  static ref LINE_COMMENT: Regex = Regex::new(r"^//([^[/|!]].*)?$")
       .expect("Failed to create regular expression to identify developer line comments. \
           Please check this regex!");
 }
