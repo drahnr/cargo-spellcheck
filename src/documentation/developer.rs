@@ -353,7 +353,6 @@ mod tests {
         assert_eq!(calculate_column("test\ntest中2\n中3"), 2);
     }
 
-
     #[test]
     fn test_tokens_from_source_basic() {
         let source = "/* test */\n// test";
