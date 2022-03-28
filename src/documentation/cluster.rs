@@ -174,4 +174,21 @@ struct X;
         assert_eq!(clusters.set.len(), 1);
         dbg!(&clusters.set[0]);
     }
+
+
+    #[test]
+    fn space_in_code_block_does_not_break_cluster() {
+        static CONTENT: &str = r#####"
+// ```c
+// hugloboi
+//
+// fucksteufelswuid
+// ```
+struct DefinitelyNotZ;
+"#####;
+        let clusters = Clusters::load_from_str(CONTENT, true).unwrap();
+        assert_eq!(clusters.set.len(), 1);
+        dbg!(&clusters.set[0]);
+    }
+
 }
