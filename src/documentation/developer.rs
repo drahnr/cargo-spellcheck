@@ -29,7 +29,7 @@ lazy_static::lazy_static! {
   static ref BLOCK_COMMENT: Regex = Regex::new(r"^/\*(?s)(?P<content>.*)\*/$")
       .expect("Failed to create regular expression to identify (closed) developer block comments. \
           Please check this regex!");
-  static ref LINE_COMMENT: Regex = Regex::new(r"^//([^[/|!]].*)$")
+  static ref LINE_COMMENT: Regex = Regex::new(r"^//([^[/|!]].*)?$")
       .expect("Failed to create regular expression to identify developer line comments. \
           Please check this regex!");
 }
@@ -330,6 +330,7 @@ fn construct_literal_sets(tokens: impl IntoIterator<Item = TokenWithType>) -> Ve
 #[cfg(test)]
 mod tests {
     use crate::documentation::developer::*;
+    use assert_matches::assert_matches;
 
     #[test]
     fn test_count_lines_correctly_counts_lines() {
@@ -352,70 +353,121 @@ mod tests {
         assert_eq!(calculate_column("test\ntest中2\n中3"), 2);
     }
 
-    use assert_matches::assert_matches;
+    #[test]
+    fn test_tokens_from_source_basic() {
+        let source = "/* test */\n// test";
+        let mut tokens = dbg!(Vec::from_iter(source_to_iter(source))).into_iter();
+        assert_matches!(
+            tokens.next(),
+            Some(TokenWithType {
+                line: 1,
+                column: 0,
+                ..
+            })
+        ); // Block comment
+        assert_matches!(
+            tokens.next(),
+            Some(TokenWithType {
+                line: 2,
+                column: 0,
+                ..
+            })
+        ); // Line comment
+    }
 
     #[test]
-    fn test_tokens_with_line_column_values_set_correctly() {
-        {
-            let source = "/* test */\n// test";
-            let mut tokens = source_to_iter(source);
-            assert_matches!(
-                tokens.next(),
-                Some(TokenWithType {
-                    line: 1,
-                    column: 0,
-                    ..
-                })
-            ); // Block comment
-            assert_matches!(
-                tokens.next(),
-                Some(TokenWithType {
-                    line: 2,
-                    column: 0,
-                    ..
-                })
-            ); // Line comment
-        }
-        {
-            let source = "/* te中st */\n// test";
-            let mut tokens = source_to_iter(source);
-            assert_matches!(
-                tokens.next(),
-                Some(TokenWithType {
-                    line: 1,
-                    column: 0,
-                    ..
-                })
-            ); // Block comment
-            assert_matches!(
-                tokens.next(),
-                Some(TokenWithType {
-                    line: 2,
-                    column: 0,
-                    ..
-                })
-            ); // Line comment
-        }
-        {
-            let source = "/* te中st */\n// test\nfn 中(){\t}";
-            let mut tokens = source_to_iter(source);
-            assert_matches!(
-                tokens.next(),
-                Some(TokenWithType {
-                    line: 1,
-                    column: 0,
-                    ..
-                })
-            ); // Block comment
-            assert_matches!(
-                tokens.next(),
-                Some(TokenWithType {
-                    line: 2,
-                    column: 0,
-                    ..
-                })
-            ); // Block comment
-        }
+    fn test_tokens_with_line_column_values_set_correctly_more_unicode() {
+        let source = "/* te中st */\n// test";
+        let mut tokens = source_to_iter(source);
+        assert_matches!(
+            tokens.next(),
+            Some(TokenWithType {
+                line: 1,
+                column: 0,
+                ..
+            })
+        ); // Block comment
+        assert_matches!(
+            tokens.next(),
+            Some(TokenWithType {
+                line: 2,
+                column: 0,
+                ..
+            })
+        ); // Line comment
+    }
+
+    #[test]
+    fn test_tokens_with_line_column_values_set_correctly_another() {
+        let source = "/* te中st */\n// test\nfn 中(){\t}";
+        let mut tokens = source_to_iter(source);
+        assert_matches!(
+            tokens.next(),
+            Some(TokenWithType {
+                line: 1,
+                column: 0,
+                ..
+            })
+        ); // Block comment
+        assert_matches!(
+            tokens.next(),
+            Some(TokenWithType {
+                line: 2,
+                column: 0,
+                ..
+            })
+        ); // Block comment
+    }
+
+    #[test]
+    fn test_tokens_retain_empty_lines_for_clustering() {
+        let source = r###"// ```c
+// space:
+//
+// end
+// ```
+"###;
+        let mut tokens = source_to_iter(source);
+        assert_matches!(
+            tokens.next(),
+            Some(TokenWithType {
+                line: 1,
+                column: 0,
+                ..
+            })
+        );
+        assert_matches!(
+            tokens.next(),
+            Some(TokenWithType {
+                line: 2,
+                column: 0,
+                ..
+            })
+        );
+        assert_matches!(
+            tokens.next(),
+            Some(TokenWithType {
+                line: 3,
+                column: 0,
+                ..
+            })
+        );
+        assert_matches!(
+            tokens.next(),
+            Some(TokenWithType {
+                line: 4,
+                column: 0,
+                ..
+            })
+        );
+        assert_matches!(
+            tokens.next(),
+            Some(TokenWithType {
+                line: 5,
+                column: 0,
+                ..
+            })
+        );
     }
 
     #[test]

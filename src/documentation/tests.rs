@@ -85,7 +85,7 @@ macro_rules! end2end {
             .try_init();
 
         let origin: ContentOrigin = $origin;
-        let docs = Documentation::load_from_str(origin.clone(), $test, false);
+        let docs = Documentation::load_from_str(origin.clone(), $test, true);
         assert_eq!(docs.index.len(), 1);
         let chunks = docs.index.get(&origin).expect("Must contain dummy path");
         assert_eq!(dbg!(chunks).len(), 1);
@@ -218,6 +218,25 @@ struct X;
 /// struct X;
 /// ```
 struct X;
+"####,
+            ContentOrigin::TestEntityRust,
+            0,
+            DummyChecker,
+            Default::default()
+        );
+    }
+
+    #[test]
+    fn issue_257() {
+        // The test
+        end2end!(
+            r####"
+// ```c
+// MRB_API void mrb_str_modify_keep_ascii(mrb_state *mrb, struct RString *s)
+//
+// MRB_API void mrb_str_modify(mrb_state *mrb, struct RString *s)
+// ```
+struct CAPI;
 "####,
             ContentOrigin::TestEntityRust,
             0,
