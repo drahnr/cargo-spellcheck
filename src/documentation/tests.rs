@@ -531,6 +531,28 @@ Ref4"#;
             ]
         );
     }
+
+    #[test]
+    fn word_extraction_issue_260_code_tags() {
+        // raw source
+        const SOURCE: &str = r#"Foo <p><code>x&y/z^0x77🌡🍁</code></p> Bar"#;
+
+        // extracted content as present as provided by `chunk.as_str()`
+        const RAW: &str = SOURCE;
+
+        // markdown erased residue
+        const PLAIN: &str = r#"Foo  Bar"#;
+
+        bananasplit!(
+            ContentOrigin::TestEntityCommonMark;
+            SOURCE -> RAW -> PLAIN
+            expect
+            [
+                "Foo",
+                "Bar",
+            ]
+        );
+    }
 }
 
 #[test]

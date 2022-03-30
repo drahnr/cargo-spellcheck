@@ -142,6 +142,7 @@ impl<'a> PlainOverlay<'a> {
         let rust_fence =
             pulldown_cmark::CodeBlockKind::Fenced(pulldown_cmark::CowStr::Borrowed("rust"));
 
+        let mut html_block = 0_usize;
         let mut code_block = false;
         let mut inception = false;
         let mut skip_link_text = false;
@@ -243,7 +244,8 @@ impl<'a> PlainOverlay<'a> {
                     }
                 }
                 Event::Text(s) => {
-                    if code_block {
+                    if html_block > 0 {
+                    } else if code_block {
                         if inception {
                             // let offset = char_range.start;
                             // TODO validate as additional, virtual document
@@ -292,7 +294,14 @@ impl<'a> PlainOverlay<'a> {
                         );
                     }
                 }
-                Event::Html(_s) => {}
+                Event::Html(tag) if tag.ends_with("/>") => {}
+                Event::Html(tag) => {
+                    if tag.starts_with("</") {
+                        html_block = html_block.saturating_sub(1);
+                    } else {
+                        html_block += 1;
+                    }
+                }
                 Event::FootnoteReference(s) => {
                     if !s.is_empty() {
                         let char_range = Range {
@@ -338,7 +347,7 @@ impl<'a> PlainOverlay<'a> {
 
     /// Create a common mark overlay based on the provided `CheckableChunk`
     /// reference.
-    // TODO consider returning a Vec<PlainOverlay<'a>> to account for list items
+    // TODO consider returning a `Vec<PlainOverlay<'a>>` to account for list items
     // or other non-linear information which might not pass a grammar check as a whole
     pub fn erase_cmark(chunk: &'a CheckableChunk) -> Self {
         let (plain, mapping) = Self::extract_plain_with_mapping(chunk.as_str());
