@@ -53,6 +53,17 @@ impl std::ops::Deref for SourceRange {
     }
 }
 
+fn is_html_tag_on_non_scope_list(text: &str) -> bool {
+    use regex::RegexSet;
+    lazy_static::lazy_static! {
+        static ref HTML_TAG_EMPTY_OR_SPECIAL_CASE: RegexSet = RegexSet::new(&[
+            r####"^<\s*[^/A-Za-z0-9]+(?:\s+.*)*\s*/>$"####, // any self closing empty
+            r####"^<\s*br\s*>$"####,
+        ]).unwrap();
+    };
+    HTML_TAG_EMPTY_OR_SPECIAL_CASE.is_match(text)
+}
+
 /// A plain representation of cmark riddled chunk.
 #[derive(Clone)]
 pub struct PlainOverlay<'a> {
@@ -295,6 +306,7 @@ impl<'a> PlainOverlay<'a> {
                     }
                 }
                 Event::Html(tag) if tag.ends_with("/>") => {}
+                Event::Html(tag) if is_html_tag_on_non_scope_list(&tag) => {}
                 Event::Html(tag) => {
                     if tag.starts_with("</") {
                         html_block = html_block.saturating_sub(1);
