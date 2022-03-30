@@ -7,6 +7,14 @@ use crate::{chyrp_up, fluff_up};
 use std::convert::From;
 
 #[test]
+fn scoped() {
+    assert_eq!(false, is_html_tag_on_no_scope_list("<code>"));
+    assert_eq!(false, is_html_tag_on_no_scope_list("</code>"));
+    assert_eq!(true, is_html_tag_on_no_scope_list("<code />"));
+    assert_eq!(true, is_html_tag_on_no_scope_list("<pre>🌡</pre>\n"));
+}
+
+#[test]
 fn parse_and_construct() {
     let _ = env_logger::builder()
         .is_test(true)
@@ -500,6 +508,8 @@ Ref3
 `🌡`
 
 Ref4
+
+<code>🌡</code>
 "#;
 
         // extracted content as present as provided by `chunk.as_str()`

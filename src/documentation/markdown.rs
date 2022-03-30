@@ -53,12 +53,14 @@ impl std::ops::Deref for SourceRange {
     }
 }
 
-fn is_html_tag_on_non_scope_list(text: &str) -> bool {
+pub(crate) fn is_html_tag_on_no_scope_list(text: &str) -> bool {
     use regex::RegexSet;
     lazy_static::lazy_static! {
         static ref HTML_TAG_EMPTY_OR_SPECIAL_CASE: RegexSet = RegexSet::new(&[
-            r####"^<\s*[^/A-Za-z0-9]+(?:\s+.*)*\s*/>$"####, // any self closing empty
+            r####"^<\s*[A-Za-z0-9]+(?:\s+.*)*\s*/>$"####, // any self closing empty
             r####"^<\s*br\s*>$"####,
+            r####"^</?\s*(?:i|b|span|font|color|style)\s*/?>$"####,
+            r####"^<\s*pre\s*>.*</\s*pre\s*>\s?$"####,
         ]).unwrap();
     };
     HTML_TAG_EMPTY_OR_SPECIAL_CASE.is_match(text)
@@ -305,10 +307,9 @@ impl<'a> PlainOverlay<'a> {
                         );
                     }
                 }
-                Event::Html(tag) if tag.ends_with("/>") => {}
-                Event::Html(tag) if is_html_tag_on_non_scope_list(&tag) => {}
                 Event::Html(tag) => {
-                    if tag.starts_with("</") {
+                    if is_html_tag_on_no_scope_list(&tag) {
+                    } else if tag.starts_with("</") {
                         html_block = html_block.saturating_sub(1);
                     } else {
                         html_block += 1;
