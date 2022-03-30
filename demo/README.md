@@ -3,7 +3,7 @@
 A plethora of spelling mistackz inclusive.
 
 <pre>
-<font color="#8AE234"><b>ᐲ🠒🍉 see #104</b></font>
+<span style="color:#8AE234"><b>ᐲ🠒🍉 see #104</b></span>
 </pre>
 
 'Verify #88'
