@@ -7,6 +7,14 @@ use crate::{chyrp_up, fluff_up};
 use std::convert::From;
 
 #[test]
+fn scoped() {
+    assert_eq!(false, is_html_tag_on_no_scope_list("<code>"));
+    assert_eq!(false, is_html_tag_on_no_scope_list("</code>"));
+    assert_eq!(true, is_html_tag_on_no_scope_list("<code />"));
+    assert_eq!(true, is_html_tag_on_no_scope_list("<pre>🌡</pre>\n"));
+}
+
+#[test]
 fn parse_and_construct() {
     let _ = env_logger::builder()
         .is_test(true)
@@ -500,6 +508,8 @@ Ref3
 `🌡`
 
 Ref4
+
+<code>🌡</code>
 "#;
 
         // extracted content as present as provided by `chunk.as_str()`
@@ -528,6 +538,30 @@ Ref4"#;
                 "Ref2",
                 "Ref3",
                 "Ref4",
+            ]
+        );
+    }
+
+    #[test]
+    fn word_extraction_issue_260_code_tags() {
+        // raw source
+        const SOURCE: &str = r#"Foo <p><code>x&y/z^0x77🌡🍁</code></p> Bar <br>Baz <br /> W00t"#;
+
+        // extracted content as present as provided by `chunk.as_str()`
+        const RAW: &str = SOURCE;
+
+        // markdown erased residue
+        const PLAIN: &str = r#"Foo  Bar Baz  W00t"#;
+
+        bananasplit!(
+            ContentOrigin::TestEntityCommonMark;
+            SOURCE -> RAW -> PLAIN
+            expect
+            [
+                "Foo",
+                "Bar",
+                "Baz",
+                "W00t",
             ]
         );
     }

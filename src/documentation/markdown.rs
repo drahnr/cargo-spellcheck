@@ -53,6 +53,19 @@ impl std::ops::Deref for SourceRange {
     }
 }
 
+pub(crate) fn is_html_tag_on_no_scope_list(text: &str) -> bool {
+    use regex::RegexSet;
+    lazy_static::lazy_static! {
+        static ref HTML_TAG_EMPTY_OR_SPECIAL_CASE: RegexSet = RegexSet::new(&[
+            r####"^<\s*[A-Za-z0-9]+(?:\s+.*)*\s*/>$"####, // any self closing empty
+            r####"^<\s*br\s*>$"####,
+            r####"^</?\s*(?:i|b|span|font|color|style)\s*/?>$"####,
+            r####"^<\s*pre\s*>.*</\s*pre\s*>\s?$"####,
+        ]).unwrap();
+    };
+    HTML_TAG_EMPTY_OR_SPECIAL_CASE.is_match(text)
+}
+
 /// A plain representation of cmark riddled chunk.
 #[derive(Clone)]
 pub struct PlainOverlay<'a> {
@@ -142,6 +155,7 @@ impl<'a> PlainOverlay<'a> {
         let rust_fence =
             pulldown_cmark::CodeBlockKind::Fenced(pulldown_cmark::CowStr::Borrowed("rust"));
 
+        let mut html_block = 0_usize;
         let mut code_block = false;
         let mut inception = false;
         let mut skip_link_text = false;
@@ -243,7 +257,8 @@ impl<'a> PlainOverlay<'a> {
                     }
                 }
                 Event::Text(s) => {
-                    if code_block {
+                    if html_block > 0 {
+                    } else if code_block {
                         if inception {
                             // let offset = char_range.start;
                             // TODO validate as additional, virtual document
@@ -292,7 +307,14 @@ impl<'a> PlainOverlay<'a> {
                         );
                     }
                 }
-                Event::Html(_s) => {}
+                Event::Html(tag) => {
+                    if is_html_tag_on_no_scope_list(&tag) {
+                    } else if tag.starts_with("</") {
+                        html_block = html_block.saturating_sub(1);
+                    } else {
+                        html_block += 1;
+                    }
+                }
                 Event::FootnoteReference(s) => {
                     if !s.is_empty() {
                         let char_range = Range {
@@ -338,7 +360,7 @@ impl<'a> PlainOverlay<'a> {
 
     /// Create a common mark overlay based on the provided `CheckableChunk`
     /// reference.
-    // TODO consider returning a Vec<PlainOverlay<'a>> to account for list items
+    // TODO consider returning a `Vec<PlainOverlay<'a>>` to account for list items
     // or other non-linear information which might not pass a grammar check as a whole
     pub fn erase_cmark(chunk: &'a CheckableChunk) -> Self {
         let (plain, mapping) = Self::extract_plain_with_mapping(chunk.as_str());
