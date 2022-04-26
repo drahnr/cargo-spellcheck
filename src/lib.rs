@@ -138,9 +138,7 @@ impl Drop for TinHat {
 }
 
 /// The inner main.
-pub fn run() -> Result<ExitCode> {
-    let args = Args::parse(std::env::args()).unwrap_or_else(|e| e.exit());
-
+pub fn run(args: Args) -> Result<ExitCode> {
     let _ = ::rayon::ThreadPoolBuilder::new()
         .num_threads(args.job_count())
         .build_global();
