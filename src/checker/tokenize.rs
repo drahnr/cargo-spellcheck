@@ -1,3 +1,5 @@
+use super::Cached;
+use crate::checker::cached::CachedValue;
 use crate::errors::*;
 use fs_err as fs;
 use lazy_static::lazy_static;
@@ -19,15 +21,42 @@ lazy_static! {
         Mutex::new(HashMap::new());
 }
 
-fn tokenizer_inner<P: AsRef<Path>>(override_path: Option<P>) -> Result<Tokenizer> {
+fn maybe_display_micros(maybe_duration: impl Into<Option<Duration>>) -> String {
+    maybe_duration.map(|d| d.as_micros().to_string()).unwrap_or_else(|| "-".to_owned())
+}
+
+pub fn project_dir() -> Result<directories::ProjectDirs> {
+    directories::ProjectDirs::from("io", "ahoi", "cargo-spellcheck")
+        .ok_or_else(|| color_eyre::eyre::eyre!("Missing project dir"))
+}
+
+fn tokenizer_inner<P: AsRef<Path>>(
+    override_path: Option<P>,
+    cache_dir: &Path,
+) -> Result<Tokenizer> {
     info!("🧮 Loading tokenizer...");
-    let tokenizer = if let Some(path) = override_path.as_ref() {
-        let f = fs::File::open(path.as_ref())?;
-        Tokenizer::from_reader(f)
+    let CachedValue {
+        fetch,
+        update,
+        creation,
+        total,
+        value: tokenizer,
+    } = if let Some(override_path) = override_path.as_ref() {
+        let mut cached = Cached::new(override_path, cache_dir)?;
+        cached.fetch_or_update(|override_path| {
+            let f = fs::File::open(override_path)?;
+            Ok(Tokenizer::from_reader(f)?)
+        })
     } else {
-        Tokenizer::from_reader(&mut &*DEFAULT_TOKENIZER_BYTES)
+        let mut cached = Cached::new(PathBuf::from("::builtin::$tokenizer"), cache_dir)?;
+        cached.fetch_or_update(|_| Ok(Tokenizer::from_reader(&mut &*DEFAULT_TOKENIZER_BYTES)?))
     }?;
-    info!("🧮 Loaded tokenizer.");
+    info!("🧮 Loaded tokenizer in {total} (fetch: {fetch} us, update: {update} us, creation: {creation} us)",
+        total = total.as_micros(),
+        fetch = maybe_display_micros(fetch),
+        update = maybe_display_micros(update),
+        creation = maybe_display_micros(creation),
+    );
     Ok(tokenizer)
 }
 
@@ -41,7 +70,7 @@ pub(crate) fn tokenizer<P: AsRef<Path> + Clone>(
     {
         Entry::Occupied(occupied) => Ok(occupied.get().clone()),
         Entry::Vacant(empty) => {
-            let tokenizer = tokenizer_inner(override_path)?;
+            let tokenizer = tokenizer_inner(override_path, project_dir()?.cache_dir())?;
             let tokenizer = Arc::new(tokenizer);
             empty.insert(tokenizer.clone());
             Ok(tokenizer)
@@ -53,15 +82,31 @@ lazy_static! {
     static ref RULES: Mutex<HashMap<Option<PathBuf>, Arc<Rules>>> = Mutex::new(HashMap::new());
 }
 
-fn rules_inner<P: AsRef<Path>>(override_path: Option<P>) -> Result<Rules> {
+fn rules_inner<P: AsRef<Path>>(override_path: Option<P>, cache_dir: &Path) -> Result<Rules> {
     info!("🧮 Loading rules...");
-    let rules = if let Some(override_path) = override_path.as_ref() {
-        let f = fs::File::open(override_path.as_ref())?;
-        Rules::from_reader(f)
+    let CachedValue {
+        fetch,
+        update,
+        creation,
+        total,
+        value: rules,
+    } = if let Some(override_path) = override_path.as_ref() {
+        let override_path = override_path.as_ref();
+        let mut cached = Cached::new(override_path, cache_dir)?;
+        cached.fetch_or_update(|override_path| {
+            let f = fs::File::open(override_path)?;
+            Ok(Rules::from_reader(f)?)
+        })
     } else {
-        Rules::from_reader(&mut &*DEFAULT_RULES_BYTES)
+        let mut cached = Cached::new(PathBuf::from("::builtin::$tokenizer"), cache_dir)?;
+        cached.fetch_or_update(|_| Ok(Rules::from_reader(&mut &*DEFAULT_RULES_BYTES)?))
     }?;
-    info!("🧮 Loaded rules.");
+    info!("🧮 Loaded rules in {total} (fetch: {fetch} us, update: {update} us, creation: {creation} us)",
+        total = total.as_micros(),
+        fetch = maybe_display_micros(fetch),
+        update = maybe_display_micros(update),
+        creation = maybe_display_micros(creation),
+    );
     Ok(rules)
 }
 
@@ -73,7 +118,7 @@ pub(crate) fn rules<P: AsRef<Path> + Clone>(override_path: Option<P>) -> Result<
     {
         Entry::Occupied(occupied) => Ok(occupied.get().clone()),
         Entry::Vacant(empty) => {
-            let rules = rules_inner(override_path)?;
+            let rules = rules_inner(override_path, project_dir()?.cache_dir())?;
             let rules = Arc::new(rules);
             empty.insert(rules.clone());
             Ok(rules)

@@ -9,6 +9,9 @@ use crate::errors::*;
 
 use log::debug;
 
+mod cached;
+use self::cached::Cached;
+
 mod tokenize;
 pub(crate) use self::hunspell::HunspellChecker;
 pub(crate) use self::nlprules::NlpRulesChecker;
