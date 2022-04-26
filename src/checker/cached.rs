@@ -5,12 +5,12 @@ use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
 use sha2::Digest;
 use std::io::Seek;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::{Duration, Instant};
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 struct CacheEntry<T> {
-    what: PathBuf,
+    what: String,
     val: T,
 }
 
@@ -31,7 +31,7 @@ pub struct CachedValue<T> {
 pub struct Cached<T> {
     cache_file: fd_lock::RwLock<fs_err::File>,
     // What to cache.
-    what: PathBuf,
+    what: String,
     _phantom: std::marker::PhantomData<T>,
 }
 
@@ -39,26 +39,28 @@ impl<'a, T> Cached<T>
 where
     T: Serialize + DeserializeOwned,
 {
-    ///
-    pub fn new(what: impl AsRef<Path>, cache_dir: impl AsRef<Path>) -> Result<Self> {
+    /// Create a new `Cached` instance, to create a expanded version of something that's identified by `what`.
+    pub fn new(what: impl AsRef<str>, cache_dir: impl AsRef<Path>) -> Result<Self> {
         let what = what.as_ref();
-        let what_digest = sha2::Sha256::digest(what.to_string_lossy().as_bytes());
+        let what_digest = sha2::Sha256::digest(what.as_bytes());
         let cache_dir = cache_dir.as_ref();
+        fs_err::create_dir_all(cache_dir)?;
         let cache_file = cache_dir.join(what_digest.as_slice().encode_hex::<String>());
         let cache_file = fs_err::OpenOptions::new()
+            .create(true)
             .read(true)
             .write(true)
             .open(cache_file)?;
         Ok(Self {
             cache_file: fd_lock::RwLock::new(cache_file),
-            what: what.to_path_buf(),
+            what: what.to_owned(),
             _phantom: std::marker::PhantomData,
         })
     }
 
     pub fn fetch_or_update(
         &mut self,
-        create: impl FnOnce(&Path) -> Result<T>,
+        create: impl FnOnce(&str) -> Result<T>,
     ) -> Result<CachedValue<T>> {
         let total_start = Instant::now();
         match self.fetch() {
@@ -76,7 +78,7 @@ where
                 let fetch = Some(total_start.elapsed());
 
                 let creation_start = Instant::now();
-                let value = create(&self.what)?;
+                let value = create(self.what.as_str())?;
                 let creation = Some(creation_start.elapsed());
 
                 let update_start = Instant::now();
@@ -99,7 +101,7 @@ where
                 let fetch = Some(total_start.elapsed());
 
                 let creation_start = Instant::now();
-                let value = create(&self.what)?;
+                let value = create(self.what.as_str())?;
                 let creation = Some(creation_start.elapsed());
 
                 let update_start = Instant::now();
@@ -118,19 +120,18 @@ where
             }
         }
     }
-
     pub fn fetch(&mut self) -> Result<Option<T>> {
         let guard = self.cache_file.read()?;
         let buf = std::io::BufReader::new(guard.file());
-        let decompressed = xz2::bufread::XzDecoder::new(buf);
-        match bincode::deserialize_from(decompressed) {
+        // let decompressed = xz2::bufread::XzDecoder::new(buf);
+        match bincode::deserialize_from(buf) {
             Ok(CacheEntry { what, val }) => {
                 if &what == &self.what {
-                    log::warn!("Cached value does not match what identifier, removing");
-                    Ok(None)
-                } else {
-                    log::debug!("Cache hit");
+                    log::debug!("Cached value with matching what \"{}\"", &what);
                     Ok(Some(val))
+                } else {
+                    log::warn!("Cached value what \"{}\" does not match expect what \"{}\", removing", &what, &self.what);
+                    Ok(None)
                 }
             }
             Err(e) => {
@@ -149,12 +150,12 @@ where
         };
         let encoded: Vec<u8> = bincode::serialize(&entry).unwrap();
         let mut encoded = &encoded[..];
-        let mut compressed = xz2::bufread::XzEncoder::new(&mut encoded, 6);
+        // let mut compressed = xz2::bufread::XzEncoder::new(&mut encoded, 6);
 
         // effectively truncate, but without losing the lock
         let file = write_guard.file_mut();
         file.rewind()?;
-        std::io::copy(&mut compressed, file)?;
+        std::io::copy(&mut encoded, file)?;
         let loco = file.stream_position()?;
         file.set_len(loco)?;
         Ok(())
