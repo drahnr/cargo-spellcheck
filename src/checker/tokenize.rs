@@ -21,8 +21,8 @@ lazy_static! {
         Mutex::new(HashMap::new());
 }
 
-fn maybe_display_micros(maybe_duration: impl Into<Option<Duration>>) -> String {
-    maybe_duration.map(|d| d.as_micros().to_string()).unwrap_or_else(|| "-".to_owned())
+fn maybe_display_micros(maybe_duration: impl Into<Option<std::time::Duration>>) -> String {
+    maybe_duration.into().map(|d| d.as_micros().to_string()).unwrap_or_else(|| "-".to_owned())
 }
 
 pub fn project_dir() -> Result<directories::ProjectDirs> {
@@ -42,16 +42,31 @@ fn tokenizer_inner<P: AsRef<Path>>(
         total,
         value: tokenizer,
     } = if let Some(override_path) = override_path.as_ref() {
-        let mut cached = Cached::new(override_path, cache_dir)?;
+        let override_path = override_path.as_ref();
+        let mut cached = Cached::new(override_path.display().to_string(), cache_dir)?;
         cached.fetch_or_update(|override_path| {
             let f = fs::File::open(override_path)?;
             Ok(Tokenizer::from_reader(f)?)
         })
     } else {
-        let mut cached = Cached::new(PathBuf::from("::builtin::$tokenizer"), cache_dir)?;
-        cached.fetch_or_update(|_| Ok(Tokenizer::from_reader(&mut &*DEFAULT_TOKENIZER_BYTES)?))
+        let loader = |_: &str| -> Result<Tokenizer> { Ok(Tokenizer::from_reader(&mut &*DEFAULT_TOKENIZER_BYTES)?) };
+        if true {
+            let mut cached = Cached::new("::builtin::$tokenizer", cache_dir)?;
+            cached.fetch_or_update(loader)
+        } else {
+            let now = std::time::Instant::now();
+            let value = loader("")?;
+            let total = now.elapsed();
+            Ok(CachedValue {
+                fetch: None,
+                creation: Some(total.clone()),
+                update: None,
+                total,
+                value,
+            })
+        }
     }?;
-    info!("🧮 Loaded tokenizer in {total} (fetch: {fetch} us, update: {update} us, creation: {creation} us)",
+    info!("🧮 Loaded tokenizer in {total} us (fetch: {fetch} us, update: {update} us, creation: {creation} us)",
         total = total.as_micros(),
         fetch = maybe_display_micros(fetch),
         update = maybe_display_micros(update),
@@ -92,16 +107,16 @@ fn rules_inner<P: AsRef<Path>>(override_path: Option<P>, cache_dir: &Path) -> Re
         value: rules,
     } = if let Some(override_path) = override_path.as_ref() {
         let override_path = override_path.as_ref();
-        let mut cached = Cached::new(override_path, cache_dir)?;
+        let mut cached = Cached::new(override_path.display().to_string(), cache_dir)?;
         cached.fetch_or_update(|override_path| {
             let f = fs::File::open(override_path)?;
             Ok(Rules::from_reader(f)?)
         })
     } else {
-        let mut cached = Cached::new(PathBuf::from("::builtin::$tokenizer"), cache_dir)?;
+        let mut cached = Cached::new("::builtin::$rules", cache_dir)?;
         cached.fetch_or_update(|_| Ok(Rules::from_reader(&mut &*DEFAULT_RULES_BYTES)?))
     }?;
-    info!("🧮 Loaded rules in {total} (fetch: {fetch} us, update: {update} us, creation: {creation} us)",
+    info!("🧮 Loaded rules in {total} us (fetch: {fetch} us, update: {update} us, creation: {creation} us)",
         total = total.as_micros(),
         fetch = maybe_display_micros(fetch),
         update = maybe_display_micros(update),
@@ -114,7 +129,7 @@ pub(crate) fn rules<P: AsRef<Path> + Clone>(override_path: Option<P>) -> Result<
     match RULES
         .lock()
         .unwrap()
-        .entry(override_path.clone().map(|x| x.as_ref().to_path_buf()))
+        .entry(override_path.clone().map(|p| p.as_ref().to_path_buf()))
     {
         Entry::Occupied(occupied) => Ok(occupied.get().clone()),
         Entry::Vacant(empty) => {

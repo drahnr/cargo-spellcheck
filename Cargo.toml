@@ -110,8 +110,13 @@ all = ["hunspell", "nlprules"]
 [profile.dev]
 build-override = { opt-level = 2 }
 
-[profile.dev.package.backtrace]
-opt-level = 3
+[profile.dev.package]
+backtrace = { opt-level = 3 }
+bincode = { opt-level = 3 }
+xz2 = { opt-level = 3 }
+sha2 = { opt-level = 3 }
+hunspell-rs = { opt-level = 3 }
+nlprule = { opt-level = 3 }
 
 [profile.release]
 debug = true
