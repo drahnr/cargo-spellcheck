@@ -39,45 +39,35 @@ fn tokenizer_inner<P: AsRef<Path>>(
     cache_dir: &Path,
 ) -> Result<Tokenizer> {
     info!("🧮 Loading tokenizer...");
-    let CachedValue {
-        fetch,
-        update,
-        creation,
-        total,
-        value: tokenizer,
-    } = if let Some(override_path) = override_path.as_ref() {
+    let tokenizer = if let Some(override_path) = override_path.as_ref() {
         let override_path = override_path.as_ref();
         let mut cached = Cached::new(override_path.display().to_string(), cache_dir)?;
-        cached.fetch_or_update(|override_path| {
+        let CachedValue {
+            fetch,
+            update,
+            creation,
+            total,
+            value: tokenizer,
+        } = cached.fetch_or_update(|override_path| {
             let f = fs::File::open(override_path)?;
             Ok(Tokenizer::from_reader(f)?)
-        })
+        })?;
+        info!("🧮 Loaded tokenizer in {total} us (fetch: {fetch} us, update: {update} us, creation: {creation} us)",
+            total = maybe_display_micros(total),
+            fetch = maybe_display_micros(fetch),
+            update = maybe_display_micros(update),
+            creation = maybe_display_micros(creation),
+        );
+        tokenizer
     } else {
-        let loader = |_: &str| -> Result<Tokenizer> {
-            Ok(Tokenizer::from_reader(&mut &*DEFAULT_TOKENIZER_BYTES)?)
-        };
-        if true {
-            let mut cached = Cached::new("::builtin::$tokenizer", cache_dir)?;
-            cached.fetch_or_update(loader)
-        } else {
-            let now = std::time::Instant::now();
-            let value = loader("")?;
-            let total = now.elapsed();
-            Ok(CachedValue {
-                fetch: None,
-                creation: Some(total.clone()),
-                update: None,
-                total,
-                value,
-            })
-        }
-    }?;
-    info!("🧮 Loaded tokenizer in {total} us (fetch: {fetch} us, update: {update} us, creation: {creation} us)",
-        total = maybe_display_micros(total),
-        fetch = maybe_display_micros(fetch),
-        update = maybe_display_micros(update),
-        creation = maybe_display_micros(creation),
-    );
+        let total_start = std::time::Instant::now();
+        let tokenizer = Tokenizer::from_reader(&mut &*DEFAULT_TOKENIZER_BYTES)?;
+        info!(
+            "🧮 Loaded (builtin) tokenizer in {} us",
+            maybe_display_micros(total_start.elapsed())
+        );
+        tokenizer
+    };
     Ok(tokenizer)
 }
 
@@ -105,29 +95,37 @@ lazy_static! {
 
 fn rules_inner<P: AsRef<Path>>(override_path: Option<P>, cache_dir: &Path) -> Result<Rules> {
     info!("🧮 Loading rules...");
-    let CachedValue {
-        fetch,
-        update,
-        creation,
-        total,
-        value: rules,
-    } = if let Some(override_path) = override_path.as_ref() {
+    let rules = if let Some(override_path) = override_path.as_ref() {
         let override_path = override_path.as_ref();
         let mut cached = Cached::new(override_path.display().to_string(), cache_dir)?;
-        cached.fetch_or_update(|override_path| {
+        let CachedValue {
+            fetch,
+            update,
+            creation,
+            total,
+            value: rules,
+        } = cached.fetch_or_update(|override_path| {
             let f = fs::File::open(override_path)?;
             Ok(Rules::from_reader(f)?)
-        })
+        })?;
+        info!("🧮 Loaded rules in {total} us (fetch: {fetch} us, update: {update} us, creation: {creation} us)",
+            total = maybe_display_micros(total),
+            fetch = maybe_display_micros(fetch),
+            update = maybe_display_micros(update),
+            creation = maybe_display_micros(creation),
+        );
+        rules
     } else {
-        let mut cached = Cached::new("::builtin::$rules", cache_dir)?;
-        cached.fetch_or_update(|_| Ok(Rules::from_reader(&mut &*DEFAULT_RULES_BYTES)?))
-    }?;
-    info!("🧮 Loaded rules in {total} us (fetch: {fetch} us, update: {update} us, creation: {creation} us)",
-        total = maybe_display_micros(total),
-        fetch = maybe_display_micros(fetch),
-        update = maybe_display_micros(update),
-        creation = maybe_display_micros(creation),
-    );
+        // there is no speedgain for the builtin
+        let total_start = std::time::Instant::now();
+        let rules = Rules::from_reader(&mut &*DEFAULT_RULES_BYTES)?;
+        info!(
+            "🧮 Loaded (builtin) rules in {} us",
+            maybe_display_micros(total_start.elapsed())
+        );
+        rules
+    };
+
     Ok(rules)
 }
 
