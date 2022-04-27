@@ -245,11 +245,12 @@ pub fn generate_completions<G: clap_complete::Generator, W: std::io::Write>(
 
 impl Args {
     pub fn common(&self) -> Option<&Common> {
-        match self.command {
-            Some(Sub::Check { ref common, .. })
-            | Some(Sub::Fix { ref common, .. })
-            | Some(Sub::Reflow { ref common, .. }) => Some(common),
-            _ => None,
+        match &self.command {
+            Some(Sub::Check { common, .. })
+            | Some(Sub::Fix { common, .. })
+            | Some(Sub::Reflow { common, .. }) => Some(common),
+            None => Some(&self.common),
+            Some(Sub::Completions { .. } | Sub::ListFiles { .. } | Sub::Config { .. }) => None,
         }
     }
 
@@ -464,7 +465,7 @@ impl Args {
         }
 
         debug!("Using configuration default, builtin configuration (5)");
-        Ok((Default::default(), None))
+        Ok((Config::default(), None))
     }
 
     fn load_config(&self) -> Result<(Config, Option<PathBuf>)> {

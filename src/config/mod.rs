@@ -33,6 +33,7 @@ use crate::Detector;
 use fancy_regex::Regex;
 
 use fs_err as fs;
+use log::warn;
 use serde::{Deserialize, Serialize};
 use std::convert::AsRef;
 use std::fmt;
@@ -236,6 +237,7 @@ fn default_nlprules() -> Option<NlpRulesConfig> {
     if cfg!(feature = "nlprules") {
         Some(NlpRulesConfig::default())
     } else {
+        warn!("Cannot enable nlprules, since it wasn't compiled with `nlprules` as checker");
         None
     }
 }
