@@ -10,6 +10,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
+use thousands::Separable;
 
 static DEFAULT_TOKENIZER_BYTES: &[u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/en_tokenizer.bin"));
@@ -24,7 +25,7 @@ lazy_static! {
 fn maybe_display_micros(maybe_duration: impl Into<Option<std::time::Duration>>) -> String {
     maybe_duration
         .into()
-        .map(|d| d.as_micros().to_string())
+        .map(|d| d.as_micros().separate_with_underscores())
         .unwrap_or_else(|| "-".to_owned())
 }
 
@@ -72,7 +73,7 @@ fn tokenizer_inner<P: AsRef<Path>>(
         }
     }?;
     info!("🧮 Loaded tokenizer in {total} us (fetch: {fetch} us, update: {update} us, creation: {creation} us)",
-        total = total.as_micros(),
+        total = maybe_display_micros(total),
         fetch = maybe_display_micros(fetch),
         update = maybe_display_micros(update),
         creation = maybe_display_micros(creation),
@@ -122,7 +123,7 @@ fn rules_inner<P: AsRef<Path>>(override_path: Option<P>, cache_dir: &Path) -> Re
         cached.fetch_or_update(|_| Ok(Rules::from_reader(&mut &*DEFAULT_RULES_BYTES)?))
     }?;
     info!("🧮 Loaded rules in {total} us (fetch: {fetch} us, update: {update} us, creation: {creation} us)",
-        total = total.as_micros(),
+        total = maybe_display_micros(total),
         fetch = maybe_display_micros(fetch),
         update = maybe_display_micros(update),
         creation = maybe_display_micros(creation),

@@ -89,6 +89,7 @@ xz2 = "0.1"
 sha2 = "0.10"
 bincode = "1"
 hex = "0.4"
+thousands = "0.2"
 
 [dev-dependencies]
 # for stripping ansi color codes
