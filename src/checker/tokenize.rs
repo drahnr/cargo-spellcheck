@@ -22,7 +22,10 @@ lazy_static! {
 }
 
 fn maybe_display_micros(maybe_duration: impl Into<Option<std::time::Duration>>) -> String {
-    maybe_duration.into().map(|d| d.as_micros().to_string()).unwrap_or_else(|| "-".to_owned())
+    maybe_duration
+        .into()
+        .map(|d| d.as_micros().to_string())
+        .unwrap_or_else(|| "-".to_owned())
 }
 
 pub fn project_dir() -> Result<directories::ProjectDirs> {
@@ -49,7 +52,9 @@ fn tokenizer_inner<P: AsRef<Path>>(
             Ok(Tokenizer::from_reader(f)?)
         })
     } else {
-        let loader = |_: &str| -> Result<Tokenizer> { Ok(Tokenizer::from_reader(&mut &*DEFAULT_TOKENIZER_BYTES)?) };
+        let loader = |_: &str| -> Result<Tokenizer> {
+            Ok(Tokenizer::from_reader(&mut &*DEFAULT_TOKENIZER_BYTES)?)
+        };
         if true {
             let mut cached = Cached::new("::builtin::$tokenizer", cache_dir)?;
             cached.fetch_or_update(loader)

@@ -123,14 +123,18 @@ where
     pub fn fetch(&mut self) -> Result<Option<T>> {
         let guard = self.cache_file.read()?;
         let buf = std::io::BufReader::new(guard.file());
-        // let decompressed = xz2::bufread::XzDecoder::new(buf);
+        // let buf = xz2::bufread::XzDecoder::new(buf);
         match bincode::deserialize_from(buf) {
             Ok(CacheEntry { what, val }) => {
                 if &what == &self.what {
                     log::debug!("Cached value with matching what \"{}\"", &what);
                     Ok(Some(val))
                 } else {
-                    log::warn!("Cached value what \"{}\" does not match expect what \"{}\", removing", &what, &self.what);
+                    log::warn!(
+                        "Cached value what \"{}\" does not match expect what \"{}\", removing",
+                        &what,
+                        &self.what
+                    );
                     Ok(None)
                 }
             }
