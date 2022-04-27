@@ -46,7 +46,7 @@ pub trait Checker {
 /// Only configured checkers are used.
 pub struct Checkers {
     hunspell: Option<HunspellChecker>,
-    nlprule: Option<NlpRulesChecker>,
+    nlprules: Option<NlpRulesChecker>,
 }
 
 impl Checkers {
@@ -79,13 +79,13 @@ impl Checkers {
             &config,
             config.hunspell.as_ref()
         );
-        let nlprule = create_checker!(
+        let nlprules = create_checker!(
             "nlprules",
             NlpRulesChecker,
             &config,
             config.nlprules.as_ref()
         );
-        Ok(Self { hunspell, nlprule })
+        Ok(Self { hunspell, nlprules })
     }
 }
 
@@ -108,7 +108,7 @@ impl Checker for Checkers {
         if let Some(ref hunspell) = self.hunspell {
             collective.extend(hunspell.check(origin, chunks)?);
         }
-        if let Some(ref nlprule) = self.nlprule {
+        if let Some(ref nlprule) = self.nlprules {
             collective.extend(nlprule.check(origin, chunks)?);
         }
 
