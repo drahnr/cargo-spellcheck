@@ -94,9 +94,9 @@ macro_rules! end2end {
 
         let origin: ContentOrigin = $origin;
         let docs = Documentation::load_from_str(origin.clone(), $test, true);
-        assert_eq!(docs.index.len(), 1);
-        let chunks = docs.index.get(&origin).expect("Must contain dummy path");
-        assert_eq!(dbg!(chunks).len(), 1);
+        assert_eq!(docs.index.len(), 1, "Only one documentation chunk is provided. qed");
+        let chunks = docs.index.get(&origin).expect("Must contain dummy path. qed");
+        assert_eq!(dbg!(chunks).len(), 1, "Only one chunk/cluster is provided per test. qed");
         let chunk = &chunks[0];
         let _plain = chunk.erase_cmark();
         let cfg = $cfg;
@@ -104,8 +104,8 @@ macro_rules! end2end {
         let checker = <$checker>::new(&cfg).expect("Checker construction works");
         let suggestions = checker
             .check(&origin, &chunks[..])
-            .expect("Must not fail to extract suggestions");
-        assert_eq!(suggestions.len(), $n);
+            .expect("Must not fail to extract suggestions. qed");
+        assert_eq!(suggestions.len(), $n, "Expected {} suggestions, but found {}\n{:?}", $n, suggestions.len(), &suggestions);
     }};
 }
 
@@ -246,6 +246,27 @@ struct X;
 // ```
 struct CAPI;
 "####,
+            ContentOrigin::TestEntityRust,
+            0,
+            DummyChecker,
+            Default::default()
+        );
+    }
+
+    #[test]
+    fn issue_263() {
+        // excerpt from rust
+        const RAW: &str =
+r####"
+/// # Examples
+///
+#[cfg_attr(unix, doc = "```no_run")]
+#[cfg_attr(not(unix), doc = "```ignore")]
+/// assert_eq!(Path::new("./is_a_directory/").is_dir(), true);
+/// ```
+///
+"####;
+        end2end!(RAW,
             ContentOrigin::TestEntityRust,
             0,
             DummyChecker,
