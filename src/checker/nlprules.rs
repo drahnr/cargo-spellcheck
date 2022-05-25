@@ -7,7 +7,7 @@ use super::{Checker, Detector, Suggestion};
 use crate::{CheckableChunk, ContentOrigin};
 
 use crate::errors::*;
-use log::{debug, trace};
+
 use std::collections::{hash_map::Entry, HashMap};
 use std::{
     path::{Path, PathBuf},
@@ -115,7 +115,7 @@ fn check_chunk<'a>(
     rules: &Rules,
 ) -> Vec<Suggestion<'a>> {
     let plain = chunk.erase_cmark();
-    trace!("{:?}", &plain);
+    log::trace!("{:?}", &plain);
     let txt = plain.as_str();
 
     let mut acc = Vec::with_capacity(32);
@@ -131,7 +131,7 @@ fn check_chunk<'a>(
         let start = fix.span().char().start;
         let end = fix.span().char().end;
         if start > end {
-            debug!("BUG: crate nlprule yielded a negative range {:?} for chunk in {}, please file a bug", start..end, &origin);
+            log::debug!("BUG: crate nlprule yielded a negative range {:?} for chunk in {}, please file a bug", start..end, &origin);
             continue 'nlp;
         }
         let range = start..end;

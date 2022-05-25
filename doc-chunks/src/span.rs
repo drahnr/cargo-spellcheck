@@ -48,10 +48,16 @@ impl Span {
         let scope: Range = scope.try_into()?;
         let me: Range = self.try_into()?;
         if scope.start > me.start {
-            bail!("start of {:?} is not inside of {:?}", me, scope)
+            return Err(Error::Span(format!(
+                "start of {:?} is not inside of {:?}",
+                me, scope
+            )));
         }
         if scope.end < me.end {
-            bail!("end of {:?} is not inside of {:?}", me, scope)
+            return Err(Error::Span(format!(
+                "end of {:?} is not inside of {:?}",
+                me, scope
+            )));
         }
         let offset = me.start - scope.start;
         let length = me.end - me.start;
@@ -88,7 +94,7 @@ impl Span {
     /// mappings) which are used to map.
     pub fn to_content_range(&self, chunk: &CheckableChunk) -> Result<Range> {
         if chunk.fragment_count() == 0 {
-            bail!("Chunk contains 0 fragments")
+            return Err(Error::Span("Chunk contains 0 fragments".to_string()));
         }
         for (fragment_range, fragment_span) in chunk
             .iter()
@@ -114,7 +120,10 @@ impl Span {
                 Err(_e) => continue,
             }
         }
-        bail!("The chunk internal map from range to span did not contain an overlapping entry")
+        return Err(Error::Span(
+            "The chunk internal map from range to span did not contain an overlapping entry"
+                .to_string(),
+        ));
     }
 }
 
@@ -145,11 +154,10 @@ impl TryInto<Range> for &Span {
                 end: self.end.column + 1,
             })
         } else {
-            bail!(
+            return Err(Error::Span(format!(
                 "Start and end are not in the same line {} vs {}",
-                self.start.line,
-                self.end.line
-            )
+                self.start.line, self.end.line
+            )));
         }
     }
 }
@@ -169,11 +177,10 @@ impl TryFrom<(usize, Range)> for Span {
                 },
             })
         } else {
-            bail!(
+            return Err(Error::Span(format!(
                 "range must be valid to be converted to a Span {}..{}",
-                original.1.start,
-                original.1.end
-            )
+                original.1.start, original.1.end
+            )));
         }
     }
 }
@@ -193,11 +200,11 @@ impl TryFrom<(usize, std::ops::RangeInclusive<usize>)> for Span {
                 },
             })
         } else {
-            bail!(
+            return Err(Error::Span(format!(
                 "range must be valid to be converted to a Span {}..{}",
                 original.1.start(),
                 original.1.end()
-            )
+            )));
         }
     }
 }
@@ -239,7 +246,10 @@ fn extract_sub_range_from_span(
             continue;
         }
         if line > sub_span.end.line {
-            bail!("Moved beyond anticipated line")
+            return Err(Error::Span(format!(
+                "range must be valid to be converted to a Span {}..{}",
+                range.start, range.end
+            )));
         }
 
         if line == sub_span.start.line && column < sub_span.start.column {
@@ -247,7 +257,9 @@ fn extract_sub_range_from_span(
         }
 
         if line >= sub_span.end.line && column > sub_span.end.column {
-            bail!("Moved beyond anticipated column and last line")
+            return Err(Error::Span(
+                "Moved beyond anticipated column and last line".to_string(),
+            ));
         }
         if line == sub_span.start.line && column == sub_span.start.column {
             start = idx;
@@ -260,11 +272,13 @@ fn extract_sub_range_from_span(
         }
 
         if line > sub_span.end.line {
-            bail!("Moved beyond anticipated line")
+            return Err(Error::Span("Moved beyond anticipated line".to_string()));
         }
 
         if line >= sub_span.end.line && column > sub_span.end.column {
-            bail!("Moved beyond anticipated column and last line")
+            return Err(Error::Span(
+                "Moved beyond anticipated column and last line".to_string(),
+            ));
         }
     }
 
@@ -281,7 +295,7 @@ fn extract_sub_range_from_span(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::documentation::literalset::tests::gen_literal_set;
+    use crate::literalset::tests::gen_literal_set;
     use crate::util::load_span_from;
     use crate::{chyrp_dbg, chyrp_up, fluff_up};
     use crate::{LineColumn, Range, Span};

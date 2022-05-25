@@ -317,13 +317,17 @@ fn detect_comment_variant(
                     log::trace!("raw str pre: >{}<", prefix.as_str());
                     prefix.as_str().len()
                 } else {
-                    bail!("Should have a raw str pre match with a capture group");
+                    return Err(Error::Span(
+                        "Should have a raw str pre match with a capture group".to_string(),
+                    ));
                 };
                 let post = if let Some(suffix) = captures.get(captures.len() - 1) {
                     log::trace!("raw str post: >{}<", suffix.as_str());
                     suffix.as_str().len()
                 } else {
-                    bail!("Should have a raw str post match with a capture group");
+                    return Err(Error::Span(
+                        "Should have a raw str post match with a capture group".to_string(),
+                    ));
                 };
 
                 // r####" must match "####
@@ -338,7 +342,7 @@ fn detect_comment_variant(
                 debug_assert_eq!('"', rendered.as_bytes()[rendered.len() - 1_usize] as char);
                 (pre, post)
             } else {
-                bail!("Regex should match >{}<", rendered);
+                return Err(Error::Span(format!("Regex should match >{}<", rendered)));
             };
 
         span.start.column += pre;
@@ -394,7 +398,7 @@ impl TrimmedLiteral {
         // If the line ending has more than one character, we have to account
         // for that. Otherwise cut of the last character of the ending such that
         // we can't properly detect them anymore.
-        if crate::reflow::extract_delimiter(content)
+        if crate::util::extract_delimiter(content)
             .unwrap_or("\n")
             .len()
             > 1
@@ -451,7 +455,7 @@ impl TrimmedLiteral {
         post: usize,
         line: usize,
         column: usize,
-    ) -> Result<TrimmedLiteral, String> {
+    ) -> std::result::Result<TrimmedLiteral, String> {
         let content_chars_len = content.chars().count();
         let mut span = Span {
             start: LineColumn {
@@ -668,7 +672,7 @@ impl<'a> fmt::Display for TrimmedLiteralDisplay<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::documentation::tests::annotated_literals_raw;
+    use crate::tests::annotated_literals_raw;
     use assert_matches::assert_matches;
 
     #[test]

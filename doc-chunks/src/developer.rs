@@ -186,7 +186,9 @@ fn calculate_column(fragment: &str) -> usize {
 /// Returns `None` if the token kind is not `TokenKind::BlockComment`, if the
 /// token content does not match the block comment regex, or if any line cannot
 /// be added by `LiteralSet::add_adjacent`
-fn literal_set_from_block_comment(token: &TokenWithType) -> Result<LiteralSet, String> {
+fn literal_set_from_block_comment(
+    token: &TokenWithType,
+) -> std::result::Result<LiteralSet, String> {
     let number_of_lines = token.content.split("\n").count();
     let mut lines = token.content.split("\n");
     if number_of_lines == 1 {
@@ -268,7 +270,7 @@ fn literal_set_from_block_comment(token: &TokenWithType) -> Result<LiteralSet, S
 /// Attempt to create a literal from a developer line comment token. Returns
 /// `None` if the token's kind is not `TokenType::LineComment` or if the call to
 /// `TrimmedLiteral::from` fails.
-fn literal_from_line_comment(token: &TokenWithType) -> Result<TrimmedLiteral, String> {
+fn literal_from_line_comment(token: &TokenWithType) -> std::result::Result<TrimmedLiteral, String> {
     match token.kind {
         TokenType::LineComment => TrimmedLiteral::from(
             CommentVariant::DoubleSlash,
@@ -329,7 +331,7 @@ fn construct_literal_sets(tokens: impl IntoIterator<Item = TokenWithType>) -> Ve
 
 #[cfg(test)]
 mod tests {
-    use crate::documentation::developer::*;
+    use super::*;
     use assert_matches::assert_matches;
 
     #[test]
@@ -729,7 +731,7 @@ mod tests {
         let source = "// First line comment\nconst ZERO: usize = 0; // A constant ";
         let filtered = source_to_iter(source).collect::<Vec<_>>();
         assert_eq!(filtered.len(), 2);
-        let literals: Vec<Result<TrimmedLiteral, String>> = filtered
+        let literals: Vec<std::result::Result<TrimmedLiteral, String>> = filtered
             .into_iter()
             .map(|t| literal_from_line_comment(&t))
             .collect();

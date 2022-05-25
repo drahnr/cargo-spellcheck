@@ -5,18 +5,18 @@
 use super::*;
 
 use indexmap::IndexMap;
-use log::trace;
+
 use pulldown_cmark::{Event, LinkType, Options, Parser, Tag};
 
-use crate::documentation::{CheckableChunk, Range};
 use crate::util::sub_chars;
 use crate::Span;
+use crate::{CheckableChunk, Range};
 
 /// Describes whether there is a matching segment in the source, of if it is a
 /// placeholder for i.e. a code block or inline code. These placeholders are
 /// required for grammar checks.
 #[derive(Debug, Clone)]
-pub(crate) enum SourceRange {
+pub enum SourceRange {
     Direct(Range),
     Alias(Range, String),
 }
@@ -35,7 +35,7 @@ impl SourceRange {
     /// Extract a clone of the inner `Range<usize>`.
     ///
     /// Use `deref()` or `*` for a reference.
-    pub(crate) fn range(&self) -> Range {
+    pub fn range(&self) -> Range {
         match self {
             Self::Direct(range) => range.clone(),
             Self::Alias(range, _) => range.clone(),
@@ -64,6 +64,14 @@ pub(crate) fn is_html_tag_on_no_scope_list(text: &str) -> bool {
         ]).unwrap();
     };
     HTML_TAG_EMPTY_OR_SPECIAL_CASE.is_match(text)
+}
+
+#[test]
+fn scoped() {
+    assert_eq!(false, is_html_tag_on_no_scope_list("<code>"));
+    assert_eq!(false, is_html_tag_on_no_scope_list("</code>"));
+    assert_eq!(true, is_html_tag_on_no_scope_list("<code />"));
+    assert_eq!(true, is_html_tag_on_no_scope_list("<pre>🌡</pre>\n"));
 }
 
 /// A plain representation of cmark riddled chunk.
@@ -128,9 +136,7 @@ impl<'a> PlainOverlay<'a> {
     }
 
     /// Ranges are mapped `cmark reduced/plain -> raw`.
-    pub(crate) fn extract_plain_with_mapping(
-        cmark: &str,
-    ) -> (String, IndexMap<Range, SourceRange>) {
+    pub fn extract_plain_with_mapping(cmark: &str) -> (String, IndexMap<Range, SourceRange>) {
         let mut plain = String::with_capacity(cmark.len());
         let mut mapping = indexmap::IndexMap::with_capacity(128);
 
@@ -163,14 +169,16 @@ impl<'a> PlainOverlay<'a> {
 
         for (event, byte_range) in parser.into_offset_iter() {
             if byte_range.start > byte_range.end {
-                warn!(
+                log::warn!(
                     "Dropping event {:?} due to negative byte range {:?}, see {}",
-                    event, byte_range, "https://github.com/raphlinus/pulldown-cmark/issues/478"
+                    event,
+                    byte_range,
+                    "https://github.com/raphlinus/pulldown-cmark/issues/478"
                 );
                 continue;
             }
 
-            trace!("Parsing event (bytes: {:?}): {:?}", &byte_range, &event);
+            log::trace!("Parsing event (bytes: {:?}): {:?}", &byte_range, &event);
 
             let mut cursor = cmark.char_indices().enumerate().peekable();
             let mut char_cursor = 0usize;
@@ -383,7 +391,7 @@ impl<'a> PlainOverlay<'a> {
             .skip_while(|(sub, _raw)| sub.end <= start)
             .take_while(|(sub, _raw)| sub.start < end)
             .inspect(|x| {
-                trace!(">>> item {:?} ∈ {:?}", &condensed_range, x.0);
+                log::trace!(">>> item {:?} ∈ {:?}", &condensed_range, x.0);
             })
             .filter(|(sub, _)| {
                 // could possibly happen on empty documentation lines with `///`
@@ -435,13 +443,13 @@ impl<'a> PlainOverlay<'a> {
                         None
                     }
                     .and_then(|(sub, raw)| {
-                        trace!("convert:  cmark-erased={:?} -> raw={:?}", sub, raw);
+                        log::trace!("convert:  cmark-erased={:?} -> raw={:?}", sub, raw);
 
                         if raw.is_empty() {
-                            warn!("linear range to spans: {:?} empty!", raw);
+                            log::warn!("linear range to spans: {:?} empty!", raw);
                         } else {
                             let resolved = self.raw.find_spans(raw.clone());
-                            trace!("cmark-erased range to spans: {:?} -> {:?}", raw, resolved);
+                            log::trace!("cmark-erased range to spans: {:?} -> {:?}", raw, resolved);
                             acc.extend(resolved.into_iter());
                         }
                         Some(())

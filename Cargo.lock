@@ -201,7 +201,7 @@ dependencies = [
 
 [[package]]
 name = "cargo-spellcheck"
-version = "0.11.2"
+version = "0.11.4"
 dependencies = [
  "assert_matches",
  "bincode",
@@ -213,8 +213,9 @@ dependencies = [
  "console",
  "crossterm",
  "directories 4.0.1",
+ "doc-chunks",
  "env_logger 0.9.0",
- "fancy-regex 0.8.0",
+ "fancy-regex 0.10.0",
  "fd-lock",
  "fs-err",
  "futures",
@@ -585,6 +586,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "doc-chunks"
+version = "0.0.2"
+dependencies = [
+ "assert_matches",
+ "console",
+ "env_logger 0.9.0",
+ "fancy-regex 0.10.0",
+ "fs-err",
+ "indexmap",
+ "itertools 0.10.3",
+ "lazy_static",
+ "log",
+ "memchr",
+ "proc-macro2",
+ "pulldown-cmark",
+ "ra_ap_syntax",
+ "rayon",
+ "regex",
+ "serde",
+ "syn",
+ "thiserror",
+ "toml",
+]
+
+[[package]]
 name = "drop_bomb"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -695,9 +721,9 @@ dependencies = [
 
 [[package]]
 name = "fancy-regex"
-version = "0.8.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d95b4efe5be9104a4a18a9916e86654319895138be727b229820c39257c30dda"
+checksum = "0678ab2d46fa5195aaf59ad034c083d351377d4af57f3e073c074d0da3e3c766"
 dependencies = [
  "bit-set",
  "regex",

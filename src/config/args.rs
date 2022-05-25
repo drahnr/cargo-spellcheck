@@ -11,8 +11,6 @@ use crate::Action;
 
 use super::Config;
 
-use log::{debug, warn};
-
 use clap_complete::Shell;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize)]
@@ -350,18 +348,18 @@ impl Args {
             #[cfg(feature = "hunspell")]
             if !checkers.contains(&CheckerType::Hunspell) {
                 if !config.hunspell.take().is_some() {
-                    warn!("Hunspell was never configured.")
+                    log::warn!("Hunspell was never configured.")
                 }
             }
             #[cfg(feature = "nlprule")]
             if !checkers.contains(&CheckerType::NlpRules) {
                 if !config.nlprules.take().is_some() {
-                    warn!("Nlprules checker was never configured.")
+                    log::warn!("Nlprules checker was never configured.")
                 }
             }
 
             if !checkers.contains(&CheckerType::Reflow) {
-                warn!("Reflow is a separate sub command.")
+                log::warn!("Reflow is a separate sub command.")
             }
 
             const EXPECTED_COUNT: usize =
@@ -389,7 +387,7 @@ impl Args {
     ///
     // TODO split the IO operations and lookup dirs.
     fn load_config_inner(&self) -> Result<(Config, Option<PathBuf>)> {
-        debug!("Attempting to load configuration by priority.");
+        log::debug!("Attempting to load configuration by priority.");
         let cwd = crate::traverse::cwd()?;
         // 1. explicitly specified
         let explicit_cfg = self.cfg.as_ref().map(|config_path| {
@@ -404,7 +402,7 @@ impl Args {
         });
 
         if let Some(config_path) = explicit_cfg {
-            debug!(
+            log::debug!(
                 "Using configuration file provided by flag (1) {}",
                 config_path.display()
             );
@@ -412,7 +410,7 @@ impl Args {
                 Config::load_from(&config_path)?.ok_or_else(|| eyre!("File does not exist."))?;
             return Ok((config, Some(config_path)));
         } else {
-            debug!("No cfg flag present");
+            log::debug!("No cfg flag present");
         }
 
         // (prep) determine if there should be an attempt to read a cargo manifest from the target dir
@@ -449,22 +447,22 @@ impl Args {
         // 4. load from `.config/spellcheck.toml` from the current working directory.
         let config_path = cwd.join(".config").join("spellcheck.toml");
         if let Some(cfg) = Config::load_from(&config_path)? {
-            debug!("Using configuration file (4) {}", config_path.display());
+            log::debug!("Using configuration file (4) {}", config_path.display());
             return Ok((cfg, Some(config_path)));
         }
 
         let default_config_path = Config::default_path()?;
         if let Some(cfg) = Config::load_from(&default_config_path)? {
-            debug!(
+            log::debug!(
                 "Using configuration file (5) {}",
                 default_config_path.display()
             );
             return Ok((cfg, Some(default_config_path)));
         } else {
-            debug!("No user config present {}", default_config_path.display());
+            log::debug!("No user config present {}", default_config_path.display());
         }
 
-        debug!("Using configuration default, builtin configuration (5)");
+        log::debug!("Using configuration default, builtin configuration (5)");
         Ok((Config::default(), None))
     }
 
@@ -613,23 +611,23 @@ fn look_for_cargo_manifest(base: &Path) -> Result<Option<PathBuf>> {
         let base = base.join("Cargo.toml");
         if base.is_file() {
             let base = base.canonicalize()?;
-            debug!("Using {} manifest as anchor file", base.display());
+            log::debug!("Using {} manifest as anchor file", base.display());
             Some(base)
         } else {
-            debug!("Cargo manifest files does not exist: {}", base.display());
+            log::debug!("Cargo manifest files does not exist: {}", base.display());
             None
         }
     } else if let Some(file_name) = base.file_name() {
         if file_name == "Cargo.toml" && base.is_file() {
             let base = base.canonicalize()?;
-            debug!("Using {} manifest as anchor file", base.display());
+            log::debug!("Using {} manifest as anchor file", base.display());
             Some(base)
         } else {
-            debug!("Cargo manifest files does not exist: {}", base.display());
+            log::debug!("Cargo manifest files does not exist: {}", base.display());
             None
         }
     } else {
-        debug!(
+        log::debug!(
             "Provided parse target is neither file or dir: {}",
             base.display()
         );
@@ -654,7 +652,7 @@ fn load_from_manifest_metadata(manifest_path: &Path) -> Result<Option<(Config, P
                 let manifest_dir = manifest_path.parent().expect("File resides in a dir. qed");
                 manifest_dir.join(config_path)
             };
-            debug!("Using configuration file {}", config_path.display());
+            log::debug!("Using configuration file {}", config_path.display());
             return Ok(Config::load_from(&config_path)?.map(|config| (config, config_path)));
         }
     }

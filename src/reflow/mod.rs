@@ -3,10 +3,10 @@
 //! Note that for commonmark this might not be possible with links. The reflow
 //! is done based on the comments no matter the content.
 
-use crate::errors::{eyre, Result};
-
 use crate::checker::Checker;
 use crate::documentation::CheckableChunk;
+use crate::errors::{eyre, Result};
+use crate::util::extract_delimiter;
 #[cfg(debug_assertions)]
 use crate::util::load_span_from;
 use crate::util::{byte_range_to_char_range, byte_range_to_char_range_many, sub_char_range};
@@ -59,71 +59,6 @@ impl Checker for Reflow {
         }
         Ok(acc)
     }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct LineSepStat {
-    first_appearance: usize,
-    count: usize,
-    newline: &'static str,
-}
-
-#[inline(always)]
-fn extract_delimiter_inner<'a>(
-    mut iter: impl Iterator<Item = usize>,
-    newline: &'static str,
-) -> Option<LineSepStat> {
-    if let Some(first) = iter.next() {
-        let n = iter.count() + 1;
-        Some(LineSepStat {
-            first_appearance: first,
-            count: n,
-            newline,
-        })
-    } else {
-        None
-    }
-}
-
-/// Extract line delimiter of a string.
-pub fn extract_delimiter<'s>(s: &'s str) -> Option<&'static str> {
-    // TODO lots of room for optimizations here
-    let lf = memchr::memchr_iter(b'\n', s.as_bytes());
-    let cr = memchr::memchr_iter(b'\r', s.as_bytes());
-    let crlf = memchr::memmem::find_iter(s.as_bytes(), "\r\n");
-    let lfcr = memchr::memmem::find_iter(s.as_bytes(), "\n\r");
-    // first look for two letter line delimiters
-    let lfcr = extract_delimiter_inner(lfcr, "\n\r");
-    let crlf = extract_delimiter_inner(crlf, "\r\n");
-
-    // remove the 2 line line delimiters from the single line line delimiters, since they overlap
-    let lf = extract_delimiter_inner(lf, "\n").map(|mut stat| {
-        stat.count = stat.count.saturating_sub(std::cmp::max(
-            crlf.as_ref().map(|stat| stat.count).unwrap_or_default(),
-            lfcr.as_ref().map(|stat| stat.count).unwrap_or_default(),
-        ));
-        stat
-    });
-    let cr = extract_delimiter_inner(cr, "\r").map(|mut stat| {
-        stat.count = stat.count.saturating_sub(std::cmp::max(
-            crlf.as_ref().map(|stat| stat.count).unwrap_or_default(),
-            lfcr.as_ref().map(|stat| stat.count).unwrap_or_default(),
-        ));
-        stat
-    });
-
-    // order is important, `max_by` prefers the latter ones over the earlier ones on equality
-    vec![cr, lf, crlf, lfcr]
-        .into_iter()
-        .filter_map(|x| x)
-        .max_by(|b, a| {
-            if a.count == b.count {
-                a.first_appearance.cmp(&b.first_appearance)
-            } else {
-                b.count.cmp(&a.count)
-            }
-        })
-        .map(|x| x.newline)
 }
 
 /// Reflows a parsed commonmark paragraph contained in `s`.

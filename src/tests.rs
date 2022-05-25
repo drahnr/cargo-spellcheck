@@ -4,16 +4,9 @@ use crate::checker::Checker;
 use crate::util::{load_span_from, sub_char_range, sub_chars};
 use crate::{chyrp_up, fluff_up};
 
+use crate::documentation::{tests::annotated_literals, SourceRange};
+use indexmap::IndexMap;
 use std::convert::From;
-
-#[test]
-fn scoped() {
-    assert_eq!(false, is_html_tag_on_no_scope_list("<code>"));
-    assert_eq!(false, is_html_tag_on_no_scope_list("</code>"));
-    assert_eq!(true, is_html_tag_on_no_scope_list("<code />"));
-    assert_eq!(true, is_html_tag_on_no_scope_list("<pre>🌡</pre>\n"));
-}
-
 #[test]
 fn parse_and_construct() {
     let _ = env_logger::builder()
@@ -29,9 +22,9 @@ fn parse_and_construct() {
     const TEST_PLAIN: &str = r#"A very good test."#;
 
     let origin = ContentOrigin::TestEntityRust;
-    let docs = Documentation::load_from_str(origin.clone(), TEST_SOURCE, false);
-    assert_eq!(docs.index.len(), 1);
-    let chunks = docs.index.get(&origin).expect("Must contain dummy path");
+    let docs = Documentation::load_from_str(origin.clone(), TEST_SOURCE, true, false);
+    assert_eq!(docs.len(), 1);
+    let chunks = docs.get(&origin).expect("Must contain dummy path");
     assert_eq!(dbg!(chunks).len(), 1);
 
     // TODO
@@ -61,7 +54,7 @@ fn parse_and_construct() {
         sub_chars(plain.as_str(), expected_plain_range.clone())
     );
 
-    let z: IndexMap<Range, Span> = plain.find_spans(expected_plain_range);
+    let z: indexmap::IndexMap<Range, Span> = plain.find_spans(expected_plain_range);
     // FIXME the expected result would be
     let (_range, _span) = z.first().unwrap().clone();
 
@@ -78,7 +71,12 @@ use crate::documentation::Documentation;
 /// End-to-end tests for different Checkers
 macro_rules! end2end {
     ($test:expr, $n:expr) => {{
-        end2end!($test, ContentOrigin::TestEntityRust, $n, DummyChecker);
+        end2end!(
+            $test,
+            crate::ContentOrigin::TestEntityRust,
+            $n,
+            crate::tests::e2e::DummyChecker
+        );
     }};
 
     ($test:expr, $origin:expr, $n:expr, $checker:ty) => {{
@@ -87,15 +85,16 @@ macro_rules! end2end {
     }};
 
     ($test:expr, $origin:expr, $n:expr, $checker:ty, $cfg:expr) => {{
-        let _ = env_logger::builder()
+        let _ = ::env_logger::builder()
             .is_test(true)
-            .filter_level(log::LevelFilter::Trace)
+            .filter_level(::log::LevelFilter::Trace)
             .try_init();
 
-        let origin: ContentOrigin = $origin;
-        let docs = Documentation::load_from_str(origin.clone(), $test, true);
-        assert_eq!(docs.index.len(), 1);
-        let chunks = docs.index.get(&origin).expect("Must contain dummy path");
+        let origin: crate::ContentOrigin = $origin;
+        let docs =
+            crate::documentation::Documentation::load_from_str(origin.clone(), $test, true, true);
+        assert_eq!(docs.len(), 1);
+        let chunks = docs.get(&origin).expect("Must contain dummy path");
         assert_eq!(dbg!(chunks).len(), 1);
         let chunk = &chunks[0];
         let _plain = chunk.erase_cmark();
@@ -112,13 +111,13 @@ macro_rules! end2end {
 /// Declare an end-to-end test case based on an existing rust file.
 macro_rules! end2end_file_rust {
     ($path: literal, $n: expr) => {{
-        let path2 = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/", $path));
-        let origin = ContentOrigin::RustSourceFile(path2);
+        let path2 = ::std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/", $path));
+        let origin = crate::ContentOrigin::RustSourceFile(path2);
         end2end!(
             include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/", $path)),
             origin,
             $n,
-            DummyChecker
+            crate::tests::e2e::DummyChecker
         );
     }};
 }
@@ -127,13 +126,13 @@ macro_rules! end2end_file_rust {
 #[allow(unused_macros)]
 macro_rules! end2end_file_cmark {
     ($path: literal, $n: expr) => {{
-        let path2 = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/", $path));
-        let origin = ContentOrigin::CommonMarkFile(path2);
+        let path2 = ::std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/", $path));
+        let origin = crate::ContentOrigin::CommonMarkFile(path2);
         end2end!(
             include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/", $path)),
             origin,
             $n,
-            DummyChecker
+            crate::tests::e2e::DummyChecker
         );
     }};
 }
@@ -279,7 +278,7 @@ struct CAPI;
 
             let origin: ContentOrigin = $origin;
 
-            let docs = Documentation::load_from_str(origin.clone(), $source, false);
+            let docs = Documentation::load_from_str(origin.clone(), $source, true, false);
             let (origin2, chunks) = docs.into_iter().next().expect("Contains a document");
             let suggestions =
                 dbg!(DummyChecker.check(&origin, &chunks[..])).expect("Dummy checker never fails. qed");
@@ -1301,39 +1300,6 @@ ff
 ff"#,
         2,
     );
-}
-
-pub(crate) fn annotated_literals_raw<'a>(
-    source: &'a str,
-) -> impl Iterator<Item = proc_macro2::Literal> + 'a {
-    let stream = syn::parse_str::<proc_macro2::TokenStream>(source).expect("Must be valid rust");
-    stream
-        .into_iter()
-        .filter_map(|x| {
-            if let proc_macro2::TokenTree::Group(group) = x {
-                Some(group.stream().into_iter())
-            } else {
-                None
-            }
-        })
-        .flatten()
-        .filter_map(|x| {
-            if let proc_macro2::TokenTree::Literal(literal) = x {
-                Some(literal)
-            } else {
-                None
-            }
-        })
-}
-
-pub(crate) fn annotated_literals(source: &str) -> Vec<TrimmedLiteral> {
-    annotated_literals_raw(source)
-        .map(|literal| {
-            let span = Span::from(literal.span());
-            TrimmedLiteral::load_from(source, span)
-                .expect("Literals must be convertable to trimmed literals")
-        })
-        .collect()
 }
 
 const PREFIX_RAW_LEN: usize = 3;

@@ -9,8 +9,11 @@ use std::convert::TryFrom;
 use std::fmt;
 use std::path::Path;
 
-use crate::documentation::PlainOverlay;
-use crate::{util::sub_chars, Range, Span};
+use crate::PlainOverlay;
+use crate::{
+    util::{sub_char_range, sub_chars},
+    Range, Span,
+};
 
 /// Definition of the source of a checkable chunk
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
@@ -24,10 +27,8 @@ pub enum ContentOrigin {
     /// Full rust source file.
     RustSourceFile(PathBuf),
     /// A test entity for a rust file, with no meaning outside of test.
-    #[cfg(test)]
     TestEntityRust,
     /// A test entity for a cmark file, with no meaning outside of test.
-    #[cfg(test)]
     TestEntityCommonMark,
 }
 
@@ -44,14 +45,12 @@ impl ContentOrigin {
             Self::CommonMarkFile(path) => path.as_path(),
             Self::RustDocTest(path, _) => path.as_path(),
             Self::RustSourceFile(path) => path.as_path(),
-            #[cfg(test)]
             Self::TestEntityCommonMark => {
                 lazy_static::lazy_static! {
                     static ref TEST_ENTITY_CMARK: PathBuf = PathBuf::from("/tmp/test/entity.md");
                 };
                 TEST_ENTITY_CMARK.as_path()
             }
-            #[cfg(test)]
             Self::TestEntityRust => {
                 lazy_static::lazy_static! {
                     static ref TEST_ENTITY_RUST: PathBuf = PathBuf::from("/tmp/test/entity.rs");
@@ -136,8 +135,8 @@ impl CheckableChunk {
     ///           (13,17) => (4,0)->(4,3),
     /// ]
     /// ```
-    pub(crate) fn find_spans(&self, range: Range) -> IndexMap<Range, Span> {
-        trace!(target: "find_spans",
+    pub fn find_spans(&self, range: Range) -> IndexMap<Range, Span> {
+        log::trace!(target: "find_spans",
             "Chunk find_span {:?}",
             &range
         );
@@ -148,7 +147,7 @@ impl CheckableChunk {
             .skip_while(|(fragment_range, _span)| fragment_range.end <= start)
             .take_while(|(fragment_range, _span)| fragment_range.start < end)
             .inspect(|x| {
-                trace!(target: "find_spans", ">>> item {:?} ∈ {:?}", &range, x.0);
+                log::trace!(target: "find_spans", ">>> item {:?} ∈ {:?}", &range, x.0);
             })
             .filter(|(fragment_range, _)| {
                 // could possibly happen on empty documentation lines with `///`
@@ -343,7 +342,10 @@ impl CheckableChunk {
                     acc.push(span.start.column + line_range.len());
                     Ok(acc)
                 } else {
-                    bail!("BUG: Found a range {}..{} which that does not exist in its own source mapping: {:?}", line_range.start, line_range.end, &self.source_mapping)
+                    Err(Error::InvalidLineRange {
+                        line_range: line_range.clone(),
+                        source_mapping: self.source_mapping.clone(),
+                    })
                 }
             })?;
 

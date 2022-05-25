@@ -1,8 +1,74 @@
 use crate::errors::*;
 use crate::{LineColumn, Range, Span};
+use core::ops::{Bound, RangeBounds};
 use fs_err as fs;
 use std::io::Read;
 use std::path::Path;
+
+#[derive(Debug, PartialEq, Eq)]
+struct LineSepStat {
+    first_appearance: usize,
+    count: usize,
+    newline: &'static str,
+}
+
+#[inline(always)]
+fn extract_delimiter_inner<'a>(
+    mut iter: impl Iterator<Item = usize>,
+    newline: &'static str,
+) -> Option<LineSepStat> {
+    if let Some(first) = iter.next() {
+        let n = iter.count() + 1;
+        Some(LineSepStat {
+            first_appearance: first,
+            count: n,
+            newline,
+        })
+    } else {
+        None
+    }
+}
+
+/// Extract line delimiter of a string.
+pub fn extract_delimiter<'s>(s: &'s str) -> Option<&'static str> {
+    // TODO lots of room for optimizations here
+    let lf = memchr::memchr_iter(b'\n', s.as_bytes());
+    let cr = memchr::memchr_iter(b'\r', s.as_bytes());
+    let crlf = memchr::memmem::find_iter(s.as_bytes(), "\r\n");
+    let lfcr = memchr::memmem::find_iter(s.as_bytes(), "\n\r");
+    // first look for two letter line delimiters
+    let lfcr = extract_delimiter_inner(lfcr, "\n\r");
+    let crlf = extract_delimiter_inner(crlf, "\r\n");
+
+    // remove the 2 line line delimiters from the single line line delimiters, since they overlap
+    let lf = extract_delimiter_inner(lf, "\n").map(|mut stat| {
+        stat.count = stat.count.saturating_sub(std::cmp::max(
+            crlf.as_ref().map(|stat| stat.count).unwrap_or_default(),
+            lfcr.as_ref().map(|stat| stat.count).unwrap_or_default(),
+        ));
+        stat
+    });
+    let cr = extract_delimiter_inner(cr, "\r").map(|mut stat| {
+        stat.count = stat.count.saturating_sub(std::cmp::max(
+            crlf.as_ref().map(|stat| stat.count).unwrap_or_default(),
+            lfcr.as_ref().map(|stat| stat.count).unwrap_or_default(),
+        ));
+        stat
+    });
+
+    // order is important, `max_by` prefers the latter ones over the earlier ones on equality
+    vec![cr, lf, crlf, lfcr]
+        .into_iter()
+        .filter_map(|x| x)
+        .max_by(|b, a| {
+            if a.count == b.count {
+                a.first_appearance.cmp(&b.first_appearance)
+            } else {
+                b.count.cmp(&a.count)
+            }
+        })
+        .map(|x| x.newline)
+}
 
 /// Iterate over a str and annotate with line and column.
 ///
@@ -50,19 +116,25 @@ pub fn iter_with_line_column<'a>(
 ///
 /// # Errors
 /// Returns an Error if `span` describes a impossible range.
-pub(crate) fn load_span_from<R>(mut source: R, span: Span) -> Result<String>
+pub fn load_span_from<R>(mut source: R, span: Span) -> Result<String>
 where
     R: Read,
 {
     log::trace!("Loading {:?} from source", &span);
     if span.start.line < 1 {
-        bail!("Lines are 1-indexed, can't be less than 1")
+        return Err(Error::Span(
+            "Lines are 1-indexed, can't be less than 1".to_string(),
+        ));
     }
     if span.end.line < span.start.line {
-        bail!("Line range would be negative, bail")
+        return Err(Error::Span(
+            "Line range would be negative, bail".to_string(),
+        ));
     }
     if span.end.line == span.start.line && span.end.column < span.start.column {
-        bail!("Column range would be negative, bail")
+        return Err(Error::Span(
+            "Column range would be negative, bail".to_string(),
+        ));
     }
     let mut s = String::with_capacity(256);
     source
@@ -107,8 +179,6 @@ pub fn sub_chars(s: &str, range: Range) -> String {
         .take(range.len())
         .collect::<String>()
 }
-
-use core::ops::{Bound, RangeBounds};
 
 /// Convert a given byte range of a string, that is known to be at valid char
 /// bounds, to a character range.

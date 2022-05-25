@@ -1,6 +1,6 @@
 [package]
 name = "cargo-spellcheck"
-version = "0.11.2"
+version = "0.11.4"
 authors = ["Bernhard Schuster <bernhard@ahoi.io>"]
 edition = "2021"
 rust-version = "1.57.0"
@@ -23,6 +23,10 @@ include = [
     "CHANGELOG.md"
 ]
 
+[workspace]
+members = ["./doc-chunks"]
+
+
 [build-dependencies]
 nlprule-build = { version = "=0.6.4",  optional = true }
 # compress the nlprule artifacts to be under the 10 MB limit
@@ -30,6 +34,9 @@ nlprule-build = { version = "=0.6.4",  optional = true }
 xz2 = "0.1"
 
 [dependencies]
+
+doc-chunks = { version = "0.0.2", path = "./doc-chunks" }
+
 color-eyre = "0.6"
 cargo_toml = "^0.11.4"
 console = "0.15"
@@ -42,7 +49,7 @@ clap-verbosity-flag = "1.0.0"
 clap_complete = "3.1"
 
 env_logger = "0.9"
-fancy-regex = "0.8"
+fancy-regex = "0.10"
 fs-err = "2"
 indexmap = { version = "1", features=["rayon", "serde"] }
 itertools = "0.10"

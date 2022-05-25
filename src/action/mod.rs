@@ -4,7 +4,6 @@ use super::*;
 use crate::checker::Checkers;
 use crate::errors::*;
 use crate::reflow::Reflow;
-use log::{debug, trace};
 
 use fs_err as fs;
 use futures::stream::{self, StreamExt, TryStreamExt};
@@ -249,9 +248,7 @@ impl Action {
             ContentOrigin::CommonMarkFile(path) => self.correct_file(path, bandaids),
             ContentOrigin::RustSourceFile(path) => self.correct_file(path, bandaids),
             ContentOrigin::RustDocTest(path, _span) => self.correct_file(path, bandaids),
-            #[cfg(test)]
             ContentOrigin::TestEntityRust => unreachable!("Use a proper file"),
-            #[cfg(test)]
             ContentOrigin::TestEntityCommonMark => unreachable!("Use a proper file"),
         }
     }
@@ -265,7 +262,7 @@ impl Action {
     ) -> Result<()> {
         let path = fs::canonicalize(path.as_path())?;
         let path = path.as_path();
-        trace!("Attempting to open {} as read", path.display());
+        log::trace!("Attempting to open {} as read", path.display());
         let ro = fs::OpenOptions::new().read(true).open(path)?;
 
         let mut reader = std::io::BufReader::new(ro);
@@ -322,12 +319,12 @@ impl Action {
         userpicked: interactive::UserPicked,
     ) -> Result<()> {
         if userpicked.total_count() > 0 {
-            debug!("Writing changes back to disk");
+            log::debug!("Writing changes back to disk");
             for (origin, bandaids) in userpicked.bandaids.into_iter() {
                 self.write_changes_to_disk(origin, bandaids.into_iter())?;
             }
         } else {
-            debug!("No band aids to apply");
+            log::debug!("No band aids to apply");
         }
         Ok(())
     }
@@ -425,9 +422,9 @@ impl Action {
                 let n = suggestions.len();
                 let path = origin.as_path();
                 if n == 0 {
-                    info!("✅ {}", path.display());
+                    log::info!("✅ {}", path.display());
                 } else {
-                    info!("❌ {} : {}", path.display(), n);
+                    log::info!("❌ {} : {}", path.display(), n);
                 }
                 for suggestion in suggestions {
                     println!("{}", suggestion);

@@ -3,7 +3,7 @@ use crate::checker::cached::CachedValue;
 use crate::errors::*;
 use fs_err as fs;
 use lazy_static::lazy_static;
-use log::info;
+
 use nlprule::{Rules, Tokenizer};
 use std::collections::{hash_map::Entry, HashMap};
 use std::{
@@ -38,7 +38,7 @@ fn tokenizer_inner<P: AsRef<Path>>(
     override_path: Option<P>,
     cache_dir: &Path,
 ) -> Result<Tokenizer> {
-    info!("🧮 Loading tokenizer...");
+    log::info!("🧮 Loading tokenizer...");
     let tokenizer = if let Some(override_path) = override_path.as_ref() {
         let override_path = override_path.as_ref();
         let mut cached = Cached::new(override_path.display().to_string(), cache_dir)?;
@@ -52,7 +52,7 @@ fn tokenizer_inner<P: AsRef<Path>>(
             let f = fs::File::open(override_path)?;
             Ok(Tokenizer::from_reader(f)?)
         })?;
-        info!("🧮 Loaded tokenizer in {total} us (fetch: {fetch} us, update: {update} us, creation: {creation} us)",
+        log::info!("🧮 Loaded tokenizer in {total} us (fetch: {fetch} us, update: {update} us, creation: {creation} us)",
             total = maybe_display_micros(total),
             fetch = maybe_display_micros(fetch),
             update = maybe_display_micros(update),
@@ -62,7 +62,7 @@ fn tokenizer_inner<P: AsRef<Path>>(
     } else {
         let total_start = std::time::Instant::now();
         let tokenizer = Tokenizer::from_reader(&mut &*DEFAULT_TOKENIZER_BYTES)?;
-        info!(
+        log::info!(
             "🧮 Loaded (builtin) tokenizer in {} us",
             maybe_display_micros(total_start.elapsed())
         );
@@ -94,7 +94,7 @@ lazy_static! {
 }
 
 fn rules_inner<P: AsRef<Path>>(override_path: Option<P>, cache_dir: &Path) -> Result<Rules> {
-    info!("🧮 Loading rules...");
+    log::info!("🧮 Loading rules...");
     let rules = if let Some(override_path) = override_path.as_ref() {
         let override_path = override_path.as_ref();
         let mut cached = Cached::new(override_path.display().to_string(), cache_dir)?;
@@ -108,7 +108,7 @@ fn rules_inner<P: AsRef<Path>>(override_path: Option<P>, cache_dir: &Path) -> Re
             let f = fs::File::open(override_path)?;
             Ok(Rules::from_reader(f)?)
         })?;
-        info!("🧮 Loaded rules in {total} us (fetch: {fetch} us, update: {update} us, creation: {creation} us)",
+        log::info!("🧮 Loaded rules in {total} us (fetch: {fetch} us, update: {update} us, creation: {creation} us)",
             total = maybe_display_micros(total),
             fetch = maybe_display_micros(fetch),
             update = maybe_display_micros(update),
@@ -119,7 +119,7 @@ fn rules_inner<P: AsRef<Path>>(override_path: Option<P>, cache_dir: &Path) -> Re
         // there is no speedgain for the builtin
         let total_start = std::time::Instant::now();
         let rules = Rules::from_reader(&mut &*DEFAULT_RULES_BYTES)?;
-        info!(
+        log::info!(
             "🧮 Loaded (builtin) rules in {} us",
             maybe_display_micros(total_start.elapsed())
         );
