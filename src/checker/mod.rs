@@ -161,8 +161,12 @@ pub mod tests {
             .try_init();
         let doc_comments = true;
         let dev_comments = false;
-        let docs =
-            Documentation::load_from_str(ContentOrigin::TestEntityRust, content, doc_comments, dev_comments);
+        let docs = Documentation::load_from_str(
+            ContentOrigin::TestEntityRust,
+            content,
+            doc_comments,
+            dev_comments,
+        );
         let (origin, chunks) = docs.into_iter().next().expect("Contains exactly one file");
         let suggestions = dummy::DummyChecker
             .check(&origin, &chunks[..])

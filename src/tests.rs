@@ -1,15 +1,12 @@
-use super::*;
 use super::literalset::tests::gen_literal_set;
+use super::*;
 use crate::checker::Checker;
 use crate::util::{load_span_from, sub_char_range, sub_chars};
 use crate::{chyrp_up, fluff_up};
 
-use crate::documentation::{
-    SourceRange,
-    tests::annotated_literals,
-};
-use std::convert::From;
+use crate::documentation::{tests::annotated_literals, SourceRange};
 use indexmap::IndexMap;
+use std::convert::From;
 #[test]
 fn parse_and_construct() {
     let _ = env_logger::builder()
@@ -74,7 +71,12 @@ use crate::documentation::Documentation;
 /// End-to-end tests for different Checkers
 macro_rules! end2end {
     ($test:expr, $n:expr) => {{
-        end2end!($test, crate::ContentOrigin::TestEntityRust, $n, crate::tests::e2e::DummyChecker);
+        end2end!(
+            $test,
+            crate::ContentOrigin::TestEntityRust,
+            $n,
+            crate::tests::e2e::DummyChecker
+        );
     }};
 
     ($test:expr, $origin:expr, $n:expr, $checker:ty) => {{
@@ -89,7 +91,8 @@ macro_rules! end2end {
             .try_init();
 
         let origin: crate::ContentOrigin = $origin;
-        let docs = crate::documentation::Documentation::load_from_str(origin.clone(), $test, true, true);
+        let docs =
+            crate::documentation::Documentation::load_from_str(origin.clone(), $test, true, true);
         assert_eq!(docs.len(), 1);
         let chunks = docs.get(&origin).expect("Must contain dummy path");
         assert_eq!(dbg!(chunks).len(), 1);

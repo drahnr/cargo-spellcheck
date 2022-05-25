@@ -192,31 +192,29 @@ macro_rules! fluff_up {
     };
 }
 
-
 pub mod tests {
     use super::*;
     use crate::tests::annotated_literals;
 
-pub fn gen_literal_set(source: &str) -> LiteralSet {
-    let literals = dbg!(annotated_literals(dbg!(source)));
+    pub fn gen_literal_set(source: &str) -> LiteralSet {
+        let literals = dbg!(annotated_literals(dbg!(source)));
 
-    let mut iter = dbg!(literals).into_iter();
-    let literal = iter
-        .next()
-        .expect("Must have at least one item in laterals");
-    let mut cls = LiteralSet::from(literal);
+        let mut iter = dbg!(literals).into_iter();
+        let literal = iter
+            .next()
+            .expect("Must have at least one item in laterals");
+        let mut cls = LiteralSet::from(literal);
 
-    for literal in iter {
-        assert!(cls.add_adjacent(literal).is_ok());
+        for literal in iter {
+            assert!(cls.add_adjacent(literal).is_ok());
+        }
+        dbg!(cls)
     }
-    dbg!(cls)
-}
 }
 
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-
 
     use crate::tests::annotated_literals;
     use crate::util::load_span_from;
@@ -239,7 +237,6 @@ struct Fluff;"#;
 struct Fluff;"#;
         assert_eq!(RAW, EXPECT);
     }
-
 
     // range within the literalset content string
     const EXMALIBU_RANGE_START: usize = 9;

@@ -17,7 +17,7 @@
 
 pub use doc_chunks as documentation;
 #[cfg(test)]
-pub(crate) use doc_chunks::{fluff_up, chyrp_up};
+pub(crate) use doc_chunks::{chyrp_up, fluff_up};
 
 pub mod action;
 mod checker;

@@ -527,7 +527,8 @@ multiline. Fullstop."#,
         .is_test(true)
         .try_init();
 
-    let docs = Documentation::load_from_str(ContentOrigin::TestEntityCommonMark, CONTENT, true, false);
+    let docs =
+        Documentation::load_from_str(ContentOrigin::TestEntityCommonMark, CONTENT, true, false);
     assert_eq!(docs.entry_count(), 1);
     let chunks = docs
         .get(&ContentOrigin::TestEntityCommonMark)

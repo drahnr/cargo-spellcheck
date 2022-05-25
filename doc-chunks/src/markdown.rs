@@ -136,9 +136,7 @@ impl<'a> PlainOverlay<'a> {
     }
 
     /// Ranges are mapped `cmark reduced/plain -> raw`.
-    pub fn extract_plain_with_mapping(
-        cmark: &str,
-    ) -> (String, IndexMap<Range, SourceRange>) {
+    pub fn extract_plain_with_mapping(cmark: &str) -> (String, IndexMap<Range, SourceRange>) {
         let mut plain = String::with_capacity(cmark.len());
         let mut mapping = indexmap::IndexMap::with_capacity(128);
 
