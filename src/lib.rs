@@ -16,6 +16,8 @@
 //! A syntax tree based doc comment and common mark spell checker.
 
 pub use doc_chunks as documentation;
+#[cfg(test)]
+pub(crate) use doc_chunks::{fluff_up, chyrp_up};
 
 pub mod action;
 mod checker;

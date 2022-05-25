@@ -248,9 +248,7 @@ impl Action {
             ContentOrigin::CommonMarkFile(path) => self.correct_file(path, bandaids),
             ContentOrigin::RustSourceFile(path) => self.correct_file(path, bandaids),
             ContentOrigin::RustDocTest(path, _span) => self.correct_file(path, bandaids),
-            #[cfg(test)]
             ContentOrigin::TestEntityRust => unreachable!("Use a proper file"),
-            #[cfg(test)]
             ContentOrigin::TestEntityCommonMark => unreachable!("Use a proper file"),
         }
     }

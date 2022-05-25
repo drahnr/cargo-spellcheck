@@ -27,10 +27,8 @@ pub enum ContentOrigin {
     /// Full rust source file.
     RustSourceFile(PathBuf),
     /// A test entity for a rust file, with no meaning outside of test.
-    #[cfg(test)]
     TestEntityRust,
     /// A test entity for a cmark file, with no meaning outside of test.
-    #[cfg(test)]
     TestEntityCommonMark,
 }
 
@@ -47,14 +45,12 @@ impl ContentOrigin {
             Self::CommonMarkFile(path) => path.as_path(),
             Self::RustDocTest(path, _) => path.as_path(),
             Self::RustSourceFile(path) => path.as_path(),
-            #[cfg(test)]
             Self::TestEntityCommonMark => {
                 lazy_static::lazy_static! {
                     static ref TEST_ENTITY_CMARK: PathBuf = PathBuf::from("/tmp/test/entity.md");
                 };
                 TEST_ENTITY_CMARK.as_path()
             }
-            #[cfg(test)]
             Self::TestEntityRust => {
                 lazy_static::lazy_static! {
                     static ref TEST_ENTITY_RUST: PathBuf = PathBuf::from("/tmp/test/entity.rs");

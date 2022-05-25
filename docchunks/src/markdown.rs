@@ -66,6 +66,14 @@ pub(crate) fn is_html_tag_on_no_scope_list(text: &str) -> bool {
     HTML_TAG_EMPTY_OR_SPECIAL_CASE.is_match(text)
 }
 
+#[test]
+fn scoped() {
+    assert_eq!(false, is_html_tag_on_no_scope_list("<code>"));
+    assert_eq!(false, is_html_tag_on_no_scope_list("</code>"));
+    assert_eq!(true, is_html_tag_on_no_scope_list("<code />"));
+    assert_eq!(true, is_html_tag_on_no_scope_list("<pre>🌡</pre>\n"));
+}
+
 /// A plain representation of cmark riddled chunk.
 #[derive(Clone)]
 pub struct PlainOverlay<'a> {

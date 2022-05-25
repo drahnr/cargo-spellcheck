@@ -297,11 +297,9 @@ impl Documentation {
                 docs.add_cargo_manifest_description(path, content)
             }
             origin @ ContentOrigin::CommonMarkFile(_) => docs.add_commonmark(origin, content),
-            #[cfg(test)]
             origin @ ContentOrigin::TestEntityRust => {
                 docs.add_rust(origin, content, doc_comments, dev_comments)
             }
-            #[cfg(test)]
             origin @ ContentOrigin::TestEntityCommonMark => docs.add_commonmark(origin, content),
         }
         .unwrap_or_else(move |e| {

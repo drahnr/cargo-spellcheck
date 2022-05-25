@@ -143,8 +143,57 @@ macro_rules! chyrp_dbg {
     }
 }
 
-#[cfg(test)]
-pub(crate) mod tests {
+/// A helper macro creating valid doc string using the macro syntax
+/// `#[doc=r#"..."#]`.
+///
+/// Example:
+///
+/// ```rust
+/// let x = chryp_up!(["some", "thing"])
+/// let y = r##"#[doc=r#"some
+/// thing"#
+/// struct ChyrpChyrp;"##;
+///
+/// assert_eq!(x,y);
+/// ```
+#[macro_export]
+macro_rules! chyrp_up {
+    ([ $( $line:literal ),+ $(,)? ] $(@ $prefix:literal)? ) => {
+        chyrp_up!( $( $line ),+ $(@ $prefix)? )
+    };
+    ($first:literal $(, $( $line:literal ),+ )? $(,)? $(@ $prefix:literal)? ) => {
+        concat!($( $prefix ,)? r##"#[doc=r#""##, $first $( $(, "\n", $line )+ )?, r##""#]"##, "\n", "struct ChyrpChyrp;")
+    };
+}
+
+/// A helper macro creating valid doc string using the macro syntax
+/// `/// ...`.
+///
+/// Example:
+///
+/// ```rust
+/// let x = fluff_up!(["some", "thing"])
+/// let y = r#"/// some
+/// /// thing
+/// struct Fluff;"##;
+///
+/// assert_eq!(x,y);
+/// ```
+#[macro_export]
+macro_rules! fluff_up {
+    ([ $( $line:literal ),+ $(,)?] $( @ $prefix:literal)?) => {
+        fluff_up!($( $line ),+ $(@ $prefix)?)
+    };
+    ($($line:literal ),+ $(,)? ) => {
+        fluff_up!($( $line ),+ @ "")
+    };
+    ($($line:literal ),+ $(,)? @ $prefix:literal ) => {
+        concat!("" $(, $prefix, "/// ", $line, "\n")+ , "struct Fluff;")
+    };
+}
+
+
+pub mod tests {
     use super::*;
     use crate::tests::annotated_literals;
 
@@ -160,6 +209,18 @@ pub fn gen_literal_set(source: &str) -> LiteralSet {
     for literal in iter {
         assert!(cls.add_adjacent(literal).is_ok());
     }
+    dbg!(cls)
+}
+}
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use super::*;
+
+
+    use crate::tests::annotated_literals;
+    use crate::util::load_span_from;
+    use crate::util::sub_chars;
 
     #[test]
     fn fluff_one() {
