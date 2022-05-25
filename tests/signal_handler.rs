@@ -52,7 +52,7 @@ fn signal_handler_works() -> Result<(), Box<dyn std::error::Error + 'static>> {
             }
         }
     } else {
-        signal_handler();
+        signal_handler(|| {});
 
         // signal while blocking signals
         {

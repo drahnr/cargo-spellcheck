@@ -427,14 +427,14 @@ impl UserPicked {
                     continue;
                 }
                 sth => {
-                    trace!("read() something other than a key: {:?}", sth);
+                    log::trace!("read() something other than a key: {:?}", sth);
                     break;
                 }
             };
 
             if state.is_custom_entry() {
                 drop(_guard);
-                info!("Custom entry mode");
+                log::info!("Custom entry mode");
                 _guard = ScopedRaw::new();
 
                 let pick = self.enter_custom_replacement(state, event)?;
@@ -451,7 +451,7 @@ impl UserPicked {
 
             drop(_guard);
             // print normally again
-            trace!("registered event: {:?}", &event);
+            log::trace!("registered event: {:?}", &event);
 
             let KeyEvent { code, modifiers } = event;
 
@@ -476,7 +476,7 @@ impl UserPicked {
                 }
                 KeyCode::Char('?') => return Ok(UserSelection::Help),
                 x => {
-                    trace!("Unexpected input {:?}", x);
+                    log::trace!("Unexpected input {:?}", x);
                 }
             }
         }
@@ -502,24 +502,24 @@ impl UserPicked {
                 Direction::Backward => suggestions_it.next_back(),
             };
 
-            trace!("next() ---> {:?}", &opt_next);
+            log::trace!("next() ---> {:?}", &opt_next);
 
             let (idx, suggestion) = match opt_next {
                 Some(x) => x,
                 None => match direction {
                     Direction::Forward => {
-                        trace!("completed file, continue to next");
+                        log::trace!("completed file, continue to next");
                         break; // we completed this file, move on to the next
                     }
                     Direction::Backward => {
-                        trace!("went back, now back at the beginning");
+                        log::trace!("went back, now back at the beginning");
                         suggestions_it = start.clone();
                         continue;
                     } // go to the start
                 },
             };
             if suggestion.replacements.is_empty() {
-                trace!("BUG: Suggestion did not contain a replacement, skip");
+                log::trace!("BUG: Suggestion did not contain a replacement, skip");
                 continue;
             }
             println!("{}", suggestion);
@@ -534,7 +534,7 @@ impl UserPicked {
                     }
                     UserSelection::SkipFile => break 'outer,
                     UserSelection::Previous => {
-                        warn!("Requires a iterator which works bidrectionally");
+                        log::warn!("Requires a iterator which works bidrectionally");
                         continue 'inner;
                     }
                     UserSelection::Help => {

@@ -1,5 +1,9 @@
 pub use super::{TrimmedLiteral, TrimmedLiteralDisplay};
+
 use crate::{CheckableChunk, CommentVariant, Range};
+
+use std::fmt;
+
 /// A set of consecutive literals.
 ///
 /// Provides means to render them as a code block
@@ -66,7 +70,7 @@ impl LiteralSet {
     /// Convert to a checkable chunk.
     ///
     /// Creates the map from content ranges to source spans.
-    pub fn into_chunk(self) -> crate::documentation::CheckableChunk {
+    pub fn into_chunk(self) -> crate::CheckableChunk {
         let n = self.len();
         let mut source_mapping = indexmap::IndexMap::with_capacity(n);
         let mut content = String::with_capacity(n * 120);
@@ -116,8 +120,6 @@ impl LiteralSet {
     }
 }
 
-use std::fmt;
-
 impl<'s> fmt::Display for LiteralSet {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let n = self.len();
@@ -132,70 +134,31 @@ impl<'s> fmt::Display for LiteralSet {
         Ok(())
     }
 }
+/// A debug helper to print concatenated length of all items.
+#[macro_export]
+macro_rules! chyrp_dbg {
+    ($first:literal $(, $( $line:literal ),+ )? $(,)? $(@ $prefix:literal)? ) => {
+        dbg!(concat!($first $( $(, "\n", $line )+ )?).len());
+        dbg!(concat!($first $( $(, "\n", $line )+ )?));
+    }
+}
 
 #[cfg(test)]
 pub(crate) mod tests {
-    pub(crate) use super::super::tests::annotated_literals;
     use super::*;
-    use crate::util::load_span_from;
-    use crate::util::sub_chars;
+    use crate::tests::annotated_literals;
 
-    /// A debug helper to print concatenated length of all items.
-    #[macro_export]
-    macro_rules! chyrp_dbg {
-        ($first:literal $(, $( $line:literal ),+ )? $(,)? $(@ $prefix:literal)? ) => {
-            dbg!(concat!($first $( $(, "\n", $line )+ )?).len());
-            dbg!(concat!($first $( $(, "\n", $line )+ )?));
-        }
-    }
+pub fn gen_literal_set(source: &str) -> LiteralSet {
+    let literals = dbg!(annotated_literals(dbg!(source)));
 
-    /// A helper macro creating valid doc string using the macro syntax
-    /// `#[doc=r#"..."#]`.
-    ///
-    /// Example:
-    ///
-    /// ```rust
-    /// let x = chryp_up!(["some", "thing"])
-    /// let y = r##"#[doc=r#"some
-    /// thing"#
-    /// struct ChyrpChyrp;"##;
-    ///
-    /// assert_eq!(x,y);
-    /// ```
-    #[macro_export]
-    macro_rules! chyrp_up {
-        ([ $( $line:literal ),+ $(,)? ] $(@ $prefix:literal)? ) => {
-            chyrp_up!( $( $line ),+ $(@ $prefix)? )
-        };
-        ($first:literal $(, $( $line:literal ),+ )? $(,)? $(@ $prefix:literal)? ) => {
-            concat!($( $prefix ,)? r##"#[doc=r#""##, $first $( $(, "\n", $line )+ )?, r##""#]"##, "\n", "struct ChyrpChyrp;")
-        };
-    }
+    let mut iter = dbg!(literals).into_iter();
+    let literal = iter
+        .next()
+        .expect("Must have at least one item in laterals");
+    let mut cls = LiteralSet::from(literal);
 
-    /// A helper macro creating valid doc string using the macro syntax
-    /// `/// ...`.
-    ///
-    /// Example:
-    ///
-    /// ```rust
-    /// let x = fluff_up!(["some", "thing"])
-    /// let y = r#"/// some
-    /// /// thing
-    /// struct Fluff;"##;
-    ///
-    /// assert_eq!(x,y);
-    /// ```
-    #[macro_export]
-    macro_rules! fluff_up {
-        ([ $( $line:literal ),+ $(,)?] $( @ $prefix:literal)?) => {
-            fluff_up!($( $line ),+ $(@ $prefix)?)
-        };
-        ($($line:literal ),+ $(,)? ) => {
-            fluff_up!($( $line ),+ @ "")
-        };
-        ($($line:literal ),+ $(,)? @ $prefix:literal ) => {
-            concat!("" $(, $prefix, "/// ", $line, "\n")+ , "struct Fluff;")
-        };
+    for literal in iter {
+        assert!(cls.add_adjacent(literal).is_ok());
     }
 
     #[test]
@@ -216,20 +179,6 @@ struct Fluff;"#;
         assert_eq!(RAW, EXPECT);
     }
 
-    pub(crate) fn gen_literal_set(source: &str) -> LiteralSet {
-        let literals = dbg!(annotated_literals(dbg!(source)));
-
-        let mut iter = dbg!(literals).into_iter();
-        let literal = iter
-            .next()
-            .expect("Must have at least one item in laterals");
-        let mut cls = LiteralSet::from(literal);
-
-        for literal in iter {
-            assert!(cls.add_adjacent(literal).is_ok());
-        }
-        dbg!(cls)
-    }
 
     // range within the literalset content string
     const EXMALIBU_RANGE_START: usize = 9;

@@ -14,7 +14,7 @@ use crate::Range;
 use fs_err as fs;
 use io::Write;
 use lazy_static::lazy_static;
-use log::{debug, trace};
+
 use nlprule::Tokenizer;
 use std::io::{self, BufRead};
 
@@ -173,12 +173,12 @@ impl HunspellCheckerInner {
                 let keep = search_dir.is_dir();
                 if !keep {
                     // search_dir also contains the default paths, so just silently ignore these
-                    debug!(
+                    log::debug!(
                         "Dictionary search path is not a directory {}",
                         search_dir.display()
                     );
                 } else {
-                    debug!(
+                    log::debug!(
                         "Found dictionary search path {}",
                         search_dir.display()
                     );
@@ -188,7 +188,7 @@ impl HunspellCheckerInner {
             .find_map(|search_dir| {
                 let dic = search_dir.join(lang).with_extension("dic");
                 if !dic.is_file() {
-                    debug!(
+                    log::debug!(
                         "Dictionary path dervied from search dir is not a file {}",
                         dic.display()
                     );
@@ -196,13 +196,13 @@ impl HunspellCheckerInner {
                 }
                 let aff = search_dir.join(lang).with_extension("aff");
                 if !aff.is_file() {
-                    debug!(
+                    log::debug!(
                         "Affixes path dervied from search dir is not a file {}",
                         aff.display()
                     );
                     return None;
                 }
-                debug!("Using dic {} and aff {}", dic.display(), aff.display());
+                log::debug!("Using dic {} and aff {}", dic.display(), aff.display());
                 Some((dic, aff))
             })
             .ok_or_else(|| {
@@ -234,7 +234,7 @@ impl HunspellCheckerInner {
         // suggestion must contain the word itself if it is valid extra dictionary
         // be more strict about the extra dictionaries, they have to exist
         for extra_dic in config.extra_dictionaries() {
-            debug!("Adding extra dictionary {}", extra_dic.display());
+            log::debug!("Adding extra dictionary {}", extra_dic.display());
             if !extra_dic.is_file() {
                 bail!("Extra dictionary {} is not a file", extra_dic.display())
             }
@@ -253,7 +253,7 @@ impl HunspellCheckerInner {
                 )
             }
         }
-        debug!("Dictionary setup completed successfully.");
+        log::debug!("Dictionary setup completed successfully.");
         Ok(Self {
             hunspell: HunspellSafe::from(hunspell),
             transform_regex,
@@ -303,7 +303,7 @@ impl Checker for HunspellChecker {
 
         for chunk in chunks {
             let plain = chunk.erase_cmark();
-            trace!("{:?}", &plain);
+            log::trace!("{:?}", &plain);
             let txt = plain.as_str();
             let hunspell = &*self.hunspell.0;
 
@@ -385,7 +385,7 @@ fn obtain_suggestions<'s>(
     acc: &mut Vec<Suggestion<'s>>,
 ) {
     if !hunspell.check(&word) {
-        trace!("No match for word (plain range: {:?}): >{}<", &range, &word);
+        log::trace!("No match for word (plain range: {:?}): >{}<", &range, &word);
         // get rid of single character suggestions
         let replacements = hunspell
             .suggest(&word)
@@ -395,16 +395,16 @@ fn obtain_suggestions<'s>(
 
         // strings made of vulgar fraction or emoji
         if allow_emojis && consists_of_vulgar_fractions_or_emojis(&word) {
-            trace!(target: "quirks", "Found emoji or vulgar fraction character, treating {} as ok", &word);
+            log::trace!(target: "quirks", "Found emoji or vulgar fraction character, treating {} as ok", &word);
             return;
         }
 
         if allow_concatenated && replacements_contain_dashless(&word, replacements.as_slice()) {
-            trace!(target: "quirks", "Found dashless word in replacement suggestions, treating {} as ok", &word);
+            log::trace!(target: "quirks", "Found dashless word in replacement suggestions, treating {} as ok", &word);
             return;
         }
         if allow_dashed && replacements_contain_dashed(&word, replacements.as_slice()) {
-            trace!(target: "quirks", "Found dashed word in replacement suggestions, treating {} as ok", &word);
+            log::trace!(target: "quirks", "Found dashed word in replacement suggestions, treating {} as ok", &word);
             return;
         }
         for (range, span) in plain.find_spans(range.clone()) {
@@ -419,7 +419,7 @@ fn obtain_suggestions<'s>(
             })
         }
     } else {
-        trace!(
+        log::trace!(
             "Found a match for word (plain range: {:?}): >{}<",
             &range,
             word

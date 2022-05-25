@@ -7,7 +7,6 @@ use super::*;
 use crate::Documentation;
 
 use crate::errors::*;
-use log::{debug, trace, warn};
 
 use fs_err as fs;
 use std::collections::HashSet;
@@ -38,7 +37,7 @@ fn extract_modules_recurse_collect<P: AsRef<Path>>(
 ) -> Result<()> {
     let path = path.as_ref();
     let base = if let Some(base) = path.parent() {
-        trace!("Parent path of {} is {}", path.display(), base.display());
+        log::trace!("Parent path of {} is {}", path.display(), base.display());
         base.to_owned()
     } else {
         return Err(eyre!(
@@ -74,7 +73,7 @@ fn extract_modules_recurse_collect<P: AsRef<Path>>(
                 path3.display()
             ))
         }
-        _ => trace!(
+        _ => log::trace!(
             "Neither file nor dir with mod.rs {} / {} / {}",
             path1.display(),
             path2.display(),
@@ -128,11 +127,11 @@ fn extract_modules_recurse<P: AsRef<Path>>(
             },
             TokenTree::Punct(punct) => {
                 if let SeekingFor::ModulFin(ref mod_name) = state {
-                    trace!("✨ Found a module: {}", mod_name);
+                    log::trace!("✨ Found a module: {}", mod_name);
                     if punct.as_char() == ';' && punct.spacing() == Spacing::Alone {
                         extract_modules_recurse_collect(path, &mut acc, &mod_name)?;
                     } else {
-                        trace!(
+                        log::trace!(
                             "🍂 Either not alone or not a semi colon {:?} - incomplete mod {}",
                             punct,
                             mod_name
@@ -215,7 +214,7 @@ fn load_manifest<P: AsRef<Path>>(manifest_dir: P) -> Result<(cargo_toml::Manifes
     if manifest.complete_from_path(&manifest_file).is_err()
         && manifest.complete_from_path(manifest_dir).is_err()
     {
-        debug!(
+        log::debug!(
             "Complete from filesystem did not yield new information for manifest {}",
             manifest_file.display()
         );
@@ -262,7 +261,7 @@ fn extract_products(
     let items = iter
         .filter_map(|product| {
             if product.path.is_none() {
-                warn!(
+                log::warn!(
                     "Missing path for product {:?}, should have been filled earlier.",
                     product.name
                 )
@@ -274,14 +273,14 @@ fn extract_products(
             let p = manifest_dir.join(PathBuf::from(path_str));
             let is_file = p.is_file();
             if !is_file {
-                debug!("File listed by cargo-toml does not exist: {}", p.display());
+                log::debug!("File listed by cargo-toml does not exist: {}", p.display());
             }
             is_file
         })
         .map(|path_str| CheckEntity::Source(manifest_dir.join(path_str), true))
         .collect::<HashSet<CheckEntity>>();
 
-    trace!("📜 explicit manifest products {:?}", &items);
+    log::trace!("📜 explicit manifest products {:?}", &items);
     Ok(items)
 }
 
@@ -298,7 +297,7 @@ fn extract_readme(
             if readme.is_file() {
                 Some(CheckEntity::Markdown(manifest_dir.join(readme)))
             } else {
-                warn!(
+                log::warn!(
                     "📜 read-me file declared in Cargo.toml {} is not a file",
                     readme.display()
                 );
@@ -329,7 +328,7 @@ fn handle_manifest<P: AsRef<Path>>(
     skip_readme: bool,
 ) -> Result<HashSet<CheckEntity>> {
     let manifest_dir = to_manifest_dir(manifest_dir)?;
-    trace!("📜 Handle manifest in dir: {}", manifest_dir.display());
+    log::trace!("📜 Handle manifest in dir: {}", manifest_dir.display());
 
     let manifest_dir = manifest_dir.as_path();
     let (manifest, manifest_content) = load_manifest(manifest_dir).wrap_err_with(|| {
@@ -370,7 +369,7 @@ fn handle_manifest<P: AsRef<Path>>(
     }
 
     if let Some(workspace) = manifest.workspace {
-        trace!("🪆 Handling manifest workspace");
+        log::trace!("🪆 Handling manifest workspace");
         workspace
             .members
             .into_iter()
@@ -384,10 +383,10 @@ fn handle_manifest<P: AsRef<Path>>(
                     )
                 })?;
                 let member_dirs = glob::glob(back_to_glob)?;
-                debug!("🪆 Handing manifest member: {}", &member_entry_glob);
+                log::debug!("🪆 Handing manifest member: {}", &member_entry_glob);
                 for member_dir in member_dirs {
                     let member_dir = member_dir?;
-                    trace!(
+                    log::trace!(
                         "🪆 Handling manifest member glob resolved: {}",
                         member_dir.display()
                     );
@@ -408,7 +407,7 @@ fn handle_manifest<P: AsRef<Path>>(
                             );
                         }
                     } else {
-                        warn!(
+                        log::warn!(
                             "🪆 Opening manifest from member failed {}",
                             member_dir.display()
                         );
@@ -435,7 +434,7 @@ pub(crate) fn extract(
         recurse = true;
     }
 
-    debug!("Running on inputs {:?} / recursive={}", &paths, recurse);
+    log::debug!("Running on inputs {:?} / recursive={}", &paths, recurse);
 
     #[derive(Debug, Clone)]
     enum Extraction {
@@ -453,11 +452,11 @@ pub(crate) fn extract(
         } else {
             cwd.join(&path_in)
         };
-        debug!("Processing {} -> {}", path_in.display(), path.display());
+        log::debug!("Processing {} -> {}", path_in.display(), path.display());
         path.canonicalize().ok()
     }));
 
-    debug!("Running on absolute dirs {:?} ", &flow);
+    log::debug!("Running on absolute dirs {:?} ", &flow);
 
     // stage 2 - check for manifest, .rs , .md files and directories
     let mut files_to_check = Vec::with_capacity(64);
@@ -469,7 +468,7 @@ pub(crate) fn extract(
                     Some(file_name) if file_name.ends_with(".md") => Extraction::Markdown(path),
                     Some(file_name) if file_name.ends_with(".rs") => Extraction::Source(path),
                     _ => {
-                        warn!("Unexpected item made it into the items {}", path.display());
+                        log::warn!("Unexpected item made it into the items {}", path.display());
                         continue;
                     }
                 }
@@ -482,7 +481,7 @@ pub(crate) fn extract(
                     // if recursing is wanted
                     // and if it doesn't contain a manifest file
                     match fs::read_dir(path) {
-                        Err(err) => warn!("Listing directory contents {} failed", err),
+                        Err(err) => log::warn!("Listing directory contents {} failed", err),
                         Ok(entries) => {
                             for entry in entries.flatten() {
                                 let path = entry.path();
@@ -494,7 +493,7 @@ pub(crate) fn extract(
                     continue;
                 } else {
                     match fs::read_dir(path) {
-                        Err(err) => warn!("Listing directory contents {} failed", err),
+                        Err(err) => log::warn!("Listing directory contents {} failed", err),
                         Ok(entries) => {
                             for entry in entries.flatten() {
                                 let path = entry.path();
@@ -517,7 +516,7 @@ pub(crate) fn extract(
         files_to_check.push(x);
     }
 
-    debug!("Found a total of {} files to check ", files_to_check.len());
+    log::debug!("Found a total of {} files to check ", files_to_check.len());
 
     // stage 3 - resolve the manifest products and workspaces, warn about missing
     let files_to_check = files_to_check
@@ -528,7 +527,7 @@ pub(crate) fn extract(
                     let manifest_list = handle_manifest(cargo_toml_path, skip_readme)?;
                     acc.extend(manifest_list);
                 }
-                Extraction::Missing(ref missing_path) => warn!(
+                Extraction::Missing(ref missing_path) => log::warn!(
                     "File passed as argument or listed in Cargo.toml manifest does not exist: {}",
                     missing_path.display()
                 ),
@@ -549,11 +548,12 @@ pub(crate) fn extract(
                         docs.add_rust(
                             ContentOrigin::RustSourceFile(path.clone()),
                             content.as_str(),
+                            true,
                             dev_comments,
                         )?;
 
                         if recurse {
-                            let iter = traverse(path.as_path(), dev_comments)?
+                            let iter = traverse(path.as_path(), true, dev_comments)?
                                 .map(|documentation| {
                                     // Filter out duplicate _chunks_
                                     // that `extend` would happily duplicate.
@@ -735,7 +735,7 @@ mod tests {
                     docs.into_iter()
                         .map(|x| {
                             let path = x.0.as_path();
-                            trace!("prefix: {}  --- item: {}", demo_dir().display(), path.display());
+                            log::trace!("prefix: {}  --- item: {}", demo_dir().display(), path.display());
                             path.strip_prefix(demo_dir()).expect("Must have common prefix").to_owned()
                         })
                     ),

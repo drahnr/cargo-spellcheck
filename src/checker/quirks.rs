@@ -2,7 +2,6 @@
 
 use crate::Range;
 use fancy_regex::Regex;
-use log::{trace, warn};
 
 /// Returns `true` iff the replacements contains a variant of `word` without
 /// dashes.
@@ -108,7 +107,7 @@ fn transform_inner<'i, R: AsRef<Regex>>(
                     .filter_map(|m_opt| m_opt)
                     .map(|m| {
                         let intra_word_range = m.start()..m.end();
-                        trace!(target:"quirks",
+                        log::trace!(target:"quirks",
                             "Found capture for word >{}<, with match >{}< and capture >{}< at {:?}",
                             captures.get(0).unwrap().as_str(),
                             word,
@@ -134,7 +133,7 @@ fn transform_inner<'i, R: AsRef<Regex>>(
                 continue;
             }
             Err(e) => {
-                warn!(target:"quirks", "Matching regex >{}< errored: {}", regex.as_str(), e);
+                log::warn!(target:"quirks", "Matching regex >{}< errored: {}", regex.as_str(), e);
                 break;
             }
         }

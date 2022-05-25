@@ -1,8 +1,8 @@
-//! Representation of multiple documents.
+//! # Doc Chunks
 //!
-//! So to speak documentation of project as whole.
+//! `Documentation` is a representation of one or multiple documents.
 //!
-//! A `literal` is a token provided by `proc_macro2`, which is then converted by
+//! A `literal` is a token provided by `proc_macro2` or `ra_ap_syntax` crate, which is then converted by
 //! means of `TrimmedLiteral` using `Cluster`ing into a `CheckableChunk` (mostly
 //! named just `chunk`).
 //!
@@ -10,19 +10,26 @@
 //! span multiple lines, yet each fragment is covering a consecutive `Span` in
 //! the origin content. Each fragment also has a direct mapping to the
 //! `CheckableChunk` internal string representation.
+//!
+//! And `Documentation` holds one or many `CheckableChunks` per file path.
 
-use super::*;
+#![deny(unused_crate_dependencies)]
 
-use crate::errors::*;
-use crate::util::load_span_from;
-use indexmap::IndexMap;
-use log::trace;
+// contains test helpers
+pub mod span;
+pub mod tests;
+pub use self::span::Span;
 pub use proc_macro2::LineColumn;
+
+pub mod util;
+use self::util::{load_span_from, sub_char_range};
+
+use indexmap::IndexMap;
 use proc_macro2::TokenTree;
 use rayon::prelude::*;
-use toml::Spanned;
-
+use serde::Deserialize;
 use std::path::PathBuf;
+use toml::Spanned;
 
 /// Range based on `usize`, simplification.
 pub type Range = core::ops::Range<usize>;
@@ -33,18 +40,21 @@ pub fn apply_offset(range: &mut Range, offset: usize) {
     range.end = range.end.saturating_add(offset);
 }
 
-mod chunk;
-mod cluster;
+pub mod chunk;
+pub mod cluster;
 mod developer;
-mod literal;
-pub(crate) mod literalset;
-mod markdown;
+pub mod errors;
+pub mod literal;
+pub mod literalset;
+pub mod markdown;
 
 pub use chunk::*;
 pub use cluster::*;
+pub use errors::*;
 pub use literal::*;
 pub use literalset::*;
 pub use markdown::*;
+
 /// Collection of all the documentation entries across the project
 #[derive(Debug, Clone)]
 pub struct Documentation {
@@ -103,7 +113,7 @@ impl Documentation {
     }
 
     /// Adds a set of `CheckableChunk`s to the documentation to be checked.
-    fn add_inner(&mut self, origin: ContentOrigin, mut chunks: Vec<CheckableChunk>) {
+    pub fn add_inner(&mut self, origin: ContentOrigin, mut chunks: Vec<CheckableChunk>) {
         self.index
             .entry(origin)
             .and_modify(|acc: &mut Vec<CheckableChunk>| {
@@ -118,9 +128,10 @@ impl Documentation {
         &mut self,
         origin: ContentOrigin,
         content: &str,
+        doc_comments: bool,
         dev_comments: bool,
     ) -> Result<()> {
-        let cluster = Clusters::load_from_str(content, dev_comments)?;
+        let cluster = Clusters::load_from_str(content, doc_comments, dev_comments)?;
 
         let chunks = Vec::<CheckableChunk>::from(cluster);
         self.add_inner(origin, chunks);
@@ -134,7 +145,7 @@ impl Documentation {
         path: PathBuf,
         manifest_content: &str,
     ) -> Result<()> {
-        fn extract_range_of_description(manifest_content: &str) -> Range {
+        fn extract_range_of_description(manifest_content: &str) -> Result<Range> {
             #[derive(Deserialize, Debug)]
             struct Manifest {
                 package: Spanned<Package>,
@@ -145,15 +156,14 @@ impl Documentation {
                 description: Spanned<String>,
             }
 
-            let value: Manifest = toml::from_str(dbg!(manifest_content))
-                .expect("It's valid toml, already parsed this before. qed");
+            let value: Manifest = toml::from_str(manifest_content)?;
             let d = value.package.into_inner().description;
-            let range = dbg!(d.start()..d.end());
-            range
+            let range = d.start()..d.end();
+            Ok(range)
         }
 
-        let mut range = extract_range_of_description(&manifest_content);
-        let description = dbg!(sub_char_range(&manifest_content, range.clone()));
+        let mut range = extract_range_of_description(&manifest_content)?;
+        let description = sub_char_range(&manifest_content, range.clone());
 
         // Attention: `description` does include `\"\"\"` as well as `\\\n`, the latter is not a big issue,
         // but the trailing start and end delimiters are.
@@ -229,7 +239,11 @@ impl Documentation {
                 line: linenumber,
                 column: linecontent.chars().count().saturating_sub(1),
             })
-            .ok_or_else(|| eyre!("Common mark / markdown file does not contain a single line"))?;
+            .ok_or_else(|| {
+                Error::Span(
+                    "Common mark / markdown file does not contain a single line".to_string(),
+                )
+            })?;
 
         let span = Span { start, end };
         let source_mapping = indexmap::indexmap! {
@@ -259,37 +273,50 @@ impl Documentation {
     }
 
     /// Load a document from a single string with a defined origin.
-    pub fn load_from_str(origin: ContentOrigin, content: &str, dev_comments: bool) -> Self {
+    pub fn load_from_str(
+        origin: ContentOrigin,
+        content: &str,
+        doc_comments: bool,
+        dev_comments: bool,
+    ) -> Self {
         let mut docs = Documentation::new();
 
         match origin.clone() {
             ContentOrigin::RustDocTest(_path, span) => {
                 if let Ok(excerpt) = load_span_from(&mut content.as_bytes(), span.clone()) {
-                    docs.add_rust(origin.clone(), excerpt.as_str(), dev_comments)
+                    docs.add_rust(origin.clone(), excerpt.as_str(), doc_comments, dev_comments)
                 } else {
                     // TODO
                     Ok(())
                 }
             }
             origin @ ContentOrigin::RustSourceFile(_) => {
-                docs.add_rust(origin, content, dev_comments)
+                docs.add_rust(origin, content, doc_comments, dev_comments)
             }
             ContentOrigin::CargoManifestDescription(path) => {
                 docs.add_cargo_manifest_description(path, content)
             }
             origin @ ContentOrigin::CommonMarkFile(_) => docs.add_commonmark(origin, content),
             #[cfg(test)]
-            origin @ ContentOrigin::TestEntityRust => docs.add_rust(origin, content, dev_comments),
+            origin @ ContentOrigin::TestEntityRust => {
+                docs.add_rust(origin, content, doc_comments, dev_comments)
+            }
             #[cfg(test)]
             origin @ ContentOrigin::TestEntityCommonMark => docs.add_commonmark(origin, content),
         }
         .unwrap_or_else(move |e| {
-            warn!(
+            log::warn!(
                 "BUG: Failed to load content from {} (dev_comments={:?}): {:?}",
-                origin, dev_comments, e
+                origin,
+                dev_comments,
+                e
             );
         });
         docs
+    }
+
+    pub fn len(&self) -> usize {
+        self.index.len()
     }
 }
 
@@ -301,6 +328,3 @@ impl IntoIterator for Documentation {
         self.index.into_iter()
     }
 }
-
-#[cfg(test)]
-mod tests;

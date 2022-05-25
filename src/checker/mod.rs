@@ -7,8 +7,6 @@ use crate::{CheckableChunk, Config, ContentOrigin, Detector, Suggestion};
 
 use crate::errors::*;
 
-use log::debug;
-
 mod cached;
 use self::cached::Cached;
 
@@ -54,7 +52,7 @@ impl Checkers {
         macro_rules! create_checker {
             ($feature:literal, $checker:ty, $config:expr, $checker_config:expr) => {
                 if !cfg!(feature = $feature) {
-                    debug!("Feature {} is disabled by compilation.", $feature);
+                    log::debug!("Feature {} is disabled by compilation.", $feature);
                     None
                 } else {
                     #[cfg(feature = $feature)]
@@ -62,10 +60,10 @@ impl Checkers {
                         let config = $config;
                         let detector = <$checker>::detector();
                         if config.is_enabled(detector) {
-                            debug!("Enabling {} checks.", detector);
+                            log::debug!("Enabling {} checks.", detector);
                             Some(<$checker>::new($checker_config.unwrap())?)
                         } else {
-                            debug!("Checker {} is disabled by configuration.", detector);
+                            log::debug!("Checker {} is disabled by configuration.", detector);
                             None
                         }
                     }
@@ -161,9 +159,10 @@ pub mod tests {
             .filter(None, log::LevelFilter::Trace)
             .is_test(true)
             .try_init();
+        let doc_comments = true;
         let dev_comments = false;
         let docs =
-            Documentation::load_from_str(ContentOrigin::TestEntityRust, content, dev_comments);
+            Documentation::load_from_str(ContentOrigin::TestEntityRust, content, doc_comments, dev_comments);
         let (origin, chunks) = docs.into_iter().next().expect("Contains exactly one file");
         let suggestions = dummy::DummyChecker
             .check(&origin, &chunks[..])
