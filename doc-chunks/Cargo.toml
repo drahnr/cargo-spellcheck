@@ -13,8 +13,6 @@ readme = "README.md"
 
 [dependencies]
 console = "0.15"
-
-
 fs-err = "2"
 indexmap = { version = "1", features=["rayon", "serde"] }
 itertools = "0.10"
@@ -27,11 +25,9 @@ ra_ap_syntax = "0.0.104"
 rayon = "1.5"
 fancy-regex = "0.10"
 regex = "1"
-
 serde = { version = "1", features = ["derive"] }
 syn = { version = "1", features = ["full"] }
 thiserror = "1"
-
 toml = "0.5"
 
 [dev-dependencies]
