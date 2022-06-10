@@ -14,7 +14,7 @@ documentation comments in order to avoid nasty typos all over your source tree.
 Meant as a helper simplifying review as well as improving CI checks after a
 learning phase for custom/topic specific lingo.
 
-`cargo-cpellcheck` is also a valuable tool to run from git commit hooks or CI/CD
+`cargo-spellcheck` is also a valuable tool to run from git commit hooks or CI/CD
 systems.
 
 ### Check For Spelling and/or Grammar Mistakes
