@@ -472,7 +472,10 @@ pub(crate) fn extract(
                         // path.
                         // Potentially become mdbook aware
                         // <https://github.com/drahnr/cargo-spellcheck/issues/273>
-                        log::debug!("Unknown file type encountered, skipping path: {}", path.display());
+                        log::debug!(
+                            "Unknown file type encountered, skipping path: {}",
+                            path.display()
+                        );
                         continue;
                     }
                 }
