@@ -468,7 +468,11 @@ pub(crate) fn extract(
                     Some(file_name) if file_name.ends_with(".md") => Extraction::Markdown(path),
                     Some(file_name) if file_name.ends_with(".rs") => Extraction::Source(path),
                     _ => {
-                        log::warn!("Unexpected item made it into the items {}", path.display());
+                        // This branch is commonly entered when ran on a non-cargo
+                        // path.
+                        // Potentially become mdbook aware
+                        // <https://github.com/drahnr/cargo-spellcheck/issues/273>
+                        log::debug!("Unknown file type encountered, skipping path: {}", path.display());
                         continue;
                     }
                 }
