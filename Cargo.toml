@@ -1,6 +1,6 @@
 [package]
 name = "cargo-spellcheck"
-version = "0.11.4"
+version = "0.12.0"
 authors = ["Bernhard Schuster <bernhard@ahoi.io>"]
 edition = "2021"
 rust-version = "1.57.0"
@@ -35,7 +35,7 @@ xz2 = "0.1"
 
 [dependencies]
 
-doc-chunks = { version = "0.0.2", path = "./doc-chunks" }
+doc-chunks = { version = "0.0.3", path = "./doc-chunks" }
 
 color-eyre = "0.6"
 cargo_toml = "^0.11.4"
