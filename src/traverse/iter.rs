@@ -35,14 +35,16 @@ impl TraverseModulesIter {
         if meta.is_file() {
             self.queue.push_front((path, level));
         } else if meta.is_dir() {
-            walkdir::WalkDir::new(path)
-                .max_depth(1)
+            ignore::WalkBuilder::new(dbg!(path))
+                .git_ignore(true)
+                .max_depth(1.into())
                 .same_file_system(true)
-                .into_iter()
+                .skip_stdout(true)
+                .build()
                 .filter_map(|entry| {
                     entry
                         .ok()
-                        .filter(|entry| entry.file_type().is_file())
+                        .filter(|entry| entry.file_type().map(|ft| ft.is_file()).unwrap_or(false))
                         .map(|x| x.path().to_owned())
                 })
                 .filter(|path: &PathBuf| {
