@@ -137,7 +137,7 @@ pub struct Common {
     pub jobs: Option<usize>,
 
     #[clap(short = 'm', long, default_value_t = 0_u8)]
-    /// Return code of the application iff spelling mistakes were found.
+    /// Return code of the application if spelling mistakes were found.
     pub code: u8,
 
     /// A list of files and directories to check. See `--recursive`.
