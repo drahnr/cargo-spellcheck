@@ -285,11 +285,12 @@ jobs:
             args:
             - -exc
             - |
+              sudo chown $(whoami): -Rf .
+
               export RUST_BACKTRACE=full
               export EXE="../binary/cargo-spellcheck-$(git rev-parse HEAD)"
 
               sudo chown $(whoami): -f "${EXE}"
-              sudo chown $(whoami): -Rf .
               sudo chmod +x "${EXE}"
 
               "${EXE}" --version
@@ -333,11 +334,12 @@ jobs:
             args:
             - -exc
             - |
+              sudo chown $(whoami): -Rf .
+
               export RUST_BACKTRACE=full
               export EXE="../binary/cargo-spellcheck-$(git rev-parse HEAD)"
 
               sudo chown $(whoami): -f "${EXE}"
-              sudo chown $(whoami): -Rf .
               sudo chmod +x "${EXE}"
 
               "${EXE}" --version
