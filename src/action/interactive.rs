@@ -234,7 +234,9 @@ impl UserPicked {
         state: &mut State,
         event: KeyEvent,
     ) -> Result<UserSelection> {
-        let KeyEvent { code, modifiers } = event;
+        let KeyEvent {
+            code, modifiers, ..
+        } = event;
 
         let length = state.custom_replacement.len() as u16;
         match code {
@@ -453,7 +455,9 @@ impl UserPicked {
             // print normally again
             log::trace!("registered event: {:?}", &event);
 
-            let KeyEvent { code, modifiers } = event;
+            let KeyEvent {
+                code, modifiers, ..
+            } = event;
 
             match code {
                 KeyCode::Up => state.select_next(),

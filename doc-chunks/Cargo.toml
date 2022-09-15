@@ -1,6 +1,6 @@
 [package]
 name = "doc-chunks"
-version = "0.0.3"
+version = "0.0.4"
 authors = ["Bernhard Schuster <bernhard@ahoi.io>"]
 edition = "2021"
 rust-version = "1.57.0"
@@ -21,7 +21,7 @@ memchr = "2"
 log = "0.4"
 proc-macro2 = { version = "1", features = ["span-locations"] }
 pulldown-cmark = "0.9.1"
-ra_ap_syntax = "0.0.104"
+ra_ap_syntax = "0.0.129"
 rayon = "1.5"
 fancy-regex = "0.10"
 regex = "1"
