@@ -595,12 +595,14 @@ jobs:
             args:
             - -exc
             - |
+              sudo chown $(whoami): -Rf .
+
               export RUST_BACKTRACE=full
               export EXE="../binary/cargo-spellcheck-$(git rev-parse HEAD)"
 
               sudo chown $(whoami): -f "${EXE}"
-              sudo chown $(whoami): -Rf .
               sudo chmod +x "${EXE}"
+
               "${EXE}" --version
               "${EXE}" spellcheck demo/Cargo.toml
               "${EXE}" --dev-comments spellcheck demo/Cargo.toml
@@ -628,10 +630,11 @@ jobs:
             args:
             - -exc
             - |
+              sudo chown $(whoami): -f "${EXE}"
+
               export RUST_BACKTRACE=full
               export EXE="../binary/cargo-spellcheck-$(git rev-parse HEAD)"
 
-              sudo chown $(whoami): -f "${EXE}"
               sudo chown $(whoami): -Rf .
               sudo chmod +x "${EXE}"
 
@@ -652,6 +655,8 @@ jobs:
             inputs:
             - name: binary
             - name: git-spearow-juice
+            caches:
+            - path: git-spearow-juice
             run:
               path: sh
               args:
@@ -680,6 +685,8 @@ jobs:
             inputs:
             - name: binary
             - name: git-rustlang-rust
+            caches:
+            - path: git-rustlang-rust
             run:
               path: sh
               args:
