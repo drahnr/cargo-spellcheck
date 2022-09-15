@@ -40,7 +40,7 @@ doc-chunks = { version = "0.0.4", path = "./doc-chunks" }
 color-eyre = "0.6"
 cargo_toml = "^0.11.4"
 console = "0.15"
-crossterm = "0.23.2"
+crossterm = "0.25.0"
 # for the config file
 directories = "4.0.1"
 
