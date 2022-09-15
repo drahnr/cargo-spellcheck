@@ -496,7 +496,7 @@ impl<'a> fmt::Debug for PlainOverlay<'a> {
 
         let mut previous_md_end = 0usize;
         for (plain_range, md_range, style) in
-            itertools::cons_tuples(itertools::zip(self.mapping.iter(), color_cycle))
+            itertools::cons_tuples(self.mapping.iter().zip(color_cycle))
         {
             // TODO do this properly, `saturating sub` just prevents crashing
             let delta = md_range.start.saturating_sub(previous_md_end);

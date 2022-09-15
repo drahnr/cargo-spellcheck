@@ -246,7 +246,7 @@ dependencies = [
  "num_cpus",
  "proc-macro2",
  "pulldown-cmark",
- "ra_ap_syntax 0.0.129",
+ "ra_ap_syntax",
  "rayon",
  "regex",
  "serde",
@@ -606,7 +606,7 @@ dependencies = [
 
 [[package]]
 name = "doc-chunks"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "assert_matches",
  "console",
@@ -620,7 +620,7 @@ dependencies = [
  "memchr",
  "proc-macro2",
  "pulldown-cmark",
- "ra_ap_syntax 0.0.104",
+ "ra_ap_syntax",
  "rayon",
  "regex",
  "serde",
@@ -1616,21 +1616,9 @@ dependencies = [
 
 [[package]]
 name = "ra_ap_la-arena"
-version = "0.0.104"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d3c28b7ef8ec05b8472d93d71dabc2263f8ec19a99a0c0469be7a11ab399d2a"
-
-[[package]]
-name = "ra_ap_la-arena"
 version = "0.0.129"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f1002f8f76b935735bd6a54c7d091c9ebc74fea1c6e9fe3c88a06d2755f92fc"
-
-[[package]]
-name = "ra_ap_limit"
-version = "0.0.104"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "285e82c5aef76b0e5224b78799e3571a0e290cd9cd6ca32191f6e556b87b50bb"
 
 [[package]]
 name = "ra_ap_limit"
@@ -1640,39 +1628,13 @@ checksum = "60b636c1eb1b9d56e671f8131ac5b2fd5c22f1a268acc4fa98015a6c3694e59b"
 
 [[package]]
 name = "ra_ap_parser"
-version = "0.0.104"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "626b67c1acb6795674bd4d83f0700245fb67ad7bb21d0de815578b227fb33767"
-dependencies = [
- "drop_bomb",
- "ra_ap_limit 0.0.104",
- "rustc-ap-rustc_lexer",
-]
-
-[[package]]
-name = "ra_ap_parser"
 version = "0.0.129"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7b6eb86513ac2a19e914d57ed6b79bab5dcede966e5749adef9a06fed29490ca"
 dependencies = [
  "drop_bomb",
- "ra_ap_limit 0.0.129",
+ "ra_ap_limit",
  "rustc-ap-rustc_lexer",
-]
-
-[[package]]
-name = "ra_ap_profile"
-version = "0.0.104"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "15128f7955c99c82ba17db6d3c3c921719bcb9a6912054486949149d02c4e79a"
-dependencies = [
- "cfg-if 1.0.0",
- "countme",
- "libc",
- "once_cell",
- "perf-event",
- "ra_ap_la-arena 0.0.104",
- "winapi",
 ]
 
 [[package]]
@@ -1686,19 +1648,7 @@ dependencies = [
  "libc",
  "once_cell",
  "perf-event",
- "ra_ap_la-arena 0.0.129",
- "winapi",
-]
-
-[[package]]
-name = "ra_ap_stdx"
-version = "0.0.104"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "76bf670033bf7b7a707f4e2957108af2b545475808855b3023a1fac69403371d"
-dependencies = [
- "always-assert",
- "libc",
- "miow",
+ "ra_ap_la-arena",
  "winapi",
 ]
 
@@ -1716,26 +1666,6 @@ dependencies = [
 
 [[package]]
 name = "ra_ap_syntax"
-version = "0.0.104"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6de766172d46071afc07041d37526d4ee4c6446e51d6f5f76b7d0eca816ad21a"
-dependencies = [
- "cov-mark",
- "indexmap",
- "itertools 0.10.4",
- "once_cell",
- "ra_ap_parser 0.0.104",
- "ra_ap_profile 0.0.104",
- "ra_ap_stdx 0.0.104",
- "ra_ap_text_edit 0.0.104",
- "rowan",
- "rustc-ap-rustc_lexer",
- "rustc-hash",
- "smol_str",
-]
-
-[[package]]
-name = "ra_ap_syntax"
 version = "0.0.129"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "14f34d7b8a65f598d035a10f306e756d411cf232ba7707fe2af28e4644eb4bb6"
@@ -1744,24 +1674,14 @@ dependencies = [
  "indexmap",
  "itertools 0.10.4",
  "once_cell",
- "ra_ap_parser 0.0.129",
- "ra_ap_profile 0.0.129",
- "ra_ap_stdx 0.0.129",
- "ra_ap_text_edit 0.0.129",
+ "ra_ap_parser",
+ "ra_ap_profile",
+ "ra_ap_stdx",
+ "ra_ap_text_edit",
  "rowan",
  "rustc-ap-rustc_lexer",
  "rustc-hash",
  "smol_str",
-]
-
-[[package]]
-name = "ra_ap_text_edit"
-version = "0.0.104"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5037f6423837aff4117ac62a3bf8fae0fd876e804e3101e201030fb80dae7846"
-dependencies = [
- "itertools 0.10.4",
- "text-size",
 ]
 
 [[package]]
