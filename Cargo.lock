@@ -210,7 +210,7 @@ dependencies = [
 
 [[package]]
 name = "cargo-spellcheck"
-version = "0.12.0"
+version = "0.12.1"
 dependencies = [
  "assert_matches",
  "bincode",
