@@ -630,12 +630,12 @@ jobs:
             args:
             - -exc
             - |
-              sudo chown $(whoami): -f "${EXE}"
+              sudo chown $(whoami): -Rf .
 
               export RUST_BACKTRACE=full
               export EXE="../binary/cargo-spellcheck-$(git rev-parse HEAD)"
 
-              sudo chown $(whoami): -Rf .
+              sudo chown $(whoami): -f "${EXE}"
               sudo chmod +x "${EXE}"
 
               "${EXE}" --version
@@ -655,8 +655,6 @@ jobs:
             inputs:
             - name: binary
             - name: git-spearow-juice
-            caches:
-            - path: git-spearow-juice
             run:
               path: sh
               args:
@@ -686,23 +684,26 @@ jobs:
             - name: binary
             - name: git-rustlang-rust
             caches:
-            - path: git-rustlang-rust
+            - path: copy
             run:
               path: sh
               args:
+
               - -exc
               - |
                 export EXE="../binary/cargo-spellcheck"
                 sudo cp -vf "${EXE}"-* "${EXE}"
 
-                sudo chown $(whoami): -f "${EXE}"
+                sudo cp -Rf ../git-rustlang-rust/* ./
+                sudo cp -Rf ../git-rustlang-rust/.git{,ignore} ./
+
                 sudo chown $(whoami): -Rf .
+                sudo chown $(whoami): -f "${EXE}"
                 sudo chmod +x "${EXE}"
 
                 git submodule update --init
                 "${EXE}" spellcheck -vvv
-
-              dir: git-rustlang-rust
+              dir: copy
 
   - name: publish-github-release
     build_logs_to_retain: 5
