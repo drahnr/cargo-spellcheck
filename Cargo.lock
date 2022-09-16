@@ -1046,18 +1046,18 @@ checksum = "9a3a5bfb195931eeb336b2a7b4d761daec841b97f947d34394601737a7bba5e4"
 
 [[package]]
 name = "hunspell-rs"
-version = "0.3.1"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a41ba850a510380559b6198da96dd698e9cf0cc5a56cd0c368c5e516a626d44"
+checksum = "0456b29ed803378aae320310258510e83b9d1f0b7c53c69ef5b132550734d740"
 dependencies = [
  "hunspell-sys",
 ]
 
 [[package]]
 name = "hunspell-sys"
-version = "0.2.2"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "15d246e3d21b63ad94a763be34e4d528402ac50705eddfb27734c7f1a99db44e"
+checksum = "790513d021d5c37ea6cef038229748faa567233ad2ae16c47fee800929e42f9e"
 dependencies = [
  "bindgen",
  "cc",
