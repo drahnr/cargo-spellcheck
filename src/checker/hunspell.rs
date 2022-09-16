@@ -393,6 +393,8 @@ fn obtain_suggestions<'s>(
             .filter(|x| x.len() > 1) // single char suggestions tend to be useless
             .collect::<Vec<_>>();
 
+        log::debug!(target: "hunspell", "{word} --{{suggest}}--> {replacements:?}");
+
         // strings made of vulgar fraction or emoji
         if allow_emojis && consists_of_vulgar_fractions_or_emojis(&word) {
             log::trace!(target: "quirks", "Found emoji or vulgar fraction character, treating {} as ok", &word);
