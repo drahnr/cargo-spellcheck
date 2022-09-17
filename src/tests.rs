@@ -138,6 +138,8 @@ macro_rules! end2end_file_cmark {
 }
 
 mod e2e {
+    use std::env::temp_dir;
+
     use super::*;
 
     #[test]
@@ -249,6 +251,37 @@ struct CAPI;
             0,
             DummyChecker,
             Default::default()
+        );
+    }
+
+    /// This test does not crash, it only prints a `hunspell-rs` internal warning message.
+    #[test]
+    fn issue_281() {
+        let dict_path = temp_dir().join(uuid::Uuid::new_v4().to_string() + ".dic");
+        // Any of the two hypthens cause havoc
+        const EXTRA_DICT: &str = r###"2
+—
+–
+"###;
+        let mut f = fs_err::OpenOptions::new()
+            .create_new(true)
+            .truncate(true)
+            .write(true)
+            .open(&dict_path)
+            .unwrap();
+        f.write_all(EXTRA_DICT.as_bytes()).unwrap();
+
+        end2end!(
+            r####"
+//! ©
+"####,
+            ContentOrigin::TestEntityRust,
+            0,
+            HunspellChecker,
+            HunspellConfig {
+                extra_dictionaries: vec![dict_path],
+                ..Default::default()
+            }
         );
     }
 
