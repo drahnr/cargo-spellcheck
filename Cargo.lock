@@ -1046,11 +1046,12 @@ checksum = "9a3a5bfb195931eeb336b2a7b4d761daec841b97f947d34394601737a7bba5e4"
 
 [[package]]
 name = "hunspell-rs"
-version = "0.3.2"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0456b29ed803378aae320310258510e83b9d1f0b7c53c69ef5b132550734d740"
+checksum = "c62ce29f9760b9fa35039ae56c1dd08b6fb8ce7fafc5f496083167ace157eb27"
 dependencies = [
  "hunspell-sys",
+ "log",
 ]
 
 [[package]]
