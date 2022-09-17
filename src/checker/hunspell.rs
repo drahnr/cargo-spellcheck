@@ -21,7 +21,7 @@ use std::io::{self, BufRead};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use hunspell_rs::Hunspell;
+use hunspell_rs::{CheckResult, Hunspell};
 
 use crate::errors::*;
 
@@ -226,7 +226,7 @@ impl HunspellCheckerInner {
 
         if cfg!(debug_assertions) && Lang5::en_US == lang {
             // "Test" is a valid word
-            debug_assert!(hunspell.check("Test"));
+            debug_assert_eq!(hunspell.check("Test"), CheckResult::FoundInDictionary);
             // suggestion must contain the word itself if it is valid
             debug_assert!(hunspell.suggest("Test").contains(&"Test".to_string()));
         }
@@ -384,48 +384,51 @@ fn obtain_suggestions<'s>(
     allow_emojis: bool,
     acc: &mut Vec<Suggestion<'s>>,
 ) {
-    if !hunspell.check(&word) {
-        log::trace!("No match for word (plain range: {:?}): >{}<", &range, &word);
-        // get rid of single character suggestions
-        let replacements = hunspell
-            .suggest(&word)
-            .into_iter()
-            .filter(|x| x.len() > 1) // single char suggestions tend to be useless
-            .collect::<Vec<_>>();
+    match hunspell.check(&word) {
+        CheckResult::MissingInDictionary => {
+            log::trace!("No match for word (plain range: {:?}): >{}<", &range, &word);
+            // get rid of single character suggestions
+            let replacements = hunspell
+                .suggest(&word)
+                .into_iter()
+                .filter(|x| x.len() > 1) // single char suggestions tend to be useless
+                .collect::<Vec<_>>();
 
-        log::debug!(target: "hunspell", "{word} --{{suggest}}--> {replacements:?}");
+            log::debug!(target: "hunspell", "{word} --{{suggest}}--> {replacements:?}");
 
-        // strings made of vulgar fraction or emoji
-        if allow_emojis && consists_of_vulgar_fractions_or_emojis(&word) {
-            log::trace!(target: "quirks", "Found emoji or vulgar fraction character, treating {} as ok", &word);
-            return;
-        }
+            // strings made of vulgar fraction or emoji
+            if allow_emojis && consists_of_vulgar_fractions_or_emojis(&word) {
+                log::trace!(target: "quirks", "Found emoji or vulgar fraction character, treating {} as ok", &word);
+                return;
+            }
 
-        if allow_concatenated && replacements_contain_dashless(&word, replacements.as_slice()) {
-            log::trace!(target: "quirks", "Found dashless word in replacement suggestions, treating {} as ok", &word);
-            return;
+            if allow_concatenated && replacements_contain_dashless(&word, replacements.as_slice()) {
+                log::trace!(target: "quirks", "Found dashless word in replacement suggestions, treating {} as ok", &word);
+                return;
+            }
+            if allow_dashed && replacements_contain_dashed(&word, replacements.as_slice()) {
+                log::trace!(target: "quirks", "Found dashed word in replacement suggestions, treating {} as ok", &word);
+                return;
+            }
+            for (range, span) in plain.find_spans(range.clone()) {
+                acc.push(Suggestion {
+                    detector: Detector::Hunspell,
+                    range,
+                    span,
+                    origin: origin.clone(),
+                    replacements: replacements.clone(),
+                    chunk,
+                    description: Some("Possible spelling mistake found.".to_owned()),
+                })
+            }
         }
-        if allow_dashed && replacements_contain_dashed(&word, replacements.as_slice()) {
-            log::trace!(target: "quirks", "Found dashed word in replacement suggestions, treating {} as ok", &word);
-            return;
+        CheckResult::FoundInDictionary => {
+            log::trace!(
+                "Found a match for word (plain range: {:?}): >{}<",
+                &range,
+                word
+            );
         }
-        for (range, span) in plain.find_spans(range.clone()) {
-            acc.push(Suggestion {
-                detector: Detector::Hunspell,
-                range,
-                span,
-                origin: origin.clone(),
-                replacements: replacements.clone(),
-                chunk,
-                description: Some("Possible spelling mistake found.".to_owned()),
-            })
-        }
-    } else {
-        log::trace!(
-            "Found a match for word (plain range: {:?}): >{}<",
-            &range,
-            word
-        );
     }
 }
 
@@ -507,7 +510,7 @@ bar
             }
         }
 
-        let (dic, aff) = srcs.unwrap();
+        let (dic, aff) = dbg!(srcs.unwrap());
 
         let mut hunspell = Hunspell::new(
             aff.display().to_string().as_str(),
@@ -531,7 +534,7 @@ bar
 
             println!("testing >{}< against line #{} >{}<", word, lineno, line);
             // "whitespace" is a word part of our custom dictionary
-            assert!(hunspell.check(word));
+            assert_eq!(hunspell.check(word), CheckResult::FoundInDictionary);
             // Technically suggestion must contain the word itself if it is valid
             let suggestions = hunspell.suggest(word);
             // but this is not true for i.e. `clang`
