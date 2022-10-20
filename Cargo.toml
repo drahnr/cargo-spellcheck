@@ -136,3 +136,8 @@ config = ".config/spellcheck.toml"
 [[test]]
 name = "signal_handler"
 path = "tests/signal_handler.rs"
+
+
+[patch.crates-io]
+hunspell-sys = { git = "https://github.com/drahnr/hunspell-sys.git", branch = "bernhard-expose-sys-features" }
+hunspell = { git = "https://github.com/drahnr/hunspell.git", branch = "bernhard-more-features" }

@@ -2754,3 +2754,8 @@ dependencies = [
  "thiserror",
  "time",
 ]
+
+[[patch.unused]]
+name = "hunspell-sys"
+version = "0.2.1"
+source = "git+https://github.com/drahnr/hunspell-sys#09c44c9c4e37b6b9e41dd4731fcdb6d42e15e930"
