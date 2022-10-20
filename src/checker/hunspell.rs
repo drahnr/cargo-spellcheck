@@ -226,7 +226,7 @@ impl HunspellCheckerInner {
 
         if cfg!(debug_assertions) && Lang5::en_US == lang {
             // "Test" is a valid word
-            debug_assert!(hunspell.check("Test"));
+            debug_assert_eq!(hunspell.check("Test"), hunspell_rs::CheckResult::FoundInDictionary);
             // suggestion must contain the word itself if it is valid
             debug_assert!(hunspell.suggest("Test").contains(&"Test".to_string()));
         }
@@ -384,7 +384,7 @@ fn obtain_suggestions<'s>(
     allow_emojis: bool,
     acc: &mut Vec<Suggestion<'s>>,
 ) {
-    if !hunspell.check(&word) {
+    if hunspell.check(&word) == hunspell_rs::CheckResult::FoundInDictionary {
         log::trace!("No match for word (plain range: {:?}): >{}<", &range, &word);
         // get rid of single character suggestions
         let replacements = hunspell
@@ -531,7 +531,7 @@ bar
 
             println!("testing >{}< against line #{} >{}<", word, lineno, line);
             // "whitespace" is a word part of our custom dictionary
-            assert!(hunspell.check(word));
+            assert_eq!(hunspell.check(word), hunspell_rs::CheckResult::FoundInDictionary);
             // Technically suggestion must contain the word itself if it is valid
             let suggestions = hunspell.suggest(word);
             // but this is not true for i.e. `clang`
