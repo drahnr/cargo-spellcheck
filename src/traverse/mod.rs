@@ -291,7 +291,7 @@ fn extract_readme(
     Ok(manifest
         .package
         .as_ref()
-        .and_then(|package| package.readme.as_ref())
+        .and_then(|package| package.readme.get().ok().and_then(|x| x.as_path()))
         .and_then(|readme| {
             let readme = PathBuf::from(readme);
             if readme.is_file() {
