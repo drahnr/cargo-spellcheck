@@ -223,6 +223,7 @@ dependencies = [
  "crossterm",
  "directories 4.0.1",
  "doc-chunks",
+ "encoding_rs",
  "env_logger 0.9.1",
  "fancy-regex 0.10.0",
  "fd-lock",
