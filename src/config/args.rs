@@ -204,7 +204,7 @@ pub enum Sub {
 
     /// Print completions.
     Completions {
-        #[clap(long, env="SHELL", parse(try_from_str = load_shell_name))]
+        #[clap(long, env="SHELL", value_parser = load_shell_name)]
         /// Provide the `shell` for which to generate the completion script.
         shell: Shell,
     },
