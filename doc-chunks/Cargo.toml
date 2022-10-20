@@ -21,7 +21,7 @@ memchr = "2"
 log = "0.4"
 proc-macro2 = { version = "1", features = ["span-locations"] }
 pulldown-cmark = "0.9.1"
-ra_ap_syntax = "0.0.129"
+ra_ap_syntax = "0.0.134"
 rayon = "1.5"
 fancy-regex = "0.10"
 regex = "1"
