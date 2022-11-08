@@ -10,6 +10,8 @@ use crate::errors::*;
 mod cached;
 use self::cached::Cached;
 
+use std::collections::HashSet;
+
 mod tokenize;
 pub(crate) use self::hunspell::HunspellChecker;
 pub(crate) use self::nlprules::NlpRulesChecker;
@@ -110,9 +112,12 @@ impl Checker for Checkers {
             collective.extend(nlprule.check(origin, chunks)?);
         }
 
-        collective.sort();
+        // Convert into a set to remove the duplicated suggestions
+        let set: HashSet<Suggestion> = HashSet::from_iter(collective.iter().cloned());
+        let mut suggestions: Vec<Suggestion<'s>> = Vec::from_iter(set);
+        suggestions.sort();
 
-        Ok(collective)
+        Ok(suggestions)
     }
 }
 
