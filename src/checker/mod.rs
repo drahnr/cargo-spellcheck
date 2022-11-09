@@ -104,7 +104,7 @@ impl Checker for Checkers {
     where
         'a: 's,
     {
-        let mut collective = Vec::<Suggestion<'s>>::with_capacity(chunks.len());
+        let mut collective = HashSet::<Suggestion<'s>>::new();
         if let Some(ref hunspell) = self.hunspell {
             collective.extend(hunspell.check(origin, chunks)?);
         }
@@ -112,9 +112,7 @@ impl Checker for Checkers {
             collective.extend(nlprule.check(origin, chunks)?);
         }
 
-        // Convert into a set to remove the duplicated suggestions
-        let set: HashSet<Suggestion> = HashSet::from_iter(collective.iter().cloned());
-        let mut suggestions: Vec<Suggestion<'s>> = Vec::from_iter(set);
+        let mut suggestions: Vec<Suggestion<'s>> = Vec::from_iter(collective);
         suggestions.sort();
 
         Ok(suggestions)
