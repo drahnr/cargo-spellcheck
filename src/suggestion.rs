@@ -315,6 +315,24 @@ pub struct Suggestion<'s> {
     pub description: Option<String>,
 }
 
+impl<'s> Suggestion<'s> {
+    /// Determine if there is overlap.
+    pub fn is_overlapped(&self, other: &Self) -> bool {
+        if self.origin != other.origin {
+            return false;
+        }
+        if self.span.start.line != other.span.start.line {
+            return false;
+        }
+
+        if self < other {
+            self.span.end.column > other.span.start.column
+        } else {
+            self.span.start.column < other.span.end.column
+        }
+    }
+}
+
 impl<'s> fmt::Display for Suggestion<'s> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         use console::Style;
@@ -993,5 +1011,83 @@ mod tests {
 
         log::info!("fmt debug=\n{:?}\n<", suggestion);
         log::info!("fmt display=\n{}\n<", suggestion);
+    }
+
+    #[test]
+    fn overlapped() {
+        let chunk = CheckableChunk::from_str(
+            r#"0
+2345
+7@n"#,
+            indexmap::indexmap! { 0..10 => Span {
+                start : LineColumn {
+                    line: 7usize,
+                    column: 8usize,
+                },
+                end : LineColumn {
+                    line: 9usize,
+                    column: 4usize,
+                }
+            } },
+            CommentVariant::TripleSlash,
+        );
+        let suggestion = Suggestion {
+            detector: Detector::Dummy,
+            origin: ContentOrigin::TestEntityRust,
+            chunk: &chunk,
+            span: Span {
+                start: LineColumn {
+                    line: 8usize,
+                    column: 1,
+                },
+                end: LineColumn {
+                    line: 8usize,
+                    column: 3,
+                },
+            },
+            range: 2..6,
+            replacements: vec!["whocares".to_owned()],
+            description: None,
+        };
+        let overlapped_smaller_suggestion = Suggestion {
+            detector: Detector::Dummy,
+            origin: ContentOrigin::TestEntityRust,
+            chunk: &chunk,
+            span: Span {
+                start: LineColumn {
+                    line: 8usize,
+                    column: 0,
+                },
+                end: LineColumn {
+                    line: 8usize,
+                    column: 2,
+                },
+            },
+            range: 2..6,
+            replacements: vec!["whocares".to_owned()],
+            description: None,
+        };
+
+        let overlapped_larger_suggestion = Suggestion {
+            detector: Detector::Dummy,
+            origin: ContentOrigin::TestEntityRust,
+            chunk: &chunk,
+            span: Span {
+                start: LineColumn {
+                    line: 8usize,
+                    column: 2,
+                },
+                end: LineColumn {
+                    line: 8usize,
+                    column: 3,
+                },
+            },
+            range: 2..6,
+            replacements: vec!["whocares".to_owned()],
+            description: None,
+        };
+
+        assert!(suggestion.is_overlapped(&overlapped_smaller_suggestion));
+        assert!(suggestion.is_overlapped(&overlapped_larger_suggestion));
     }
 }
