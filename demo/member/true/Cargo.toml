@@ -1,11 +1,12 @@
 [package]
 name = "cargo-spellcheck-demo-inner"
-version = "1.0.0"
-authors = ["Bernhard Schuster <bernhard@ahoi.io>"]
-edition = "2018"
 publish = false
 description = "Inner member of the demo"
 readme = "README.md"
+
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
 
 [lib]
 crate-type = ["staticlib"]
