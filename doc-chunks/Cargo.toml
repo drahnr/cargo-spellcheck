@@ -1,6 +1,6 @@
 [package]
 name = "doc-chunks"
-version = "0.0.4"
+version = "0.0.5"
 authors = ["Bernhard Schuster <bernhard@ahoi.io>"]
 edition = "2021"
 rust-version = "1.57.0"
