@@ -737,7 +737,6 @@ jobs:
           args:
             - -exc
             - |
-              source $HOME/.cargo/env
               export RUST_BACKTRACE=full
               export CARGO_HOME="$(pwd)/../cargo"
               whoami
@@ -748,13 +747,12 @@ jobs:
                   TARGET=$2;
                   EXT=$3;
                   echo "Prepping ${TARGET} ..."
-                  rustup target add "${TARGET}"
                   cargo build --release --target "${TARGET}"
                   cp -vf "target/${TARGET}/release/cargo-spellcheck${EXT}" "${DEST}"/${TARGET}-cargo-spellcheck-$(cat ./.git/ref)"${EXT}"
                   echo "Prepped ${TARGET} ."
               }
 
-              build ../artifact-musl x86_64-unknown-linux-musl
+              build ../artifact-musl x86_64-alpine-linux-musl
           dir: git-repo
 
     - task: artifact-release-glibc
@@ -776,7 +774,7 @@ jobs:
             - |
               export RUST_BACKTRACE=full
               export CARGO_HOME="$(pwd)/../cargo"
-              sudo chown $(whoami): -Rf ${CARGO_HOME} .
+              sudo chown $(whoami): -Rf ../artifact-glibc ../artifact-win ${CARGO_HOME} .
 
               build() {
                   DEST=$1
@@ -785,7 +783,7 @@ jobs:
                   echo "Prepping ${TARGET} ..."
                   rustup target add "${TARGET}"
                   cargo build --release --target "${TARGET}" && \
-                    cp -vf "target/${TARGET}/release/cargo-spellcheck${EXT}" "${DEST}"/${TARGET}-cargo-spellcheck-$(cat ./.git/ref)"${EXT}"
+                    sudo cp -vf "target/${TARGET}/release/cargo-spellcheck${EXT}" "${DEST}"/${TARGET}-cargo-spellcheck-$(cat ./.git/ref)"${EXT}"
                   echo "Prepped ${TARGET} ."
               }
 
