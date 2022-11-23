@@ -14,7 +14,7 @@ readme = "README.md"
 [dependencies]
 console = "0.15"
 fs-err = "2"
-indexmap = { version = "1", features=["rayon", "serde"] }
+indexmap = { version = "1", features = ["rayon", "serde"] }
 itertools = "0.10"
 lazy_static = "1"
 memchr = "2"
