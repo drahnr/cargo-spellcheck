@@ -74,7 +74,7 @@ to explicitly specify your shell type.
 
 Commonly it's use like this from your shell's `.rc*` file:
 
-`source <(cargo spellcheck completion)`
+`source <(cargo spellcheck completions)`
 
 Note: There is a [relevant clap issue
 (#3508)](https://github.com/clap-rs/clap/issues/3508) that makes this fail in
