@@ -38,7 +38,7 @@ xz2 = "0.1"
 doc-chunks = { version = "0.0.5", path = "./doc-chunks" }
 
 color-eyre = "0.6"
-cargo_toml = "0.13"
+cargo_toml = "0.14"
 console = "0.15"
 crossterm = "0.25.0"
 # for the config file
@@ -48,8 +48,8 @@ clap = { version = "4.0", features = ["derive", "env"] }
 clap_complete = "4.0"
 clap-verbosity-flag = "2.0"
 
-env_logger = "0.9"
-fancy-regex = "0.10"
+env_logger = "0.10"
+fancy-regex = "0.11"
 fs-err = "2"
 indexmap = { version = "1", features = ["rayon", "serde"] }
 itertools = "0.10"
@@ -104,7 +104,7 @@ console = "0.15"
 assert_matches = "1"
 maplit = "1"
 serde_plain = "1"
-nix = "0.25.0"
+nix = "0.26.2"
 
 [features]
 default = ["hunspell", "nlprules"]
