@@ -25,14 +25,14 @@ resources:
     branch: master
     uri: https://github.com/spearow/juice.git
 
-- name: binary-releases
-  type: s3
-  source:
-    endpoint: https://minio.spearow.io
-    bucket: cargo-spellcheck-releases
-    regexp: cargo-spellcheck-(.*)
-    access_key_id: ((minio-access-key))
-    secret_access_key: ((minio-secret-key))
+# - name: binary-releases
+#   type: s3
+#   source:
+#     endpoint: https://minio.spearow.io
+#     bucket: cargo-spellcheck-releases
+#     regexp: cargo-spellcheck-(.*)
+#     access_key_id: ((minio-access-key))
+#     secret_access_key: ((minio-secret-key))
 
 - name: github-release
   type: github-release
@@ -48,7 +48,7 @@ resources:
   webhook_token: ((cargo-spellcheck-webhook-token))
   check_every: 12h
   source:
-    tag_filter: "v[0-9]*"
+    tag_regex: "^v[0-9]+\\.[0-9]+\\.[0-9]+[A-Za-z0-9_+.-]*$"
     branch: master
     uri: https://github.com/drahnr/cargo-spellcheck.git
 
@@ -66,6 +66,11 @@ resources:
   source:
     repository: quay.io/drahnr/rust-glibc-builder
 
+- name: env-mingw64
+  type: registry-image
+  source:
+    repository: quay.io/drahnr/rust-mingw64-builder
+
 jobs:
 ####################################################################################
 #                              P U L L - R E Q U E S T
@@ -82,6 +87,7 @@ jobs:
         trigger: true
 
       - get: env-glibc
+      - get: env-mingw64
 
       - get: git-rustlang-rust
         params: {depth: 3, submodules: none }
@@ -203,7 +209,7 @@ jobs:
 
       - task: pr-win64-cross-build
         timeout: 40m
-        image: env-glibc
+        image: env-mingw64
         config:
           platform: linux
           inputs:
@@ -471,6 +477,8 @@ jobs:
     plan:
     - in_parallel:
       - get: env-glibc
+      - get: env-mingw64
+      
       - get: git-repo
         resource: git-clone-resource
         trigger: true
@@ -517,7 +525,7 @@ jobs:
 
       - task: win64-cross-build-master
         timeout: 40m
-        image: env-glibc
+        image: env-mingw64
         config:
           platform: linux
           inputs:
@@ -686,6 +694,7 @@ jobs:
             caches:
             - path: copy
             run:
+              dir: copy
               path: sh
               args:
 
@@ -703,7 +712,6 @@ jobs:
 
                 git submodule update --init
                 "${EXE}" spellcheck -vvv
-              dir: copy
 
   - name: publish-github-release
     build_logs_to_retain: 5
@@ -711,12 +719,14 @@ jobs:
     serial: true
     plan:
     - get: env-glibc
+    - get: env-mingw64
     - get: git-repo
       resource: git-tag-resource
       trigger: true
-
-    - task: github-release
-      timeout: 40m
+      
+      
+    - task: github-release-info
+      timeout: 7m
       image: env-glibc
       config:
         platform: linux
@@ -724,26 +734,20 @@ jobs:
         - name: git-repo
         outputs:
         - name: release-info
-        caches:
-        - path: cargo
         run:
+          dir: git-repo
           path: sh
           args:
             - -exc
             - |
-              export RUST_BACKTRACE=full
-              export CARGO_HOME="$(pwd)/../cargo"
-              sudo chown $(whoami): -Rf ${CARGO_HOME} .
+              sudo chown $(whoami): -Rf .
 
               export RI_BASE_DIR="../release-info"
-              export RI_ARTIFACTS_DIR="${RI_BASE_DIR}/artifacts"
               export RI_TAG_FILE="${RI_BASE_DIR}/TAG"
               export RI_COMMITISH_FILE="${RI_BASE_DIR}/COMMITISH"
               export RI_NAME_FILE="${RI_BASE_DIR}/NAME"
 
               sudo install -o $(whoami) -d "${RI_BASE_DIR}" || echo "failed to create dir"
-              sudo install -o $(whoami) -d "${RI_ARTIFACTS_DIR}" || echo "failed to create dir"
-
 
               git rev-parse HEAD > "${RI_COMMITISH_FILE}"
               #git log -n 1 --format="%h" HEAD > "../${RI_COMMITISH_FILE}"
@@ -756,6 +760,41 @@ jobs:
               # construct cargo-spellcheck-v1.2.3
               echo "cargo-spellcheck-$(cat ./.git/ref)" > "${RI_NAME_FILE}"
               cat "${RI_NAME_FILE}"
+              
+              ls -al "${RI_BASE_DIR}" 
+      
+    - task: github-release-linux
+      timeout: 40m
+      image: env-glibc
+      config:
+        platform: linux
+        inputs:
+        - name: git-repo
+        - name: release-info
+        outputs:
+        - name: release-info-linux
+        caches:
+        - path: cargo
+        - path: git-repo/target
+        run:
+          dir: git-repo
+          path: sh
+          args:
+            - -exc
+            - |
+              export RUST_BACKTRACE=full
+              export CARGO_HOME="$(pwd)/../cargo"
+              sudo chown $(whoami): -Rf ${CARGO_HOME} .
+
+              export RI_BASE_DIR="../release-info-linux"
+              export RI_ARTIFACTS_DIR="${RI_BASE_DIR}/artifacts"
+              export INFO_DIR="../release-info"
+              export RI_TAG_FILE="${INFO_DIR}/TAG"
+              export RI_COMMITISH_FILE="${INFO_DIR}/COMMITISH"
+              export RI_NAME_FILE="${INFO_DIR}/NAME"
+
+              sudo install -o $(whoami) -d "${RI_BASE_DIR}" || echo "failed to create dir"
+              sudo install -o $(whoami) -d "${RI_ARTIFACTS_DIR}" || echo "failed to create dir"
 
               build() {
                   TARGET=$1;
@@ -768,20 +807,65 @@ jobs:
               }
 
               build x86_64-unknown-linux-gnu
+
+    - task: github-release-mingw64
+      timeout: 40m
+      image: env-mingw64
+      config:
+        platform: linux
+        inputs:
+        - name: release-info
+        - name: git-repo
+        outputs:
+        - name: release-info-mingw64
+        caches:
+        - path: cargo
+        - path: git-repo/target
+        run:
+          dir: git-repo
+          path: sh
+          args:
+            - -exc
+            - |
+              export RUST_BACKTRACE=full
+              export CARGO_HOME="$(pwd)/../cargo"
+              sudo chown $(whoami): -Rf ${CARGO_HOME} .
+
+              export RI_BASE_DIR="../release-info-mingw64"
+              export RI_ARTIFACTS_DIR="${RI_BASE_DIR}/artifacts"
+              export INFO_DIR="../release-info"
+              export RI_TAG_FILE="${INFO_DIR}/TAG"
+              export RI_COMMITISH_FILE="${INFO_DIR}/COMMITISH"
+              export RI_NAME_FILE="${INFO_DIR}/NAME"
+
+              sudo install -o $(whoami) -d "${RI_BASE_DIR}" || echo "failed to create dir"
+              sudo install -o $(whoami) -d "${RI_ARTIFACTS_DIR}" || echo "failed to create dir"
+
+
+              build() {
+                  TARGET=$1;
+                  EXT=$2;
+                  echo "Prepping ${TARGET} ..."
+                  rustup target add "${TARGET}"
+                  cargo build --release --target "${TARGET}" && \
+                    cp -vf "target/${TARGET}/release/cargo-spellcheck${EXT}" "${RI_ARTIFACTS_DIR}"/${TARGET}-$(cat "${RI_NAME_FILE}")"${EXT}"
+                  echo "Prepped ${TARGET} ."
+              }
+
               build x86_64-pc-windows-gnu .exe
 
-          dir: git-repo
+          
+    # - in_parallel:
+    - put: github-release
+      params:
+        name: release-info/NAME
+        tag: release-info/TAG
+        commitish: release-info/COMMITISH
+        globs:
+        - release-info-linux/artifacts/*
+        - release-info-mingw64/artifacts/*
 
-    - in_parallel:
-      - put: github-release
-        params:
-          name: release-info/NAME
-          tag: release-info/TAG
-          commitish: release-info/COMMITISH
-          globs:
-          - release-info/artifacts/*
-
-      - put: binary-releases
-        params:
-          file: ./release-info/artifacts/x86_64-unknown-linux-gnu-cargo-spellcheck-*
-          acl: public-read
+      # - put: binary-releases
+      #   params:
+      #     file: ./release-info/artifacts/x86_64-unknown-linux-gnu-cargo-spellcheck-*
+      #     acl: public-read
