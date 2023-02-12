@@ -167,6 +167,7 @@ where
         if self.is_ticked_entry() {
             BandAid::from((self.backticked_original.clone(), &self.suggestion.span))
         } else if self.is_custom_entry() {
+            self.suggestion.feedback(&self.custom_replacement);
             BandAid::from((self.custom_replacement.clone(), &self.suggestion.span))
         } else {
             let replacement = self
@@ -500,16 +501,16 @@ impl UserPicked {
         // TODO make use of it
         let direction = Direction::Forward;
         'outer: loop {
-            let opt_next = match direction {
+            let maybe_suggestion_next = match direction {
                 Direction::Forward => suggestions_it.next(),
                 // FIXME TODO this is just plain wrong
                 Direction::Backward => suggestions_it.next_back(),
             };
 
-            log::trace!("next() ---> {:?}", &opt_next);
+            log::trace!("next() ---> {:?}", &maybe_suggestion_next);
 
-            let (idx, suggestion) = match opt_next {
-                Some(x) => x,
+            let (idx, suggestion) = match maybe_suggestion_next {
+                Some(idx_suggestions) => idx_suggestions,
                 None => match direction {
                     Direction::Forward => {
                         log::trace!("completed file, continue to next");
@@ -538,7 +539,7 @@ impl UserPicked {
                     }
                     UserSelection::SkipFile => break 'outer,
                     UserSelection::Previous => {
-                        log::warn!("Requires a iterator which works bidrectionally");
+                        log::warn!("Requires an iterator which works bi-directionally");
                         continue 'inner;
                     }
                     UserSelection::Help => {

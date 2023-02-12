@@ -60,6 +60,7 @@ impl Checker for DummyChecker {
                     replacements,
                     chunk,
                     description: None,
+                    checker_feedback_channel: None,
                 };
                 acc.push(suggestion);
             }
