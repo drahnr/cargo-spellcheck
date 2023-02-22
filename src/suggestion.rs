@@ -728,15 +728,15 @@ mod tests {
         let chunk = CheckableChunk::from_str(
             CONTENT,
             indexmap::indexmap! { 0..18 => Span {
-                    start: LineColumn {
-                        line: 1,
-                        column: 0,
-                    },
-                    end: LineColumn {
-                        line: 1,
-                        column: 17,
-                    }
+                start: LineColumn {
+                    line: 1,
+                    column: 0,
+                },
+                end: LineColumn {
+                    line: 1,
+                    column: 17,
                 }
+            }
             },
             CommentVariant::TripleSlash,
         );
@@ -779,15 +779,15 @@ mod tests {
         let chunk = CheckableChunk::from_str(
             CONTENT,
             indexmap::indexmap! { 0..18 => Span {
-                    start: LineColumn {
-                        line: 1,
-                        column: 0,
-                    },
-                    end: LineColumn {
-                        line: 1,
-                        column: 17,
-                    }
+                start: LineColumn {
+                    line: 1,
+                    column: 0,
+                },
+                end: LineColumn {
+                    line: 1,
+                    column: 17,
                 }
+            }
             },
             CommentVariant::TripleSlash,
         );

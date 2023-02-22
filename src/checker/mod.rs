@@ -114,6 +114,24 @@ impl Checker for Checkers {
 
         let mut suggestions: Vec<Suggestion<'s>> = Vec::from_iter(collective);
         suggestions.sort();
+        if suggestions.len() == 0 {
+            return Ok(suggestions);
+        }
+
+        // Iterate through suggestions and identify overlapping ones.
+        let mut omitted: Vec<CheckableChunk> = Vec::<CheckableChunk>::new();
+        let mut i: usize = 0;
+        while i < suggestions.len() - 1 as usize {
+            let cur = suggestions[i].clone();
+            i += 1;
+
+            while cur.is_overlapped(&suggestions[i]) {
+                let omit = suggestions.remove(i);
+                omitted.push(omit.chunk.clone());
+            }
+        }
+
+        // Re-run the checker and merge the results
 
         Ok(suggestions)
     }
