@@ -31,12 +31,18 @@ Specify your arguments as needed.
 Install `cargo-spellcheck` via [`cargo-binstall`](https://github.com/cargo-bins/cargo-binstall) and then use it like you would locally.
 Alternatively you can use `cargo install cargo-spellcheck` to compile it from source.
 
+```bash
+cargo binstall --no-confirm cargo-spellcheck
+
+cargo-spellcheck --code 1
+```
+
 ## Git hooks
 
 If you want to manually configure `cargo-spellcheck` to run on git commits:
 
-```sh
-#!/usr/bin/sh
+```bash
+#!/usr/bin/env bash
 
 # Redirect output to stderr.
 exec 1>&2
