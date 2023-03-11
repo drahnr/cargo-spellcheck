@@ -44,8 +44,8 @@ crossterm = "0.25.0"
 # for the config file
 directories = "4.0.1"
 
-clap = { version = "4.0", features = ["derive", "env"] }
-clap_complete = "4.0"
+clap = { version = "4.1.8", features = ["derive", "env"] }
+clap_complete = "4.1.4"
 clap-verbosity-flag = "2.0"
 
 env_logger = "0.10"
