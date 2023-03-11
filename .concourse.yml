@@ -802,7 +802,7 @@ jobs:
                   echo "Prepping ${TARGET} ..."
                   rustup target add "${TARGET}"
                   cargo build --release --target "${TARGET}" && \
-                    cp -vf "target/${TARGET}/release/cargo-spellcheck${EXT}" "${RI_ARTIFACTS_DIR}"/${TARGET}-$(cat "${RI_NAME_FILE}")"${EXT}"
+                    cp -vf "target/${TARGET}/release/cargo-spellcheck${EXT}" "${RI_ARTIFACTS_DIR}"/$(cat "${RI_NAME_FILE}")"-${TARGET}${EXT}"
                   echo "Prepped ${TARGET} ."
               }
 
@@ -848,7 +848,7 @@ jobs:
                   echo "Prepping ${TARGET} ..."
                   rustup target add "${TARGET}"
                   cargo build --release --target "${TARGET}" && \
-                    cp -vf "target/${TARGET}/release/cargo-spellcheck${EXT}" "${RI_ARTIFACTS_DIR}"/${TARGET}-$(cat "${RI_NAME_FILE}")"${EXT}"
+                    cp -vf "target/${TARGET}/release/cargo-spellcheck${EXT}" "${RI_ARTIFACTS_DIR}"/$(cat "${RI_NAME_FILE}")"-${TARGET}${EXT}"
                   echo "Prepped ${TARGET} ."
               }
 
