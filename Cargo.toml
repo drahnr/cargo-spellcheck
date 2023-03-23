@@ -38,11 +38,11 @@ xz2 = "0.1"
 doc-chunks = { version = "0.0.5", path = "./doc-chunks" }
 
 color-eyre = "0.6"
-cargo_toml = "0.15"
+cargo_toml = "0.15.2"
 console = "0.15"
 crossterm = "0.26"
 # for the config file
-directories = "4.0.1"
+directories = "5"
 
 clap = { version = "4.1.8", features = ["derive", "env"] }
 clap_complete = "4.1.4"
