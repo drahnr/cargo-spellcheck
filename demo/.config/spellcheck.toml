@@ -1,5 +1,5 @@
 [Hunspell]
-#lang = "en_US"
+lang = "en_US"
 search_dirs = ["."]
 extra_dictionaries = ["topic.dic"]
 

@@ -599,6 +599,8 @@ pub(crate) fn extract(
 mod tests {
     use super::*;
 
+    use itertools::Itertools;
+
     const TEST_FILE_FRAGMENTS: &str = "src/nested/fragments.rs";
     const TEST_FILE_SIMPLE: &str = "src/nested/fragments/simple.rs";
     #[test]
@@ -704,7 +706,10 @@ mod tests {
             if !gamma.is_empty() {
                 eprintln!("Right does not contain {:?}", &gamma[..]);
             }
-            assert_eq!(left, right);
+            assert_eq!(
+                Vec::from_iter(left.iter().sorted()),
+                Vec::from_iter(right.iter().sorted())
+            );
         };
     }
 
