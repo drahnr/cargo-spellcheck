@@ -40,7 +40,7 @@ doc-chunks = { version = "0.0.5", path = "./doc-chunks" }
 color-eyre = "0.6"
 cargo_toml = "0.14"
 console = "0.15"
-crossterm = "0.25.0"
+crossterm = "0.26"
 # for the config file
 directories = "4.0.1"
 
@@ -66,7 +66,7 @@ signal-hook = "0.3"
 syn = { version = "1", features = ["full"] }
 thiserror = "1"
 # for parsing and extracting elements from Cargo.toml
-toml = "0.5"
+toml = "0.7"
 glob = "0.3"
 # for the config file
 ignore = "0.4.18"

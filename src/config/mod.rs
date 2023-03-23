@@ -75,6 +75,7 @@ pub struct Config {
     #[serde(alias = "NlpRules")]
     #[serde(default = "default_nlprules")]
     pub nlprules: Option<NlpRulesConfig>,
+
     #[serde(alias = "ReFlow")]
     #[serde(alias = "Reflow")]
     pub reflow: Option<ReflowConfig>,
@@ -266,6 +267,14 @@ mod tests {
     fn can_serialize_to_toml() {
         let config = dbg!(Config::full());
         assert_matches!(config.to_toml(), Ok(_s));
+    }
+
+    #[test]
+    fn project_config_works() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join(".config")
+            .join("spellcheck.toml");
+        assert_matches!(Config::load_from(&path), Ok(_));
     }
 
     #[test]

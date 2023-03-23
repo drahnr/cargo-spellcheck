@@ -68,9 +68,9 @@ impl Lang5 {
 
 impl fmt::Display for Lang5 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.lang.to_639_1().unwrap_or("??"))?;
-        f.write_str("_")?;
-        write!(f, "{}", self.country)?;
+        let language = self.lang.to_639_1().unwrap_or("??");
+        let country = self.country;
+        write!(f, "{language}_{country}")?;
         Ok(())
     }
 }
@@ -90,6 +90,20 @@ impl<'de> de::Visitor<'de> for Lang5Visitor {
             formatter,
             "Expected a 5 digit lang and country code in the form of LL_CC"
         )
+    }
+
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        self.visit_borrowed_str::<E>(v)
+    }
+
+    fn visit_string<E>(self, s: String) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        self.visit_borrowed_str::<E>(s.as_str())
     }
 
     fn visit_borrowed_str<E>(self, s: &'de str) -> Result<Self::Value, E>
