@@ -119,17 +119,15 @@ impl Checker for Checkers {
         }
 
         // Iterate through suggestions and identify overlapping ones.
-        let _omitted = suggestions
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, cur)| {
-                if idx > 0 && cur.is_overlapped(&suggestions[idx - 1]) {
-                    Some(cur.chunk.clone())
+        let suggestions = Vec::from_iter(suggestions.clone().into_iter().enumerate().filter_map(
+            |(idx, cur)| {
+                if idx == 0 || !cur.is_overlapped(&suggestions[idx - 1]) {
+                    Some(cur)
                 } else {
                     None
                 }
-            })
-            .collect::<Vec<_>>();
+            },
+        ));
 
         Ok(suggestions)
     }
