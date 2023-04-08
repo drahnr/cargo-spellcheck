@@ -321,7 +321,9 @@ impl<'s> Suggestion<'s> {
         if self.origin != other.origin {
             return false;
         }
-        if self.span.start.line != other.span.start.line {
+
+        if self.span.end.line < other.span.start.line || other.span.end.line < self.span.start.line
+        {
             return false;
         }
 
