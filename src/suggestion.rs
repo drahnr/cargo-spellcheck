@@ -327,7 +327,10 @@ impl<'s> Suggestion<'s> {
             return false;
         }
 
-        if self < other {
+        if self.span.start.line < other.span.start.line
+            || (self.span.start.line == other.span.start.line
+                && self.span.start.column < other.span.start.column)
+        {
             self.span.end.column > other.span.start.column
         } else {
             self.span.start.column < other.span.end.column
