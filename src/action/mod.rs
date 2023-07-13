@@ -6,7 +6,7 @@ use crate::errors::*;
 use crate::reflow::Reflow;
 
 use fs_err as fs;
-use futures::stream::{self, StreamExt, TryStreamExt};
+use futures::stream::{self, StreamExt};
 use rayon::iter::ParallelIterator;
 
 use std::io::{Read, Write};
@@ -407,33 +407,28 @@ impl Action {
 
     /// Run the requested action.
     async fn run_check(self, documents: Documentation, config: Config) -> Result<Finish> {
-        let n_cpus = num_cpus::get();
-
         let checkers = Checkers::new(config)?;
+        let num_mistakes = documents
+            .into_par_iter()
+            .map(|(origin, chunks)| {
+                checkers.check(&origin, &chunks).map(|suggestions| {
+                    let path = origin.as_path();
+                    let n = suggestions.len();
+                    match suggestions.is_empty() {
+                        true => log::info!("✅ {}", path.display()),
+                        false => log::info!("❌ {} : {}", path.display(), n),
+                    };
+                    for suggestion in suggestions {
+                        println!("{}", suggestion);
+                    }
+                    n
+                })
+            })
+            .try_fold_with(0, |count, res| res.map(|it| it + count))
+            .try_reduce(|| 0, |l, r| Ok(l + r))?;
 
-        // TODO per file clustering might make sense here
-        let mistakes_count = stream::iter(documents.iter().enumerate())
-            .map(move |(idx, (origin, chunks))| {
-                let suggestions = checkers.check(origin, &chunks[..]);
-                async move { Ok::<_, color_eyre::eyre::Report>((idx, origin, suggestions?)) }
-            })
-            .buffered(n_cpus)
-            .try_fold(0_usize, |acc, (_idx, origin, suggestions)| async move {
-                let n = suggestions.len();
-                let path = origin.as_path();
-                if n == 0 {
-                    log::info!("✅ {}", path.display());
-                } else {
-                    log::info!("❌ {} : {}", path.display(), n);
-                }
-                for suggestion in suggestions {
-                    println!("{}", suggestion);
-                }
-                Ok::<_, color_eyre::eyre::Report>(acc + n)
-            })
-            .await?;
-        if mistakes_count > 0 {
-            Ok(Finish::MistakeCount(mistakes_count))
+        if num_mistakes > 0 {
+            Ok(Finish::MistakeCount(num_mistakes))
         } else {
             Ok(Finish::Success)
         }
