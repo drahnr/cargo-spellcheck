@@ -33,7 +33,10 @@ pub use self::config::args::*;
 pub use self::config::{Config, HunspellConfig, LanguageToolConfig};
 pub use self::documentation::span::*;
 pub use self::documentation::util::*;
-pub use self::documentation::*;
+pub use self::documentation::{
+    util, CheckableChunk, Clusters, CommentVariant, CommentVariantCategory, ContentOrigin,
+    Documentation, PlainOverlay, Range,
+};
 pub use self::suggestion::*;
 pub use self::tinhat::*;
 

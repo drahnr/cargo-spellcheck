@@ -161,8 +161,8 @@ impl CheckableChunk {
             })
             .inspect(|(fragment_span, fragment_range, sub_fragment_range)| {
                 let (fragment_span, fragment_range, sub_fragment_range) = (
-                    fragment_span.clone(),
-                    fragment_range.clone(),
+                    fragment_span,
+                    fragment_range,
                     sub_fragment_range.clone(),
                 );
                 log::trace!(target: "find_spans",
@@ -175,12 +175,12 @@ impl CheckableChunk {
 
                 log::trace!(target: "find_spans",
                     "[f]display;\n>{}<",
-                    ChunkDisplay::try_from((self, fragment_range.clone()))
+                    ChunkDisplay::try_from((self, *fragment_range))
                         .expect("must be convertable")
                 );
                 log::trace!(target: "find_spans",
                     "[f]content;\n>{}<",
-                    sub_chars(self.as_str(), fragment_range.clone())
+                    sub_chars(self.as_str(), (*fragment_range).clone())
                 );
             })
             .filter_map(|(fragment_span, fragment_range, sub_fragment_range)| {
