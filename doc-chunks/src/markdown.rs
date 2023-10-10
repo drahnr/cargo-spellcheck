@@ -207,6 +207,12 @@ impl<'a> PlainOverlay<'a> {
                         html_code_block = html_code_block.saturating_sub(1);
                     }
                 }
+                Event::InlineMath(_s) => {
+                    // skip math content
+                }
+                Event::DisplayMath(_s) => {
+                    // skip math content
+                }
                 Event::Start(tag) => match tag {
                     Tag::Table(_alignments) => {
                         skip_table_text = true;

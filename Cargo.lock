@@ -288,7 +288,7 @@ dependencies = [
  "nlprule-build",
  "num_cpus",
  "proc-macro2",
- "pulldown-cmark",
+ "pulldown-cmark 0.10.0",
  "rayon",
  "regex",
  "serde",
@@ -655,7 +655,7 @@ dependencies = [
  "log",
  "memchr",
  "proc-macro2",
- "pulldown-cmark",
+ "pulldown-cmark 0.11.0",
  "ra_ap_syntax",
  "rayon",
  "regex",
@@ -1592,7 +1592,20 @@ dependencies = [
  "bitflags 2.4.0",
  "getopts",
  "memchr",
- "pulldown-cmark-escape",
+ "pulldown-cmark-escape 0.10.0",
+ "unicase",
+]
+
+[[package]]
+name = "pulldown-cmark"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8746739f11d39ce5ad5c2520a9b75285310dbfe78c541ccf832d38615765aec0"
+dependencies = [
+ "bitflags 2.4.0",
+ "getopts",
+ "memchr",
+ "pulldown-cmark-escape 0.11.0",
  "unicase",
 ]
 
@@ -1601,6 +1614,12 @@ name = "pulldown-cmark-escape"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d5d8f9aa0e3cbcfaf8bf00300004ee3b72f74770f9cbac93f6928771f613276b"
+
+[[package]]
+name = "pulldown-cmark-escape"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "007d8adb5ddab6f8e3f491ac63566a7d5002cc7ed73901f72057943fa71ae1ae"
 
 [[package]]
 name = "quote"
@@ -1623,15 +1642,15 @@ dependencies = [
 
 [[package]]
 name = "ra_ap_limit"
-version = "0.0.212"
+version = "0.0.215"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3de0232917ce708e6ed2264c5cf67d30756d05c56254bc1de9b7ee2f4a5fdde1"
+checksum = "72a7f43bdfd8dfb6999fabdedf20f4d51043fbe2234765ee05aeea42e65593d1"
 
 [[package]]
 name = "ra_ap_parser"
-version = "0.0.212"
+version = "0.0.215"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc0600e9b61c2fd670f69d23f96124716f200c75f58b95896897308f813bf5d1"
+checksum = "b7c1935fa599eff05f8b85ef2fb0a8af9ccfd32db6685fd5226001288179af58"
 dependencies = [
  "drop_bomb",
  "ra-ap-rustc_lexer",
@@ -1641,9 +1660,9 @@ dependencies = [
 
 [[package]]
 name = "ra_ap_stdx"
-version = "0.0.212"
+version = "0.0.215"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e25be9b09b823e2bec65498b9b27a0b08d07616b0ff0062af0d3a939ad795b4"
+checksum = "3d9c6c02449e0bd700c2fc0e476d79a98aa167871ef03451797955cad2b9fbef"
 dependencies = [
  "always-assert",
  "crossbeam-channel",
@@ -1651,14 +1670,14 @@ dependencies = [
  "jod-thread",
  "libc",
  "miow",
- "winapi",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
 name = "ra_ap_syntax"
-version = "0.0.212"
+version = "0.0.215"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "020ab8cecd9210b70b98f423721e6ac72adc50d31beb6a9ed9868a705a86ff40"
+checksum = "2602d181892a266215ee85b85753be68fab4a2dfa69fa3d597bc0acd748466a6"
 dependencies = [
  "cov-mark",
  "either",
@@ -1678,9 +1697,9 @@ dependencies = [
 
 [[package]]
 name = "ra_ap_text_edit"
-version = "0.0.212"
+version = "0.0.215"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fde45d20d167acb082dfe813ff31ce2504d6f8319e861db3bbec86ce81bcab3c"
+checksum = "a150f48f726df7beacb027a41612564689464ac02c76071bc8d367df759ba7ad"
 dependencies = [
  "itertools 0.12.1",
  "text-size",
