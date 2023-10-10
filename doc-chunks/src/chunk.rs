@@ -160,11 +160,8 @@ impl CheckableChunk {
                 (fragment_span, fragment_range, sub_fragment_range)
             })
             .inspect(|(fragment_span, fragment_range, sub_fragment_range)| {
-                let (fragment_span, fragment_range, sub_fragment_range) = (
-                    fragment_span,
-                    fragment_range,
-                    sub_fragment_range.clone(),
-                );
+                let (fragment_span, fragment_range, sub_fragment_range) =
+                    (fragment_span, fragment_range, sub_fragment_range.clone());
                 log::trace!(target: "find_spans",
                     ">> fragment: span: {:?} => range: {:?} | sub: {:?} -> sub_fragment: {:?}",
                     &fragment_span,
