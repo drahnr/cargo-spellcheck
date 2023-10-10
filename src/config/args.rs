@@ -635,6 +635,29 @@ fn look_for_cargo_manifest(base: &Path) -> Result<Option<PathBuf>> {
     })
 }
 
+fn extract_config_path_from_metadata(
+    manifest_path: &Path,
+    metadata: ManifestMetadata,
+    ident: &str,
+) -> Result<Option<(Config, PathBuf)>> {
+    if let Some(spellcheck) = metadata.spellcheck {
+        let config_path = &spellcheck.config;
+        let config_path = if config_path.is_absolute() {
+            config_path.to_owned()
+        } else {
+            let manifest_dir = manifest_path.parent().expect("File resides in a dir. qed");
+            manifest_dir.join(config_path)
+        };
+        log::debug!(
+            "Using configuration ({}) file {}",
+            ident,
+            config_path.display()
+        );
+        return Ok(Config::load_from(&config_path)?.map(|config| (config, config_path)));
+    }
+    Ok(None)
+}
+
 fn load_from_manifest_metadata(manifest_path: &Path) -> Result<Option<(Config, PathBuf)>> {
     let manifest = fs::read_to_string(manifest_path)?;
     let manifest =
@@ -644,16 +667,13 @@ fn load_from_manifest_metadata(manifest_path: &Path) -> Result<Option<(Config, P
                 manifest_path.display()
             ))?;
     if let Some(metadata) = manifest.package.and_then(|package| package.metadata) {
-        if let Some(spellcheck) = metadata.spellcheck {
-            let config_path = &spellcheck.config;
-            let config_path = if config_path.is_absolute() {
-                config_path.to_owned()
-            } else {
-                let manifest_dir = manifest_path.parent().expect("File resides in a dir. qed");
-                manifest_dir.join(config_path)
-            };
-            log::debug!("Using configuration file {}", config_path.display());
-            return Ok(Config::load_from(&config_path)?.map(|config| (config, config_path)));
+        if let Some(x) = extract_config_path_from_metadata(manifest_path, metadata, "package")? {
+            return Ok(Some(x));
+        }
+    }
+    if let Some(metadata) = manifest.workspace.and_then(|workspace| workspace.metadata) {
+        if let Some(x) = extract_config_path_from_metadata(manifest_path, metadata, "workspace")? {
+            return Ok(Some(x));
         }
     }
     Ok(None)

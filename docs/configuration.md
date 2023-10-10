@@ -8,11 +8,18 @@ follows:
 _Explicit_ specification:
 
 1. Command line flags `--cfg=...`.
-1. `Cargo.toml` metadata
+1. `Cargo.toml` package metadata
 
     ```toml
     [package.metadata.spellcheck]
     config = "somewhere/cfg.toml"
+    ```
+
+1. `Cargo.toml` workspace metadata
+
+    ```toml
+    [workspace.metadata.spellcheck]
+    config = "somewhere/else/cfg.toml"
     ```
 
 which will fail if specified and not existent on the filesystem.
@@ -105,4 +112,3 @@ max_line_length = 80
 ```
 
 To increase verbosity add `-v` (multiple) to increase verbosity.
-
