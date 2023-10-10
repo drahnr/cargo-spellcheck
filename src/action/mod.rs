@@ -349,51 +349,41 @@ impl Action {
 
     /// Run the requested action _interactively_, waiting for user input.
     async fn run_fix_interactive(self, documents: Documentation, config: Config) -> Result<Finish> {
-        let n_cpus = num_cpus::get();
-
-        let checkers = Checkers::new(config)?;
-
         let n = documents.entry_count();
         log::debug!("Running checkers on all documents {}", n);
-        let mut pick_stream = stream::iter(documents.iter().enumerate())
-            .map(|(mut idx, (origin, chunks))| {
-                // align the debug output with the user output
-                idx += 1;
-                log::trace!("Running checkers on {}/{},{:?}", idx, n, &origin);
-                let suggestions = checkers.check(origin, &chunks[..]);
-                async move { Ok::<_, color_eyre::eyre::Report>((idx, origin, suggestions?)) }
-            })
-            .buffered(n_cpus)
-            .fuse();
+        let checkers = Checkers::new(config.clone())?;
 
         let mut collected_picks = UserPicked::default();
-        while let Some(result) = pick_stream.next().await {
-            match result {
-                Ok((idx, origin, suggestions)) => {
-                    let (picked, user_sel) =
-                        interactive::UserPicked::select_interactive(origin.clone(), suggestions)?;
+        for (idx, (origin, chunks)) in documents.iter().enumerate() {
+            for chunk in chunks.into_iter().cloned() {
+                log::info!("Running checkers on {}/{},{:?}", idx, n, &origin);
 
-                    match user_sel {
-                        UserSelection::Quit => break,
-                        UserSelection::Abort => return Ok(Finish::Abort),
-                        UserSelection::Nop if !picked.is_empty() => {
-                            log::debug!(
-                                "User picked patches to be applied for {}/{},{:?}",
-                                idx,
-                                n,
-                                &origin
-                            );
-                            collected_picks.extend(picked);
-                        }
-                        UserSelection::Nop => {
-                            log::debug!("Nothing to do for {}/{},{:?}", idx, n, &origin);
-                        }
-                        _ => unreachable!(
-                            "All other variants are only internal to `select_interactive`. qed"
-                        ),
+                // Need to do it one by one, so the feedback is incorporated from the user picks, which is the next block
+                let chunk = [chunk];
+                let suggestions = checkers.check(origin, &chunk[..])?;
+
+                let (picked, user_sel) =
+                    interactive::UserPicked::select_interactive(origin.clone(), suggestions)?;
+
+                match user_sel {
+                    UserSelection::Quit => break,
+                    UserSelection::Abort => return Ok(Finish::Abort),
+                    UserSelection::Nop if !picked.is_empty() => {
+                        log::debug!(
+                            "User picked patches to be applied for {}/{},{:?}",
+                            idx,
+                            n,
+                            &origin
+                        );
+                        collected_picks.extend(picked);
                     }
+                    UserSelection::Nop => {
+                        log::debug!("Nothing to do for {}/{},{:?}", idx, n, &origin);
+                    }
+                    _ => unreachable!(
+                        "All other variants are only internal to `select_interactive`. qed"
+                    ),
                 }
-                Err(e) => Err(e)?,
             }
         }
         let total = collected_picks.total_count();

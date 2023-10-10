@@ -365,6 +365,7 @@ fn store_suggestion<'s>(
                 range,
                 replacements: vec![replacement],
                 span,
+                checker_feedback_channel: None,
             };
             suggestion
         }),

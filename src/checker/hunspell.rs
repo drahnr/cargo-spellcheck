@@ -19,7 +19,9 @@ use nlprule::Tokenizer;
 use std::io::{self, BufRead};
 
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use hunspell_rs::{CheckResult, Hunspell};
 
@@ -107,22 +109,18 @@ pub fn consists_of_vulgar_fractions_or_emojis(word: &str) -> bool {
 }
 
 #[derive(Clone)]
-struct HunspellSafe(Arc<Hunspell>);
+struct HunspellSafe {
+    locked: Arc<Mutex<Hunspell>>,
+}
 
 unsafe impl Send for HunspellSafe {}
-// We only use it in RO so it's ok.
 unsafe impl Sync for HunspellSafe {}
-
-impl std::ops::Deref for HunspellSafe {
-    type Target = Hunspell;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
 
 impl From<Hunspell> for HunspellSafe {
     fn from(hunspell: Hunspell) -> Self {
-        Self(Arc::new(hunspell))
+        Self {
+            locked: Arc::new(Mutex::new(hunspell)),
+        }
     }
 }
 
@@ -266,21 +264,53 @@ impl HunspellCheckerInner {
 }
 
 #[derive(Clone)]
-pub struct HunspellChecker(pub Arc<HunspellCheckerInner>, pub Arc<Tokenizer>);
+pub struct HunspellChecker {
+    pub inner: Arc<HunspellCheckerInner>,
+    pub tokenizer: Arc<Tokenizer>,
+    feedback_sender: Sender<String>,
+    feedback_receiver: Arc<Mutex<Receiver<String>>>,
+}
 
 impl std::ops::Deref for HunspellChecker {
     type Target = HunspellCheckerInner;
     fn deref(&self) -> &Self::Target {
-        self.0.deref()
+        self.inner.deref()
     }
 }
 
 impl HunspellChecker {
+    /// Create a new instance of the `Hunspell` backed spelling checker.
     pub fn new(config: &<HunspellChecker as Checker>::Config) -> Result<Self> {
         let tokenizer = super::tokenizer::<&PathBuf>(None)?;
         let inner = HunspellCheckerInner::new(config)?;
         let hunspell = Arc::new(inner);
-        Ok(HunspellChecker(hunspell, tokenizer))
+        let (feedback_sender, feedback_receiver) = mpsc::channel();
+        let feedback_receiver = Arc::new(Mutex::new(feedback_receiver));
+
+        Ok(HunspellChecker {
+            inner: hunspell,
+            tokenizer,
+            feedback_sender,
+            feedback_receiver,
+        })
+    }
+
+    /// Continuosly update Tinhat with user feedback.
+    pub fn incorporate_custom_resolutions(&self) {
+        log::debug!("Check if custom user entry was selected, trying to acquire lock....");
+        let feedback_receiver = self.feedback_receiver.lock().unwrap();
+        log::debug!("Lock acquired");
+        while let Some(word) = dbg!(feedback_receiver.try_recv()).ok().as_ref() {
+            let mut hunspell = self.inner.hunspell.locked.lock().unwrap();
+            log::info!("Adding word >{word}< to hunspell (in memory only!)");
+            hunspell.add(word);
+            assert_eq!(hunspell.check(word), CheckResult::FoundInDictionary);
+        }
+    }
+
+    /// Moaria Tinhat
+    fn sender(&self) -> Sender<String> {
+        self.feedback_sender.clone()
     }
 }
 
@@ -305,9 +335,10 @@ impl Checker for HunspellChecker {
             let plain = chunk.erase_cmark();
             log::trace!("{:?}", &plain);
             let txt = plain.as_str();
-            let hunspell = &*self.hunspell.0;
 
-            'tokenization: for range in apply_tokenizer(&self.1, txt) {
+            'tokenization: for range in apply_tokenizer(&self.tokenizer, txt) {
+                self.incorporate_custom_resolutions();
+
                 let word = sub_chars(txt, range.clone());
                 if range.len() == 1
                     && word
@@ -318,6 +349,8 @@ impl Checker for HunspellChecker {
                 {
                     continue 'tokenization;
                 }
+
+                let hunspell = self.inner.hunspell.locked.lock().unwrap();
                 if self.transform_regex.is_empty() {
                     obtain_suggestions(
                         &plain,
@@ -367,6 +400,9 @@ impl Checker for HunspellChecker {
                     }
                 }
             }
+        }
+        for item in acc.iter_mut() {
+            item.checker_feedback_channel.replace(self.sender());
         }
         Ok(acc)
     }
@@ -419,6 +455,7 @@ fn obtain_suggestions<'s>(
                     replacements: replacements.clone(),
                     chunk,
                     description: Some("Possible spelling mistake found.".to_owned()),
+                    checker_feedback_channel: None,
                 })
             }
         }

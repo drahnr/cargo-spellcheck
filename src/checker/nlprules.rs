@@ -147,6 +147,7 @@ fn check_chunk<'a>(
                     replacements: replacements.iter().map(|x| x.clone()).collect(),
                     chunk,
                     description: Some(message.to_owned()),
+                    checker_feedback_channel: None,
                 }),
         );
     }

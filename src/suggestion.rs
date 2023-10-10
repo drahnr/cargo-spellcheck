@@ -13,8 +13,8 @@
 
 use crate::documentation::{CheckableChunk, ContentOrigin};
 
-use std::cmp;
 use std::convert::TryFrom;
+use std::{cmp, hash::Hash};
 
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 
@@ -296,7 +296,7 @@ pub fn condition_display_content(
 }
 
 /// A suggestion for certain offending span.
-#[derive(Clone, Hash, PartialEq, Eq)]
+#[derive(Clone)]
 pub struct Suggestion<'s> {
     /// Which checker suggested the change.
     pub detector: Detector,
@@ -313,6 +313,51 @@ pub struct Suggestion<'s> {
     pub replacements: Vec<String>,
     /// Descriptive reason for the suggestion.
     pub description: Option<String>,
+    /// Update the backend based on the decision
+    pub checker_feedback_channel: Option<std::sync::mpsc::Sender<String>>,
+}
+
+impl Hash for Suggestion<'_> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.detector.hash(state);
+        self.origin.hash(state);
+        self.chunk.hash(state);
+        self.span.hash(state);
+        self.range.hash(state);
+        self.replacements.hash(state);
+        self.description.hash(state);
+    }
+}
+
+impl PartialEq for Suggestion<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.detector == other.detector
+            && self.origin == other.origin
+            && self.chunk == other.chunk
+            && self.range == other.range
+            && self.span == other.span
+            && self.replacements == other.replacements
+            && self.description == other.description
+    }
+}
+
+impl Eq for Suggestion<'_> {}
+
+impl<'s> Suggestion<'s> {
+    /// Return the user selection, or pass the custom one.
+    pub fn feedback(&self, s: impl AsRef<str>) {
+        log::info!("Attempt to feedback custom user input");
+        if let Some(ref feedback_sender) = self.checker_feedback_channel {
+            if let Err(e) = feedback_sender.send(s.as_ref().to_owned()) {
+                log::warn!(
+                    "Failed to provide feedback to checker {} from {}: {:?}",
+                    self.detector,
+                    self.origin,
+                    e
+                );
+            }
+        }
+    }
 }
 
 impl<'s> Suggestion<'s> {
@@ -764,6 +809,7 @@ mod tests {
                 "replacement_2".to_owned(),
             ],
             description: Some("Possible spelling mistake found.".to_owned()),
+            checker_feedback_channel: None,
         };
 
         const EXPECTED: &str = r#"error: spellcheck(Dummy)
@@ -811,6 +857,7 @@ mod tests {
             },
             replacements: vec![],
             description: Some("Possible spelling mistake found.".to_owned()),
+            checker_feedback_channel: None,
         };
 
         const EXPECTED: &str = r#"error: spellcheck(Dummy)
@@ -887,6 +934,7 @@ mod tests {
                 "replacement_2".to_owned(),
             ],
             description: Some("Possible spelling mistake found.".to_owned()),
+            checker_feedback_channel: None,
         };
 
         const EXPECTED: &str = r#"error: spellcheck(Dummy)
@@ -953,6 +1001,7 @@ mod tests {
                 "replacement_2".to_owned(),
             ],
             description: Some("Possible spelling mistake found.".to_owned()),
+            checker_feedback_channel: None,
         };
 
         const EXPECTED: &str = r#"error: spellcheck(Dummy)
@@ -1010,6 +1059,7 @@ mod tests {
             range: 2..6,
             replacements: vec!["whocares".to_owned()],
             description: None,
+            checker_feedback_channel: None,
         };
 
         let suggestion = dbg!(suggestion);
