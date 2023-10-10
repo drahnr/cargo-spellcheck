@@ -140,11 +140,11 @@ pub mod dummy;
 pub mod tests {
     use super::*;
     use crate::load_span_from;
-    use crate::span::Span;
     use crate::ContentOrigin;
     use crate::Documentation;
     use crate::LineColumn;
     use crate::Range;
+    use crate::Span;
     use std::path::PathBuf;
 
     use crate::fluff_up;

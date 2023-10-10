@@ -295,7 +295,8 @@ fn extract_sub_range_from_span(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::literalset::tests::gen_literal_set;
+
+    use crate::literalset::testhelper::gen_literal_set;
     use crate::util::load_span_from;
     use crate::{chyrp_dbg, chyrp_up, fluff_up};
     use crate::{LineColumn, Range, Span};

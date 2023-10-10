@@ -149,9 +149,10 @@ macro_rules! chyrp_dbg {
 /// Example:
 ///
 /// ```rust
-/// let x = chryp_up!(["some", "thing"])
+/// # use doc_chunks::chyrp_up;
+/// let x = chyrp_up!(["some", "thing"]);
 /// let y = r##"#[doc=r#"some
-/// thing"#
+/// thing"#]
 /// struct ChyrpChyrp;"##;
 ///
 /// assert_eq!(x,y);
@@ -172,10 +173,11 @@ macro_rules! chyrp_up {
 /// Example:
 ///
 /// ```rust
-/// let x = fluff_up!(["some", "thing"])
+/// # use doc_chunks::fluff_up;
+/// let x = fluff_up!(["some", "thing"]);
 /// let y = r#"/// some
 /// /// thing
-/// struct Fluff;"##;
+/// struct Fluff;"#;
 ///
 /// assert_eq!(x,y);
 /// ```
@@ -192,9 +194,9 @@ macro_rules! fluff_up {
     };
 }
 
-pub mod tests {
+pub mod testhelper {
     use super::*;
-    use crate::tests::annotated_literals;
+    use crate::testcase::annotated_literals;
 
     pub fn gen_literal_set(source: &str) -> LiteralSet {
         let literals = dbg!(annotated_literals(dbg!(source)));
@@ -213,10 +215,10 @@ pub mod tests {
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+mod tests {
     use super::*;
 
-    use crate::tests::annotated_literals;
+    use super::testhelper::gen_literal_set;
     use crate::util::load_span_from;
     use crate::util::sub_chars;
 

@@ -672,7 +672,7 @@ impl<'a> fmt::Display for TrimmedLiteralDisplay<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tests::annotated_literals_raw;
+    use crate::testcase::annotated_literals_raw;
     use assert_matches::assert_matches;
 
     #[test]
