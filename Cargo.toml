@@ -3,7 +3,7 @@ name = "cargo-spellcheck"
 version = "0.13.0"
 authors = ["Bernhard Schuster <bernhard@ahoi.io>"]
 edition = "2021"
-rust-version = "1.57.0"
+rust-version = "1.70.0"
 repository = "https://github.com/drahnr/cargo-spellcheck.git"
 homepage = "https://github.com/drahnr/cargo-spellcheck"
 license = "MIT OR Apache-2.0"
@@ -38,9 +38,9 @@ xz2 = "0.1"
 doc-chunks = { version = "0.0.5", path = "./doc-chunks" }
 
 color-eyre = "0.6"
-cargo_toml = "0.15.2"
+cargo_toml = "0.16"
 console = "0.15"
-crossterm = "0.26"
+crossterm = "0.27"
 # for the config file
 directories = "5"
 
@@ -51,22 +51,22 @@ clap-verbosity-flag = "2.0"
 env_logger = "0.10"
 fancy-regex = "0.11"
 fs-err = { version = "2", features = ["io_safety"] }
-indexmap = { version = "1", features = ["rayon", "serde"] }
-itertools = "0.10"
+indexmap = { version = "2", features = ["rayon", "serde"] }
+itertools = "0.11"
 lazy_static = "1"
 memchr = "2"
 log = "0.4"
 num_cpus = "1.13"
 proc-macro2 = { version = "1", features = ["span-locations"] }
-pulldown-cmark = "0.9.1"
+pulldown-cmark = "0.9.3"
 rayon = "1.5"
 regex = "1.5"
 serde = { version = "1", features = ["derive"] }
 signal-hook = "0.3"
-syn = { version = "1", features = ["full"] }
+syn = { version = "2", features = ["full"] }
 thiserror = "1"
 # for parsing and extracting elements from Cargo.toml
-toml = "0.7"
+toml = "0.8"
 glob = "0.3"
 # for the config file
 ignore = "0.4.18"

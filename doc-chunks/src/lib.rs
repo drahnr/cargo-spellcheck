@@ -158,7 +158,7 @@ impl Documentation {
 
             let value: Manifest = toml::from_str(manifest_content)?;
             let d = value.package.into_inner().description;
-            let range = d.start()..d.end();
+            let range = d.span();
             Ok(range)
         }
 

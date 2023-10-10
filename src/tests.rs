@@ -1096,18 +1096,18 @@ Title number 3
 Some extra formatting if anticipated or not or
 maybe not at all.
 
-Extra ~pagaph~ paragraph.
+Extra pagaph paragraph.
 
 
 And a line, or a rule."##;
     let (reduced, mapping) = PlainOverlay::extract_plain_with_mapping(MARKDOWN);
 
     assert_eq!(dbg!(&reduced).as_str(), PLAIN);
-    assert_eq!(dbg!(&mapping).len(), 20);
+    assert_eq!(dbg!(&mapping).len(), 22);
     for (reduced_range, cmark_range) in mapping.iter() {
         assert_eq!(
-            reduced[reduced_range.clone()],
-            MARKDOWN[cmark_range.range()]
+            dbg!(&reduced[reduced_range.clone()]),
+            dbg!(&MARKDOWN[cmark_range.range()])
         );
     }
 }
