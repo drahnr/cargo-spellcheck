@@ -1,12 +1,13 @@
-use super::literalset::tests::gen_literal_set;
 use super::*;
 use crate::checker::Checker;
 use crate::util::{load_span_from, sub_char_range, sub_chars};
 use crate::{chyrp_up, fluff_up};
+use doc_chunks::literalset::testhelper::gen_literal_set;
 
-use crate::documentation::{tests::annotated_literals, SourceRange};
+use crate::documentation::{testcase::annotated_literals, SourceRange};
 use indexmap::IndexMap;
 use std::convert::From;
+
 #[test]
 fn parse_and_construct() {
     let _ = env_logger::builder()
@@ -295,7 +296,7 @@ struct CAPI;
         end2end_file_rust!("demo/src/nested/justtwo.rs", 2);
     }
 
-    // use crate::literalset::tests::{annotated_literals,gen_literal_set};
+    // use crate::literalset::testhelper::{annotated_literals,gen_literal_set};
     use crate::checker::dummy::DummyChecker;
     use crate::documentation::Documentation;
 

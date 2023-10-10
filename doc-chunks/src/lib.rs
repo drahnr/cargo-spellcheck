@@ -17,7 +17,7 @@
 
 // contains test helpers
 pub mod span;
-pub mod tests;
+pub mod testcase;
 pub use self::span::Span;
 pub use proc_macro2::LineColumn;
 
