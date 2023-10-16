@@ -92,7 +92,7 @@ macro_rules! reflow_content {
         let chunks = docs.get(&$content_type).expect("Contains test data. qed");
         assert_eq!(dbg!(chunks).len(), 1);
         let chunk = &chunks[0];
-        let _plain = chunk.erase_cmark();
+        let _plain = chunk.erase_cmark(&Default::default());
         let suggestions = reflow(&$content_type, chunk, &CFG).expect("Reflow is working. qed");
 
         let patches = suggestions
@@ -134,7 +134,7 @@ macro_rules! reflow_content {
         let chunks = docs.get(&$content_type).expect("Contains test data. qed");
         assert_eq!(dbg!(chunks).len(), 1);
         let chunk = &chunks[0];
-        let _plain = chunk.erase_cmark();
+        let _plain = chunk.erase_cmark(&Default::default());
         let suggestions = reflow(&$content_type, chunk, &CFG).expect("Reflow is working. qed");
 
         assert_eq!(
@@ -159,7 +159,7 @@ macro_rules! reflow_content {
         let chunks = docs.get(&$content_type).expect("Contains test data. qed");
         assert_eq!(dbg!(chunks).len(), 1);
         let chunk = &chunks[0];
-        let _plain = chunk.erase_cmark();
+        let _plain = chunk.erase_cmark(&Default::default());
         println!("reflow content:\n {:?}", $content);
         let suggestions = reflow(&$content_type, chunk, &CFG).expect("Reflow is working. qed");
         let patches = suggestions

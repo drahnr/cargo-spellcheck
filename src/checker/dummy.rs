@@ -39,7 +39,7 @@ impl Checker for DummyChecker {
         let chunk = chunks
             .first()
             .expect("DummyChecker expects at least one chunk");
-        let plain = chunk.erase_cmark();
+        let plain = chunk.erase_cmark(&Default::default());
         let txt = plain.as_str();
         for (index, range) in apply_tokenizer(&tokenizer, txt).enumerate() {
             log::trace!("****Token[{}]: >{}<", index, sub_chars(txt, range.clone()));

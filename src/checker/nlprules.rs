@@ -114,7 +114,12 @@ fn check_chunk<'a>(
     tokenizer: &Tokenizer,
     rules: &Rules,
 ) -> Vec<Suggestion<'a>> {
-    let plain = chunk.erase_cmark();
+    // TODO We should control which parts need to be ignored of the markdown
+    // entities, however the `NlpRulesConfig`, which is the only configuration
+    // we receive in the constructor does not contain the same quirks (or in
+    // fact any other similar settings) as the Hunspell one, so we cannot obtain
+    // this setting, therefore we fallback to default
+    let plain = chunk.erase_cmark(&Default::default());
     log::trace!("{plain:?}");
     let txt = plain.as_str();
 
