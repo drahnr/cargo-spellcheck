@@ -136,7 +136,10 @@ impl<'a> PlainOverlay<'a> {
     }
 
     /// Ranges are mapped `cmark reduced/plain -> raw`.
-    pub fn extract_plain_with_mapping(cmark: &str) -> (String, IndexMap<Range, SourceRange>) {
+    pub fn extract_plain_with_mapping(
+        cmark: &str,
+        ignores: &Ignores,
+    ) -> (String, IndexMap<Range, SourceRange>) {
         let mut plain = String::with_capacity(cmark.len());
         let mut mapping = indexmap::IndexMap::with_capacity(128);
 
@@ -322,7 +325,7 @@ impl<'a> PlainOverlay<'a> {
                     }
                 }
                 Event::FootnoteReference(s) => {
-                    if !s.is_empty() {
+                    if !ignores.footnote_references && !s.is_empty() {
                         let char_range = Range {
                             start: char_range.start + 2,
                             end: char_range.end - 1,
@@ -368,8 +371,8 @@ impl<'a> PlainOverlay<'a> {
     /// reference.
     // TODO consider returning a `Vec<PlainOverlay<'a>>` to account for list items
     // or other non-linear information which might not pass a grammar check as a whole
-    pub fn erase_cmark(chunk: &'a CheckableChunk) -> Self {
-        let (plain, mapping) = Self::extract_plain_with_mapping(chunk.as_str());
+    pub fn erase_cmark(chunk: &'a CheckableChunk, ignores: &Ignores) -> Self {
+        let (plain, mapping) = Self::extract_plain_with_mapping(chunk.as_str(), ignores);
         Self {
             raw: chunk,
             plain,
@@ -517,4 +520,12 @@ impl<'a> fmt::Debug for PlainOverlay<'a> {
         writeln!(formatter, "Plain:\n{coloured_plain}")?;
         Ok(())
     }
+}
+
+/// Explicitly ignored markdown entities.  The `Default` implementation means we
+/// do not ignore anything, which is the backwards compatible configuration.
+#[derive(Clone, Default)]
+pub struct Ignores {
+    /// Ignore [footnote references](Event::FootnoteReference).
+    pub footnote_references: bool,
 }

@@ -2,7 +2,7 @@ use super::*;
 use crate::checker::Checker;
 use crate::util::{load_span_from, sub_char_range, sub_chars};
 use crate::{chyrp_up, fluff_up};
-use doc_chunks::literalset::testhelper::gen_literal_set;
+use doc_chunks::{literalset::testhelper::gen_literal_set, Ignores};
 
 use crate::documentation::{testcase::annotated_literals, SourceRange};
 use indexmap::IndexMap;
@@ -31,7 +31,7 @@ fn parse_and_construct() {
     // TODO
     let chunk = &chunks[0];
     assert_eq!(chunk.as_str(), TEST_RAW.to_owned());
-    let plain = chunk.erase_cmark();
+    let plain = chunk.erase_cmark(&Default::default());
     println!("{plain:?}");
 
     assert_eq!(TEST_PLAIN, plain.as_str());
@@ -98,7 +98,7 @@ macro_rules! end2end {
         let chunks = docs.get(&origin).expect("Must contain dummy path");
         assert_eq!(dbg!(chunks).len(), 1);
         let chunk = &chunks[0];
-        let _plain = chunk.erase_cmark();
+        let _plain = chunk.erase_cmark(&Default::default());
         let cfg = $cfg;
         dbg!(std::any::type_name::<$checker>());
         let checker = <$checker>::new(&cfg).expect("Checker construction works");
@@ -259,7 +259,7 @@ struct CAPI;
     #[test]
     fn issue_281() {
         let dict_path = temp_dir().join(uuid::Uuid::new_v4().to_string() + ".dic");
-        // Any of the two hypthens cause havoc
+        // Any of the two hyphens cause havoc
         const EXTRA_DICT: &str = r###"2
 —
 –
@@ -326,7 +326,7 @@ struct CAPI;
             assert_eq!(chunks.len(), 1);
             assert_eq!(RAW, chunk.as_str());
 
-            let plain = dbg!(chunk.erase_cmark());
+            let plain = dbg!(chunk.erase_cmark(&Default::default()));
             assert_eq!(dbg!($plain), plain.as_str());
 
             let mut it = suggestions.into_iter();
@@ -598,6 +598,31 @@ Ref4"#;
             ]
         );
     }
+}
+
+#[test]
+fn check_footnote_references() {
+    const SOURCE: &str = "Hello[^xyz].\n\n[^xyz]: World.";
+    let origin = ContentOrigin::TestEntityCommonMark;
+
+    let documentation = Documentation::load_from_str(origin.clone(), SOURCE, false, false);
+    assert_eq!(documentation.len(), 1);
+
+    let chunks = documentation.get(&origin).expect("Must contain dummy path");
+    assert_eq!(dbg!(chunks).len(), 1);
+
+    let chunk = &chunks[0];
+    assert_eq!(chunk.as_str(), SOURCE);
+
+    let plain = chunk.erase_cmark(&Ignores {
+        footnote_references: false,
+    });
+    assert_eq!(plain.as_str(), "Helloxyz.\n\nWorld.");
+
+    let plain = chunk.erase_cmark(&Ignores {
+        footnote_references: true,
+    });
+    assert_eq!(plain.as_str(), "Hello.\n\nWorld.");
 }
 
 #[test]
@@ -1050,7 +1075,7 @@ fn drill_span() {
         CommentVariant::CommonMark,
     );
 
-    let plain = chunk.erase_cmark();
+    let plain = chunk.erase_cmark(&Default::default());
     assert_eq!(plain.find_spans(0..2).len(), 1);
     assert_eq!(plain.find_spans(3..4).len(), 1);
     assert_eq!(plain.find_spans(5..7).len(), 1);
@@ -1100,7 +1125,8 @@ Extra pagaph paragraph.
 
 
 And a line, or a rule."##;
-    let (reduced, mapping) = PlainOverlay::extract_plain_with_mapping(MARKDOWN);
+    let (reduced, mapping) =
+        PlainOverlay::extract_plain_with_mapping(MARKDOWN, &Default::default());
 
     assert_eq!(dbg!(&reduced).as_str(), PLAIN);
     assert_eq!(dbg!(&mapping).len(), 22);
@@ -1117,7 +1143,8 @@ fn reduction_leading_space() {
     const MARKDOWN: &str = r#"  Some __underlined__ **bold** text."#;
     const PLAIN: &str = r#"Some underlined bold text."#;
 
-    let (reduced, mapping) = PlainOverlay::extract_plain_with_mapping(MARKDOWN);
+    let (reduced, mapping) =
+        PlainOverlay::extract_plain_with_mapping(MARKDOWN, &Default::default());
 
     assert_eq!(dbg!(&reduced).as_str(), PLAIN);
     assert_eq!(dbg!(&mapping).len(), 5);
@@ -1158,7 +1185,7 @@ fn range_test() {
 }
 
 fn cmark_reduction_test(input: &'static str, expected: &'static str, expected_mapping_len: usize) {
-    let (plain, mapping) = PlainOverlay::extract_plain_with_mapping(input);
+    let (plain, mapping) = PlainOverlay::extract_plain_with_mapping(input, &Default::default());
     assert_eq!(dbg!(&plain).as_str(), expected);
     assert_eq!(dbg!(&mapping).len(), expected_mapping_len);
     for (reduced_range, markdown_range) in mapping.into_iter() {

@@ -9,11 +9,11 @@ use std::convert::TryFrom;
 use std::fmt;
 use std::path::Path;
 
-use crate::PlainOverlay;
 use crate::{
     util::{sub_char_range, sub_chars},
     Range, Span,
 };
+use crate::{Ignores, PlainOverlay};
 
 /// Definition of the source of a checkable chunk
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
@@ -364,8 +364,8 @@ impl CheckableChunk {
 
     /// Obtain an accessor object containing mapping and string representation,
     /// removing the markdown annotations.
-    pub fn erase_cmark(&self) -> PlainOverlay {
-        PlainOverlay::erase_cmark(self)
+    pub fn erase_cmark(&self, ignores: &Ignores) -> PlainOverlay {
+        PlainOverlay::erase_cmark(self, ignores)
     }
 
     /// Obtain the length in characters.

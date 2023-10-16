@@ -30,15 +30,25 @@ pub struct Quirks {
     /// Treats sequences of emojis as OK.
     #[serde(default = "yes")]
     pub allow_emojis: bool,
+    /// Check the expressions in the footnote references. By default this is
+    /// turned on to remain backwards compatible but disabling it could be
+    /// particularly useful when one uses abbreviations instead of numbers as
+    /// footnote references.  For instance by default the fragment `hello[^xyz]`
+    /// would be spellchecked as `helloxyz` which is obviously a misspelled
+    /// word, but by turning this check off, it will skip validating the
+    /// reference altogether and will only check the word `hello`.
+    #[serde(default = "yes")]
+    pub check_footnote_references: bool,
 }
 
 impl Default for Quirks {
     fn default() -> Self {
         Self {
-            transform_regex: vec![],
+            transform_regex: Vec::new(),
             allow_concatenation: false,
             allow_dashes: false,
             allow_emojis: true,
+            check_footnote_references: true,
         }
     }
 }
@@ -58,6 +68,10 @@ impl Quirks {
 
     pub(crate) fn transform_regex(&self) -> &[WrappedRegex] {
         &self.transform_regex
+    }
+
+    pub(crate) fn check_footnote_references(&self) -> bool {
+        self.check_footnote_references
     }
 }
 

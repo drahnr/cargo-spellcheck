@@ -23,6 +23,8 @@ use std::sync::Arc;
 
 use hunspell_rs::{CheckResult, Hunspell};
 
+use doc_chunks::Ignores;
+
 use crate::errors::*;
 
 use super::quirks::{
@@ -133,22 +135,28 @@ pub struct HunspellCheckerInner {
     allow_concatenated: bool,
     allow_dashed: bool,
     allow_emojis: bool,
+    check_footnote_references: bool,
     ignorelist: String,
 }
 
 impl HunspellCheckerInner {
     fn new(config: &<HunspellChecker as Checker>::Config) -> Result<Self> {
         // TODO allow override
-        let (transform_regex, allow_concatenated, allow_dashed, allow_emojis) = {
+        let (
+            transform_regex,
+            allow_concatenated,
+            allow_dashed,
+            allow_emojis,
+            check_footnote_references,
+        ) = {
             let quirks = &config.quirks;
-            {
-                (
-                    quirks.transform_regex().to_vec(),
-                    quirks.allow_concatenated(),
-                    quirks.allow_dashed(),
-                    quirks.allow_emojis(),
-                )
-            }
+            (
+                quirks.transform_regex().to_vec(),
+                quirks.allow_concatenated(),
+                quirks.allow_dashed(),
+                quirks.allow_emojis(),
+                quirks.check_footnote_references(),
+            )
         };
         // FIXME rename the config option
         let ignorelist = config.tokenization_splitchars.clone();
@@ -257,6 +265,7 @@ impl HunspellCheckerInner {
             allow_concatenated,
             allow_dashed,
             allow_emojis,
+            check_footnote_references,
             ignorelist,
         })
     }
@@ -299,7 +308,9 @@ impl Checker for HunspellChecker {
         let mut acc = Vec::with_capacity(chunks.len());
 
         for chunk in chunks {
-            let plain = chunk.erase_cmark();
+            let plain = chunk.erase_cmark(&Ignores {
+                footnote_references: !self.0.check_footnote_references,
+            });
             log::trace!("{plain:?}");
             let txt = plain.as_str();
             let hunspell = &*self.hunspell.0;
