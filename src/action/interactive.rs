@@ -532,7 +532,7 @@ impl UserPicked {
 
             'inner: loop {
                 match picked.user_input(&mut state, idx, count)? {
-                    usel @ UserSelection::Abort | usel @ UserSelection::Quit => {
+                    usel @ (UserSelection::Abort | UserSelection::Quit) => {
                         let _ = ScopedRaw::restore_terminal();
                         return Ok((picked, usel));
                     }
