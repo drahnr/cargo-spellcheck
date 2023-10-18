@@ -75,13 +75,11 @@ impl Clusters {
         if let Some(cls) = self.set.last_mut() {
             if let Err(trimmed_literal) = cls.add_adjacent(trimmed_literal) {
                 log::trace!(target: "documentation",
-                    "appending, but failed to append: {:?} to set {:?}",
-                    &trimmed_literal,
-                    &cls
+                    "appending, but failed to append: {trimmed_literal:?} to set {cls:?}",
                 );
                 self.set.push(LiteralSet::from(trimmed_literal))
             } else {
-                log::trace!("successfully appended to existing: {:?} to set", &cls);
+                log::trace!("successfully appended to existing: {cls:?} to set");
             }
         } else {
             self.set.push(LiteralSet::from(trimmed_literal));
@@ -102,8 +100,7 @@ impl Clusters {
                     if let Ok(comment) = syn::parse2::<DocComment>(group.stream()) {
                         if let Err(e) = self.process_literal(source, comment) {
                             log::error!(
-                                "BUG: Failed to guarantee literal content/span integrity: {}",
-                                e
+                                "BUG: Failed to guarantee literal content/span integrity: {e}"
                             );
                             continue;
                         }

@@ -61,10 +61,7 @@ pub fn get_terminal_size() -> usize {
 
             static WARN_ONCE: Once = Once::new();
             WARN_ONCE.call_once(|| {
-                log::warn!(
-                    "Unable to get terminal size. Using default: {}",
-                    DEFAULT_TERMINAL_SIZE
-                );
+                log::warn!("Unable to get terminal size. Using default: {DEFAULT_TERMINAL_SIZE}");
             });
 
             DEFAULT_TERMINAL_SIZE
@@ -174,7 +171,7 @@ pub fn condition_display_content(
             .take(TAIL_DISPLAY_LEN)
             .collect::<String>();
 
-        let shortened = format!("{}...{}", head_sub, tail_sub);
+        let shortened = format!("{head_sub}...{tail_sub}");
         // FIXME if characters width a width of ineq of 1
         // ISSUE: https://github.com/drahnr/cargo-spellcheck/issues/145
         let marker_size = head_sub_range.len() + CENTER_DOTS.len() + tail_sub_range.len();
@@ -354,7 +351,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
 
         error.apply_to("error").fmt(formatter)?;
         highlight
-            .apply_to(format!(": spellcheck({})", &self.detector))
+            .apply_to(format!(": spellcheck({})", self.detector))
             .fmt(formatter)?;
         formatter.write_str("\n")?;
 
@@ -433,7 +430,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
             marker_size,
         );
 
-        writeln!(formatter, " {}", formatted.as_str())?;
+        writeln!(formatter, " {formatted}")?;
 
         if marker_size > 0 {
             context_marker
@@ -481,7 +478,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
                     .collect::<Vec<String>>()
                     .as_slice()
                     .join(", ");
-                format!(" - {}, or {}", joined, last)
+                format!(" - {joined}, or {last}")
             }
             _n => {
                 let joined = self.replacements[..=6]
@@ -492,8 +489,8 @@ impl<'s> fmt::Display for Suggestion<'s> {
                     .join(", ");
 
                 let remaining = self.replacements.len() - 6;
-                let remaining = fix.apply_to(format!("{}", remaining)).to_string();
-                format!(" - {}, or one of {} others", joined, remaining)
+                let remaining = fix.apply_to(format!("{remaining}")).to_string();
+                format!(" - {joined}, or one of {remaining} others")
             }
         };
 
@@ -510,7 +507,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
         }
 
         if let Some(ref description) = self.description {
-            writeln!(formatter, "   {}", description)?;
+            writeln!(formatter, "   {description}")?;
         }
         Ok(())
     }
@@ -522,7 +519,7 @@ impl<'s> fmt::Debug for Suggestion<'s> {
             Ok(printable) => write!(
                 formatter,
                 "({}, {:?}, {:?})",
-                &printable,
+                printable,
                 printable.1,
                 self.replacements.as_slice()
             ),
@@ -1014,8 +1011,8 @@ mod tests {
 
         let suggestion = dbg!(suggestion);
 
-        log::info!("fmt debug=\n{:?}\n<", suggestion);
-        log::info!("fmt display=\n{}\n<", suggestion);
+        log::info!("fmt debug=\n{suggestion:?}\n<");
+        log::info!("fmt display=\n{suggestion}\n<");
     }
 
     #[test]

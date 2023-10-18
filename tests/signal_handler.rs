@@ -45,10 +45,8 @@ fn signal_handler_works() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 Ok(WaitStatus::Exited(_pid, _exit_code)) => {
                     return Ok(());
                 }
-                Ok(ws) => unreachable!("Unexpected wait status: {:?}", ws),
-                Err(errno) => {
-                    unreachable!("Did not expect an error: {:?}", errno);
-                }
+                Ok(ws) => unreachable!("Unexpected wait status: {ws:?}"),
+                Err(errno) => unreachable!("Did not expect an error: {errno:?}"),
             }
         }
     } else {

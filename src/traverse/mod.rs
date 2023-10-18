@@ -127,15 +127,11 @@ fn extract_modules_recurse<P: AsRef<Path>>(
             },
             TokenTree::Punct(punct) => {
                 if let SeekingFor::ModulFin(ref mod_name) = state {
-                    log::trace!("✨ Found a module: {}", mod_name);
+                    log::trace!("✨ Found a module: {mod_name}");
                     if punct.as_char() == ';' && punct.spacing() == Spacing::Alone {
                         extract_modules_recurse_collect(path, &mut acc, &mod_name)?;
                     } else {
-                        log::trace!(
-                            "🍂 Either not alone or not a semi colon {:?} - incomplete mod {}",
-                            punct,
-                            mod_name
-                        );
+                        log::trace!("🍂 Either not alone or not a semi colon {punct:?} - incomplete mod {mod_name}");
                     }
                 }
                 state = SeekingFor::ModulKeyword;
@@ -158,7 +154,7 @@ pub(crate) fn extract_modules_from_file<P: AsRef<Path>>(path: P) -> Result<HashS
     if let Some(path_str) = path.to_str() {
         let s = fs::read_to_string(path_str)?;
         let stream = syn::parse_str::<proc_macro2::TokenStream>(s.as_str())
-            .wrap_err_with(|| eyre!("File {} has syntax errors", path_str))?;
+            .wrap_err_with(|| eyre!("File {path_str} has syntax errors"))?;
         let acc = extract_modules_recurse(path.to_owned(), stream)?;
         log::debug!(
             "🥞 Recursed into {} modules from {}",
@@ -280,7 +276,7 @@ fn extract_products(
         .map(|path_str| CheckEntity::Source(manifest_dir.join(path_str), true))
         .collect::<HashSet<CheckEntity>>();
 
-    log::trace!("📜 explicit manifest products {:?}", &items);
+    log::trace!("📜 explicit manifest products {items:?}");
     Ok(items)
 }
 
@@ -383,7 +379,7 @@ fn handle_manifest<P: AsRef<Path>>(
                     )
                 })?;
                 let member_dirs = glob::glob(back_to_glob)?;
-                log::debug!("🪆 Handing manifest member: {}", &member_entry_glob);
+                log::debug!("🪆 Handing manifest member: {member_entry_glob}");
                 for member_dir in member_dirs {
                     let member_dir = member_dir?;
                     log::trace!(
@@ -434,7 +430,7 @@ pub(crate) fn extract(
         recurse = true;
     }
 
-    log::debug!("Running on inputs {:?} / recursive={}", &paths, recurse);
+    log::debug!("Running on inputs {paths:?} / recursive={recurse}");
 
     #[derive(Debug, Clone)]
     enum Extraction {
@@ -456,7 +452,7 @@ pub(crate) fn extract(
         path.canonicalize().ok()
     }));
 
-    log::debug!("Running on absolute dirs {:?} ", &flow);
+    log::debug!("Running on absolute dirs {flow:?}");
 
     // stage 2 - check for manifest, .rs , .md files and directories
     let mut files_to_check = Vec::with_capacity(64);
@@ -488,7 +484,7 @@ pub(crate) fn extract(
                     // if recursing is wanted
                     // and if it doesn't contain a manifest file
                     match fs::read_dir(path) {
-                        Err(err) => log::warn!("Listing directory contents {} failed", err),
+                        Err(err) => log::warn!("Listing directory contents {err} failed"),
                         Ok(entries) => {
                             for entry in entries.flatten() {
                                 let path = entry.path();
@@ -500,7 +496,7 @@ pub(crate) fn extract(
                     continue;
                 } else {
                     match fs::read_dir(path) {
-                        Err(err) => log::warn!("Listing directory contents {} failed", err),
+                        Err(err) => log::warn!("Listing directory contents {err} failed"),
                         Ok(entries) => {
                             for entry in entries.flatten() {
                                 let path = entry.path();

@@ -47,7 +47,7 @@ where
                     fx();
                     signal_hook::low_level::exit(130);
                 }
-                sig => log::warn!("Received unhandled signal {}, ignoring", sig),
+                sig => log::warn!("Received unhandled signal {sig}, ignoring"),
             }
         }
     });

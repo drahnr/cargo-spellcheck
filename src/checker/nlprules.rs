@@ -115,7 +115,7 @@ fn check_chunk<'a>(
     rules: &Rules,
 ) -> Vec<Suggestion<'a>> {
     let plain = chunk.erase_cmark();
-    log::trace!("{:?}", &plain);
+    log::trace!("{plain:?}");
     let txt = plain.as_str();
 
     let mut acc = Vec::with_capacity(32);

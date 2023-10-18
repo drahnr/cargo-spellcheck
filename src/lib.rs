@@ -91,7 +91,7 @@ pub fn run(args: Args) -> Result<ExitCode> {
     #[cfg(not(target_os = "windows"))]
     signal_handler(move || {
         if let Err(e) = action::interactive::ScopedRaw::restore_terminal() {
-            log::warn!("Failed to restore terminal: {}", e);
+            log::warn!("Failed to restore terminal: {e}");
         }
     });
 
@@ -146,12 +146,7 @@ pub fn run(args: Args) -> Result<ExitCode> {
             dev_comments,
             exit_code_override,
         } => {
-            log::debug!(
-                "Executing: {:?} with {:?} from {:?}",
-                action,
-                &config,
-                config_path
-            );
+            log::debug!("Executing: {action:?} with {config:?} from {config_path:?}");
 
             let documents =
                 traverse::extract(paths, recursive, skip_readme, dev_comments, &config)?;

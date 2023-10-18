@@ -7,7 +7,7 @@ fn main() -> Result<()> {
     let res = run(args);
     // no matter what, restore the terminal
     if let Err(e) = action::interactive::ScopedRaw::restore_terminal() {
-        log::warn!("Failed to restore terminal: {}", e);
+        log::warn!("Failed to restore terminal: {e}");
     }
     let val = res?.as_u8();
     if val != 0 {

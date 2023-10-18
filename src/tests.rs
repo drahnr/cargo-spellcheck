@@ -32,7 +32,7 @@ fn parse_and_construct() {
     let chunk = &chunks[0];
     assert_eq!(chunk.as_str(), TEST_RAW.to_owned());
     let plain = chunk.erase_cmark();
-    println!("{:?}", &plain);
+    println!("{plain:?}");
 
     assert_eq!(TEST_PLAIN, plain.as_str());
 
@@ -332,7 +332,7 @@ struct CAPI;
             let mut it = suggestions.into_iter();
 
             let mut expected = |word: &'static str| {
-                log::info!("Working on expected token >{}<", word);
+                log::info!("Working on expected token >{word}<");
                 let suggestion = dbg!(it.next()).expect("Number of words is by test design equal to the number of expects. qed");
                 let _s = dbg!(suggestion.chunk.as_str());
 
@@ -347,10 +347,10 @@ struct CAPI;
                     suggestion.chunk.display(range.clone())
                 );
 
-                log::info!("Checking word boundaries of >{}< against the chunk/range", word);
+                log::info!("Checking word boundaries of >{word}< against the chunk/range");
                 assert_eq!(word, sub_chars(chunk.as_str(), range));
 
-                log::info!("Checking word boundaries of >{}< against the source/span", word);
+                log::info!("Checking word boundaries of >{word}< against the source/span");
                 let alternative = load_span_from($source.as_bytes(), suggestion.span.clone())
                     .expect("Span loading must succeed");
 
@@ -885,10 +885,10 @@ fn find_spans_and_coverage_integrity() -> Result<()> {
         let fs = load_span_from(SOURCE.as_bytes(), find_span.clone())?;
         let fr = sub_char_range(chunk.as_str(), find_range.clone());
         let x = load_span_from(SOURCE.as_bytes(), expected.clone())?;
-        log::trace!("[find]chunk[range]: {:?}", fr);
-        log::trace!("[find]excerpt(true): {:?}", fs);
-        log::trace!("[cove]excerpt(true): {:?}", cs);
-        log::trace!("expected: {:?}", x);
+        log::trace!("[find]chunk[range]: {fr:?}");
+        log::trace!("[find]excerpt(true): {fs:?}");
+        log::trace!("[cove]excerpt(true): {cs:?}");
+        log::trace!("expected: {x:?}");
         assert_eq!(coverage_span, expected);
         assert_eq!(find_span, expected);
         assert_eq!(fr, x);
@@ -1013,7 +1013,7 @@ fn find_line_length_docmacro() {
         .filter_level(log::LevelFilter::Trace)
         .try_init();
 
-    println!("{}", SOURCE);
+    println!("{SOURCE}");
     let set = gen_literal_set(SOURCE);
     let chunk = dbg!(CheckableChunk::from_literalset(set));
 

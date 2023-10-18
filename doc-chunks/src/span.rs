@@ -49,14 +49,12 @@ impl Span {
         let me: Range = self.try_into()?;
         if scope.start > me.start {
             return Err(Error::Span(format!(
-                "start of {:?} is not inside of {:?}",
-                me, scope
+                "start of {me:?} is not inside of {scope:?}",
             )));
         }
         if scope.end < me.end {
             return Err(Error::Span(format!(
-                "end of {:?} is not inside of {:?}",
-                me, scope
+                "end of {me:?} is not inside of {scope:?}",
             )));
         }
         let offset = me.start - scope.start;
@@ -101,10 +99,7 @@ impl Span {
             // pre-filter to reduce too many calls to `extract_sub_range`
             .filter(|(fragment_range, fragment_span)| {
                 log::trace!(
-                    "extracting sub from {:?} ::: {:?} -> {:?}",
-                    self,
-                    &fragment_range,
-                    &fragment_span
+                    "extracting sub from {self:?} ::: {fragment_range:?} -> {fragment_span:?}",
                 );
                 fragment_span.start.line <= self.start.line
                     && self.end.line <= fragment_span.end.line
@@ -355,10 +350,7 @@ mod tests {
                 .zip(FRAGMENT_STR.iter()),
         ) {
             log::trace!(
-                ">>>>>>>>>>>>>>>>\ninput: {:?}\nexpected: {:?}\nfragment:>{}<",
-                input,
-                expected,
-                fragment
+                ">>>>>>>>>>>>>>>>\ninput: {input:?}\nexpected: {expected:?}\nfragment:>{fragment}<",
             );
             let range = input
                 .to_content_range(&chunk)
@@ -443,10 +435,7 @@ AlphaOmega
                 .zip(FRAGMENT_STR.iter()),
         ) {
             log::trace!(
-                ">>>>>>>>>>>>>>>>\ninput: {:?}\nexpected: {:?}\nfragment:>{}<",
-                input,
-                expected,
-                fragment
+                ">>>>>>>>>>>>>>>>\ninput: {input:?}\nexpected: {expected:?}\nfragment:>{fragment}<",
             );
 
             let range = dbg!(input)

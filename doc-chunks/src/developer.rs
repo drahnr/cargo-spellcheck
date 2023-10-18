@@ -65,7 +65,7 @@ impl Display for TokenType {
             TokenType::LineComment => "developer line comment",
             TokenType::Other => "not a developer comment",
         };
-        write!(f, "{}", kind)
+        write!(f, "{kind}")
     }
 }
 
@@ -221,9 +221,7 @@ fn literal_set_from_block_comment(
         ) {
             Err(s) => {
                 return Err(format!(
-                    "Failed to create literal from block comment with content \"{}\" \
-          due to error \"{}\"",
-                    next_line, s
+                    "Failed to create literal from block comment with content \"{next_line}\" due to error \"{s}\"",
                 ))
             }
             Ok(l) => l,
@@ -247,9 +245,8 @@ fn literal_set_from_block_comment(
             ) {
                 Err(s) => {
                     return Err(format!(
-                        "Failed to create literal from content \"{}\" due to error \"{}\"",
-                        next_line, s
-                    ))
+                    "Failed to create literal from content \"{next_line}\" due to error \"{s}\"",
+                ))
                 }
                 Ok(l) => l,
             };
@@ -257,8 +254,7 @@ fn literal_set_from_block_comment(
                 Ok(_) => (),
                 Err(_) => {
                     return Err(format!(
-                        "Failed to add line with content {} to literal set",
-                        next_line
+                        "Failed to add line with content {next_line} to literal set",
                     ))
                 }
             }
@@ -774,7 +770,7 @@ mod tests {
     #[test]
     fn test_single_line_comment_put_in_one_literal_set() {
         let content = " line comment";
-        let source = format!("//{}", content);
+        let source = format!("//{content}");
         let tokens = source_to_iter(&source);
         let literal_sets = construct_literal_sets(tokens);
         assert_eq!(literal_sets.len(), 1);
@@ -790,7 +786,7 @@ mod tests {
     fn test_adjacent_line_comments_put_in_same_literal_set() {
         let content_1 = " line comment 1 ";
         let content_2 = " line comment 2 ";
-        let source = format!("//{}\n//{}", content_1, content_2);
+        let source = format!("//{content_1}\n//{content_2}");
         let tokens = source_to_iter(&source);
         let literal_sets = construct_literal_sets(tokens);
         assert_eq!(literal_sets.len(), 1);
@@ -811,7 +807,7 @@ mod tests {
     fn test_non_adjacent_line_comments_put_in_different_literal_sets() {
         let content_1 = " line comment 1 ";
         let content_2 = " line comment 2 ";
-        let source = format!("//{}\nfn(){{}}\n//{}", content_1, content_2);
+        let source = format!("//{content_1}\nfn(){{}}\n//{content_2}");
         let tokens = source_to_iter(&source);
         let literal_sets = construct_literal_sets(tokens);
         assert_eq!(literal_sets.len(), 2);

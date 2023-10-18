@@ -105,7 +105,7 @@ impl<'a> PlainOverlay<'a> {
         let plain_range = match &cmark_range {
             SourceRange::Alias(_range, alias) => {
                 if alias.is_empty() {
-                    log::debug!("Alias for {:?} was empty. Ignoring.", s);
+                    log::debug!("Alias for {s:?} was empty. Ignoring.");
                     return;
                 }
                 // limit the lias names to 16 chars, all ascii
@@ -170,15 +170,13 @@ impl<'a> PlainOverlay<'a> {
         for (event, byte_range) in parser.into_offset_iter() {
             if byte_range.start > byte_range.end {
                 log::warn!(
-                    "Dropping event {:?} due to negative byte range {:?}, see {}",
-                    event,
-                    byte_range,
+                    "Dropping event {event:?} due to negative byte range {byte_range:?}, see {}",
                     "https://github.com/raphlinus/pulldown-cmark/issues/478"
                 );
                 continue;
             }
 
-            log::trace!("Parsing event (bytes: {:?}): {:?}", &byte_range, &event);
+            log::trace!("Parsing event (bytes: {byte_range:?}): {event:?}");
 
             let mut cursor = cmark.char_indices().enumerate().peekable();
             let mut char_cursor = 0usize;
@@ -391,7 +389,7 @@ impl<'a> PlainOverlay<'a> {
             .skip_while(|(sub, _raw)| sub.end <= start)
             .take_while(|(sub, _raw)| sub.start < end)
             .inspect(|x| {
-                log::trace!(">>> item {:?} ∈ {:?}", &condensed_range, x.0);
+                log::trace!(">>> item {:?} ∈ {:?}", condensed_range, x.0);
             })
             .filter(|(sub, _)| {
                 // could possibly happen on empty documentation lines with `///`
@@ -443,13 +441,13 @@ impl<'a> PlainOverlay<'a> {
                         None
                     }
                     .and_then(|(sub, raw)| {
-                        log::trace!("convert:  cmark-erased={:?} -> raw={:?}", sub, raw);
+                        log::trace!("convert:  cmark-erased={sub:?} -> raw={raw:?}");
 
                         if raw.is_empty() {
-                            log::warn!("linear range to spans: {:?} empty!", raw);
+                            log::warn!("linear range to spans: {raw:?} empty!");
                         } else {
                             let resolved = self.raw.find_spans(raw.clone());
-                            log::trace!("cmark-erased range to spans: {:?} -> {:?}", raw, resolved);
+                            log::trace!("cmark-erased range to spans: {raw:?} -> {resolved:?}");
                             acc.extend(resolved.into_iter());
                         }
                         Some(())
@@ -513,10 +511,10 @@ impl<'a> fmt::Debug for PlainOverlay<'a> {
             let s = sub_chars(self.plain.as_str(), plain_range.clone());
             coloured_plain.push_str(style.apply_to(s.as_str()).to_string().as_str());
         }
-        // write!(formatter, "{}", coloured_md)?;
+        // write!(formatter, "{coloured_md}")?;
 
-        writeln!(formatter, "Commonmark:\n{}", coloured_md)?;
-        writeln!(formatter, "Plain:\n{}", coloured_plain)?;
+        writeln!(formatter, "Commonmark:\n{coloured_md}")?;
+        writeln!(formatter, "Plain:\n{coloured_plain}")?;
         Ok(())
     }
 }

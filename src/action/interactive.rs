@@ -429,7 +429,7 @@ impl UserPicked {
                     continue;
                 }
                 sth => {
-                    log::trace!("read() something other than a key: {:?}", sth);
+                    log::trace!("read() something other than a key: {sth:?}");
                     break;
                 }
             };
@@ -453,7 +453,7 @@ impl UserPicked {
 
             drop(_guard);
             // print normally again
-            log::trace!("registered event: {:?}", &event);
+            log::trace!("registered event: {event:?}");
 
             let KeyEvent {
                 code, modifiers, ..
@@ -480,7 +480,7 @@ impl UserPicked {
                 }
                 KeyCode::Char('?') => return Ok(UserSelection::Help),
                 x => {
-                    log::trace!("Unexpected input {:?}", x);
+                    log::trace!("Unexpected input {x:?}");
                 }
             }
         }
@@ -506,7 +506,7 @@ impl UserPicked {
                 Direction::Backward => suggestions_it.next_back(),
             };
 
-            log::trace!("next() ---> {:?}", &opt_next);
+            log::trace!("next() ---> {opt_next:?}");
 
             let (idx, suggestion) = match opt_next {
                 Some(x) => x,
@@ -526,7 +526,7 @@ impl UserPicked {
                 log::trace!("BUG: Suggestion did not contain a replacement, skip");
                 continue;
             }
-            println!("{}", suggestion);
+            println!("{suggestion}");
 
             let mut state = State::from(suggestion);
 
@@ -542,7 +542,7 @@ impl UserPicked {
                         continue 'inner;
                     }
                     UserSelection::Help => {
-                        println!("{}", HELP);
+                        println!("{HELP}");
                         continue 'inner;
                     }
                     UserSelection::Replacement(bandaid) => {

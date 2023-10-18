@@ -278,7 +278,7 @@ impl Args {
             Some(Sub::ListFiles { .. }) => Action::ListFiles,
             Some(Sub::Completions { .. }) => unreachable!(),
         };
-        log::trace!("Derived action {:?} from flags/args/cmds", action);
+        log::trace!("Derived action {action:?} from flags/args/cmds");
         action
     }
 
@@ -693,27 +693,23 @@ pub fn derive_job_count(jobs: impl Into<Option<usize>>) -> usize {
         }
         Some(jobs) if jobs == 0 => {
             log::warn!(
-                "Cannot have less than one worker thread ({}). Retaining one worker thread.",
-                jobs
+                "Cannot have less than one worker thread ({jobs}). Retaining one worker thread."
             );
             1
         }
         Some(jobs) if jobs > 128 => {
-            log::warn!(
-                "Setting threads beyond 128 ({}) is insane. Capping at 128",
-                jobs
-            );
+            log::warn!("Setting threads beyond 128 ({jobs}) is insane. Capping at 128");
             128
         }
         Some(jobs) => {
-            log::info!("Explicitly set threads to {}", jobs);
+            log::info!("Explicitly set threads to {jobs}");
             jobs
         }
         None => {
             // commonly we are not the only process
             // on the machine, so use the physical cores.
             let jobs = num_cpus::get_physical();
-            log::debug!("Using the default physical thread count of {}", jobs);
+            log::debug!("Using the default physical thread count of {jobs}");
             jobs
         }
     }

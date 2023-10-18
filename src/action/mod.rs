@@ -354,12 +354,12 @@ impl Action {
         let checkers = Checkers::new(config)?;
 
         let n = documents.entry_count();
-        log::debug!("Running checkers on all documents {}", n);
+        log::debug!("Running checkers on all documents {n}");
         let mut pick_stream = stream::iter(documents.iter().enumerate())
             .map(|(mut idx, (origin, chunks))| {
                 // align the debug output with the user output
                 idx += 1;
-                log::trace!("Running checkers on {}/{},{:?}", idx, n, &origin);
+                log::trace!("Running checkers on {idx}/{n},{origin:?}");
                 let suggestions = checkers.check(origin, &chunks[..]);
                 async move { Ok::<_, color_eyre::eyre::Report>((idx, origin, suggestions?)) }
             })
@@ -378,15 +378,12 @@ impl Action {
                         UserSelection::Abort => return Ok(Finish::Abort),
                         UserSelection::Nop if !picked.is_empty() => {
                             log::debug!(
-                                "User picked patches to be applied for {}/{},{:?}",
-                                idx,
-                                n,
-                                &origin
+                                "User picked patches to be applied for {idx}/{n},{origin:?}"
                             );
                             collected_picks.extend(picked);
                         }
                         UserSelection::Nop => {
-                            log::debug!("Nothing to do for {}/{},{:?}", idx, n, &origin);
+                            log::debug!("Nothing to do for {idx}/{n},{origin:?}");
                         }
                         _ => unreachable!(
                             "All other variants are only internal to `select_interactive`. qed"
@@ -419,7 +416,7 @@ impl Action {
                         false => log::info!("❌ {} : {}", path.display(), n),
                     };
                     for suggestion in suggestions {
-                        println!("{}", suggestion);
+                        println!("{suggestion}");
                     }
                     n
                 })
