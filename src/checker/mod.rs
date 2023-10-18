@@ -13,7 +13,10 @@ use self::cached::Cached;
 use std::collections::HashSet;
 
 mod tokenize;
+
+#[cfg(feature = "hunspell")]
 pub(crate) use self::hunspell::HunspellChecker;
+#[cfg(feature = "nlprules")]
 pub(crate) use self::nlprules::NlpRulesChecker;
 pub(crate) use self::tokenize::*;
 

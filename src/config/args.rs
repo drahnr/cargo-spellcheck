@@ -244,9 +244,9 @@ pub fn generate_completions<G: clap_complete::Generator, W: std::io::Write>(
 impl Args {
     pub fn common(&self) -> Option<&Common> {
         match &self.command {
-            Some(Sub::Check { common, .. })
-            | Some(Sub::Fix { common, .. })
-            | Some(Sub::Reflow { common, .. }) => Some(common),
+            Some(
+                Sub::Check { common, .. } | Sub::Fix { common, .. } | Sub::Reflow { common, .. },
+            ) => Some(common),
             None => Some(&self.common),
             Some(Sub::Completions { .. } | Sub::ListFiles { .. } | Sub::Config { .. }) => None,
         }
@@ -409,9 +409,9 @@ impl Args {
             let config =
                 Config::load_from(&config_path)?.ok_or_else(|| eyre!("File does not exist."))?;
             return Ok((config, Some(config_path)));
-        } else {
-            log::debug!("No cfg flag present");
         }
+
+        log::debug!("No cfg flag present");
 
         // (prep) determine if there should be an attempt to read a cargo manifest from the target dir
         let single_target_path = self
@@ -458,10 +458,9 @@ impl Args {
                 default_config_path.display()
             );
             return Ok((cfg, Some(default_config_path)));
-        } else {
-            log::debug!("No user config present {}", default_config_path.display());
         }
 
+        log::debug!("No user config present {}", default_config_path.display());
         log::debug!("Using configuration default, builtin configuration (5)");
         Ok((Config::default(), None))
     }
@@ -549,9 +548,11 @@ impl Args {
                     exit_code_override: common.code,
                 }
             }
-            Some(Sub::Reflow { ref common, .. })
-            | Some(Sub::Fix { ref common, .. })
-            | Some(Sub::Check { ref common, .. }) => UnifiedArgs::Operate {
+            Some(
+                Sub::Reflow { ref common, .. }
+                | Sub::Fix { ref common, .. }
+                | Sub::Check { ref common, .. },
+            ) => UnifiedArgs::Operate {
                 action: self.action(),
                 config_path,
                 dev_comments: common.dev_comments || config.dev_comments,

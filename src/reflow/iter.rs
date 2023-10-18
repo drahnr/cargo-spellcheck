@@ -102,7 +102,7 @@ impl<'s> Iterator for Tokeneer<'s> {
                 // are we within an unbreakable area
                 // iff so, just continue until we are out of the weeds
                 if unbreakable.contains(&char_idx) {
-                    // watchout for the transition, so we do not overshoot by one!
+                    // watch out for the transition, so we do not overshoot by one!
                     if unbreakable.contains(&(char_idx + 1)) {
                         continue 'outer;
                     } else {

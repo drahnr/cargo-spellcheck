@@ -1,6 +1,8 @@
 use std::env;
+#[cfg(feature = "nlprules")]
 use std::io::BufReader;
 use std::path::PathBuf;
+#[cfg(feature = "nlprules")]
 use xz2::bufread::{XzDecoder, XzEncoder};
 
 fn main() -> std::result::Result<(), Box<(dyn std::error::Error + 'static)>> {
