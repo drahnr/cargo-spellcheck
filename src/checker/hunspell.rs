@@ -241,10 +241,7 @@ impl HunspellCheckerInner {
             is_valid_hunspell_dic_path(extra_dic)?;
             if let Some(extra_dic) = extra_dic.to_str() {
                 if !hunspell.add_dictionary(extra_dic) {
-                    bail!(
-                        "Failed to add extra dictionary path to context {}",
-                        extra_dic
-                    )
+                    bail!("Failed to add extra dictionary path to context {extra_dic}")
                 }
             } else {
                 bail!(
@@ -303,7 +300,7 @@ impl Checker for HunspellChecker {
 
         for chunk in chunks {
             let plain = chunk.erase_cmark();
-            log::trace!("{:?}", &plain);
+            log::trace!("{plain:?}");
             let txt = plain.as_str();
             let hunspell = &*self.hunspell.0;
 
@@ -386,7 +383,7 @@ fn obtain_suggestions<'s>(
 ) {
     match hunspell.check(&word) {
         CheckResult::MissingInDictionary => {
-            log::trace!("No match for word (plain range: {:?}): >{}<", &range, &word);
+            log::trace!("No match for word (plain range: {range:?}): >{word}<");
             // get rid of single character suggestions
             let replacements = hunspell
                 .suggest(&word)
@@ -398,16 +395,16 @@ fn obtain_suggestions<'s>(
 
             // strings made of vulgar fraction or emoji
             if allow_emojis && consists_of_vulgar_fractions_or_emojis(&word) {
-                log::trace!(target: "quirks", "Found emoji or vulgar fraction character, treating {} as ok", &word);
+                log::trace!(target: "quirks", "Found emoji or vulgar fraction character, treating {word} as ok");
                 return;
             }
 
             if allow_concatenated && replacements_contain_dashless(&word, replacements.as_slice()) {
-                log::trace!(target: "quirks", "Found dashless word in replacement suggestions, treating {} as ok", &word);
+                log::trace!(target: "quirks", "Found dashless word in replacement suggestions, treating {word} as ok");
                 return;
             }
             if allow_dashed && replacements_contain_dashed(&word, replacements.as_slice()) {
-                log::trace!(target: "quirks", "Found dashed word in replacement suggestions, treating {} as ok", &word);
+                log::trace!(target: "quirks", "Found dashed word in replacement suggestions, treating {word} as ok");
                 return;
             }
             for (range, span) in plain.find_spans(range.clone()) {
@@ -423,11 +420,7 @@ fn obtain_suggestions<'s>(
             }
         }
         CheckResult::FoundInDictionary => {
-            log::trace!(
-                "Found a match for word (plain range: {:?}): >{}<",
-                &range,
-                word
-            );
+            log::trace!("Found a match for word (plain range: {range:?}): >{word}<",);
         }
     }
 }
@@ -446,10 +439,7 @@ fn is_valid_hunspell_dic(reader: impl BufRead) -> Result<()> {
     if let Some((_lineno, first)) = iter.next() {
         let first = first?;
         let _ = first.parse::<u64>().wrap_err_with(|| {
-            eyre!(
-                "First line of extra dictionary must a number, but is: >{}<",
-                first
-            )
+            eyre!("First line of extra dictionary must a number, but is: >{first}<")
         })?;
     }
     // Just check the first 10 lines, don't waste much time here
@@ -457,11 +447,7 @@ fn is_valid_hunspell_dic(reader: impl BufRead) -> Result<()> {
     for (lineno, line) in iter.take(10) {
         // All lines after must be format x.
         if let Ok(num) = line?.parse::<i64>() {
-            bail!(
-                "Line {} of extra dictionary must not be a number, but is: >{}<",
-                lineno,
-                num
-            )
+            bail!("Line {lineno} of extra dictionary must not be a number, but is: >{num}<",)
         };
     }
     Ok(())
@@ -532,7 +518,7 @@ bar
                 line.as_str()
             };
 
-            println!("testing >{}< against line #{} >{}<", word, lineno, line);
+            println!("testing >{word}< against line #{lineno} >{line}<");
             // "whitespace" is a word part of our custom dictionary
             assert_eq!(hunspell.check(word), CheckResult::FoundInDictionary);
             // Technically suggestion must contain the word itself if it is valid
@@ -540,10 +526,7 @@ bar
             // but this is not true for i.e. `clang`
             // assert!(suggestions.contains(&word.to_owned()));
             if !suggestions.contains(&word.to_owned()) {
-                eprintln!(
-                    "suggest does not contain valid self: {} ∉ {:?}",
-                    word, suggestions
-                );
+                eprintln!("suggest does not contain valid self: {word} ∉ {suggestions:?}",);
             }
         }
     }

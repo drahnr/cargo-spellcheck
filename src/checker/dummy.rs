@@ -51,7 +51,7 @@ impl Checker for DummyChecker {
                     range,
                     chunk.display(range.clone())
                 );
-                let replacements = vec![format!("replacement_{}", index)];
+                let replacements = vec![format!("replacement_{index}")];
                 let suggestion = Suggestion {
                     detector,
                     span,

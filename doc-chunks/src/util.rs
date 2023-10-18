@@ -120,7 +120,7 @@ pub fn load_span_from<R>(mut source: R, span: Span) -> Result<String>
 where
     R: Read,
 {
-    log::trace!("Loading {:?} from source", &span);
+    log::trace!("Loading {span:?} from source");
     if span.start.line < 1 {
         return Err(Error::Span(
             "Lines are 1-indexed, can't be less than 1".to_string(),
@@ -153,7 +153,7 @@ where
         .fuse()
         .map(|(c, _byte_offset, _idx, _cursor)| c)
         .collect::<String>();
-    // log::trace!("Loading {:?} from line >{}<", &range, &line);
+    // log::trace!("Loading {range:?} from line >{line}<");
     Ok(extraction)
 }
 

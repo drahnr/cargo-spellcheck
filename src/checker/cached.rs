@@ -83,7 +83,7 @@ where
 
                 let update_start = Instant::now();
                 if let Err(err) = self.update(&value) {
-                    log::warn!("Failed to write value to cached: {:?}", err);
+                    log::warn!("Failed to write value to cached: {err:?}");
                 }
                 let update = Some(update_start.elapsed());
                 let total = total_start.elapsed();
@@ -96,7 +96,7 @@ where
                 })
             }
             Err(err) => {
-                log::warn!("Overriding existing value that failed to load: {:?}", err);
+                log::warn!("Overriding existing value that failed to load: {err:?}");
 
                 let fetch = Some(total_start.elapsed());
 
@@ -106,7 +106,7 @@ where
 
                 let update_start = Instant::now();
                 if let Err(err) = self.update(&value) {
-                    log::warn!("Failed to update cached: {:?}", err);
+                    log::warn!("Failed to update cached: {err:?}");
                 }
                 let update = Some(update_start.elapsed());
                 let total = total_start.elapsed();
@@ -127,19 +127,19 @@ where
         match bincode::deserialize_from(buf) {
             Ok(CacheEntry { what, val }) => {
                 if &what == &self.what {
-                    log::debug!("Cached value with matching what \"{}\"", &what);
+                    log::debug!("Cached value with matching what \"{what}\"");
                     Ok(Some(val))
                 } else {
                     log::warn!(
                         "Cached value what \"{}\" does not match expect what \"{}\", removing",
-                        &what,
-                        &self.what
+                        what,
+                        self.what
                     );
                     Ok(None)
                 }
             }
             Err(e) => {
-                log::warn!("Failed to load cached value: {:?}", e);
+                log::warn!("Failed to load cached value: {e:?}");
                 Ok(None)
             }
         }

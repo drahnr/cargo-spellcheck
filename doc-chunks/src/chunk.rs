@@ -136,10 +136,7 @@ impl CheckableChunk {
     /// ]
     /// ```
     pub fn find_spans(&self, range: Range) -> IndexMap<Range, Span> {
-        log::trace!(target: "find_spans",
-            "Chunk find_span {:?}",
-            &range
-        );
+        log::trace!(target: "find_spans", "Chunk find_span {range:?}");
 
         let Range { start, end } = range;
         self.source_mapping
@@ -147,7 +144,7 @@ impl CheckableChunk {
             .skip_while(|(fragment_range, _span)| fragment_range.end <= start)
             .take_while(|(fragment_range, _span)| fragment_range.start < end)
             .inspect(|x| {
-                log::trace!(target: "find_spans", ">>> item {:?} ∈ {:?}", &range, x.0);
+                log::trace!(target: "find_spans", ">>> item {:?} ∈ {:?}", range, x.0);
             })
             .filter(|(fragment_range, _)| {
                 // could possibly happen on empty documentation lines with `///`
@@ -163,11 +160,7 @@ impl CheckableChunk {
                 let (fragment_span, fragment_range, sub_fragment_range) =
                     (fragment_span, fragment_range, sub_fragment_range.clone());
                 log::trace!(target: "find_spans",
-                    ">> fragment: span: {:?} => range: {:?} | sub: {:?} -> sub_fragment: {:?}",
-                    &fragment_span,
-                    &fragment_range,
-                    range,
-                    &sub_fragment_range,
+                    ">> fragment: span: {fragment_span:?} => range: {fragment_range:?} | sub: {range:?} -> sub_fragment: {sub_fragment_range:?}",
                 );
 
                 log::trace!(target: "find_spans",
@@ -227,9 +220,7 @@ impl CheckableChunk {
                     debug_assert_eq!(sub_fragment_span_len, sub_fragment_range.len());
                 }
                 log::trace!(
-                    ">> sub_fragment range={:?} span={:?} => {}",
-                    &sub_fragment_range,
-                    &sub_fragment_span,
+                    ">> sub_fragment range={sub_fragment_range:?} span={sub_fragment_span:?} => {}",
                     self.display(sub_fragment_range.clone()),
                 );
 
@@ -494,6 +485,6 @@ impl<'a> fmt::Display for ChunkDisplay<'a> {
             oob.apply_to("!!!")
         };
 
-        write!(formatter, "{}{}{}", ctx1, highlight, ctx2)
+        write!(formatter, "{ctx1}{highlight}{ctx2}")
     }
 }

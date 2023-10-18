@@ -154,11 +154,11 @@ fn reflow_inner<'s>(
 
         log::trace!(target: "glue", "glue[shift={}]: acc = {:?} + {:?} + {:?} + {:?} + {:?} + {:?}",
                 indentation_skip_n,
-                &pre,
-                &variant.prefix_string(),
+                pre,
+                variant.prefix_string(),
                 extra_space,
-                &content,
-                &variant.suffix_string(),
+                content,
+                variant.suffix_string(),
                 line_delimiter
         );
         acc.push_str(&pre);
@@ -220,13 +220,13 @@ impl<'s> ToString for Indentation<'s> {
 
 impl<'s> Indentation<'s> {
     pub(crate) fn new(offset: usize) -> Self {
-        log::trace!("New offset with indentation of {} ", offset);
+        log::trace!("New offset with indentation of {offset}");
         Self { offset, s: None }
     }
 
     #[allow(unused)]
     pub(crate) fn with_str(offset: usize, s: &'s str) -> Self {
-        log::trace!("New offset with indentation of {} and {:?}", offset, s);
+        log::trace!("New offset with indentation of {offset} and {s:?}");
         Self { offset, s: Some(s) }
     }
 
@@ -277,7 +277,7 @@ fn store_suggestion<'s>(
     #[cfg(debug_assertions)]
     log::trace!(
         "reflow::store_suggestion(chunk([{:?}]): {:?}",
-        &range,
+        range,
         &s[bytes_range.clone()],
     );
 
@@ -378,7 +378,7 @@ fn reflow<'s>(
     chunk: &'s CheckableChunk,
     cfg: &ReflowConfig,
 ) -> Result<Vec<Suggestion<'s>>> {
-    log::debug!("Reflowing {:?}", origin);
+    log::debug!("Reflowing {origin:?}");
     let parser = Parser::new_ext(chunk.as_str(), Options::all());
 
     let mut paragraph = 0_usize;
@@ -393,10 +393,9 @@ fn reflow<'s>(
     for (event, cover) in parser.into_offset_iter() {
         #[cfg(debug_assertions)]
         {
-            log::trace!("CMark Token: {:?}", &event);
+            log::trace!("CMark Token: {event:?}");
             log::trace!(
-                "Current segment {:?}: {:?}",
-                cover,
+                "Current segment {cover:?}: {:?}",
                 &chunk.as_str()[cover.clone()]
             );
         }

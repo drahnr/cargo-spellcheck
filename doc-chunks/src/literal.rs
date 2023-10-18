@@ -89,7 +89,7 @@ impl CommentVariant {
                     0 => "\"".to_owned(),
                     x => format!("r{}\"", "#".repeat(x.saturating_sub(1))),
                 };
-                format!(r#"{}{}"#, d, raw)
+                format!(r#"{d}{raw}"#)
             }
             CommentVariant::CommonMark => "".to_string(),
             CommentVariant::DoubleSlash => "//".to_string(),
@@ -98,10 +98,9 @@ impl CommentVariant {
             CommentVariant::SlashAsteriskEM => "/*!".to_string(),
             CommentVariant::SlashAsteriskAsterisk => "/**".to_string(),
             CommentVariant::TomlEntry => "".to_owned(),
-            unhandled => unreachable!(
-                "String representation for comment variant {:?} exists. qed",
-                unhandled
-            ),
+            unhandled => {
+                unreachable!("String representation for comment variant {unhandled:?} exists. qed")
+            }
         }
     }
     /// Return length (in bytes) of comment prefix for each variant.
@@ -342,7 +341,7 @@ fn detect_comment_variant(
                 debug_assert_eq!('"', rendered.as_bytes()[rendered.len() - 1_usize] as char);
                 (pre, post)
             } else {
-                return Err(Error::Span(format!("Regex should match >{}<", rendered)));
+                return Err(Error::Span(format!("Regex should match >{rendered}<")));
             };
 
         span.start.column += pre;
@@ -415,7 +414,7 @@ impl TrimmedLiteral {
 
         let rendered_len = rendered.chars().count();
 
-        log::trace!("extracted from source: >{}< @ {:?}", rendered, span);
+        log::trace!("extracted from source: >{rendered}< @ {span:?}");
         let (variant, span, pre, post) = detect_comment_variant(content, &rendered, span)?;
 
         let len_in_chars = rendered_len.saturating_sub(post + pre);
@@ -424,7 +423,7 @@ impl TrimmedLiteral {
             if log::log_enabled!(log::Level::Trace) {
                 let extracted =
                     sub_chars(rendered.as_str(), pre..rendered_len.saturating_sub(post));
-                log::trace!(target: "quirks", "{:?} {}||{} for \n extracted: >{}<\n rendered:  >{}<", span, pre, post, &extracted, rendered);
+                log::trace!(target: "quirks", "{span:?} {pre}||{post} for \n extracted: >{extracted}<\n rendered:  >{rendered}<");
                 assert_eq!(len_in_chars, span_len);
             }
         }
@@ -665,7 +664,7 @@ impl<'a> fmt::Display for TrimmedLiteralDisplay<'a> {
             (String::new(), oob.apply_to("!!!").to_string())
         };
 
-        write!(formatter, "{}{}{}{}{}", pre, ctx1, highlight, ctx2, post)
+        write!(formatter, "{pre}{ctx1}{highlight}{ctx2}{post}")
     }
 }
 

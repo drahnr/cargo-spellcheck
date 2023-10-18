@@ -304,10 +304,7 @@ impl Documentation {
         }
         .unwrap_or_else(move |e| {
             log::warn!(
-                "BUG: Failed to load content from {} (dev_comments={:?}): {:?}",
-                origin,
-                dev_comments,
-                e
+                "BUG: Failed to load content from {origin} (dev_comments={dev_comments:?}): {e:?}",
             );
         });
         docs

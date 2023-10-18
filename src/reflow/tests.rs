@@ -183,15 +183,15 @@ macro_rules! reflow_content {
         let expected_n = expected.len();
         // it yields more info if we try to match as many as we can first
         for (idx, (patch, expected)) in patches.into_iter().zip(expected.into_iter()).enumerate() {
-            log::info!("Patch #{} {:?}", idx, patch);
+            log::info!("Patch #{idx} {patch:?}");
             assert_matches::assert_matches!(patch, crate::Patch::Replace {
                 replacement,
                 replace_span,
             } => {
                 let content: &'static str = $content;
                 let to_be_replaced = load_span_from(&mut content.as_bytes(), replace_span).expect("Test cases are well defined and do not cause out of bounds access. qed");
-                log::info!("Patch #{} replaces {:?} => {:?}", idx, to_be_replaced, replacement);
-                assert_eq!(replacement.as_str(), expected, "Patch #{}", idx);
+                log::info!("Patch #{idx} replaces {to_be_replaced:?} => {replacement:?}");
+                assert_eq!(replacement.as_str(), expected, "Patch #{idx}");
             })
         }
         assert_eq!(patches_n, expected_n, "Number of suggestions mismatches expected patches");
@@ -425,7 +425,7 @@ fn reflow_markdown_two_paragraphs_doc() {
 
 With a second part that is fine"#
     );
-    println!("{}", chyrped);
+    println!("{chyrped}");
 
     let expected = vec![
         r##"A long comment that spans over two"#]
@@ -572,7 +572,7 @@ fn reflow_line_delimiters() {
     ];
     for (input, expected) in TEST_DATA {
         let expected = *expected;
-        println!("{:?} should detect {:?}", input, expected);
+        println!("{input:?} should detect {expected:?}");
         assert_eq!(extract_delimiter(input), Some(expected));
     }
 }
@@ -712,7 +712,7 @@ of `0`.
 #[test]
 fn reflow_crlf() {
     const INPUT: &str = "        /// cargo spellcheck can be configured with `-m <code>` to return a non-zero return code.\r\n        struct Foo {}";
-    println!("{:?}", INPUT);
+    println!("{INPUT:?}");
     reflow_content!(40usize break ContentOrigin::TestEntityRust, INPUT
     => patches [
         "cargo spellcheck can be\r\n        /// configured with `-m <code>`\r\n        /// to return a non-zero return\r\n        /// code."

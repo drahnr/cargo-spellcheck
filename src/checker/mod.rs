@@ -68,7 +68,7 @@ impl Checkers {
                             log::debug!("Enabling {} checks.", detector);
                             Some(<$checker>::new($checker_config.unwrap())?)
                         } else {
-                            log::debug!("Checker {} is disabled by configuration.", detector);
+                            log::debug!("Checker {detector} is disabled by configuration.");
                             None
                         }
                     }
@@ -200,7 +200,7 @@ pub mod tests {
         {
             assert_eq!(
                 suggestion.replacements,
-                vec![format!("replacement_{}", index)],
+                vec![format!("replacement_{index}")],
                 "found vs expected replacement"
             );
             let extracts = load_span_from(&mut content.as_bytes(), suggestion.span).unwrap();
