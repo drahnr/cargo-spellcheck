@@ -367,7 +367,7 @@ impl TrimmedLiteral {
         variant: CommentVariant,
     ) -> Self {
         Self {
-            /// Track what kind of comment the literal is
+            // Track what kind of comment the literal is
             variant,
             span,
             // .
