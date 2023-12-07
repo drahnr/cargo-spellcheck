@@ -361,7 +361,10 @@ impl<'a> PlainOverlay<'a> {
             if plain_range.end > plain.len() {
                 plain_range.end = plain.len();
             }
-            assert!(plain_range.start <= plain_range.end);
+            if plain_range.start <= plain_range.end {
+                let content = String::from_iter(cmark.char_indices().filter(|(idx, _c) | raw_range.contains(idx)).map(|(_idx, c)| c));
+                unreachable!("failed: {} <= {}, raw range: {:?}\ncontent", plain_range.start, plain_range.end, raw_range, content);
+            }
             mapping.insert(plain_range, raw_range);
         }
         (plain, mapping)
