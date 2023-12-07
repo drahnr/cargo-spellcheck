@@ -165,7 +165,7 @@ impl<'a> PlainOverlay<'a> {
             pulldown_cmark::CodeBlockKind::Fenced(pulldown_cmark::CowStr::Borrowed("rust"));
 
         let mut html_block = 0_usize;
-        let mut code_block = false;
+        let mut code_block = 0_usize;
         let mut inception = false;
         let mut skip_link_text = false;
         let mut skip_table_text = false;
@@ -208,7 +208,7 @@ impl<'a> PlainOverlay<'a> {
                     }
                     Tag::TableCell | Tag::TableHead | Tag::TableRow => {}
                     Tag::CodeBlock(fenced) => {
-                        code_block = true;
+                        code_block += 1;
                         inception = fenced == rust_fence;
                     }
                     Tag::Link(link_type, _url, _title) => {
@@ -250,7 +250,7 @@ impl<'a> PlainOverlay<'a> {
                             Self::newlines(&mut plain, 2);
                         }
                         Tag::CodeBlock(fenced) => {
-                            code_block = false;
+                            code_block = code_block.saturating_sub(1);
 
                             if fenced == rust_fence {
                                 // TODO validate as if it was another document entity
@@ -267,7 +267,7 @@ impl<'a> PlainOverlay<'a> {
                 }
                 Event::Text(s) => {
                     if html_block > 0 {
-                    } else if code_block {
+                    } else if code_block > 0 {
                         if inception {
                             // let offset = char_range.start;
                             // TODO validate as additional, virtual document
