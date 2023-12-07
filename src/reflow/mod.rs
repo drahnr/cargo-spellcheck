@@ -390,6 +390,8 @@ fn reflow<'s>(
 
     let mut acc = Vec::with_capacity(128);
 
+    let mut within_quote = false;
+
     for (event, cover) in parser.into_offset_iter() {
         #[cfg(debug_assertions)]
         {
@@ -401,13 +403,21 @@ fn reflow<'s>(
         }
         match event {
             Event::Start(tag) => {
+                if within_quote {
+                    continue;
+                }
                 match tag {
                     Tag::Image(_, _, _)
                     | Tag::Link(_, _, _)
                     | Tag::Strong
                     | Tag::Emphasis
-                    | Tag::Strikethrough => {
+                    | Tag::Strikethrough
+                    | Tag::BlockQuote
+                    | Tag::Table(..) => {
                         unbreakable_stack.push(cover);
+                        if tag == Tag::BlockQuote {
+                            within_quote = true;
+                        }
                     }
                     Tag::Paragraph => {
                         paragraph = cover.start;
@@ -431,12 +441,17 @@ fn reflow<'s>(
                 }
             }
             Event::End(tag) => {
+                if tag != Tag::BlockQuote && within_quote {
+                    continue;
+                }
                 match tag {
                     Tag::Image(_, _, _)
                     | Tag::Link(_, _, _)
                     | Tag::Strong
                     | Tag::Emphasis
-                    | Tag::Strikethrough => {
+                    | Tag::Strikethrough
+                    | Tag::BlockQuote
+                    | Tag::Table(_) => {
                         // technically we only need the bottom-most range, since all others - by def - are contained in there
                         // so there
                         if unbreakable_stack.len() == 1 {
@@ -446,6 +461,9 @@ fn reflow<'s>(
                             debug_assert!(parent.contains(&(cover.end - 1)));
                         }
                         let _ = unbreakable_stack.pop();
+                        if tag == Tag::BlockQuote {
+                            within_quote = false;
+                        }
                     }
                     Tag::Paragraph => {
                         // regular end of paragraph
@@ -478,7 +496,7 @@ fn reflow<'s>(
                 // TODO verify this does not interfere with paragraphs
             }
             Event::FootnoteReference(_s) => {
-                // boring
+                unbreakables.push(cover);
             }
             Event::SoftBreak => {
                 // ignored

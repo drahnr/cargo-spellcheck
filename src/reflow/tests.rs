@@ -666,6 +666,18 @@ return code if mistakes are found instead of `0`.
 * [x] Parse doc comments from arbitrary files
 * [x] Decent error printing
 
+## Table, no touch
+
+|a                  |b               |c                          |d                                |
+|-------------------|----------------|---------------------------|---------------------------------|
+|0000000000000000000|1111111111111111|2                          |                                3|
+
+## Quote
+
+> I quote quoted quotes
+> quoting quoted
+> quotes, which
+> shall remain untouched for now.
 "###;
 #[test]
 fn reflow_minified_readme_patches() {
