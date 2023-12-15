@@ -541,22 +541,22 @@ pub(crate) fn extract(
         })?;
 
     // stage 4 - expand from the passed source files, if recursive, recurse down the module train
-    let docs =
-        files_to_check
-            .into_iter()
-            .try_fold(Documentation::new(), |mut docs, check_entity| -> Result<_> {
-                match check_entity {
-                    CheckEntity::Source(path, recurse) => {
-                        let content: String = fs::read_to_string(&path)?;
-                        docs.add_rust(
-                            ContentOrigin::RustSourceFile(path.clone()),
-                            content.as_str(),
-                            true,
-                            dev_comments,
-                        )?;
+    let docs = files_to_check.into_iter().try_fold(
+        Documentation::new(),
+        |mut docs, check_entity| -> Result<_> {
+            match check_entity {
+                CheckEntity::Source(path, recurse) => {
+                    let content: String = fs::read_to_string(&path)?;
+                    docs.add_rust(
+                        ContentOrigin::RustSourceFile(path.clone()),
+                        content.as_str(),
+                        true,
+                        dev_comments,
+                    )?;
 
-                        if recurse {
-                            let iter = Vec::from_iter(traverse(path.as_path(), true, dev_comments)?
+                    if recurse {
+                        let iter = Vec::from_iter(
+                            traverse(path.as_path(), true, dev_comments)?
                                 .map(|documentation| {
                                     // Filter out duplicate _chunks_
                                     // that `extend` would happily duplicate.
@@ -564,28 +564,29 @@ pub(crate) fn extract(
                                         .into_iter()
                                         .filter(|(origin, _chunks)| !docs.contains_key(origin))
                                 })
-                                .flatten());
-                            docs.extend(iter);
-                        }
-                    }
-                    CheckEntity::Markdown(path) => {
-                        let content = fs::read_to_string(&path).wrap_err_with(|| {
-                            eyre!("Common mark / markdown file does not exist")
-                        })?;
-                        if content.is_empty() {
-                            bail!("Common mark / markdown file is empty")
-                        }
-                        docs.add_commonmark(ContentOrigin::CommonMarkFile(path), content.as_str())?;
-                    }
-                    CheckEntity::ManifestDescription(path, content) => {
-                        if content.is_empty() {
-                            bail!("Cargo.toml manifest description field is empty")
-                        }
-                        docs.add_cargo_manifest_description(path, content.as_str())?;
+                                .flatten(),
+                        );
+                        docs.extend(iter);
                     }
                 }
-                Result::Ok(docs)
-            })?;
+                CheckEntity::Markdown(path) => {
+                    let content = fs::read_to_string(&path)
+                        .wrap_err_with(|| eyre!("Common mark / markdown file does not exist"))?;
+                    if content.is_empty() {
+                        bail!("Common mark / markdown file is empty")
+                    }
+                    docs.add_commonmark(ContentOrigin::CommonMarkFile(path), content.as_str())?;
+                }
+                CheckEntity::ManifestDescription(path, content) => {
+                    if content.is_empty() {
+                        bail!("Cargo.toml manifest description field is empty")
+                    }
+                    docs.add_cargo_manifest_description(path, content.as_str())?;
+                }
+            }
+            Result::Ok(docs)
+        },
+    )?;
 
     Result::Ok(docs)
 }
