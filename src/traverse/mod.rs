@@ -544,7 +544,7 @@ pub(crate) fn extract(
     let docs =
         files_to_check
             .into_iter()
-            .try_fold(Documentation::new(), |mut docs, check_entity| {
+            .try_fold(Documentation::new(), |mut docs, check_entity| -> Result<_> {
                 match check_entity {
                     CheckEntity::Source(path, recurse) => {
                         let content: String = fs::read_to_string(&path)?;
@@ -556,7 +556,7 @@ pub(crate) fn extract(
                         )?;
 
                         if recurse {
-                            let iter = traverse(path.as_path(), true, dev_comments)?
+                            let iter = Vec::from_iter(traverse(path.as_path(), true, dev_comments)?
                                 .map(|documentation| {
                                     // Filter out duplicate _chunks_
                                     // that `extend` would happily duplicate.
@@ -564,8 +564,7 @@ pub(crate) fn extract(
                                         .into_iter()
                                         .filter(|(origin, _chunks)| !docs.contains_key(origin))
                                 })
-                                .flatten()
-                                .collect::<Vec<_>>();
+                                .flatten());
                             docs.extend(iter);
                         }
                     }
@@ -585,10 +584,10 @@ pub(crate) fn extract(
                         docs.add_cargo_manifest_description(path, content.as_str())?;
                     }
                 }
-                Ok(docs)
+                Result::Ok(docs)
             })?;
 
-    Ok(docs)
+    Result::Ok(docs)
 }
 
 #[cfg(test)]
