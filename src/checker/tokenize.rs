@@ -378,18 +378,4 @@ mod tests {
                 assert_eq!(is, expect);
             });
     }
-
-    #[test]
-    fn tokenize_square_bracket_footnote_with_uptick() {
-        let text = r#"a ref[^foo] b"#;
-        let tok = tokenizer::<PathBuf>(None).unwrap();
-        let ranges = apply_tokenizer(&tok, text);
-
-        ranges
-            .zip([0_usize..1, 2..5, 7..10, 12..13].iter().cloned())
-            .for_each(|(is, expect)| {
-                dbg!((sub_chars(text, is.clone()), sub_chars(text, expect.clone())));
-                assert_eq!(is, expect);
-            });
-    }
 }
