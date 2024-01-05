@@ -666,7 +666,7 @@ dependencies = [
 
 [[package]]
 name = "doc-chunks"
-version = "0.0.5"
+version = "0.0.6"
 dependencies = [
  "assert_matches",
  "console",
