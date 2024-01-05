@@ -270,13 +270,21 @@ impl Args {
     /// Extract the required action.
     pub fn action(&self) -> Action {
         // extract operation mode
-        let action = match self.command {
-            None | Some(Sub::Check { .. }) => Action::Check,
-            Some(Sub::Fix { .. }) => Action::Fix,
-            Some(Sub::Reflow { .. }) => Action::Reflow,
-            Some(Sub::Config { .. }) => unreachable!(),
-            Some(Sub::ListFiles { .. }) => Action::ListFiles,
-            Some(Sub::Completions { .. }) => unreachable!(),
+        let action = if let Some(sub) = &self.command {
+            match sub {
+                Sub::Check { .. } => Action::Check,
+                Sub::Fix { .. } => Action::Fix,
+                Sub::Reflow { .. } => Action::Reflow,
+                Sub::ListFiles { .. } => Action::ListFiles,
+                Sub::Config { .. } => unreachable!(),
+                Sub::Completions { .. } => unreachable!(),
+            }
+        } else {
+            if self.fix {
+                Action::Fix
+            } else {
+                Action::Check
+            }
         };
         log::trace!("Derived action {action:?} from flags/args/cmds");
         action
@@ -774,6 +782,14 @@ mod tests {
             args.checkers(),
             Some(vec![CheckerType::NlpRules, CheckerType::Hunspell])
         );
+    }
+
+    #[test]
+    fn alt_fix_works() {
+        let args_sub = Args::parse(commandline_to_iter("cargo spellcheck fix")).unwrap();
+        let args_alt = Args::parse(commandline_to_iter("cargo spellcheck --fix")).unwrap();
+        assert_eq!(args_sub.common(), args_alt.common());
+        assert_eq!(args_sub.action(), args_alt.action());
     }
 
     #[test]
