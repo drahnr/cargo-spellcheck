@@ -116,6 +116,8 @@ macro_rules! reflow_content {
             &mut dest,
         ).expect("Patches always apply nicely. qed");
         let s = std::string::String::from_utf8_lossy(&dest);
+        eprintln!(">>>{}<<<", s);
+        eprintln!(">>>{}<<<", $expected);
         assert_eq!(s, $expected, "Applied patches mismatch expected result");
     };
     ($max_line_width:literal break $content_type:expr, $content:expr => ok) => {
@@ -666,6 +668,10 @@ return code if mistakes are found instead of `0`.
 * [x] Parse doc comments from arbitrary files
 * [x] Decent error printing
 
+## Footy
+
+Ref [^footnote]
+
 ## Table, no touch
 
 |a                  |b               |c                          |d                                |
@@ -678,7 +684,10 @@ return code if mistakes are found instead of `0`.
 > quoting quoted
 > quotes, which
 > shall remain untouched for now.
+
+[footnote]: Down in the abyss.
 "###;
+
 #[test]
 fn reflow_minified_readme_patches() {
     reflow_content!(30usize break ContentOrigin::TestEntityCommonMark, MINIFIED_README
@@ -717,6 +726,24 @@ of `0`.
 * [x] Parse doc comments from arbitrary files
 * [x] Decent error printing
 
+## Footy
+
+Ref [^footnote]
+
+## Table, no touch
+
+|a                  |b               |c                          |d                                |
+|-------------------|----------------|---------------------------|---------------------------------|
+|0000000000000000000|1111111111111111|2                          |                                3|
+
+## Quote
+
+> I quote quoted quotes
+> quoting quoted
+> quotes, which
+> shall remain untouched for now.
+
+[footnote]: Down in the abyss.
 "###
     );
 }
