@@ -281,7 +281,7 @@ dependencies = [
  "hex",
  "hunspell-rs",
  "ignore",
- "indexmap 2.0.2",
+ "indexmap",
  "iso_country",
  "isolang",
  "itertools 0.11.0",
@@ -673,7 +673,7 @@ dependencies = [
  "env_logger",
  "fancy-regex 0.11.0",
  "fs-err",
- "indexmap 2.0.2",
+ "indexmap",
  "itertools 0.11.0",
  "lazy_static",
  "log",
@@ -984,9 +984,9 @@ dependencies = [
 
 [[package]]
 name = "h2"
-version = "0.3.21"
+version = "0.3.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "91fc23aa11be92976ef4729127f1a74adf36d8436f7816b185d18df956790833"
+checksum = "bb2c4422095b67ee78da96fbb51a4cc413b3b25883c7717ff7ca1ab31022c9c9"
 dependencies = [
  "bytes",
  "fnv",
@@ -994,7 +994,7 @@ dependencies = [
  "futures-sink",
  "futures-util",
  "http",
- "indexmap 1.9.3",
+ "indexmap",
  "slab",
  "tokio",
  "tokio-util",
@@ -1201,16 +1201,6 @@ name = "indenter"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ce23b50ad8242c51a442f3ff322d56b02f08852c77e4c0b4d3fd684abc89c683"
-
-[[package]]
-name = "indexmap"
-version = "1.9.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bd070e393353796e801d209ad339e89596eb4c8d430d18ede6a1cced8fafbd99"
-dependencies = [
- "autocfg",
- "hashbrown 0.12.3",
-]
 
 [[package]]
 name = "indexmap"
@@ -1786,7 +1776,7 @@ checksum = "e7b45de34c93fba9f8b69584721abaa36c6bbc6a4f7972011e508546e97c3894"
 dependencies = [
  "cov-mark",
  "either",
- "indexmap 2.0.2",
+ "indexmap",
  "itertools 0.10.5",
  "once_cell",
  "ra_ap_parser",
@@ -2484,7 +2474,7 @@ version = "0.20.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "396e4d48bbb2b7554c944bde63101b5ae446cff6ec4a24227428f15eb72ef338"
 dependencies = [
- "indexmap 2.0.2",
+ "indexmap",
  "serde",
  "serde_spanned",
  "toml_datetime",
