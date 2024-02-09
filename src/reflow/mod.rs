@@ -13,7 +13,7 @@ use crate::util::{byte_range_to_char_range, byte_range_to_char_range_many, sub_c
 
 use crate::{CommentVariant, ContentOrigin, Detector, Range, Span, Suggestion};
 
-use pulldown_cmark::{Event, Options, Parser, Tag};
+use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
 
 pub use crate::config::ReflowConfig;
 
@@ -402,13 +402,14 @@ fn reflow<'s>(
             );
         }
         match event {
+            Event::InlineHtml(html) => {}
             Event::Start(tag) => {
                 if within_quote {
                     continue;
                 }
                 match tag {
-                    Tag::Image(_, _, _)
-                    | Tag::Link(_, _, _)
+                    Tag::Image{.. }
+                    | Tag::Link{.. }
                     | Tag::Strong
                     | Tag::Emphasis
                     | Tag::Strikethrough
@@ -441,17 +442,17 @@ fn reflow<'s>(
                 }
             }
             Event::End(tag) => {
-                if tag != Tag::BlockQuote && within_quote {
+                if tag != TagEnd::BlockQuote && within_quote {
                     continue;
                 }
                 match tag {
-                    Tag::Image(_, _, _)
-                    | Tag::Link(_, _, _)
-                    | Tag::Strong
-                    | Tag::Emphasis
-                    | Tag::Strikethrough
-                    | Tag::BlockQuote
-                    | Tag::Table(_) => {
+                    TagEnd::Image{.. }
+                    | TagEnd::Link{.. }
+                    | TagEnd::Strong
+                    | TagEnd::Emphasis
+                    | TagEnd::Strikethrough
+                    | TagEnd::BlockQuote
+                    | TagEnd::Table => {
                         // technically we only need the bottom-most range, since all others - by def - are contained in there
                         // so there
                         if unbreakable_stack.len() == 1 {
@@ -461,11 +462,11 @@ fn reflow<'s>(
                             debug_assert!(parent.contains(&(cover.end - 1)));
                         }
                         let _ = unbreakable_stack.pop();
-                        if tag == Tag::BlockQuote {
+                        if tag == TagEnd::BlockQuote {
                             within_quote = false;
                         }
                     }
-                    Tag::Paragraph => {
+                    TagEnd::Paragraph => {
                         // regular end of paragraph
                         let (p, suggestion) = store_suggestion(
                             chunk,

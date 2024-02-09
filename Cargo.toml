@@ -58,7 +58,7 @@ memchr = "2"
 log = "0.4"
 num_cpus = "1.13"
 proc-macro2 = { version = "1", features = ["span-locations"] }
-pulldown-cmark = "0.9.3"
+pulldown-cmark = "0.10"
 rayon = "1.5"
 regex = "1.5"
 serde = { version = "1", features = ["derive"] }
