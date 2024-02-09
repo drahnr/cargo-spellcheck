@@ -408,8 +408,8 @@ fn reflow<'s>(
                     continue;
                 }
                 match tag {
-                    Tag::Image{.. }
-                    | Tag::Link{.. }
+                    Tag::Image { .. }
+                    | Tag::Link { .. }
                     | Tag::Strong
                     | Tag::Emphasis
                     | Tag::Strikethrough
@@ -446,8 +446,8 @@ fn reflow<'s>(
                     continue;
                 }
                 match tag {
-                    TagEnd::Image{.. }
-                    | TagEnd::Link{.. }
+                    TagEnd::Image { .. }
+                    | TagEnd::Link { .. }
                     | TagEnd::Strong
                     | TagEnd::Emphasis
                     | TagEnd::Strikethrough

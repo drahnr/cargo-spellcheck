@@ -212,7 +212,12 @@ impl<'a> PlainOverlay<'a> {
                         code_block += 1;
                         inception = fenced == rust_fence;
                     }
-                    Tag::Link{link_type, dest_url: url, title, id} => {
+                    Tag::Link {
+                        link_type,
+                        dest_url: url,
+                        title,
+                        id,
+                    } => {
                         skip_link_text = match link_type {
                             LinkType::ReferenceUnknown
                             | LinkType::Reference
@@ -228,7 +233,12 @@ impl<'a> PlainOverlay<'a> {
                         // make sure nested lists are not clumped together
                         Self::newlines(&mut plain, 1);
                     }
-                    Tag::Image { link_type, dest_url, title, id } => {
+                    Tag::Image {
+                        link_type,
+                        dest_url,
+                        title,
+                        id,
+                    } => {
                         Self::track(
                             &title,
                             SourceRange::Direct(char_range),
@@ -240,15 +250,14 @@ impl<'a> PlainOverlay<'a> {
                 },
                 Event::End(tag) => {
                     match tag {
-                        TagEnd::Table{..} => {
+                        TagEnd::Table { .. } => {
                             skip_table_text = false;
                             Self::newlines(&mut plain, 1);
                         }
                         TagEnd::Link => {
                             // the actual rendered content is in a text section
                         }
-                        TagEnd::Image => {
-                        }
+                        TagEnd::Image => {}
                         TagEnd::Heading(_level) => {
                             Self::newlines(&mut plain, 2);
                         }
@@ -256,7 +265,7 @@ impl<'a> PlainOverlay<'a> {
                             code_block = code_block.saturating_sub(1);
 
                             // if fenced == rust_fence {
-                                // TODO validate as if it was another document entity
+                            // TODO validate as if it was another document entity
                             // }
                         }
                         TagEnd::Paragraph => Self::newlines(&mut plain, 2),
