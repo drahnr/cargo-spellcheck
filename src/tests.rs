@@ -542,7 +542,9 @@ Ref3
 
 Ref4
 
-<code>🌡</code>
+<code>hidden</code>
+
+<foo>🌡</foo>
 "#;
 
         // extracted content as present as provided by `chunk.as_str()`
@@ -559,7 +561,11 @@ Ref3
 
 
 
-Ref4"#;
+Ref4
+
+
+
+🌡"#;
 
         bananasplit!(
             ContentOrigin::TestEntityCommonMark;
@@ -571,6 +577,7 @@ Ref4"#;
                 "Ref2",
                 "Ref3",
                 "Ref4",
+                "🌡",
             ]
         );
     }
