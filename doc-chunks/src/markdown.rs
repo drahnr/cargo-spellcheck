@@ -6,7 +6,7 @@ use super::*;
 
 use indexmap::IndexMap;
 
-use pulldown_cmark::{Event, LinkType, Options, Parser, Tag};
+use pulldown_cmark::{Event, LinkType, Options, Parser, Tag, TagEnd};
 
 use crate::util::sub_chars;
 use crate::Span;
@@ -202,6 +202,7 @@ impl<'a> PlainOverlay<'a> {
             };
 
             match event {
+                Event::InlineHtml(_html) => {}
                 Event::Start(tag) => match tag {
                     Tag::Table(_alignments) => {
                         skip_table_text = true;
@@ -211,7 +212,12 @@ impl<'a> PlainOverlay<'a> {
                         code_block += 1;
                         inception = fenced == rust_fence;
                     }
-                    Tag::Link(link_type, _url, _title) => {
+                    Tag::Link {
+                        link_type,
+                        dest_url: url,
+                        title,
+                        id,
+                    } => {
                         skip_link_text = match link_type {
                             LinkType::ReferenceUnknown
                             | LinkType::Reference
@@ -227,38 +233,44 @@ impl<'a> PlainOverlay<'a> {
                         // make sure nested lists are not clumped together
                         Self::newlines(&mut plain, 1);
                     }
+                    Tag::Image {
+                        link_type,
+                        dest_url,
+                        title,
+                        id,
+                    } => {
+                        Self::track(
+                            &title,
+                            SourceRange::Direct(char_range),
+                            &mut plain,
+                            &mut mapping,
+                        );
+                    }
                     _ => {}
                 },
                 Event::End(tag) => {
                     match tag {
-                        Tag::Table(_) => {
+                        TagEnd::Table { .. } => {
                             skip_table_text = false;
                             Self::newlines(&mut plain, 1);
                         }
-                        Tag::Link(_link_type, _url, _title) => {
+                        TagEnd::Link => {
                             // the actual rendered content is in a text section
                         }
-                        Tag::Image(_link_type, _url, title) => {
-                            Self::track(
-                                &title,
-                                SourceRange::Direct(char_range),
-                                &mut plain,
-                                &mut mapping,
-                            );
-                        }
-                        Tag::Heading(_n, _fragment, _klasses) => {
+                        TagEnd::Image => {}
+                        TagEnd::Heading(_level) => {
                             Self::newlines(&mut plain, 2);
                         }
-                        Tag::CodeBlock(fenced) => {
+                        TagEnd::CodeBlock => {
                             code_block = code_block.saturating_sub(1);
 
-                            if fenced == rust_fence {
-                                // TODO validate as if it was another document entity
-                            }
+                            // if fenced == rust_fence {
+                            // TODO validate as if it was another document entity
+                            // }
                         }
-                        Tag::Paragraph => Self::newlines(&mut plain, 2),
+                        TagEnd::Paragraph => Self::newlines(&mut plain, 2),
 
-                        Tag::Item => {
+                        TagEnd::Item => {
                             // assure individual list items are not clumped together
                             Self::newlines(&mut plain, 1);
                         }
