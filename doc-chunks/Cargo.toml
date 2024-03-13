@@ -20,7 +20,7 @@ lazy_static = "1"
 memchr = "2"
 log = "0.4"
 proc-macro2 = { version = "1", features = ["span-locations"] }
-pulldown-cmark = "0.9.1"
+pulldown-cmark = { git = "https://github.com/drahnr/pulldown-cmark.git", branch = "math" }
 ra_ap_syntax = "0.0.178"
 rayon = "1.5"
 fancy-regex = "0.11"

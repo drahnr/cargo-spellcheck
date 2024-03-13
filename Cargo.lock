@@ -294,7 +294,7 @@ dependencies = [
  "nlprule-build",
  "num_cpus",
  "proc-macro2",
- "pulldown-cmark",
+ "pulldown-cmark 0.9.3",
  "rayon",
  "regex",
  "serde",
@@ -679,7 +679,7 @@ dependencies = [
  "log",
  "memchr",
  "proc-macro2",
- "pulldown-cmark",
+ "pulldown-cmark 0.9.2",
  "ra_ap_syntax",
  "rayon",
  "regex",
@@ -1667,6 +1667,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "134c189feb4956b20f6f547d2cf727d4c0fe06722b20a0eec87ed445a97f92da"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "pulldown-cmark"
+version = "0.9.2"
+source = "git+https://github.com/drahnr/pulldown-cmark.git?branch=math#cbcdf26d2a05a2bf05cf478325a95154882d80c0"
+dependencies = [
+ "bitflags 1.3.2",
+ "getopts",
+ "memchr",
+ "unicase",
 ]
 
 [[package]]
