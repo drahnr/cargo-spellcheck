@@ -61,15 +61,32 @@ cargo spellcheck fix
 The `--locked` flag is the preferred way of installing to get the tested set of
 dependencies.
 
-Note that in Mac, you'd need to ensure that the file `libclang.dylib` is present & can be found by the dynamic linker 
-(otherwise the installation could fail). This can be achieved by setting the environment variable `DYLD_FALLBACK_LIBRARY_PATH`. 
+in Mac, you'd need to ensure that `libclang.dylib` can be found by the linker
+
+This can be achieved by setting the environment variable:
+
+```
+DYLD_FALLBACK_LIBRARY_PATH
+``` 
 
 Run the following command before installing the crate:
 
-`export DYLD_FALLBACK_LIBRARY_PATH="$(xcode-select --print-path)/Toolchains/XcodeDefault.xctoolchain/usr/lib/"`
+```
+export DYLD_FALLBACK_LIBRARY_PATH= \
+    "$(xcode-select --print-path)/Toolchains/XcodeDefault.xctoolchain/usr/lib/"
+```
 
-In Linux, the file is `libclang.so` which can be installed via `apt-get install libclang-dev`. Afterwards, you can set 
-the variable `LIBCLANG_PATH` via `export LIBCLANG_PATH=/usr/lib/llvm-14/lib/`. Then the installation will be successful
+In Linux, the file is `libclang.so` which can be installed via:
+
+```
+apt-get install libclang-dev
+``` 
+
+Afterwards, you can set the variable `LIBCLANG_PATH` via:
+
+```
+export LIBCLANG_PATH=/usr/lib/llvm-14/lib/
+```
 
 ## Completions
 
