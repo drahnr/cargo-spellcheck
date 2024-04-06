@@ -185,7 +185,7 @@ mod tests {
             WrappedRegex::from(Regex::new("(Alpha)(beta)").unwrap()),
         ];
 
-        let words = vec!["2x", r#"''so-to-speak''"#, "Alphabeta", "Nothing"];
+        let words = ["2x", r#"''so-to-speak''"#, "Alphabeta", "Nothing"];
 
         // whitelist
         assert_eq!(

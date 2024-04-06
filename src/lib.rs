@@ -1,15 +1,18 @@
 #![deny(dead_code)]
 #![deny(missing_docs)]
 // #![deny(unused_crate_dependencies)]
-
-// Prevent the stray dbg! macros
-#![deny(clippy::dbg_macro)]
-#![warn(clippy::pedantic)]
 #![allow(clippy::non_ascii_literal)]
 // be explicit about certain offsets and how they are constructed
 #![allow(clippy::identity_op)]
 // in small cli projects, this is ok for now
 #![allow(clippy::wildcard_imports)]
+// personal strong preference for `from_iter`
+#![allow(clippy::from_iter_instead_of_collect)]
+#![allow(clippy::new_without_default)]
+#![allow(clippy::items_after_statements)]
+// Prevent the stray dbg! macros
+#![cfg_attr(not(test), deny(clippy::dbg_macro))]
+#![cfg_attr(test, allow(clippy::dbg_macro))]
 
 //! cargo-spellcheck
 //!
@@ -135,7 +138,7 @@ pub fn run(args: Args) -> Result<ExitCode> {
                     config.write_values_to_path(path)?;
                 }
             }
-            return Ok(ExitCode::Success);
+            Ok(ExitCode::Success)
         }
         UnifiedArgs::Operate {
             action,

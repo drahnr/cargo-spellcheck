@@ -2,7 +2,7 @@ use cargo_spellcheck::{action, errors::Result, run, Args};
 
 #[allow(missing_docs)]
 fn main() -> Result<()> {
-    let _ = color_eyre::install()?;
+    color_eyre::install()?;
     let args = Args::parse(std::env::args()).unwrap_or_else(|e| e.exit());
     let res = run(args);
     // no matter what, restore the terminal

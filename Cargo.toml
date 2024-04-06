@@ -1,9 +1,9 @@
 [package]
 name = "cargo-spellcheck"
-version = "0.13.2"
+version = "0.14.0"
 authors = ["Bernhard Schuster <bernhard@ahoi.io>"]
 edition = "2021"
-rust-version = "1.70.0"
+rust-version = "1.76.0"
 repository = "https://github.com/drahnr/cargo-spellcheck.git"
 homepage = "https://github.com/drahnr/cargo-spellcheck"
 license = "MIT OR Apache-2.0"
@@ -35,10 +35,10 @@ xz2 = "0.1"
 
 [dependencies]
 
-doc-chunks = { version = "0.0.6", path = "./doc-chunks" }
+doc-chunks = { version = "0.1.0", path = "./doc-chunks" }
 
 color-eyre = "0.6"
-cargo_toml = "0.16"
+cargo_toml = "0.20"
 console = "0.15"
 crossterm = "0.27"
 # for the config file
@@ -48,17 +48,17 @@ clap = { version = "4.1.8", features = ["derive", "env"] }
 clap_complete = "4.1.4"
 clap-verbosity-flag = "2.0"
 
-env_logger = "0.10"
-fancy-regex = "0.11"
+env_logger = "0.11"
+fancy-regex = "0.13"
 fs-err = { version = "2", features = ["io_safety"] }
 indexmap = { version = "2", features = ["rayon", "serde"] }
-itertools = "0.11"
+itertools = "0.12"
 lazy_static = "1"
 memchr = "2"
 log = "0.4"
 num_cpus = "1.13"
 proc-macro2 = { version = "1", features = ["span-locations"] }
-pulldown-cmark = "0.9.3"
+pulldown-cmark = "0.10"
 rayon = "1.5"
 regex = "1.5"
 serde = { version = "1", features = ["derive"] }
@@ -110,7 +110,13 @@ nix = "0.26.2"
 default = ["hunspell", "nlprules"]
 
 # hunspell uses the segmenter provided by nlprules
-hunspell = ["dep:hunspell-rs", "hunspell-rs?/bundled", "dep:fd-lock", "nlprules", "dep:encoding_rs"]
+hunspell = [
+  "dep:hunspell-rs",
+  "hunspell-rs?/bundled",
+  "dep:fd-lock",
+  "nlprules",
+  "dep:encoding_rs",
+]
 nlprules = ["dep:nlprule", "nlprule?/regex-fancy", "dep:nlprule-build"]
 
 all = ["hunspell", "nlprules"]

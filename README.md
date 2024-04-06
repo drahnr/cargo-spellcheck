@@ -61,15 +61,9 @@ cargo spellcheck fix
 The `--locked` flag is the preferred way of installing to get the tested set of
 dependencies.
 
-in Mac, you'd need to ensure that `libclang.dylib` can be found by the linker
+on OS X, you need to ensure that `libclang.dylib` can be found by the linker
 
-This can be achieved by setting the environment variable:
-
-```
-DYLD_FALLBACK_LIBRARY_PATH
-``` 
-
-Run the following command before installing the crate:
+which can be achieved by setting `DYLB_FALLBACK_LIBRARY_PATH`:
 
 ```
 export DYLD_FALLBACK_LIBRARY_PATH= \
