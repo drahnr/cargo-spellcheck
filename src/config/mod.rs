@@ -39,17 +39,6 @@ use std::fmt;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-// TODO figure out which ISO spec this actually is
-pub struct CommonLang(String);
-
-impl std::str::FromStr for CommonLang {
-    type Err = Error;
-    fn from_str(_s: &str) -> std::result::Result<Self, Self::Err> {
-        //
-        unimplemented!("Common Lang needs a ref spec")
-    }
-}
-
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
