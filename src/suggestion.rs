@@ -467,8 +467,8 @@ impl<'s> fmt::Display for Suggestion<'s> {
             1 => format!(" - {}", fix.apply_to(&self.replacements[0])),
             2 => format!(
                 " - {} or {}",
-                fix.apply_to(&self.replacements[0]).to_string(),
-                fix.apply_to(&self.replacements[1]).to_string()
+                fix.apply_to(&self.replacements[0]),
+                fix.apply_to(&self.replacements[1])
             ),
             n if (n < 7) => {
                 let last = fix.apply_to(&self.replacements[n - 1]).to_string();
@@ -542,7 +542,7 @@ impl<'s> Ord for Suggestion<'s> {
             return cmp;
         }
         let cmp = self.span.end.cmp(&other.span.end);
-        return cmp;
+        cmp
     }
 }
 

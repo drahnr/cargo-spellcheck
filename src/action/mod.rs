@@ -331,7 +331,7 @@ impl Action {
     /// Run the requested action.
     pub async fn run(self, documents: Documentation, config: Config) -> Result<Finish> {
         let fin = match self {
-            Self::ListFiles { .. } => self.run_list_files(documents, &config).await?,
+            Self::ListFiles { .. } => self.run_list_files(documents, &config)?,
             Self::Reflow { .. } => self.run_reflow(documents, config).await?,
             Self::Check { .. } => self.run_check(documents, config).await?,
             Self::Fix { .. } => self.run_fix_interactive(documents, config).await?,
@@ -340,7 +340,7 @@ impl Action {
     }
 
     /// Run the requested action.
-    async fn run_list_files(self, documents: Documentation, _config: &Config) -> Result<Finish> {
+    fn run_list_files(self, documents: Documentation, _config: &Config) -> Result<Finish> {
         for (origin, _chunks) in documents.iter() {
             println!("{}", origin.as_path().display())
         }
