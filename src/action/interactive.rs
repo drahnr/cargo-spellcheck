@@ -127,7 +127,7 @@ impl<'s, 't> From<&'s Suggestion<'t>> for State<'s, 't> {
                 sub_chars(suggestion.chunk.as_str(), suggestion.range.clone())
             ),
             // start at a suggestion, not the custom field or ticked suggestion
-            pick_idx: 1_usize + (!suggestion.replacements.is_empty()) as usize,
+            pick_idx: 1_usize + usize::from(!suggestion.replacements.is_empty()),
             // all items provided by the checkers plus the user provided
             n_items: suggestion.replacements.len() + 2,
         }
@@ -389,6 +389,7 @@ impl UserPicked {
             // TODO deal with error conversion
 
             // erase this many lines of the regular print
+            #[allow(clippy::items_after_statements)]
             const ERASE: u16 = 4;
             // lines used by the question
             const QUESTION: u16 = 3;

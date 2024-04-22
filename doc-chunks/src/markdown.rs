@@ -218,9 +218,9 @@ impl<'a> PlainOverlay<'a> {
                     }
                     Tag::Link {
                         link_type,
-                        dest_url: url,
-                        title,
-                        id,
+                        dest_url: _,
+                        title: _,
+                        id: _,
                     } => {
                         skip_link_text = match link_type {
                             LinkType::ReferenceUnknown
@@ -238,10 +238,10 @@ impl<'a> PlainOverlay<'a> {
                         Self::newlines(&mut plain, 1);
                     }
                     Tag::Image {
-                        link_type,
-                        dest_url,
+                        link_type: _,
+                        dest_url: _,
                         title,
-                        id,
+                        id: _,
                     } => {
                         Self::track(
                             &title,

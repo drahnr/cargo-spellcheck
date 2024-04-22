@@ -18,7 +18,7 @@ use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
 pub use crate::config::ReflowConfig;
 
 mod iter;
-pub use iter::{Gluon, Tokeneer};
+pub use iter::Gluon;
 
 #[derive(Debug)]
 pub struct Reflow {
@@ -402,7 +402,7 @@ fn reflow<'s>(
             );
         }
         match event {
-            Event::InlineHtml(html) => {}
+            Event::InlineHtml(_html) => {}
             Event::Start(tag) => {
                 if within_quote {
                     continue;
