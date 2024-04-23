@@ -15,7 +15,7 @@ readme = "README.md"
 console = "0.15"
 fs-err = "2"
 indexmap = { version = "2", features = ["rayon", "serde"] }
-itertools = "0.11"
+itertools = "0.12"
 lazy_static = "1"
 memchr = "2"
 log = "0.4"
@@ -23,7 +23,7 @@ proc-macro2 = { version = "1", features = ["span-locations"] }
 pulldown-cmark = "0.10"
 ra_ap_syntax = "0.0.178"
 rayon = "1.5"
-fancy-regex = "0.11"
+fancy-regex = "0.13"
 regex = "1"
 serde = { version = "1", features = ["derive"] }
 syn = { version = "2", features = ["full"] }
@@ -32,4 +32,4 @@ toml = "0.8.2"
 
 [dev-dependencies]
 assert_matches = "1"
-env_logger = "0.10"
+env_logger = "0.11"
