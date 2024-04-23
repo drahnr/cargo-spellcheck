@@ -147,7 +147,8 @@ pub fn extract_developer_comments(source: &str) -> Vec<LiteralSet> {
 
 /// Creates a series of `TokenWithType`s from a source string
 fn source_to_iter<'a>(source: &'a str) -> impl Iterator<Item = TokenWithType> + 'a {
-    let parse = ast::SourceFile::parse(source);
+    // TODO: handle source
+    let parse = ast::SourceFile::parse(source, ra_ap_syntax::Edition::Edition2021);
     let node = parse.syntax_node();
     node.descendants_with_tokens()
         .filter_map(|nort| {
