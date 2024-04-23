@@ -38,7 +38,7 @@ xz2 = "0.1"
 doc-chunks = { version = "0.0.6", path = "./doc-chunks" }
 
 color-eyre = "0.6"
-cargo_toml = "0.16"
+cargo_toml = "0.20"
 console = "0.15"
 crossterm = "0.27"
 # for the config file
@@ -48,11 +48,11 @@ clap = { version = "4.1.8", features = ["derive", "env"] }
 clap_complete = "4.1.4"
 clap-verbosity-flag = "2.0"
 
-env_logger = "0.10"
-fancy-regex = "0.11"
+env_logger = "0.11"
+fancy-regex = "0.13"
 fs-err = { version = "2", features = ["io_safety"] }
 indexmap = { version = "2", features = ["rayon", "serde"] }
-itertools = "0.11"
+itertools = "0.12"
 lazy_static = "1"
 memchr = "2"
 log = "0.4"
