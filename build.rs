@@ -1,3 +1,6 @@
+#[cfg(all(not(feature = "hunspell"), not(feature = "nlprules")))]
+compile_error!("Well, cargo-spellcheck needs either `nlprules` or `hunspell` feature enabled.");
+
 use std::env;
 #[cfg(feature = "nlprules")]
 use std::io::BufReader;
