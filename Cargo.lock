@@ -252,7 +252,7 @@ dependencies = [
 
 [[package]]
 name = "cargo-spellcheck"
-version = "0.13.2"
+version = "0.14.0"
 dependencies = [
  "assert_matches",
  "bincode",
@@ -642,7 +642,7 @@ dependencies = [
 
 [[package]]
 name = "doc-chunks"
-version = "0.0.6"
+version = "0.1.0"
 dependencies = [
  "assert_matches",
  "console",
