@@ -68,10 +68,14 @@ to ensure that `libclang.dylib` can be found by the linker. Once you have instal
 XCode **and accepted its terms and conditions**, this can be achieved by setting 
 `DYLB_FALLBACK_LIBRARY_PATH`:
 
+#### zsh
+
 ```zsh
 export DYLD_FALLBACK_LIBRARY_PATH= \
     "$(xcode-select --print-path)/Toolchains/XcodeDefault.xctoolchain/usr/lib/"
 ```
+
+#### fish
 
 ```fish
 set -gx DYLD_FALLBACK_LIBRARY_PATH "$(xcode-select --print-path)/Toolchains/XcodeDefault.xctoolchain/usr/lib/"
