@@ -61,14 +61,27 @@ cargo spellcheck fix
 The `--locked` flag is the preferred way of installing to get the tested set of
 dependencies.
 
-on OS X, you need to ensure that `libclang.dylib` can be found by the linker
+### macOS
 
-which can be achieved by setting `DYLB_FALLBACK_LIBRARY_PATH`:
+On macOS, you need to install [Xcode](https://developer.apple.com/xcode/) and 
+to ensure that `libclang.dylib` can be found by the linker. Once you have installed
+XCode **and accepted its terms and conditions**, this can be achieved by setting 
+`DYLB_FALLBACK_LIBRARY_PATH`:
 
-```
+#### zsh
+
+```zsh
 export DYLD_FALLBACK_LIBRARY_PATH= \
     "$(xcode-select --print-path)/Toolchains/XcodeDefault.xctoolchain/usr/lib/"
 ```
+
+#### fish
+
+```fish
+set -gx DYLD_FALLBACK_LIBRARY_PATH "$(xcode-select --print-path)/Toolchains/XcodeDefault.xctoolchain/usr/lib/"
+```
+
+### Linux
 
 In Linux, the file is `libclang.so` which can be installed via:
 
