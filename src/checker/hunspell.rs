@@ -6,6 +6,7 @@
 
 use super::{apply_tokenizer, Checker, Detector, Suggestion};
 
+use crate::checker::dictaffix::is_valid_hunspell_dic_path;
 use crate::config::{Lang5, WrappedRegex};
 use crate::documentation::{CheckableChunk, ContentOrigin, PlainOverlay};
 use crate::util::sub_chars;
@@ -31,12 +32,12 @@ use super::quirks::{
     replacements_contain_dashed, replacements_contain_dashless, transform, Transformed,
 };
 
-static BUILTIN_HUNSPELL_AFF: &[u8] = include_bytes!(concat!(
+pub(super) static BUILTIN_HUNSPELL_AFF: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/hunspell-data/en_US.aff"
 ));
 
-static BUILTIN_HUNSPELL_DIC: &[u8] = include_bytes!(concat!(
+pub(super) static BUILTIN_HUNSPELL_DIC: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/hunspell-data/en_US.dic"
 ));
@@ -44,7 +45,7 @@ static BUILTIN_HUNSPELL_DIC: &[u8] = include_bytes!(concat!(
 // XXX hunspell does not provide an API for using in-memory dictionary or
 // XXX affix files
 // XXX https://github.com/hunspell/hunspell/issues/721
-fn cache_builtin_inner(
+pub(super) fn cache_builtin_inner(
     cache_dir: impl AsRef<Path>,
     extension: &'static str,
     data: &[u8],
@@ -83,7 +84,7 @@ fn cache_builtin_inner(
     Ok(path)
 }
 
-fn cache_builtin() -> Result<(PathBuf, PathBuf)> {
+pub(super) fn cache_builtin() -> Result<(PathBuf, PathBuf)> {
     log::info!("Using builtin en_US hunspell dictionary and affix files");
     let base = directories::BaseDirs::new().expect("env HOME must be set");
 
@@ -392,15 +393,15 @@ fn obtain_suggestions<'s>(
     allow_emojis: bool,
     acc: &mut Vec<Suggestion<'s>>,
 ) {
+    log::trace!("Checking {word} in {range:?}..");
+
     match hunspell.check(&word) {
         CheckResult::MissingInDictionary => {
             log::trace!("No match for word (plain range: {range:?}): >{word}<");
             // get rid of single character suggestions
-            let replacements = hunspell
-                .suggest(&word)
-                .into_iter()
-                .filter(|x| x.len() > 1) // single char suggestions tend to be useless
-                .collect::<Vec<_>>();
+            let replacements =
+                Vec::from_iter(hunspell.suggest(&word).into_iter().filter(|x| x.len() > 1));
+            // single char suggestions tend to be useless
 
             log::debug!(target: "hunspell", "{word} --{{suggest}}--> {replacements:?}");
 
@@ -436,36 +437,10 @@ fn obtain_suggestions<'s>(
     }
 }
 
-/// Check if provided path has valid dictionary format.
-///
-/// This is a YOLO check.
-fn is_valid_hunspell_dic_path(path: impl AsRef<Path>) -> Result<()> {
-    let reader = io::BufReader::new(fs::File::open(path.as_ref())?);
-    is_valid_hunspell_dic(reader)
-}
-
-/// Check a reader for correct hunspell format.
-fn is_valid_hunspell_dic(reader: impl BufRead) -> Result<()> {
-    let mut iter = reader.lines().enumerate();
-    if let Some((_lineno, first)) = iter.next() {
-        let first = first?;
-        let _ = first.parse::<u64>().wrap_err_with(|| {
-            eyre!("First line of extra dictionary must a number, but is: >{first}<")
-        })?;
-    }
-    // Just check the first 10 lines, don't waste much time here
-    // the first two are the most important ones.
-    for (lineno, line) in iter.take(10) {
-        // All lines after must be format x.
-        if let Ok(num) = line?.parse::<i64>() {
-            bail!("Line {lineno} of extra dictionary must not be a number, but is: >{num}<",)
-        };
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
+    use crate::checker::dictaffix::is_valid_hunspell_dic;
+
     use super::*;
 
     #[test]

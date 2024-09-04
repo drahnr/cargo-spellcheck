@@ -11,6 +11,9 @@ pub enum Error {
     #[error("Really pretty much anything")]
     Any,
 
+    #[error("Failed to parse rust content: {0:?}")]
+    ParserFailure(#[source] syn::Error),
+
     #[error("Failed to parse toml file")]
     Toml(#[from] toml::de::Error),
 

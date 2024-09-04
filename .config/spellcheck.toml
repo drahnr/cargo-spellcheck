@@ -8,6 +8,26 @@ extra_dictionaries = ["lingo.dic"]
 skip_os_lookups = true
 use_builtin = true
 
+[ZSpell]
+# lang and name of `.dic` file
+lang = "en_US"
+
+search_dirs = ["."]
+extra_dictionaries = ["lingo.dic"]
+
+skip_os_lookups = true
+use_builtin = true
+
+[Spellbook]
+# lang and name of `.dic` file
+lang = "en_US"
+
+search_dirs = ["."]
+extra_dictionaries = ["lingo.dic"]
+
+skip_os_lookups = true
+use_builtin = true
+
 
 [Hunspell.quirks]
 # transforms words that are provided by the tokenizer
@@ -25,7 +45,6 @@ transform_regex = [
 # of `alpha-beta`.
 allow_concatenation = true
 allow_dashed = true
-
 
 [Reflow]
 
