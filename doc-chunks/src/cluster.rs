@@ -136,7 +136,7 @@ impl Clusters {
         };
         if doc_comments {
             let stream =
-                syn::parse_str::<proc_macro2::TokenStream>(source).map_err(|_e| Error::Any)?;
+                syn::parse_str::<proc_macro2::TokenStream>(source).map_err(Error::ParserFailure)?;
             chunk.parse_token_tree(source, stream)?;
         }
         if dev_comments {

@@ -19,14 +19,21 @@ pub(crate) use self::hunspell::HunspellChecker;
 #[cfg(feature = "nlprules")]
 pub(crate) use self::nlprules::NlpRulesChecker;
 pub(crate) use self::tokenize::*;
+#[cfg(feature = "zet")]
+pub(crate) use self::zspell::ZetChecker;
 
 #[cfg(feature = "hunspell")]
 mod hunspell;
 
+#[cfg(feature = "zet")]
+mod zspell;
+
 #[cfg(feature = "nlprules")]
 mod nlprules;
 
-#[cfg(feature = "hunspell")]
+mod dictaffix;
+
+#[cfg(any(feature = "zet", feature = "hunspell"))]
 mod quirks;
 
 /// Implementation for a checker
@@ -49,6 +56,8 @@ pub trait Checker {
 /// Only configured checkers are used.
 pub struct Checkers {
     hunspell: Option<HunspellChecker>,
+    #[cfg(feature = "zet")]
+    zet: Option<ZetChecker>,
     nlprules: Option<NlpRulesChecker>,
 }
 
@@ -82,13 +91,20 @@ impl Checkers {
             &config,
             config.hunspell.as_ref()
         );
+        #[cfg(feature = "zet")]
+        let zet = create_checker!("zet", ZetChecker, dbg!(&config), dbg!(config.zet.as_ref()));
         let nlprules = create_checker!(
             "nlprules",
             NlpRulesChecker,
             &config,
             config.nlprules.as_ref()
         );
-        Ok(Self { hunspell, nlprules })
+        Ok(Self {
+            hunspell,
+            #[cfg(feature = "zet")]
+            zet,
+            nlprules,
+        })
     }
 }
 
@@ -110,6 +126,10 @@ impl Checker for Checkers {
         let mut collective = HashSet::<Suggestion<'s>>::new();
         if let Some(ref hunspell) = self.hunspell {
             collective.extend(hunspell.check(origin, chunks)?);
+        }
+        #[cfg(feature = "zet")]
+        if let Some(ref zet) = self.zet {
+            collective.extend(zet.check(origin, chunks)?);
         }
         if let Some(ref nlprule) = self.nlprules {
             collective.extend(nlprule.check(origin, chunks)?);
