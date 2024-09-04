@@ -6,22 +6,18 @@
 
 use super::{apply_tokenizer, Checker, Detector, Suggestion};
 
-use crate::config::{Lang5, WrappedRegex};
+use crate::config::WrappedRegex;
 use crate::documentation::{CheckableChunk, ContentOrigin, PlainOverlay};
 use crate::util::sub_chars;
 use crate::Range;
 
 use fs_err as fs;
-use io::Write;
-use lazy_static::lazy_static;
 
 use nlprule::Tokenizer;
 use std::io::{self, BufRead};
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-
-use hunspell_rs::{CheckResult, Hunspell};
 
 use doc_chunks::Ignores;
 
@@ -31,106 +27,11 @@ use super::quirks::{
     replacements_contain_dashed, replacements_contain_dashless, transform, Transformed,
 };
 
-pub(super) static BUILTIN_HUNSPELL_AFF: &[u8] = include_bytes!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/hunspell-data/en_US.aff"
-));
-
-pub(super) static BUILTIN_HUNSPELL_DIC: &[u8] = include_bytes!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/hunspell-data/en_US.dic"
-));
-
-// XXX hunspell does not provide an API for using in-memory dictionary or
-// XXX affix files
-// XXX https://github.com/hunspell/hunspell/issues/721
-pub(super) fn cache_builtin_inner(
-    cache_dir: impl AsRef<Path>,
-    extension: &'static str,
-    data: &[u8],
-) -> Result<PathBuf> {
-    let path = cache_dir.as_ref().join(format!(
-        "cargo-spellcheck/{}/{}.{}",
-        env!("CARGO_PKG_VERSION"),
-        "en_US",
-        extension
-    ));
-    fs::create_dir_all(path.parent().unwrap())?;
-    // check if file exists
-    if let Ok(f) = fs::File::open(&path) {
-        // in case somebody else is currently writing to it
-        // wait for that to complete
-        let flock = fd_lock::RwLock::new(f);
-        let _ = flock.read()?;
-        return Ok(path);
-    }
-    let f = fs::OpenOptions::new()
-        .truncate(true)
-        .create(true)
-        .write(true)
-        .open(&path)?;
-    let mut flock = fd_lock::RwLock::new(f);
-    // if there are multiple instances, allow the first to write it all
-    if let Ok(mut f) = flock.try_write() {
-        f.write_all(data)?;
-        return Ok(path);
-    }
-
-    // .. but block execution until the first completed so
-    // there are no cases of partial data
-    let _ = flock.read()?;
-
-    Ok(path)
-}
-
-pub(super) fn cache_builtin() -> Result<(PathBuf, PathBuf)> {
-    log::info!("Using builtin en_US hunspell dictionary and affix files");
-    let base = directories::BaseDirs::new().expect("env HOME must be set");
-
-    let cache_dir = base.cache_dir();
-    let path_aff = cache_builtin_inner(&cache_dir, "aff", BUILTIN_HUNSPELL_AFF)?;
-    let path_dic = cache_builtin_inner(&cache_dir, "dic", BUILTIN_HUNSPELL_DIC)?;
-    Ok((path_dic, path_aff))
-}
-
-/// The value is `true` if string is made of emoji's or Unicode
-/// `VULGAR FRACTION`.
-pub fn consists_of_vulgar_fractions_or_emojis(word: &str) -> bool {
-    lazy_static! {
-        static ref VULGAR_OR_EMOJI: regex::RegexSet = regex::RegexSetBuilder::new(&[
-            r"[\u00BC-\u00BE\u2150-\u215E-\u2189]",
-            r"^[\p{Emoji}]+$"
-        ])
-        .case_insensitive(true)
-        .build()
-        .expect("REGEX grammar is human checked. qed");
-    };
-    return VULGAR_OR_EMOJI.is_match(word);
-}
+use super::hunspell::{cache_builtin, consists_of_vulgar_fractions_or_emojis};
 
 #[derive(Clone)]
-struct HunspellSafe(Arc<Hunspell>);
-
-unsafe impl Send for HunspellSafe {}
-// We only use it in RO so it's ok.
-unsafe impl Sync for HunspellSafe {}
-
-impl std::ops::Deref for HunspellSafe {
-    type Target = Hunspell;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl From<Hunspell> for HunspellSafe {
-    fn from(hunspell: Hunspell) -> Self {
-        Self(Arc::new(hunspell))
-    }
-}
-
-#[derive(Clone)]
-pub struct HunspellCheckerInner {
-    hunspell: HunspellSafe,
+pub struct ZetCheckerInner {
+    zspell: zspell::Dictionary,
     transform_regex: Vec<WrappedRegex>,
     allow_concatenated: bool,
     allow_dashed: bool,
@@ -139,8 +40,8 @@ pub struct HunspellCheckerInner {
     ignorelist: String,
 }
 
-impl HunspellCheckerInner {
-    fn new(config: &<HunspellChecker as Checker>::Config) -> Result<Self> {
+impl ZetCheckerInner {
+    fn new(config: &<ZetChecker as Checker>::Config) -> Result<Self> {
         // TODO allow override
         let (
             transform_regex,
@@ -225,19 +126,10 @@ impl HunspellCheckerInner {
                 }
             })?;
 
-        let dic = dic.to_str().unwrap();
-        let aff = aff.to_str().unwrap();
+        let dic = fs_err::read_to_string(&dic)?;
+        let aff = fs_err::read_to_string(&aff)?;
 
-        let mut hunspell = Hunspell::new(aff, dic);
-        is_valid_hunspell_dic_path(dic)?;
-        hunspell.add_dictionary(dic);
-
-        if cfg!(debug_assertions) && Lang5::en_US == lang {
-            // "Test" is a valid word
-            debug_assert_eq!(hunspell.check("Test"), CheckResult::FoundInDictionary);
-            // suggestion must contain the word itself if it is valid
-            debug_assert!(hunspell.suggest("Test").contains(&"Test".to_string()));
-        }
+        let mut extra_acc = String::new();
 
         // suggestion must contain the word itself if it is valid extra dictionary
         // be more strict about the extra dictionaries, they have to exist
@@ -248,9 +140,8 @@ impl HunspellCheckerInner {
             }
             is_valid_hunspell_dic_path(extra_dic)?;
             if let Some(extra_dic) = extra_dic.to_str() {
-                if !hunspell.add_dictionary(extra_dic) {
-                    bail!("Failed to add extra dictionary path to context {extra_dic}")
-                }
+                extra_acc.push('\n');
+                extra_acc.push_str(extra_dic);
             } else {
                 bail!(
                     "Failed to convert extra dictionary path to str {}",
@@ -258,9 +149,16 @@ impl HunspellCheckerInner {
                 )
             }
         }
+
+        let zet = zspell::builder()
+            .config_str(&aff)
+            .dict_str(&dic)
+            .personal_str(&extra_acc)
+            .build()?;
+
         log::debug!("Dictionary setup completed successfully.");
         Ok(Self {
-            hunspell: HunspellSafe::from(hunspell),
+            zspell: zet,
             transform_regex,
             allow_concatenated,
             allow_dashed,
@@ -272,29 +170,29 @@ impl HunspellCheckerInner {
 }
 
 #[derive(Clone)]
-pub struct HunspellChecker(pub Arc<HunspellCheckerInner>, pub Arc<Tokenizer>);
+pub struct ZetChecker(pub Arc<ZetCheckerInner>, pub Arc<Tokenizer>);
 
-impl std::ops::Deref for HunspellChecker {
-    type Target = HunspellCheckerInner;
+impl std::ops::Deref for ZetChecker {
+    type Target = ZetCheckerInner;
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl HunspellChecker {
-    pub fn new(config: &<HunspellChecker as Checker>::Config) -> Result<Self> {
+impl ZetChecker {
+    pub fn new(config: &<ZetChecker as Checker>::Config) -> Result<Self> {
         let tokenizer = super::tokenizer::<&PathBuf>(None)?;
-        let inner = HunspellCheckerInner::new(config)?;
+        let inner = ZetCheckerInner::new(config)?;
         let hunspell = Arc::new(inner);
-        Ok(HunspellChecker(hunspell, tokenizer))
+        Ok(ZetChecker(hunspell, tokenizer))
     }
 }
 
-impl Checker for HunspellChecker {
-    type Config = crate::config::HunspellConfig;
+impl Checker for ZetChecker {
+    type Config = crate::config::ZetConfig;
 
     fn detector() -> Detector {
-        Detector::Hunspell
+        Detector::ZSpell
     }
 
     fn check<'a, 's>(
@@ -313,7 +211,6 @@ impl Checker for HunspellChecker {
             });
             log::trace!("{plain:?}");
             let txt = plain.as_str();
-            let hunspell = &*self.hunspell.0;
 
             'tokenization: for range in apply_tokenizer(&self.1, txt) {
                 let word = sub_chars(txt, range.clone());
@@ -330,7 +227,7 @@ impl Checker for HunspellChecker {
                     obtain_suggestions(
                         &plain,
                         chunk,
-                        &hunspell,
+                        &self.zspell,
                         &origin,
                         word,
                         range,
@@ -346,7 +243,7 @@ impl Checker for HunspellChecker {
                                 obtain_suggestions(
                                     &plain,
                                     chunk,
-                                    &hunspell,
+                                    &self.zspell,
                                     &origin,
                                     word_fragment.to_owned(),
                                     range,
@@ -361,7 +258,7 @@ impl Checker for HunspellChecker {
                             obtain_suggestions(
                                 &plain,
                                 chunk,
-                                &hunspell,
+                                &self.zspell,
                                 &origin,
                                 word.to_owned(),
                                 range,
@@ -383,7 +280,7 @@ impl Checker for HunspellChecker {
 fn obtain_suggestions<'s>(
     plain: &PlainOverlay,
     chunk: &'s CheckableChunk,
-    hunspell: &Hunspell,
+    zspell: &zspell::Dictionary,
     origin: &ContentOrigin,
     word: String,
     range: Range,
@@ -394,15 +291,14 @@ fn obtain_suggestions<'s>(
 ) {
     log::trace!("Checking {word} in {range:?}..");
 
-    match hunspell.check(&word) {
-        CheckResult::MissingInDictionary => {
+    match zspell.check_word(&word) {
+        false => {
             log::trace!("No match for word (plain range: {range:?}): >{word}<");
             // get rid of single character suggestions
-            let replacements =
-                Vec::from_iter(hunspell.suggest(&word).into_iter().filter(|x| x.len() > 1));
+            let replacements = vec![];
             // single char suggestions tend to be useless
 
-            log::debug!(target: "hunspell", "{word} --{{suggest}}--> {replacements:?}");
+            log::debug!(target: "zspell", "{word} --{{suggest}}--> {replacements:?}");
 
             // strings made of vulgar fraction or emoji
             if allow_emojis && consists_of_vulgar_fractions_or_emojis(&word) {
@@ -420,7 +316,7 @@ fn obtain_suggestions<'s>(
             }
             for (range, span) in plain.find_spans(range.clone()) {
                 acc.push(Suggestion {
-                    detector: Detector::Hunspell,
+                    detector: Detector::ZSpell,
                     range,
                     span,
                     origin: origin.clone(),
@@ -430,7 +326,7 @@ fn obtain_suggestions<'s>(
                 })
             }
         }
-        CheckResult::FoundInDictionary => {
+        true => {
             log::trace!("Found a match for word (plain range: {range:?}): >{word}<",);
         }
     }
@@ -490,56 +386,6 @@ bar
         assert!(is_valid_hunspell_dic(&mut BAD_1.as_bytes()).is_err());
         assert!(is_valid_hunspell_dic(&mut BAD_2.as_bytes()).is_err());
         assert!(is_valid_hunspell_dic(&mut BAD_3.as_bytes()).is_err());
-    }
-
-    #[test]
-    fn hunspell_binding_is_sane() {
-        let config = crate::config::HunspellConfig::default();
-        let search_dirs = config.search_dirs();
-
-        let mut srcs = None;
-        for search_dir in search_dirs {
-            let dic = search_dir.join("en_US.dic");
-            let aff = search_dir.join("en_US.aff");
-            if dic.is_file() && aff.is_file() && is_valid_hunspell_dic_path(&dic).is_ok() {
-                srcs = Some((dic, aff));
-                break;
-            }
-        }
-
-        let (dic, aff) = dbg!(srcs.unwrap());
-
-        let mut hunspell = Hunspell::new(
-            aff.display().to_string().as_str(),
-            dic.display().to_string().as_str(),
-        );
-        let cwd = crate::traverse::cwd().unwrap();
-        let extra = dbg!(cwd.join(".config/lingo.dic"));
-        assert!(extra.is_file());
-        assert!(is_valid_hunspell_dic_path(&dic).is_ok());
-
-        hunspell.add_dictionary(dbg!(extra.display().to_string().as_str()));
-
-        let extra_dic = io::BufReader::new(fs::File::open(extra).unwrap());
-        for (lineno, line) in extra_dic.lines().enumerate().skip(1) {
-            let line = line.unwrap();
-            let word = if line.contains('/') {
-                line.split('/').next().unwrap()
-            } else {
-                line.as_str()
-            };
-
-            println!("testing >{word}< against line #{lineno} >{line}<");
-            // "whitespace" is a word part of our custom dictionary
-            assert_eq!(hunspell.check(word), CheckResult::FoundInDictionary);
-            // Technically suggestion must contain the word itself if it is valid
-            let suggestions = hunspell.suggest(word);
-            // but this is not true for i.e. `clang`
-            // assert!(suggestions.contains(&word.to_owned()));
-            if !suggestions.contains(&word.to_owned()) {
-                eprintln!("suggest does not contain valid self: {word} ∉ {suggestions:?}",);
-            }
-        }
     }
 
     macro_rules! parametrized_vulgar_fraction_or_emoji {

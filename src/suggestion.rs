@@ -25,6 +25,8 @@ use crate::{Range, Span};
 pub enum Detector {
     /// Hunspell lib based detector.
     Hunspell,
+    /// ZSpell, compatible with hunspell dictionaries and affix files.
+    ZSpell,
     /// Language server rules based on NLP detector.
     NlpRules,
     /// Reflow according to a given max column.
@@ -39,6 +41,7 @@ impl Detector {
     pub const fn as_str(&self) -> &'static str {
         match self {
             Self::Hunspell => "Hunspell",
+            Self::ZSpell => "ZSpell",
             Self::NlpRules => "NlpRules",
             Self::Reflow => "Reflow",
             #[cfg(test)]

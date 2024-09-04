@@ -57,6 +57,10 @@ pub struct Config {
     #[serde(default = "default_hunspell")]
     pub hunspell: Option<HunspellConfig>,
 
+    #[serde(alias = "ZSpell")]
+    #[serde(default = "default_zspell")]
+    pub zet: Option<ZetConfig>,
+
     #[serde(alias = "Nlp")]
     #[serde(alias = "NLP")]
     #[serde(alias = "nlp")]
@@ -210,6 +214,7 @@ impl Config {
     pub fn is_enabled(&self, detector: Detector) -> bool {
         match detector {
             Detector::Hunspell => self.hunspell.is_some(),
+            Detector::ZSpell => self.zet.is_some(),
             Detector::NlpRules => self.nlprules.is_some(),
             Detector::Reflow => self.reflow.is_some(),
             #[cfg(test)]
@@ -234,6 +239,9 @@ fn default_nlprules() -> Option<NlpRulesConfig> {
 fn default_hunspell() -> Option<HunspellConfig> {
     Some(HunspellConfig::default())
 }
+fn default_zspell() -> Option<ZetConfig> {
+    Some(ZetConfig::default())
+}
 
 impl Default for Config {
     fn default() -> Self {
@@ -241,6 +249,7 @@ impl Default for Config {
             dev_comments: false,
             skip_readme: false,
             hunspell: default_hunspell(),
+            zet: default_zspell(),
             nlprules: default_nlprules(),
             reflow: Some(ReflowConfig::default()),
         }

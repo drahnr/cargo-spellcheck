@@ -79,6 +79,8 @@ fn default_tokenization_splitchars() -> String {
     "\",;:.!?#(){}[]|/_-‒'`&@§¶…".to_owned()
 }
 
+pub type ZetConfig = HunspellConfig;
+
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct HunspellConfig {

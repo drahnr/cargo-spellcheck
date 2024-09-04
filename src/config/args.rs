@@ -27,6 +27,7 @@ pub struct ManifestMetadataSpellcheck {
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Deserialize)]
 pub enum CheckerType {
     Hunspell,
+    ZSpell,
     NlpRules,
     Reflow,
 }
@@ -37,6 +38,7 @@ impl FromStr for CheckerType {
         let s = s.to_lowercase();
         Ok(match s.as_str() {
             "nlprules" => Self::NlpRules,
+            "zet" | "zspell" => Self::ZSpell,
             "hunspell" => Self::Hunspell,
             "reflow" => Self::Reflow,
             _other => return Err(UnknownCheckerTypeVariant(s)),
@@ -359,7 +361,7 @@ impl Args {
                     log::warn!("Hunspell was never configured.")
                 }
             }
-            #[cfg(feature = "nlprule")]
+            #[cfg(feature = "nlprules")]
             if !checkers.contains(&CheckerType::NlpRules) {
                 if !config.nlprules.take().is_some() {
                     log::warn!("Nlprules checker was never configured.")
@@ -371,7 +373,7 @@ impl Args {
             }
 
             const EXPECTED_COUNT: usize =
-                1_usize + cfg!(feature = "nlprule") as usize + cfg!(feature = "hunspell") as usize;
+                1_usize + cfg!(feature = "nlprules") as usize + cfg!(feature = "hunspell") as usize;
 
             if checkers.iter().unique().count() == EXPECTED_COUNT {
                 bail!("Argument override for checkers disabled all checkers")
@@ -492,6 +494,13 @@ impl Args {
                 }
             } else {
                 config.hunspell = None;
+            }
+            if filter_set.contains(&CheckerType::ZSpell) {
+                if config.zet.is_none() {
+                    config.zet = Some(crate::config::ZetConfig::default());
+                }
+            } else {
+                config.zet = None;
             }
             if filter_set.contains(&CheckerType::NlpRules) {
                 if config.nlprules.is_none() {
