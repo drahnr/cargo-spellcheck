@@ -74,6 +74,7 @@ impl ZetCheckerInner {
             config.skip_os_lookups,
         )?;
 
+        let aff = aff.replace("UTF8", "UTF-8");
         let zet = zspell::builder().config_str(&aff).dict_str(&dic).build()?;
 
         log::debug!("Dictionary setup completed successfully.");
