@@ -27,6 +27,8 @@ pub enum Detector {
     Hunspell,
     /// ZSpell, compatible with hunspell dictionaries and affix files.
     ZSpell,
+    /// Spellbook
+    Spellbook,
     /// Language server rules based on NLP detector.
     NlpRules,
     /// Reflow according to a given max column.
@@ -42,6 +44,7 @@ impl Detector {
         match self {
             Self::Hunspell => "Hunspell",
             Self::ZSpell => "ZSpell",
+            Self::Spellbook => "Spellbook",
             Self::NlpRules => "NlpRules",
             Self::Reflow => "Reflow",
             #[cfg(test)]

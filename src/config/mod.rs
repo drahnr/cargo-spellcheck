@@ -61,6 +61,11 @@ pub struct Config {
     #[serde(default = "default_zspell")]
     pub zet: Option<ZetConfig>,
 
+    #[serde(alias = "Spellbook")]
+    #[serde(alias = "book")]
+    #[serde(default = "default_spellbook")]
+    pub spellbook: Option<SpellbookConfig>,
+
     #[serde(alias = "Nlp")]
     #[serde(alias = "NLP")]
     #[serde(alias = "nlp")]
@@ -86,6 +91,9 @@ impl Config {
         }
         if let Some(ref mut zspell) = self.zet {
             zspell.sanitize_paths(base)?;
+        }
+        if let Some(ref mut spellbook) = self.spellbook {
+            spellbook.sanitize_paths(base)?;
         }
         Ok(())
     }
@@ -218,6 +226,7 @@ impl Config {
         match detector {
             Detector::Hunspell => self.hunspell.is_some(),
             Detector::ZSpell => self.zet.is_some(),
+            Detector::Spellbook => self.spellbook.is_some(),
             Detector::NlpRules => self.nlprules.is_some(),
             Detector::Reflow => self.reflow.is_some(),
             #[cfg(test)]
@@ -245,6 +254,9 @@ fn default_hunspell() -> Option<HunspellConfig> {
 fn default_zspell() -> Option<ZetConfig> {
     Some(ZetConfig::default())
 }
+fn default_spellbook() -> Option<SpellbookConfig> {
+    Some(SpellbookConfig::default())
+}
 
 impl Default for Config {
     fn default() -> Self {
@@ -253,6 +265,7 @@ impl Default for Config {
             skip_readme: false,
             hunspell: default_hunspell(),
             zet: default_zspell(),
+            spellbook: default_spellbook(),
             nlprules: default_nlprules(),
             reflow: Some(ReflowConfig::default()),
         }

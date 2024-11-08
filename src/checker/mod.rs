@@ -18,6 +18,8 @@ mod tokenize;
 pub(crate) use self::hunspell::HunspellChecker;
 #[cfg(feature = "nlprules")]
 pub(crate) use self::nlprules::NlpRulesChecker;
+#[cfg(feature = "spellbook")]
+pub(crate) use self::spellbook::SpellbookChecker;
 pub(crate) use self::tokenize::*;
 #[cfg(feature = "zet")]
 pub(crate) use self::zspell::ZetChecker;
@@ -28,12 +30,15 @@ mod hunspell;
 #[cfg(feature = "zet")]
 mod zspell;
 
+#[cfg(feature = "spellbook")]
+mod spellbook;
+
 #[cfg(feature = "nlprules")]
 mod nlprules;
 
 mod dictaffix;
 
-#[cfg(any(feature = "zet", feature = "hunspell"))]
+#[cfg(any(feature = "spellbook", feature = "zet", feature = "hunspell"))]
 mod quirks;
 
 /// Implementation for a checker
@@ -58,6 +63,8 @@ pub struct Checkers {
     hunspell: Option<HunspellChecker>,
     #[cfg(feature = "zet")]
     zet: Option<ZetChecker>,
+    #[cfg(feature = "spellbook")]
+    spellbook: Option<SpellbookChecker>,
     nlprules: Option<NlpRulesChecker>,
 }
 
@@ -93,6 +100,13 @@ impl Checkers {
         );
         #[cfg(feature = "zet")]
         let zet = create_checker!("zet", ZetChecker, dbg!(&config), dbg!(config.zet.as_ref()));
+        #[cfg(feature = "spellbook")]
+        let spellbook = create_checker!(
+            "spellbook",
+            SpellbookChecker,
+            &config,
+            config.spellbook.as_ref()
+        );
         let nlprules = create_checker!(
             "nlprules",
             NlpRulesChecker,
@@ -103,6 +117,8 @@ impl Checkers {
             hunspell,
             #[cfg(feature = "zet")]
             zet,
+            #[cfg(feature = "spellbook")]
+            spellbook,
             nlprules,
         })
     }
@@ -130,6 +146,10 @@ impl Checker for Checkers {
         #[cfg(feature = "zet")]
         if let Some(ref zet) = self.zet {
             collective.extend(zet.check(origin, chunks)?);
+        }
+        #[cfg(feature = "spellbook")]
+        if let Some(ref spellbook) = self.spellbook {
+            collective.extend(spellbook.check(origin, chunks)?);
         }
         if let Some(ref nlprule) = self.nlprules {
             collective.extend(nlprule.check(origin, chunks)?);
@@ -304,5 +324,52 @@ pub mod tests {
             },
         ];
         extraction_test_body(dbg!(SIMPLE), EXPECTED_SPANS);
+    }
+
+    #[test]
+    fn checker_discrepancies() {
+        let _ = env_logger::Builder::new()
+            .default_format()
+            .filter_level(log::LevelFilter::Debug)
+            .filter(Some("dicaff"), log::LevelFilter::Trace)
+            .is_test(true)
+            .try_init();
+
+        let x = r###"
+/// With all patches applied.
+///
+/// No line in need of a reflow.
+///
+/// `Patch`s foo.
+///
+/// I am a TODO where TODO is in the extra dictionary.
+struct X;
+"###;
+
+        let mut doc = Documentation::new();
+        doc.add_rust(ContentOrigin::TestEntityRust, x, true, false)
+            .unwrap();
+
+        let config = Config::default();
+        assert!(config.is_enabled(Detector::Hunspell));
+        assert!(config.is_enabled(Detector::Spellbook));
+        assert!(config.is_enabled(Detector::ZSpell));
+        let cs = Checkers::new(config).unwrap();
+
+        let (origin, ccs) = doc.iter().next().unwrap();
+        dbg!(&ccs);
+        let assert_cmp = |a: &[Suggestion<'_>], b: &[Suggestion<'_>]| {
+            assert_eq!(a.len(), b.len());
+            for (a, b) in a.iter().zip(b.iter()) {
+                assert_eq!(a.range, b.range);
+                assert_eq!(a.chunk, b.chunk);
+            }
+        };
+
+        let hun = dbg!(cs.hunspell.unwrap().check(origin, ccs)).unwrap();
+        let book = dbg!(cs.spellbook.unwrap().check(origin, ccs)).unwrap();
+        let z = dbg!(cs.zet.unwrap().check(origin, ccs)).unwrap();
+        assert_cmp(&hun, &z);
+        assert_cmp(&z, &book);
     }
 }
