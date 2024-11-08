@@ -27,7 +27,6 @@ impl DicAff {
         // lookup paths are really just an attempt to provide a dictionary, so be more forgiving
         // when encountering errors here
         let (dic, aff): (PathBuf, PathBuf) = search_dirs.iter(!skip_os_lookups)
-        .into_iter()
         .filter(|search_dir| {
             let keep = search_dir.is_dir();
             if !keep {
@@ -115,7 +114,6 @@ impl DicAff {
         let dic = dic_acc
             .lines()
             .inspect(|_line| counter += 1)
-            .into_iter()
             .sorted()
             .unique()
             .join("\n");

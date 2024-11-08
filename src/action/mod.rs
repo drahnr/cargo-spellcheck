@@ -122,7 +122,7 @@ where
                     replace_span,
                     replacement,
                 } => (replace_span.end, replacement.as_str(), false),
-                Patch::Insert { insert_at, content } => (insert_at.clone(), content.as_str(), true),
+                Patch::Insert { insert_at, content } => (*insert_at, content.as_str(), true),
             };
 
             write_to_sink("new", data)?;
@@ -165,7 +165,7 @@ where
         cc_end_byte_offset = if let Some(upcoming) = patches.peek() {
             let cc_end = match upcoming {
                 Patch::Replace { replace_span, .. } => replace_span.start,
-                Patch::Insert { insert_at, .. } => insert_at.clone(),
+                Patch::Insert { insert_at, .. } => *insert_at,
             };
 
             // do not write anything
@@ -290,7 +290,7 @@ impl Action {
             let th = crate::TinHat::on();
 
             apply_patches(
-                bandaids.into_iter().map(|x| Patch::from(x)),
+                bandaids.into_iter().map(Patch::from),
                 content.as_str(), // FIXME for efficiency, correct_lines should integrate with `BufRead` instead of a `String` buffer
                 &mut writer,
             )?;
@@ -436,16 +436,14 @@ impl Action {
         let reflow_config = config.reflow.clone().unwrap_or_default();
         let reflow = Reflow::new(reflow_config)?;
 
-        let _ = documents
+        documents
             .into_par_iter()
             .map(|(origin, chunks)| {
                 let mut picked = UserPicked::default();
                 let suggestions = reflow.check(&origin, &chunks[..])?;
                 for suggestion in suggestions {
                     let bandaids = suggestion.replacements.first().map(|replacement| {
-                        let bandaid =
-                            super::BandAid::from((replacement.to_owned(), &suggestion.span));
-                        bandaid
+                        super::BandAid::from((replacement.to_owned(), &suggestion.span))
                     });
 
                     picked.add_bandaids(&origin, bandaids);

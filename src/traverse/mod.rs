@@ -45,8 +45,8 @@ fn extract_modules_recurse_collect<P: AsRef<Path>>(
             path.display()
         ));
     };
-    let path1 = base.join(&mod_name).join("mod.rs");
-    let path2 = base.join(&mod_name).with_extension("rs");
+    let path1 = base.join(mod_name).join("mod.rs");
+    let path2 = base.join(mod_name).with_extension("rs");
     let path3 = base
         .join(path.file_stem().expect("If parent exists, should work™"))
         .join(mod_name)
@@ -129,7 +129,7 @@ fn extract_modules_recurse<P: AsRef<Path>>(
                 if let SeekingFor::ModulFin(ref mod_name) = state {
                     log::trace!("✨ Found a module: {mod_name}");
                     if punct.as_char() == ';' && punct.spacing() == Spacing::Alone {
-                        extract_modules_recurse_collect(path, &mut acc, &mod_name)?;
+                        extract_modules_recurse_collect(path, &mut acc, mod_name)?;
                     } else {
                         log::trace!("🍂 Either not alone or not a semi colon {punct:?} - incomplete mod {mod_name}");
                     }
@@ -155,7 +155,7 @@ pub(crate) fn extract_modules_from_file<P: AsRef<Path>>(path: P) -> Result<HashS
         let s = fs::read_to_string(path_str)?;
         let stream = syn::parse_str::<proc_macro2::TokenStream>(s.as_str())
             .wrap_err_with(|| eyre!("File {path_str} has syntax errors"))?;
-        let acc = extract_modules_recurse(path.to_owned(), stream)?;
+        let acc = extract_modules_recurse(path, stream)?;
         log::debug!(
             "🥞 Recursed into {} modules from {}",
             acc.len(),
@@ -239,7 +239,7 @@ fn to_manifest_dir<P: AsRef<Path>>(manifest_dir: P) -> Result<PathBuf> {
     } else {
         manifest_dir
     };
-    fs::canonicalize(&manifest_dir)
+    fs::canonicalize(manifest_dir)
         .wrap_err_with(|| eyre!("Failed to canonicalize path {}", manifest_dir.display()))
 }
 
@@ -248,11 +248,7 @@ fn extract_products(
     manifest: &cargo_toml::Manifest,
     manifest_dir: &Path,
 ) -> Result<HashSet<CheckEntity>> {
-    let iter = manifest
-        .bin
-        .clone()
-        .into_iter()
-        .chain(manifest.lib.clone().into_iter());
+    let iter = manifest.bin.clone().into_iter().chain(manifest.lib.clone());
 
     let items = iter
         .filter_map(|product| {
@@ -311,11 +307,11 @@ fn extract_description(
         .package
         .as_ref()
         .and_then(|package| package.description.as_ref())
-        .and_then(|_description| {
-            Some(CheckEntity::ManifestDescription(
+        .map(|_description| {
+            CheckEntity::ManifestDescription(
                 manifest_dir.join("Cargo.toml"),
                 manifest_content.to_owned(),
-            ))
+            )
         }))
 }
 
@@ -334,7 +330,7 @@ fn handle_manifest<P: AsRef<Path>>(
         )
     })?;
 
-    let mut acc = extract_products(&manifest, &manifest_dir).wrap_err_with(|| {
+    let mut acc = extract_products(&manifest, manifest_dir).wrap_err_with(|| {
         eyre!(
             "Failed to extract products from manifest {}",
             manifest_dir.display()
@@ -342,7 +338,7 @@ fn handle_manifest<P: AsRef<Path>>(
     })?;
 
     if !skip_readme {
-        let v = extract_readme(&manifest, &manifest_dir).wrap_err_with(|| {
+        let v = extract_readme(&manifest, manifest_dir).wrap_err_with(|| {
             eyre!(
                 "Failed to extract description from manifest {}",
                 manifest_dir.display()
@@ -353,7 +349,7 @@ fn handle_manifest<P: AsRef<Path>>(
 
     // TODO not quite ready for prime time
     if false {
-        let v = extract_description(&manifest, &manifest_dir, &manifest_content).wrap_err_with(
+        let v = extract_description(&manifest, manifest_dir, &manifest_content).wrap_err_with(
             || {
                 eyre!(
                     "Failed to extract description from manifest {}",
@@ -459,7 +455,7 @@ pub(crate) fn extract(
     while let Some(path) = flow.pop_front() {
         let x = if let Ok(meta) = path.metadata() {
             if meta.is_file() {
-                match path.file_name().map(|x| x.to_str()).flatten() {
+                match path.file_name().and_then(|x| x.to_str()) {
                     Some(file_name) if file_name == "Cargo.toml" => Extraction::Manifest(path),
                     Some(file_name) if file_name.ends_with(".md") => Extraction::Markdown(path),
                     Some(file_name) if file_name.ends_with(".rs") => Extraction::Source(path),
@@ -555,17 +551,16 @@ pub(crate) fn extract(
                     )?;
 
                     if recurse {
-                        let iter = Vec::from_iter(
-                            traverse(path.as_path(), true, dev_comments)?
-                                .map(|documentation| {
+                        let iter =
+                            Vec::from_iter(traverse(path.as_path(), true, dev_comments)?.flat_map(
+                                |documentation| {
                                     // Filter out duplicate _chunks_
                                     // that `extend` would happily duplicate.
                                     documentation
                                         .into_iter()
                                         .filter(|(origin, _chunks)| !docs.contains_key(origin))
-                                })
-                                .flatten(),
-                        );
+                                },
+                            ));
                         docs.extend(iter);
                     }
                 }

@@ -54,7 +54,7 @@ impl Checker for Reflow {
                 | CommentVariant::SlashAsteriskEM => continue,
                 _ => {}
             }
-            let suggestions = reflow(&origin, chunk, &self.config)?;
+            let suggestions = reflow(origin, chunk, &self.config)?;
             acc.extend(suggestions);
         }
         Ok(acc)
@@ -101,7 +101,7 @@ fn reflow_inner<'s>(
         .iter()
         .map(|r| (r.start.saturating_sub(range.start))..(r.end.saturating_sub(range.start)));
 
-    let mut gluon = Gluon::new(s_absolute, max_line_width, &indentations);
+    let mut gluon = Gluon::new(s_absolute, max_line_width, indentations);
     gluon.add_unbreakables(unbreakables);
 
     let mut reflow_applied = false;
@@ -356,17 +356,14 @@ fn store_suggestion<'s>(
             max_line_width,
             &chunk.variant(),
         )?
-        .map(|replacement| {
-            let suggestion = Suggestion {
-                chunk,
-                detector: Detector::Reflow,
-                origin: origin.clone(),
-                description: None,
-                range,
-                replacements: vec![replacement],
-                span,
-            };
-            suggestion
+        .map(|replacement| Suggestion {
+            chunk,
+            detector: Detector::Reflow,
+            origin: origin.clone(),
+            description: None,
+            range,
+            replacements: vec![replacement],
+            span,
         }),
     ))
 }

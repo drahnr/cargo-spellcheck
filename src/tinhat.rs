@@ -29,10 +29,10 @@ static SIGNAL_HANDLER_AT_WORK: AtomicBool = AtomicBool::new(false);
 #[cfg(not(target_os = "windows"))]
 pub fn signal_handler<F>(fx: F)
 where
-    F: FnOnce() -> () + Send + 'static,
+    F: FnOnce() + Send + 'static,
 {
     let mut signals =
-        iterator::Signals::new(&[SIGTERM, SIGINT, SIGQUIT]).expect("Failed to create Signals");
+        iterator::Signals::new([SIGTERM, SIGINT, SIGQUIT]).expect("Failed to create Signals");
 
     std::thread::spawn(move || {
         for s in signals.forever() {

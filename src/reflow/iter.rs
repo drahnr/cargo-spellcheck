@@ -230,8 +230,8 @@ impl<'s> Iterator for Gluon<'s> {
                 // the next not yet crafted line
                 self.line_counter + 1,
             )
-            .map(|x| *x)
-            .unwrap_or_else(|| self.indentations.last().map(|x| *x).unwrap_or_default());
+            .copied()
+            .unwrap_or_else(|| self.indentations.last().copied().unwrap_or_default());
 
         while let Some((char_range, _byte_range, cow_str)) = self.inner.next() {
             // calculate the current characters that are already in that line

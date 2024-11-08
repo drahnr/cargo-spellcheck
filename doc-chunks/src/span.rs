@@ -109,16 +109,16 @@ impl Span {
                 chunk.as_str(),
                 *fragment_span,
                 fragment_range.clone(),
-                self.clone(),
+                *self,
             ) {
                 Ok(fragment_sub_range) => return Ok(fragment_sub_range),
                 Err(_e) => continue,
             }
         }
-        return Err(Error::Span(
+        Err(Error::Span(
             "The chunk internal map from range to span did not contain an overlapping entry"
                 .to_string(),
-        ));
+        ))
     }
 }
 
@@ -149,10 +149,10 @@ impl TryInto<Range> for &Span {
                 end: self.end.column + 1,
             })
         } else {
-            return Err(Error::Span(format!(
+            Err(Error::Span(format!(
                 "Start and end are not in the same line {} vs {}",
                 self.start.line, self.end.line
-            )));
+            )))
         }
     }
 }
@@ -172,10 +172,10 @@ impl TryFrom<(usize, Range)> for Span {
                 },
             })
         } else {
-            return Err(Error::Span(format!(
+            Err(Error::Span(format!(
                 "range must be valid to be converted to a Span {}..{}",
                 original.1.start, original.1.end
-            )));
+            )))
         }
     }
 }
@@ -195,11 +195,11 @@ impl TryFrom<(usize, std::ops::RangeInclusive<usize>)> for Span {
                 },
             })
         } else {
-            return Err(Error::Span(format!(
+            Err(Error::Span(format!(
                 "range must be valid to be converted to a Span {}..{}",
                 original.1.start(),
                 original.1.end()
-            )));
+            )))
         }
     }
 }
@@ -284,7 +284,7 @@ fn extract_sub_range_from_span(
         debug_assert_eq!(sub_range.len(), sub_span_len);
     }
 
-    return Ok(sub_range);
+    Ok(sub_range)
 }
 
 #[cfg(test)]

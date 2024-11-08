@@ -30,7 +30,7 @@ fn extract_delimiter_inner<'a>(
 }
 
 /// Extract line delimiter of a string.
-pub fn extract_delimiter<'s>(s: &'s str) -> Option<&'static str> {
+pub fn extract_delimiter(s: &str) -> Option<&'static str> {
     // TODO lots of room for optimizations here
     let lf = memchr::memchr_iter(b'\n', s.as_bytes());
     let cr = memchr::memchr_iter(b'\r', s.as_bytes());
@@ -59,7 +59,7 @@ pub fn extract_delimiter<'s>(s: &'s str) -> Option<&'static str> {
     // order is important, `max_by` prefers the latter ones over the earlier ones on equality
     vec![cr, lf, crlf, lfcr]
         .into_iter()
-        .filter_map(|x| x)
+        .flatten()
         .max_by(|b, a| {
             if a.count == b.count {
                 a.first_appearance.cmp(&b.first_appearance)
@@ -73,10 +73,10 @@ pub fn extract_delimiter<'s>(s: &'s str) -> Option<&'static str> {
 /// Iterate over a str and annotate with line and column.
 ///
 /// Assumes `s` is content starting from point `start_point`.
-pub fn iter_with_line_column_from<'a>(
-    s: &'a str,
+pub fn iter_with_line_column_from(
+    s: &str,
     start_point: LineColumn,
-) -> impl Iterator<Item = (char, usize, usize, LineColumn)> + 'a {
+) -> impl Iterator<Item = (char, usize, usize, LineColumn)> + '_ {
     #[derive(Clone)]
     struct State {
         cursor: LineColumn,
@@ -106,9 +106,9 @@ pub fn iter_with_line_column_from<'a>(
 
 /// Iterate over annotated chars starting from line 1 and column 0 assuming `s`
 /// starts there.
-pub fn iter_with_line_column<'a>(
-    s: &'a str,
-) -> impl Iterator<Item = (char, usize, usize, LineColumn)> + 'a {
+pub fn iter_with_line_column(
+    s: &str,
+) -> impl Iterator<Item = (char, usize, usize, LineColumn)> + '_ {
     iter_with_line_column_from(s, LineColumn { line: 1, column: 0 })
 }
 
@@ -163,7 +163,7 @@ where
 #[allow(unused)]
 pub(crate) fn load_span_from_file(path: impl AsRef<Path>, span: Span) -> Result<String> {
     let path = path.as_ref();
-    let path = fs::canonicalize(&path)?;
+    let path = fs::canonicalize(path)?;
 
     let ro = fs::OpenOptions::new().read(true).open(&path)?;
 
@@ -219,11 +219,9 @@ where
             }
             _ => {}
         }
-        if peekable.peek().is_none() {
-            if started {
-                range.end = idx + 1;
-                return Some(range);
-            }
+        if peekable.peek().is_none() && started {
+            range.end = idx + 1;
+            return Some(range);
         }
     }
     None
@@ -287,7 +285,7 @@ where
 }
 
 /// Extract a subset of chars by iterating. Range must be in characters.
-pub fn sub_char_range<'s, R>(s: &'s str, range: R) -> &'s str
+pub fn sub_char_range<R>(s: &str, range: R) -> &str
 where
     R: RangeBounds<usize>,
 {
@@ -317,10 +315,8 @@ where
             }
             _ => {}
         }
-        if peekable.peek().is_none() {
-            if started {
-                byte_range.end = s.len();
-            }
+        if peekable.peek().is_none() && started {
+            byte_range.end = s.len();
         }
     }
     &s[byte_range]

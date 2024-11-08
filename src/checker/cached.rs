@@ -68,7 +68,7 @@ where
                 let elapsed = total_start.elapsed();
                 Ok(CachedValue {
                     value,
-                    fetch: Some(elapsed.clone()),
+                    fetch: Some(elapsed),
                     update: None,
                     creation: None,
                     total: elapsed,
@@ -126,7 +126,7 @@ where
         // let buf = xz2::bufread::XzDecoder::new(buf);
         match bincode::deserialize_from(buf) {
             Ok(CacheEntry { what, val }) => {
-                if &what == &self.what {
+                if what == self.what {
                     log::debug!("Cached value with matching what \"{what}\"");
                     Ok(Some(val))
                 } else {

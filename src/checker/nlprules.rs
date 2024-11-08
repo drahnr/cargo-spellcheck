@@ -149,7 +149,7 @@ fn check_chunk<'a>(
                     range,
                     span,
                     origin: origin.clone(),
-                    replacements: replacements.iter().map(|x| x.clone()).collect(),
+                    replacements: replacements.to_vec(),
                     chunk,
                     description: Some(message.to_owned()),
                 }),

@@ -56,7 +56,7 @@ impl std::ops::Deref for SourceRange {
 pub(crate) fn is_html_tag_on_no_scope_list(text: &str) -> bool {
     use regex::RegexSet;
     lazy_static::lazy_static! {
-        static ref HTML_TAG_EMPTY_OR_SPECIAL_CASE: RegexSet = RegexSet::new(&[
+        static ref HTML_TAG_EMPTY_OR_SPECIAL_CASE: RegexSet = RegexSet::new([
             r####"^<\s*[A-Za-z0-9]+(?:\s+.*)*\s*/>$"####, // any self closing empty
             r####"^<\s*br\s*>$"####,
             r####"^</?\s*(?:i|b|span|font|color|style)\s*/?>$"####,
@@ -118,7 +118,7 @@ impl<'a> PlainOverlay<'a> {
                 }
             }
             SourceRange::Direct(_range) => {
-                plain_acc.push_str(&s);
+                plain_acc.push_str(s);
                 Range {
                     start: cursor,
                     end: cursor + s.chars().count(),
@@ -179,11 +179,11 @@ impl<'a> PlainOverlay<'a> {
 
             log::trace!("Parsing event (bytes: {byte_range:?}): {event:?}");
 
-            let mut cursor = cmark.char_indices().enumerate().peekable();
+            let cursor = cmark.char_indices().enumerate().peekable();
             let mut char_cursor = 0usize;
 
             // let the cursor catch up to the current byte position
-            while let Some((char_idx, (byte_offset, _c))) = cursor.next() {
+            for (char_idx, (byte_offset, _c)) in cursor {
                 char_cursor = char_idx;
                 if byte_offset >= byte_range.start {
                     break;
@@ -477,7 +477,7 @@ impl<'a> PlainOverlay<'a> {
                     } else {
                         None
                     }
-                    .and_then(|(sub, raw)| {
+                    .map(|(sub, raw)| {
                         log::trace!("convert:  cmark-erased={sub:?} -> raw={raw:?}");
 
                         if raw.is_empty() {
@@ -485,9 +485,8 @@ impl<'a> PlainOverlay<'a> {
                         } else {
                             let resolved = self.raw.find_spans(raw.clone());
                             log::trace!("cmark-erased range to spans: {raw:?} -> {resolved:?}");
-                            acc.extend(resolved.into_iter());
+                            acc.extend(resolved);
                         }
-                        Some(())
                     });
                     acc
                 },
@@ -512,7 +511,7 @@ impl<'a> fmt::Debug for PlainOverlay<'a> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         use console::Style;
 
-        let styles = vec![
+        let styles = [
             Style::new().italic().bold().dim().red(),
             Style::new().italic().bold().dim().green(),
             Style::new().italic().bold().dim().yellow(),

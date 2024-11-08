@@ -62,6 +62,12 @@ pub struct Documentation {
     index: IndexMap<ContentOrigin, Vec<CheckableChunk>>,
 }
 
+impl Default for Documentation {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Documentation {
     /// Create a new and empty doc.
     pub fn new() -> Self {
@@ -108,7 +114,7 @@ impl Documentation {
         other
             .into_iter()
             .for_each(|(origin, chunks): (_, Vec<CheckableChunk>)| {
-                let _ = self.add_inner(origin, chunks);
+                self.add_inner(origin, chunks);
             });
     }
 
@@ -162,8 +168,8 @@ impl Documentation {
             Ok(range)
         }
 
-        let mut range = extract_range_of_description(&manifest_content)?;
-        let description = sub_char_range(&manifest_content, range.clone());
+        let mut range = extract_range_of_description(manifest_content)?;
+        let description = sub_char_range(manifest_content, range.clone());
 
         // Attention: `description` does include `\"\"\"` as well as `\\\n`, the latter is not a big issue,
         // but the trailing start and end delimiters are.
@@ -283,7 +289,7 @@ impl Documentation {
 
         match origin.clone() {
             ContentOrigin::RustDocTest(_path, span) => {
-                if let Ok(excerpt) = load_span_from(&mut content.as_bytes(), span.clone()) {
+                if let Ok(excerpt) = load_span_from(&mut content.as_bytes(), span) {
                     docs.add_rust(origin.clone(), excerpt.as_str(), doc_comments, dev_comments)
                 } else {
                     // TODO

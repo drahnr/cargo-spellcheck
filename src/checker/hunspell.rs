@@ -17,7 +17,7 @@ use io::Write;
 use lazy_static::lazy_static;
 
 use nlprule::Tokenizer;
-use std::io::{self, BufRead};
+use std::io::{self};
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -89,8 +89,8 @@ pub(super) fn cache_builtin() -> Result<(PathBuf, PathBuf)> {
     let base = directories::BaseDirs::new().expect("env HOME must be set");
 
     let cache_dir = base.cache_dir();
-    let path_aff = cache_builtin_inner(&cache_dir, "aff", BUILTIN_HUNSPELL_AFF)?;
-    let path_dic = cache_builtin_inner(&cache_dir, "dic", BUILTIN_HUNSPELL_DIC)?;
+    let path_aff = cache_builtin_inner(cache_dir, "aff", BUILTIN_HUNSPELL_AFF)?;
+    let path_dic = cache_builtin_inner(cache_dir, "dic", BUILTIN_HUNSPELL_DIC)?;
     Ok((path_dic, path_aff))
 }
 
@@ -98,7 +98,7 @@ pub(super) fn cache_builtin() -> Result<(PathBuf, PathBuf)> {
 /// `VULGAR FRACTION`.
 pub fn consists_of_vulgar_fractions_or_emojis(word: &str) -> bool {
     lazy_static! {
-        static ref VULGAR_OR_EMOJI: regex::RegexSet = regex::RegexSetBuilder::new(&[
+        static ref VULGAR_OR_EMOJI: regex::RegexSet = regex::RegexSetBuilder::new([
             r"[\u00BC-\u00BE\u2150-\u215E-\u2189]",
             r"^[\p{Emoji}]+$"
         ])
@@ -106,7 +106,7 @@ pub fn consists_of_vulgar_fractions_or_emojis(word: &str) -> bool {
         .build()
         .expect("REGEX grammar is human checked. qed");
     };
-    return VULGAR_OR_EMOJI.is_match(word);
+    VULGAR_OR_EMOJI.is_match(word)
 }
 
 #[derive(Clone)]
@@ -331,8 +331,8 @@ impl Checker for HunspellChecker {
                     obtain_suggestions(
                         &plain,
                         chunk,
-                        &hunspell,
-                        &origin,
+                        hunspell,
+                        origin,
                         word,
                         range,
                         self.allow_concatenated,
@@ -347,8 +347,8 @@ impl Checker for HunspellChecker {
                                 obtain_suggestions(
                                     &plain,
                                     chunk,
-                                    &hunspell,
-                                    &origin,
+                                    hunspell,
+                                    origin,
                                     word_fragment.to_owned(),
                                     range,
                                     self.allow_concatenated,
@@ -362,8 +362,8 @@ impl Checker for HunspellChecker {
                             obtain_suggestions(
                                 &plain,
                                 chunk,
-                                &hunspell,
-                                &origin,
+                                hunspell,
+                                origin,
                                 word.to_owned(),
                                 range,
                                 self.allow_concatenated,

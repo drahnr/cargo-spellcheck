@@ -93,22 +93,17 @@ impl Clusters {
         source: &str,
         stream: proc_macro2::TokenStream,
     ) -> Result<()> {
-        let mut iter = stream.into_iter();
-        while let Some(tree) = iter.next() {
-            match tree {
-                TokenTree::Group(group) => {
-                    if let Ok(comment) = syn::parse2::<DocComment>(group.stream()) {
-                        if let Err(e) = self.process_literal(source, comment) {
-                            log::error!(
-                                "BUG: Failed to guarantee literal content/span integrity: {e}"
-                            );
-                            continue;
-                        }
-                    } else {
-                        self.parse_token_tree(source, group.stream())?;
+        let iter = stream.into_iter();
+        for tree in iter {
+            if let TokenTree::Group(group) = tree {
+                if let Ok(comment) = syn::parse2::<DocComment>(group.stream()) {
+                    if let Err(e) = self.process_literal(source, comment) {
+                        log::error!("BUG: Failed to guarantee literal content/span integrity: {e}");
+                        continue;
                     }
+                } else {
+                    self.parse_token_tree(source, group.stream())?;
                 }
-                _ => {}
             };
         }
         Ok(())

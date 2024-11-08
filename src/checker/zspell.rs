@@ -12,13 +12,9 @@ use crate::documentation::{CheckableChunk, ContentOrigin, PlainOverlay};
 use crate::util::sub_chars;
 use crate::Range;
 
-use fs_err as fs;
-
-use itertools::Itertools;
 use nlprule::Tokenizer;
-use std::io::{self, BufRead};
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use doc_chunks::Ignores;
@@ -29,7 +25,7 @@ use super::quirks::{
     replacements_contain_dashed, replacements_contain_dashless, transform, Transformed,
 };
 
-use super::hunspell::{cache_builtin, consists_of_vulgar_fractions_or_emojis};
+use super::hunspell::consists_of_vulgar_fractions_or_emojis;
 
 #[derive(Clone)]
 pub struct ZetCheckerInner {
@@ -152,7 +148,7 @@ impl Checker for ZetChecker {
                         &plain,
                         chunk,
                         &self.zspell,
-                        &origin,
+                        origin,
                         word,
                         range,
                         self.allow_concatenated,
@@ -168,7 +164,7 @@ impl Checker for ZetChecker {
                                     &plain,
                                     chunk,
                                     &self.zspell,
-                                    &origin,
+                                    origin,
                                     word_fragment.to_owned(),
                                     range,
                                     self.allow_concatenated,
@@ -183,7 +179,7 @@ impl Checker for ZetChecker {
                                 &plain,
                                 chunk,
                                 &self.zspell,
-                                &origin,
+                                origin,
                                 word.to_owned(),
                                 range,
                                 self.allow_concatenated,

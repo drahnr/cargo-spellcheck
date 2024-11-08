@@ -111,14 +111,14 @@ impl<'de> de::Visitor<'de> for Lang5Visitor {
         E: serde::de::Error,
     {
         if s.len() != 5 {
-            return Err(Lang5SpacerError('l')).map_err(serde::de::Error::custom);
+            return Err(serde::de::Error::custom(Lang5SpacerError('l')));
         }
         let lang = Language::from_639_1(&s[0..2])
-            .ok_or_else(|| Lang5SpacerError('2'))
+            .ok_or(Lang5SpacerError('2'))
             .map_err(serde::de::Error::custom)?;
         let c = s.chars().nth(2).unwrap();
         if c != '_' {
-            return Err(Lang5SpacerError(c)).map_err(serde::de::Error::custom)?;
+            return Err(serde::de::Error::custom(Lang5SpacerError(c)))?;
         }
         let country = Country::from_str(&s[3..5]).map_err(serde::de::Error::custom)?;
         Ok(Lang5 { lang, country })

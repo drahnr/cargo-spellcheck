@@ -165,8 +165,7 @@ impl CheckableChunk {
 
                 log::trace!(target: "find_spans",
                     "[f]display;\n>{}<",
-                    ChunkDisplay::try_from((self, *fragment_range))
-                        .expect("must be convertable")
+                    ChunkDisplay::from((self, *fragment_range))
                 );
                 log::trace!(target: "find_spans",
                     "[f]content;\n>{}<",
@@ -174,7 +173,7 @@ impl CheckableChunk {
                 );
             })
             .filter_map(|(fragment_span, fragment_range, sub_fragment_range)| {
-                if sub_fragment_range.len() == 0 {
+                if sub_fragment_range.is_empty() {
                     log::trace!(target: "find_spans","sub fragment is zero, dropping!");
                     return None;
                 }
@@ -190,7 +189,7 @@ impl CheckableChunk {
                 // relative to the range given / offset
                 let shift = sub_fragment_range.start - fragment_range.start;
                 // state
-                let mut sub_fragment_span = fragment_span.clone();
+                let mut sub_fragment_span = *fragment_span;
                 let mut cursor: LineColumn = fragment_span.start;
                 let mut iter = s.chars().enumerate().peekable();
                 let mut started = true;
@@ -257,7 +256,7 @@ impl CheckableChunk {
     ///             |--- range ---|
     /// ```
     ///
-    pub fn find_covered_spans<'a>(&'a self, range: Range) -> impl Iterator<Item = &'a Span> {
+    pub fn find_covered_spans(&self, range: Range) -> impl Iterator<Item = &'_ Span> {
         let Range { start, end } = range;
         self.source_mapping
             .iter()
@@ -266,7 +265,7 @@ impl CheckableChunk {
             .filter_map(|(fragment_range, fragment_span)| {
                 // could possibly happen on empty documentation lines with `///`
                 // TODO: is_empty() throws disambiguity error
-                if fragment_range.len() == 0 {
+                if fragment_range.is_empty() {
                     None
                 } else {
                     Some(fragment_span)
@@ -275,7 +274,7 @@ impl CheckableChunk {
     }
 
     /// Yields a set of ranges covering all spanned lines (the full line).
-    pub fn find_covered_lines<'i>(&'i self, range: Range) -> Vec<Range> {
+    pub fn find_covered_lines(&self, range: Range) -> Vec<Range> {
         // assumes the _mistake_ is within one line
         // if not we chop it down to the first line
         let mut acc = Vec::with_capacity(32);
@@ -386,7 +385,7 @@ impl From<Clusters> for Vec<CheckableChunk> {
         clusters
             .set
             .into_iter()
-            .map(|literal_set| CheckableChunk::from_literalset(literal_set))
+            .map(CheckableChunk::from_literalset)
             .collect::<Vec<_>>()
     }
 }
@@ -433,9 +432,9 @@ where
     }
 }
 
-impl<'a> Into<(&'a CheckableChunk, Range)> for ChunkDisplay<'a> {
-    fn into(self) -> (&'a CheckableChunk, Range) {
-        (self.0, self.1)
+impl<'a> From<ChunkDisplay<'a>> for (&'a CheckableChunk, Range) {
+    fn from(val: ChunkDisplay<'a>) -> Self {
+        (val.0, val.1)
     }
 }
 

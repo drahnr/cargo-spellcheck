@@ -96,7 +96,7 @@ impl Checkers {
             config.hunspell.as_ref()
         );
         #[cfg(feature = "zet")]
-        let zet = create_checker!("zet", ZetChecker, dbg!(&config), dbg!(config.zet.as_ref()));
+        let zet = create_checker!("zet", ZetChecker, &config, config.zet.as_ref());
         #[cfg(feature = "spellbook")]
         let spellbook = create_checker!(
             "spellbook",
@@ -154,7 +154,7 @@ impl Checker for Checkers {
 
         let mut suggestions: Vec<Suggestion<'s>> = Vec::from_iter(collective);
         suggestions.sort();
-        if suggestions.len() == 0 {
+        if suggestions.is_empty() {
             return Ok(suggestions);
         }
 

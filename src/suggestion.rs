@@ -547,8 +547,8 @@ impl<'s> Ord for Suggestion<'s> {
         if cmp != std::cmp::Ordering::Equal {
             return cmp;
         }
-        let cmp = self.span.end.cmp(&other.span.end);
-        cmp
+
+        self.span.end.cmp(&other.span.end)
     }
 }
 
@@ -605,7 +605,7 @@ impl<'s> SuggestionSet<'s> {
             .per_file
             .entry(origin)
             .or_insert_with(|| Vec::with_capacity(32));
-        v.extend(suggestions.into_iter());
+        v.extend(suggestions);
     }
 
     /// Obtain an accessor `Entry` for the given `origin`
@@ -635,7 +635,7 @@ impl<'s> SuggestionSet<'s> {
     where
         'a: 's,
     {
-        if let Some(ref suggestions) = self.per_file.get(origin) {
+        if let Some(suggestions) = self.per_file.get(origin) {
             suggestions.iter()
         } else {
             panic!("origin must exist")
@@ -677,8 +677,8 @@ impl<'s> SuggestionSet<'s> {
                     if cmp != std::cmp::Ordering::Equal {
                         return cmp;
                     }
-                    let cmp = a.span.end.cmp(&b.span.end);
-                    return cmp;
+
+                    a.span.end.cmp(&b.span.end)
                 });
             });
         self.per_file

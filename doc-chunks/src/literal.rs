@@ -281,14 +281,14 @@ fn detect_comment_variant(
         let post = variant.suffix_len();
 
         #[cfg(debug_assertions)]
-        let orig = span.clone();
+        let orig = span;
 
         trim_span(rendered, &mut span, pre, post);
 
         #[cfg(debug_assertions)]
         {
             let raw = util::load_span_from(&mut content.as_bytes(), orig)?;
-            let adjusted = util::load_span_from(&mut content.as_bytes(), span.clone())?;
+            let adjusted = util::load_span_from(&mut content.as_bytes(), span)?;
 
             // we know pre and post only consist of single byte characters
             // so `.len()` is way faster here yet correct.
@@ -406,7 +406,7 @@ impl TrimmedLiteral {
             span.end.column += 1;
         }
 
-        let rendered = util::load_span_from(content.as_bytes(), span.clone())?;
+        let rendered = util::load_span_from(content.as_bytes(), span)?;
 
         // TODO cache the offsets for faster processing and avoiding repeated O(n) ops
         // let byteoffset2char = rendered.char_indices().enumerate().collect::<indexmap::IndexMap<_usize, (_usize, char)>>();
@@ -457,10 +457,7 @@ impl TrimmedLiteral {
     ) -> std::result::Result<TrimmedLiteral, String> {
         let content_chars_len = content.chars().count();
         let mut span = Span {
-            start: LineColumn {
-                line,
-                column: column,
-            },
+            start: LineColumn { line, column },
             end: LineColumn {
                 line,
                 column: column + content_chars_len,
@@ -501,7 +498,7 @@ impl TrimmedLiteral {
 
     /// Full representation including `prefix` and `postfix` characters.
     pub fn as_untrimmed_str(&self) -> &str {
-        &self.rendered.as_str()
+        self.rendered.as_str()
     }
 
     /// Length in characters, excluding `pre` and `post`.
@@ -534,11 +531,11 @@ impl TrimmedLiteral {
     ///
     /// Covers only the content, no marker or helper characters.
     pub fn span(&self) -> Span {
-        self.span.clone()
+        self.span
     }
 
     /// Access the characters via an iterator.
-    pub fn chars<'a>(&'a self) -> impl Iterator<Item = char> + 'a {
+    pub fn chars(&self) -> impl Iterator<Item = char> + '_ {
         self.as_str().chars()
     }
 
@@ -591,9 +588,9 @@ where
     }
 }
 
-impl<'a> Into<(&'a TrimmedLiteral, Range)> for TrimmedLiteralDisplay<'a> {
-    fn into(self) -> (&'a TrimmedLiteral, Range) {
-        (self.0, self.1)
+impl<'a> From<TrimmedLiteralDisplay<'a>> for (&'a TrimmedLiteral, Range) {
+    fn from(val: TrimmedLiteralDisplay<'a>) -> Self {
+        (val.0, val.1)
     }
 }
 

@@ -77,10 +77,9 @@ impl FromStr for MultipleCheckerTypes {
     type Err = UnknownCheckerTypeVariant;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         s.split(',')
-            .into_iter()
-            .map(|segment| <CheckerType as FromStr>::from_str(segment))
+            .map(<CheckerType as FromStr>::from_str)
             .collect::<Result<Vec<_>, _>>()
-            .map(|vct| MultipleCheckerTypes(vct))
+            .map(MultipleCheckerTypes)
     }
 }
 
@@ -258,12 +257,11 @@ impl Args {
 
     pub fn checkers(&self) -> Option<Vec<CheckerType>> {
         self.common()
-            .map(|common| common.checkers.as_ref().map(|checkers| checkers.0.clone()))
-            .flatten()
+            .and_then(|common| common.checkers.as_ref().map(|checkers| checkers.0.clone()))
     }
 
     pub fn job_count(&self) -> usize {
-        derive_job_count(self.common().map(|common| common.jobs).flatten())
+        derive_job_count(self.common().and_then(|common| common.jobs))
     }
 
     /// Extract the verbosity level
@@ -283,12 +281,10 @@ impl Args {
                 Sub::Config { .. } => unreachable!(),
                 Sub::Completions { .. } => unreachable!(),
             }
+        } else if self.fix {
+            Action::Fix
         } else {
-            if self.fix {
-                Action::Fix
-            } else {
-                Action::Check
-            }
+            Action::Check
         };
         log::trace!("Derived action {action:?} from flags/args/cmds");
         action
@@ -303,11 +299,7 @@ impl Args {
             // if ends with file name `cargo-spellcheck`
             let mut argv_iter = argv_iter.into_iter();
             if let Some(arg0) = argv_iter.next() {
-                match PathBuf::from(&arg0)
-                    .file_name()
-                    .map(|x| x.to_str())
-                    .flatten()
-                {
+                match PathBuf::from(&arg0).file_name().and_then(|x| x.to_str()) {
                     Some(file_name) => {
                         // allow all variants to be parsed
                         // cargo spellcheck ...
@@ -356,18 +348,14 @@ impl Args {
         config: &mut Config,
     ) -> Result<()> {
         // overwrite checkers
-        if let Some(ref checkers) = filter_set {
+        if let Some(checkers) = filter_set {
             #[cfg(feature = "hunspell")]
-            if !checkers.contains(&CheckerType::Hunspell) {
-                if !config.hunspell.take().is_some() {
-                    log::warn!("Hunspell was never configured.")
-                }
+            if !checkers.contains(&CheckerType::Hunspell) && config.hunspell.take().is_none() {
+                log::warn!("Hunspell was never configured.")
             }
             #[cfg(feature = "nlprules")]
-            if !checkers.contains(&CheckerType::NlpRules) {
-                if !config.nlprules.take().is_some() {
-                    log::warn!("Nlprules checker was never configured.")
-                }
+            if !checkers.contains(&CheckerType::NlpRules) && config.nlprules.take().is_none() {
+                log::warn!("Nlprules checker was never configured.")
             }
 
             if !checkers.contains(&CheckerType::Reflow) {
@@ -403,14 +391,13 @@ impl Args {
         let cwd = crate::traverse::cwd()?;
         // 1. explicitly specified
         let explicit_cfg = self.cfg.as_ref().map(|config_path| {
-            let config_path = if config_path.is_absolute() {
+            if config_path.is_absolute() {
                 config_path.to_owned()
             } else {
                 // TODO make sure this is sane behavior
                 // to use `cwd`.
                 cwd.join(config_path)
-            };
-            config_path
+            }
         });
 
         if let Some(config_path) = explicit_cfg {
@@ -426,25 +413,22 @@ impl Args {
         log::debug!("No cfg flag present");
 
         // (prep) determine if there should be an attempt to read a cargo manifest from the target dir
-        let single_target_path = self
-            .common()
-            .map(|common| {
-                common
-                    .paths
-                    .first()
-                    .filter(|_x| common.paths.len() == 1)
-                    .cloned()
-            })
-            .flatten();
+        let single_target_path = self.common().and_then(|common| {
+            common
+                .paths
+                .first()
+                .filter(|_x| common.paths.len() == 1)
+                .cloned()
+        });
 
         // 2. manifest meta in target dir
         let manifest_path_in_target_dir = if let Some(ref base) = single_target_path {
-            look_for_cargo_manifest(&base)?
+            look_for_cargo_manifest(base)?
         } else {
             None
         };
         if let Some(manifest_path) = &manifest_path_in_target_dir {
-            if let Some((config, config_path)) = load_from_manifest_metadata(&manifest_path)? {
+            if let Some((config, config_path)) = load_from_manifest_metadata(manifest_path)? {
                 return Ok((config, Some(config_path)));
             }
         };

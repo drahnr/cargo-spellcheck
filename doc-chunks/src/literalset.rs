@@ -58,7 +58,7 @@ impl LiteralSet {
     }
 
     /// The set of trimmed literals that is covered.
-    pub fn literals<'x>(&'x self) -> Vec<&'x TrimmedLiteral> {
+    pub fn literals(&self) -> Vec<&TrimmedLiteral> {
         self.literals.iter().by_ref().collect()
     }
 

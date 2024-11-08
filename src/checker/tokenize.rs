@@ -154,86 +154,82 @@ pub(crate) fn apply_tokenizer<'t, 'z>(
 where
     't: 'z,
 {
-    tokenizer
-        .pipe(text)
-        .into_iter()
-        .map(|sentence| {
-            let mut backlog: Vec<Range> = Vec::with_capacity(4);
-            let mut acc = Vec::with_capacity(32);
-            let mut iter = sentence
-                .into_iter()
-                .filter(|token| !token.span().char().is_empty())
-                .peekable();
+    tokenizer.pipe(text).flat_map(|sentence| {
+        let mut backlog: Vec<Range> = Vec::with_capacity(4);
+        let mut acc = Vec::with_capacity(32);
+        let mut iter = sentence
+            .into_iter()
+            .filter(|token| !token.span().char().is_empty())
+            .peekable();
 
-            #[derive(Clone, Copy, Debug)]
-            enum Stage {
-                Empty,
-                Pre,
-                Tick,
+        #[derive(Clone, Copy, Debug)]
+        enum Stage {
+            Empty,
+            Pre,
+            Tick,
+        }
+
+        let mut stage = Stage::Empty;
+
+        // special cases all abbreviated variants, i.e. `isn't` such
+        // that the tokenizer treats them as a single word.
+        //
+        // Also allows i.e. `ink!'s` to be detected as a single
+        // token.
+        while let Some(token) = iter.next() {
+            let char_range = token.span().char().clone();
+
+            let space = iter
+                .peek()
+                .map(|upcoming| upcoming.has_space_before())
+                .unwrap_or(false);
+            let s = token.word().as_str();
+            // TODO workaround for a bug in srx
+            // TODO that does not split `[7f` after `[` as expected
+            if s.starts_with('[') && char_range.len() > 1 {
+                acc.push((char_range.start)..(char_range.start + 1));
+                acc.push((char_range.start + 1)..(char_range.end));
+                continue;
             }
-
-            let mut stage = Stage::Empty;
-
-            // special cases all abbreviated variants, i.e. `isn't` such
-            // that the tokenizer treats them as a single word.
-            //
-            // Also allows i.e. `ink!'s` to be detected as a single
-            // token.
-            while let Some(token) = iter.next() {
-                let char_range = token.span().char().clone();
-
-                let space = iter
-                    .peek()
-                    .map(|upcoming| upcoming.has_space_before())
-                    .unwrap_or(false);
-                let s = token.word().as_str();
-                // TODO workaround for a bug in srx
-                // TODO that does not split `[7f` after `[` as expected
-                if s.starts_with('[') && char_range.len() > 1 {
-                    acc.push((char_range.start)..(char_range.start + 1));
-                    acc.push((char_range.start + 1)..(char_range.end));
-                    continue;
-                }
-                let belongs_to_genitive_s = match s {
-                    "(" | ")" | r#"""# => false,
-                    _ => true,
-                };
-                stage = if belongs_to_genitive_s {
-                    match stage {
-                        Stage::Empty if s != "'" && !space => {
-                            backlog.push(char_range);
-                            Stage::Pre
-                        }
-                        Stage::Pre if s != "'" && !space => {
-                            backlog.push(char_range);
-                            Stage::Pre
-                        }
-                        Stage::Pre if s == "'" && !space => {
-                            backlog.push(char_range);
-                            Stage::Tick
-                        }
-                        Stage::Tick if s != "'" => {
-                            // combine all in backlog to one
-                            acc.push(backlog.first().unwrap().start..char_range.end);
-                            backlog.clear();
-                            Stage::Empty
-                        }
-                        _stage => {
-                            acc.extend(backlog.drain(..));
-                            acc.push(char_range);
-                            Stage::Empty
-                        }
+            let belongs_to_genitive_s = match s {
+                "(" | ")" | r#"""# => false,
+                _ => true,
+            };
+            stage = if belongs_to_genitive_s {
+                match stage {
+                    Stage::Empty if s != "'" && !space => {
+                        backlog.push(char_range);
+                        Stage::Pre
                     }
-                } else {
-                    acc.extend(backlog.drain(..));
-                    acc.push(char_range);
-                    Stage::Empty
-                };
-            }
-            acc.extend(backlog.drain(..));
-            acc.into_iter()
-        })
-        .flatten()
+                    Stage::Pre if s != "'" && !space => {
+                        backlog.push(char_range);
+                        Stage::Pre
+                    }
+                    Stage::Pre if s == "'" && !space => {
+                        backlog.push(char_range);
+                        Stage::Tick
+                    }
+                    Stage::Tick if s != "'" => {
+                        // combine all in backlog to one
+                        acc.push(backlog.first().unwrap().start..char_range.end);
+                        backlog.clear();
+                        Stage::Empty
+                    }
+                    _stage => {
+                        acc.append(&mut backlog);
+                        acc.push(char_range);
+                        Stage::Empty
+                    }
+                }
+            } else {
+                acc.append(&mut backlog);
+                acc.push(char_range);
+                Stage::Empty
+            };
+        }
+        acc.append(&mut backlog);
+        acc.into_iter()
+    })
 }
 
 #[cfg(test)]

@@ -149,19 +149,18 @@ impl HunspellConfig {
             .iter(!self.skip_os_lookups)
             .filter_map(|search_dir| {
                 let abspath = if !search_dir.is_absolute() {
-                    base.join(&search_dir)
+                    base.join(search_dir)
                 } else {
                     search_dir.to_owned()
                 };
 
-                abspath.canonicalize().ok().map(|abspath| {
+                abspath.canonicalize().ok().inspect(|abspath| {
                     log::trace!(
                         "Sanitized ({} + {}) -> {}",
                         base.display(),
                         search_dir.display(),
                         abspath.display()
                     );
-                    abspath
                 })
             })
             .collect::<Vec<PathBuf>>()
@@ -175,7 +174,7 @@ impl HunspellConfig {
                     .iter(!self.skip_os_lookups)
                     .filter_map(|search_dir| {
                         if !extra_dic.is_absolute() {
-                            base.join(&search_dir).canonicalize().ok()
+                            base.join(search_dir).canonicalize().ok()
                         } else {
                             Some(search_dir.to_owned())
                         }

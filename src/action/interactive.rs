@@ -197,10 +197,10 @@ impl UserPicked {
 
     /// Are there any user picks?
     pub fn is_empty(&self) -> bool {
-        self.bandaids
+        !self
+            .bandaids
             .iter()
-            .find(|(_origin, bandaids)| !bandaids.is_empty())
-            .is_none()
+            .any(|(_origin, bandaids)| !bandaids.is_empty())
     }
 
     /// Apply a single `BandAid`
@@ -225,7 +225,7 @@ impl UserPicked {
 
     /// Join two `UserPick`s.
     pub fn extend(&mut self, other: Self) {
-        self.bandaids.extend(other.bandaids.into_iter());
+        self.bandaids.extend(other.bandaids);
     }
 
     /// Provide a replacement that was not provided by the backend
@@ -332,10 +332,7 @@ impl UserPicked {
             )
             .enumerate()
             .map(|(idx, (style, content))| {
-                (
-                    idx,
-                    PrintStyledContent(StyledContent::new(style.clone(), content)),
-                )
+                (idx, PrintStyledContent(StyledContent::new(*style, content)))
             })
             .try_fold(&mut stdout, |cmd, (idx, mut item)| {
                 let cmd = cmd
@@ -488,9 +485,9 @@ impl UserPicked {
         unreachable!("Unexpected return when dealing with user input")
     }
 
-    pub(super) fn select_interactive<'s>(
+    pub(super) fn select_interactive(
         origin: ContentOrigin,
-        suggestions: Vec<Suggestion<'s>>,
+        suggestions: Vec<Suggestion<'_>>,
     ) -> Result<(Self, UserSelection)> {
         let count = suggestions.len();
         let mut picked = UserPicked::default();

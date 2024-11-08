@@ -141,12 +141,12 @@ impl TokenWithType {
 /// source
 pub fn extract_developer_comments(source: &str) -> Vec<LiteralSet> {
     let tokens = source_to_iter(source).collect::<Vec<_>>();
-    let comments = construct_literal_sets(tokens);
-    comments
+
+    construct_literal_sets(tokens)
 }
 
 /// Creates a series of `TokenWithType`s from a source string
-fn source_to_iter<'a>(source: &'a str) -> impl Iterator<Item = TokenWithType> + 'a {
+fn source_to_iter(source: &str) -> impl Iterator<Item = TokenWithType> + '_ {
     // TODO: handle source
     let parse = ast::SourceFile::parse(source, ra_ap_syntax::Edition::Edition2021);
     let node = parse.syntax_node();
@@ -171,7 +171,7 @@ fn source_to_iter<'a>(source: &'a str) -> impl Iterator<Item = TokenWithType> + 
 /// Given a string, calculates the 1 indexed line number of the line on which
 /// the final character of the string appears
 fn count_lines(fragment: &str) -> usize {
-    fragment.chars().into_iter().filter(|c| *c == '\n').count() + 1
+    fragment.chars().filter(|c| *c == '\n').count() + 1
 }
 
 /// Given a string, calculates the 0 indexed column number of the character
@@ -229,7 +229,7 @@ fn literal_set_from_block_comment(
         };
         let mut literal_set = LiteralSet::from(literal);
         let mut line_number = token.line;
-        while let Some(next_line) = lines.next() {
+        for next_line in lines {
             line_number += 1;
             let post = if next_line.ends_with(BLOCK_COMMENT_POSTFIX) {
                 TokenType::BlockComment.post_in_chars()
