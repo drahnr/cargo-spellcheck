@@ -88,6 +88,7 @@ hunspell-rs = { version = "0.4.0", optional = true }
 fd-lock = { version = "4", optional = true }
 encoding_rs = { version = "0.8.31", optional = true, features = [] }
 zspell = { version = "0.5.5", optional = true }
+spellbook = { version = "0.1", optional = true }
 
 # full grammar check, but also tokenization and disambiguation
 nlprule = { version = "=0.6.4", optional = true }
@@ -118,12 +119,11 @@ hunspell = [
   "nlprules",
   "dep:encoding_rs",
 ]
-zet = [
-  "dep:zspell",
-]
+zet = ["dep:zspell"]
+spellbook = ["dep:spellbook"]
 nlprules = ["dep:nlprule", "nlprule?/regex-fancy", "dep:nlprule-build"]
 
-all = ["hunspell", "nlprules"]
+all = ["hunspell", "zet", "spellbook", "nlprules"]
 
 [profile.dev]
 build-override = { opt-level = 2 }

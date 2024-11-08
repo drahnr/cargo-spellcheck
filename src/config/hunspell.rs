@@ -80,6 +80,7 @@ fn default_tokenization_splitchars() -> String {
 }
 
 pub type ZetConfig = HunspellConfig;
+pub type SpellbookConfig = HunspellConfig;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]

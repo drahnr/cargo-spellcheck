@@ -28,6 +28,7 @@ pub struct ManifestMetadataSpellcheck {
 pub enum CheckerType {
     Hunspell,
     ZSpell,
+    Spellbook,
     NlpRules,
     Reflow,
 }
@@ -39,6 +40,7 @@ impl FromStr for CheckerType {
         Ok(match s.as_str() {
             "nlprules" => Self::NlpRules,
             "zet" | "zspell" => Self::ZSpell,
+            "spellbook" | "book" => Self::Spellbook,
             "hunspell" => Self::Hunspell,
             "reflow" => Self::Reflow,
             _other => return Err(UnknownCheckerTypeVariant(s)),
@@ -501,6 +503,13 @@ impl Args {
                 }
             } else {
                 config.zet = None;
+            }
+            if filter_set.contains(&CheckerType::Spellbook) {
+                if config.spellbook.is_none() {
+                    config.spellbook = Some(crate::config::SpellbookConfig::default());
+                }
+            } else {
+                config.spellbook = None;
             }
             if filter_set.contains(&CheckerType::NlpRules) {
                 if config.nlprules.is_none() {

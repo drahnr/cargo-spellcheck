@@ -2191,6 +2191,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "spellbook"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "82fee930378e69527fbeb7e5f737e3ddaf32e675a04fc9375de676aa8de84693"
+dependencies = [
+ "ahash",
+ "hashbrown",
+]
+
+[[package]]
 name = "spin"
 version = "0.9.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"

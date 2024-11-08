@@ -193,4 +193,17 @@ struct DefinitelyNotZ;
         assert_eq!(clusters.set.len(), 1);
         dbg!(&clusters.set[0]);
     }
+
+    #[test]
+    fn polite() {
+        static CONTENT: &str = r#####"
+// Hello Sir
+//
+// How are you doing today?
+struct VeryWellThanks;
+"#####;
+        let clusters = Clusters::load_from_str(CONTENT, true, true).unwrap();
+        assert_eq!(clusters.set.len(), 1);
+        dbg!(&clusters.set[0]);
+    }
 }
