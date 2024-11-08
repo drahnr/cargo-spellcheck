@@ -80,8 +80,8 @@ pub struct Config {
 }
 
 impl Config {
-    const QUALIFIER: &'static str = "io";
-    const ORGANIZATION: &'static str = "spearow";
+    const QUALIFIER: &'static str = "rs";
+    const ORGANIZATION: &'static str = "fff";
     const APPLICATION: &'static str = "cargo_spellcheck";
 
     /// Sanitize all relative paths to absolute paths in relation to `base`.
