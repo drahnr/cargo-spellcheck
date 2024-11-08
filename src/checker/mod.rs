@@ -76,17 +76,14 @@ impl Checkers {
                     log::debug!("Feature {} is disabled by compilation.", $feature);
                     None
                 } else {
-                    #[cfg(feature = $feature)]
-                    {
-                        let config = $config;
-                        let detector = <$checker>::detector();
-                        if config.is_enabled(detector) {
-                            log::debug!("Enabling {} checks.", detector);
-                            Some(<$checker>::new($checker_config.unwrap())?)
-                        } else {
-                            log::debug!("Checker {detector} is disabled by configuration.");
-                            None
-                        }
+                    let config = $config;
+                    let detector = <$checker>::detector();
+                    if config.is_enabled(detector) {
+                        log::debug!("Enabling {} checks.", detector);
+                        Some(<$checker>::new($checker_config.unwrap())?)
+                    } else {
+                        log::debug!("Checker {detector} is disabled by configuration.");
+                        None
                     }
                 }
             };
