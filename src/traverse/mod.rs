@@ -426,6 +426,11 @@ pub(crate) fn extract(
         recurse = true;
     }
 
+    let max_depth = match recurse {
+        true => None,
+        false => Some(1),
+    };
+
     log::debug!("Running on inputs {paths:?} / recursive={recurse}");
 
     #[derive(Debug, Clone)]
@@ -450,9 +455,34 @@ pub(crate) fn extract(
 
     log::debug!("Running on absolute dirs {flow:?}");
 
-    // stage 2 - check for manifest, .rs , .md files and directories
-    let mut files_to_check = Vec::with_capacity(64);
+    let mut all_files = VecDeque::<PathBuf>::with_capacity(32);
+
     while let Some(path) = flow.pop_front() {
+        let files = ignore::WalkBuilder::new(path)
+        .git_ignore(true)
+        .max_depth(max_depth)
+        .same_file_system(true)
+        .skip_stdout(true)
+        .build()
+        .filter_map(|entry| {
+            entry
+                .ok()
+                .filter(|entry| entry.file_type().map(|ft| ft.is_file()).unwrap_or(false))
+                .map(|x| x.path().to_owned())
+        })
+        .filter(|path: &PathBuf| {
+            path.to_str()
+                .map(|x| x.to_owned())
+                .filter(|path| path.ends_with(".rs") || path.ends_with(".md") || path.ends_with("Cargo.toml"))
+                .is_some()
+        });
+
+        all_files.extend(files);
+    }
+
+    let mut files_to_check = Vec::with_capacity(64);
+
+    while let Some(path) = all_files.pop_front() {
         let x = if let Ok(meta) = path.metadata() {
             if meta.is_file() {
                 match path.file_name().and_then(|x| x.to_str()) {
@@ -471,7 +501,42 @@ pub(crate) fn extract(
                         continue;
                     }
                 }
+            } else {
+                Extraction::Missing(path)
+            }
+        } else {
+            Extraction::Missing(path)
+        };
+
+        files_to_check.push(x);
+    }
+
+
+
+    // stage 2 - check for manifest, .rs , .md files and directories
+    /*let mut files_to_check = Vec::with_capacity(64);
+    'file_loop: while let Some(path) = flow.pop_front() {
+        let x = if let Ok(meta) = path.metadata() {
+            if meta.is_file() {
+                match path.file_name().and_then(|x| x.to_str()) {
+                    Some(file_name) if file_name == "Cargo.toml" => Extraction::Manifest(path),
+                    Some(file_name) if file_name.ends_with(".md") => Extraction::Markdown(path),
+                    Some(file_name) if file_name.ends_with(".rs") => Extraction::Source(path),
+                    _ => {
+                        // This branch is commonly entered when ran on a non-cargo
+                        // path.
+                        // Potentially become mdbook aware
+                        // <https://github.com/drahnr/cargo-spellcheck/issues/273>
+                        log::debug!(
+                            "Unknown file type encountered, skipping path: {}",
+                            path.display()
+                        );
+                        continue 'file_loop;
+                    }
+                }
             } else if meta.is_dir() {
+
+
                 let cargo_toml = to_manifest_dir(&path).unwrap().join("Cargo.toml");
                 if cargo_toml.is_file() {
                     Extraction::Manifest(cargo_toml)
@@ -513,7 +578,7 @@ pub(crate) fn extract(
             Extraction::Missing(path)
         };
         files_to_check.push(x);
-    }
+    }*/
 
     log::debug!("(1) Found a total of {} files to check ", files_to_check.len());
 
