@@ -29,13 +29,57 @@ impl TraverseModulesIter {
     where
         P: AsRef<Path>,
     {
+        log::debug!("Reached the start of add_initial_path()");
+
+        log::debug!("Backtrace: {}", std::backtrace::Backtrace::force_capture());
+
         let path = path.as_ref();
         let path = fs::canonicalize(path)?;
         let meta = fs::metadata(&path)?;
+
+        log::debug!("Got metadata for path");
+
         if meta.is_file() {
+            log::debug!("Path {} is a file", path.clone().to_string_lossy());
+
             self.queue.push_front((path, level));
         } else if meta.is_dir() {
-            ignore::WalkBuilder::new(path)
+            log::debug!("Path {} is a directory", path.clone().to_string_lossy());
+
+            let mut walkbuilder = ignore::WalkBuilder::new(path);
+
+            let walkbuilder = walkbuilder
+            .git_ignore(true)
+            .max_depth(1.into())
+            .same_file_system(true)
+            .skip_stdout(true);
+
+            log::debug!("Configured walkbuilder");
+
+            let walk = walkbuilder.build();
+
+            log::debug!("Built walk");
+
+
+            walk.filter_map(|entry| {
+                entry
+                    .ok()
+                    .filter(|entry| entry.file_type().map(|ft| ft.is_file()).unwrap_or(false))
+                    .map(|x| x.path().to_owned())
+            })
+            .filter(|path: &PathBuf| {
+                path.to_str()
+                    .map(|x| x.to_owned())
+                    .filter(|path| path.ends_with(".rs"))
+                    .is_some()
+            })
+            .try_for_each::<_, Result<()>>(|path| {
+                log::trace!("🌱 using path {} as seed recursion dir", path.display());
+                self.queue.push_front((path, level));
+                Ok(())
+            })?;
+
+           /*ignore::WalkBuilder::new(path)
                 .git_ignore(true)
                 .max_depth(1.into())
                 .same_file_system(true)
@@ -57,7 +101,7 @@ impl TraverseModulesIter {
                     log::trace!("🌱 using path {} as seed recursion dir", path.display());
                     self.queue.push_front((path, level));
                     Ok(())
-                })?;
+                })?;*/
         }
         Ok(())
     }
@@ -69,6 +113,8 @@ impl TraverseModulesIter {
         J: Iterator<Item = P>,
         I: IntoIterator<Item = P, IntoIter = J>,
     {
+        log::debug!("Reached the start of with_multi()");
+
         let mut me = Self::default();
         for path in entries.into_iter() {
             me.add_initial_path(path, 0)?;
@@ -77,6 +123,8 @@ impl TraverseModulesIter {
     }
 
     pub fn with_depth_limit<P: AsRef<Path>>(path: P, max_depth: usize) -> Result<Self> {
+        log::debug!("Reached the start of with_depth_limit()");
+        
         let mut me = Self {
             max_depth,
             ..Default::default()
