@@ -515,7 +515,7 @@ pub(crate) fn extract(
         files_to_check.push(x);
     }
 
-    log::debug!("Found a total of {} files to check ", files_to_check.len());
+    log::debug!("(1) Found a total of {} files to check ", files_to_check.len());
 
     // stage 3 - resolve the manifest products and workspaces, warn about missing
     let files_to_check = files_to_check
@@ -535,6 +535,8 @@ pub(crate) fn extract(
             }
             Ok(acc)
         })?;
+
+    log::debug!("(2) Found a total of {} files to check ", files_to_check.len());
 
     // stage 4 - expand from the passed source files, if recursive, recurse down the module train
     let docs = files_to_check.into_iter().try_fold(
@@ -562,6 +564,8 @@ pub(crate) fn extract(
                                 },
                             ));
                         docs.extend(iter);
+
+                        log::debug!("Intermediate number of files: {}", docs.len());
                     }
                 }
                 CheckEntity::Markdown(path) => {
@@ -582,6 +586,12 @@ pub(crate) fn extract(
             Result::Ok(docs)
         },
     )?;
+
+    log::debug!("Number of files: {}", docs.len());
+
+    for (doc_number, (doc_origin, _doc_chunks)) in docs.clone().into_iter().enumerate() {
+        log::debug!("File no: {}, file path: {}", doc_number, doc_origin.as_path().to_string_lossy());
+    }
 
     Result::Ok(docs)
 }
