@@ -781,15 +781,15 @@ mod tests {
 
     macro_rules! extract_test {
 
-        ($name:ident, [ $( $path:literal ),* $(,)?] + $recurse: expr => [ $( $file:literal ),* $(,)?] ) => {
+        ($name:ident, $use_gitignore_only:literal, [ $( $path:literal ),* $(,)?] + $recurse: literal  => [ $( $file:literal ),* $(,)?] ) => {
 
             #[test]
             fn $name() {
-                extract_test!([ $( $path ),* ] + $recurse => [ $( $file ),* ]);
+                extract_test!($use_gitignore_only, [ $( $path ),* ] + $recurse => [ $( $file ),* ]);
             }
         };
 
-        ([ $( $path:literal ),* $(,)?] + $recurse: expr => [ $( $file:literal ),* $(,)?] ) => {
+        ($use_gitignore_only:literal, [ $( $path:literal ),* $(,)?] + $recurse:literal => [ $( $file:literal ),* $(,)?] ) => {
             let _ = env_logger::builder()
                 .is_test(true)
                 .filter(None, log::LevelFilter::Trace)
@@ -802,6 +802,7 @@ mod tests {
                     )*
                 ],
                 $recurse,
+                $use_gitignore_only,
                 false,
                 true,
                 &Config::default(),
@@ -829,7 +830,7 @@ mod tests {
 
     #[test]
     fn traverse_manifest_1() {
-        extract_test!(["Cargo.toml"] + false => [
+        extract_test!(false, ["Cargo.toml"] + false => [
             // "Cargo.toml",
             "README.md",
             "src/lib.rs",
@@ -847,11 +848,11 @@ mod tests {
         ]);
     }
 
-    extract_test!(traverse_source_dir_1, ["src"] + false => [
+    extract_test!(traverse_source_dir_1, false, ["src"] + false => [
         "src/lib.rs",
         "src/main.rs"]);
 
-    extract_test!(traverse_source_dir_rec, ["src"] + true => [
+    extract_test!(traverse_source_dir_rec, false, ["src"] + true => [
         "src/lib.rs",
         "src/main.rs",
         "src/nested/again/mod.rs",
@@ -864,7 +865,7 @@ mod tests {
         "src/nested/mod.rs"
     ]);
 
-    extract_test!(traverse_manifest_dir_rec, ["."] + true => [
+    extract_test!(traverse_manifest_dir_rec, false, ["."] + true => [
         // "Cargo.toml",
         "README.md",
         "src/lib.rs",
@@ -881,7 +882,7 @@ mod tests {
         "member/procmacro/src/lib.rs",
     ]);
 
-    extract_test!(traverse_manifest_rec, ["Cargo.toml"] + true => [
+    extract_test!(traverse_manifest_rec, false, ["Cargo.toml"] + true => [
         // "Cargo.toml",
         "README.md",
         "src/lib.rs",
@@ -898,11 +899,11 @@ mod tests {
         "member/procmacro/src/lib.rs",
     ]);
 
-    extract_test!(traverse_nested_mod_rs_1, ["src/nested/mod.rs"] + false => [
+    extract_test!(traverse_nested_mod_rs_1, false, ["src/nested/mod.rs"] + false => [
         "src/nested/mod.rs"
     ]);
 
-    extract_test!(traverse_nested_mod_rs_rec, ["src/nested/mod.rs"] + true => [
+    extract_test!(traverse_nested_mod_rs_rec, false, ["src/nested/mod.rs"] + true => [
         "src/nested/again/mod.rs",
         "src/nested/again/code.rs",
         "src/nested/fragments/enumerate.rs",
@@ -913,7 +914,7 @@ mod tests {
         "src/nested/mod.rs"
     ]);
 
-    extract_test!(traverse_dir_wo_manifest, ["member"] + true => [
+    extract_test!(traverse_dir_wo_manifest, false, ["member"] + true => [
         "member/true/lib.rs",
         "member/true/README.md",
         // "member/true/Cargo.toml",
