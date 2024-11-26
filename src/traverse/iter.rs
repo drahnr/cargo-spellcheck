@@ -76,7 +76,7 @@ impl TraverseModulesIter {
         Ok(me)
     }
 
-    pub fn with_depth_limit<P: AsRef<Path>>(path: P, max_depth: usize) -> Result<Self> {        
+    pub fn with_depth_limit<P: AsRef<Path>>(path: P, max_depth: usize) -> Result<Self> {
         let mut me = Self {
             max_depth,
             ..Default::default()
