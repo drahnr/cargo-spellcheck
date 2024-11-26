@@ -122,9 +122,9 @@ pub struct Common {
     /// argument paths, and also declared modules in rust files.
     pub recursive: bool,
 
-    // Use gitignore files to determine which file to check.
+    /// Use gitignore files to determine which files to check.
     #[clap(short, long)]
-    pub use_gitignore_only: bool,
+    pub gitignore: bool,
 
     // with fallback from config, so it has to be tri-state
     #[clap(long)]
@@ -201,9 +201,9 @@ pub enum Sub {
         /// Recurse down directories and module declaration derived paths.
         recursive: bool,
    
-        // Use gitignore files to determine which files to list.
+        /// Use gitignore files to determine which files to list.
         #[clap(short, long)]
-        use_gitignore_only: bool,
+        gitignore: bool,
 
         #[clap(short, long)]
         /// Do not check the referenced key `readme=` or default `README.md`.
@@ -544,7 +544,7 @@ impl Args {
             Some(Sub::ListFiles {
                 ref paths,
                 recursive,
-                use_gitignore_only,
+                gitignore,
                 skip_readme,
             }) => UnifiedArgs::Operate {
                 action: self.action(),
@@ -552,7 +552,7 @@ impl Args {
                 dev_comments: false, // not relevant
                 skip_readme,
                 recursive,
-                use_gitignore_only,
+                gitignore,
                 paths: paths.clone(),
                 exit_code_override: 1,
             },
@@ -564,7 +564,7 @@ impl Args {
                     dev_comments: common.dev_comments || config.dev_comments,
                     skip_readme: common.skip_readme || config.skip_readme,
                     recursive: common.recursive,
-                    use_gitignore_only: common.use_gitignore_only,
+                    gitignore: common.gitignore,
                     paths: common.paths.clone(),
                     exit_code_override: common.code,
                 }
@@ -579,7 +579,7 @@ impl Args {
                 dev_comments: common.dev_comments || config.dev_comments,
                 skip_readme: common.skip_readme || config.skip_readme,
                 recursive: common.recursive,
-                use_gitignore_only: common.use_gitignore_only,
+                gitignore: common.gitignore,
                 paths: common.paths.clone(),
                 exit_code_override: common.code,
             },
@@ -612,7 +612,7 @@ pub enum UnifiedArgs {
         dev_comments: bool,
         skip_readme: bool,
         recursive: bool,
-        use_gitignore_only: bool,
+        gitignore: bool,
         paths: Vec<PathBuf>,
         exit_code_override: u8,
     },
@@ -832,7 +832,7 @@ mod tests {
                 dev_comments,
                 skip_readme,
                 recursive,
-                use_gitignore_only,
+                gitignore,
                 paths,
                 exit_code_override,
             } => {
@@ -841,6 +841,7 @@ mod tests {
                 assert_eq!(dev_comments, true);
                 assert_eq!(skip_readme, true);
                 assert_eq!(recursive, false);
+                assert_eq!(gitignore, false);
                 assert_eq!(paths, Vec::<PathBuf>::new());
             }
         );

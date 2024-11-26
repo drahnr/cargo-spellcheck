@@ -415,7 +415,7 @@ fn handle_manifest<P: AsRef<Path>>(
 pub(crate) fn extract(
     mut paths: Vec<PathBuf>,
     mut recurse: bool,
-    use_gitignore_only: bool,
+    gitignore: bool,
     skip_readme: bool,
     dev_comments: bool,
     _config: &Config,
@@ -427,10 +427,6 @@ pub(crate) fn extract(
         recurse = true;
     }
 
-    let max_depth = match recurse {
-        true => None,
-        false => Some(1),
-    };
 
     log::debug!("Running on inputs {paths:?} / recursive={recurse}");
 
@@ -459,7 +455,12 @@ pub(crate) fn extract(
     let mut files_to_check = Vec::with_capacity(64);
 
     // stage 2 - check for manifest, .rs , .md files and directories
-    if use_gitignore_only {
+    if gitignore {
+        let max_depth = match recurse {
+            true => None,
+            false => Some(1),
+        };
+
         let mut all_files = VecDeque::<PathBuf>::with_capacity(32);
 
         while let Some(path) = flow.pop_front() {
@@ -534,8 +535,6 @@ pub(crate) fn extract(
                         }
                     }
                 } else if meta.is_dir() {
-    
-    
                     let cargo_toml = to_manifest_dir(&path).unwrap().join("Cargo.toml");
                     if cargo_toml.is_file() {
                         Extraction::Manifest(cargo_toml)
@@ -580,15 +579,13 @@ pub(crate) fn extract(
         }
     }
 
-    log::debug!("(1) Found a total of {} files to check ", files_to_check.len());
-
     // stage 3 - resolve the manifest products and workspaces, warn about missing
     let files_to_check = files_to_check
         .into_iter()
         .try_fold::<Vec<_>, _, Result<_>>(Vec::with_capacity(64), |mut acc, tagged_path| {
             match tagged_path {
                 Extraction::Manifest(ref cargo_toml_path) => {
-                    if !use_gitignore_only {
+                    if !gitignore {
                         let manifest_list = handle_manifest(cargo_toml_path, skip_readme)?;
                         acc.extend(manifest_list);
                     }
@@ -602,8 +599,6 @@ pub(crate) fn extract(
             }
             Ok(acc)
         })?;
-
-    log::debug!("(2) Found a total of {} files to check ", files_to_check.len());
 
     // stage 4 - expand from the passed source files, if recursive, recurse down the module train
     let docs = files_to_check.into_iter().try_fold(
@@ -619,7 +614,7 @@ pub(crate) fn extract(
                         dev_comments,
                     )?;
 
-                    if recurse && !use_gitignore_only {
+                    if recurse && !gitignore {
                         let iter =
                             Vec::from_iter(traverse(path.as_path(), true, dev_comments)?.flat_map(
                                 |documentation| {
@@ -653,12 +648,6 @@ pub(crate) fn extract(
             Result::Ok(docs)
         },
     )?;
-
-    log::debug!("Number of files: {}", docs.len());
-
-    for (doc_number, (doc_origin, _doc_chunks)) in docs.clone().into_iter().enumerate() {
-        log::debug!("File no: {}, file path: {}", doc_number, doc_origin.as_path().to_string_lossy());
-    }
 
     Result::Ok(docs)
 }
@@ -783,15 +772,15 @@ mod tests {
 
     macro_rules! extract_test {
 
-        ($name:ident, $use_gitignore_only:literal, [ $( $path:literal ),* $(,)?] + $recurse: literal  => [ $( $file:literal ),* $(,)?] ) => {
+        ($name:ident, $gitignore:literal, [ $( $path:literal ),* $(,)?] + $recurse: literal  => [ $( $file:literal ),* $(,)?] ) => {
 
             #[test]
             fn $name() {
-                extract_test!($use_gitignore_only, [ $( $path ),* ] + $recurse => [ $( $file ),* ]);
+                extract_test!($gitignore, [ $( $path ),* ] + $recurse => [ $( $file ),* ]);
             }
         };
 
-        ($use_gitignore_only:literal, [ $( $path:literal ),* $(,)?] + $recurse:literal => [ $( $file:literal ),* $(,)?] ) => {
+        ($gitignore:literal, [ $( $path:literal ),* $(,)?] + $recurse:literal => [ $( $file:literal ),* $(,)?] ) => {
             let _ = env_logger::builder()
                 .is_test(true)
                 .filter(None, log::LevelFilter::Trace)
@@ -804,7 +793,7 @@ mod tests {
                     )*
                 ],
                 $recurse,
-                $use_gitignore_only,
+                $gitignore,
                 false,
                 true,
                 &Config::default(),
