@@ -427,7 +427,6 @@ pub(crate) fn extract(
         recurse = true;
     }
 
-
     log::debug!("Running on inputs {paths:?} / recursive={recurse}");
 
     #[derive(Debug, Clone)]
@@ -578,6 +577,8 @@ pub(crate) fn extract(
             files_to_check.push(x);
         }
     }
+    
+    log::debug!("Found a total of {} files to check ", files_to_check.len());
 
     // stage 3 - resolve the manifest products and workspaces, warn about missing
     let files_to_check = files_to_check
@@ -626,8 +627,6 @@ pub(crate) fn extract(
                                 },
                             ));
                         docs.extend(iter);
-
-                        log::debug!("Intermediate number of files: {}", docs.len());
                     }
                 }
                 CheckEntity::Markdown(path) => {
@@ -641,7 +640,7 @@ pub(crate) fn extract(
                 CheckEntity::ManifestDescription(path, content) => {
                     if content.is_empty() {
                         bail!("Cargo.toml manifest description field is empty")
-                    } 
+                    }
                     docs.add_cargo_manifest_description(path, content.as_str())?;
                 }
             }
@@ -772,7 +771,7 @@ mod tests {
 
     macro_rules! extract_test {
 
-        ($name:ident, $gitignore:literal, [ $( $path:literal ),* $(,)?] + $recurse: literal  => [ $( $file:literal ),* $(,)?] ) => {
+        ($name:ident, $gitignore:literal, [ $( $path:literal ),* $(,)?] + $recurse: expr  => [ $( $file:literal ),* $(,)?] ) => {
 
             #[test]
             fn $name() {
@@ -780,7 +779,7 @@ mod tests {
             }
         };
 
-        ($gitignore:literal, [ $( $path:literal ),* $(,)?] + $recurse:literal => [ $( $file:literal ),* $(,)?] ) => {
+        ($gitignore:literal, [ $( $path:literal ),* $(,)?] + $recurse: expr => [ $( $file:literal ),* $(,)?] ) => {
             let _ = env_logger::builder()
                 .is_test(true)
                 .filter(None, log::LevelFilter::Trace)
