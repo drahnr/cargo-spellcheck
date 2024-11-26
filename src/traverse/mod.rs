@@ -588,8 +588,10 @@ pub(crate) fn extract(
         .try_fold::<Vec<_>, _, Result<_>>(Vec::with_capacity(64), |mut acc, tagged_path| {
             match tagged_path {
                 Extraction::Manifest(ref cargo_toml_path) => {
-                    let manifest_list = handle_manifest(cargo_toml_path, skip_readme)?;
-                    acc.extend(manifest_list);
+                    if !use_gitignore_only {
+                        let manifest_list = handle_manifest(cargo_toml_path, skip_readme)?;
+                        acc.extend(manifest_list);
+                    }
                 }
                 Extraction::Missing(ref missing_path) => log::warn!(
                     "File passed as argument or listed in Cargo.toml manifest does not exist: {}",
@@ -644,7 +646,7 @@ pub(crate) fn extract(
                 CheckEntity::ManifestDescription(path, content) => {
                     if content.is_empty() {
                         bail!("Cargo.toml manifest description field is empty")
-                    }
+                    } 
                     docs.add_cargo_manifest_description(path, content.as_str())?;
                 }
             }
@@ -880,6 +882,28 @@ mod tests {
         "src/nested/mod.rs",
         "member/true/lib.rs",
         "member/procmacro/src/lib.rs",
+    ]);
+
+    extract_test!(traverse_dir_gitignore, true, ["."] + false => [
+        "README.md",
+    ]);
+
+    extract_test!(traverse_dir_rec_gitignore, true, ["."] + true => [
+        "README.md",
+        "src/lib.rs",
+        "src/main.rs",
+        "src/nested/again/mod.rs",
+        "src/nested/again/code.rs",
+        "src/nested/fragments/enumerate.rs",
+        "src/nested/fragments/simple.rs",
+        "src/nested/fragments.rs",
+        "src/nested/justone.rs",
+        "src/nested/justtwo.rs",
+        "src/nested/mod.rs",
+        "member/true/lib.rs",
+        "member/procmacro/src/lib.rs",
+        "member/stray.rs", 
+        "member/true/README.md", 
     ]);
 
     extract_test!(traverse_manifest_rec, false, ["Cargo.toml"] + true => [
