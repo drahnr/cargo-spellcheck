@@ -122,8 +122,8 @@ pub struct Common {
     /// argument paths, and also declared modules in rust files.
     pub recursive: bool,
 
-    /// Use gitignore files to determine which files to check. 
-    /// This flag also modifies the behaviour of the recursive flag 
+    /// Use gitignore files to determine which files to check.
+    /// This flag also modifies the behaviour of the recursive flag
     /// to purely recurse down directories.
     #[clap(short, long)]
     pub gitignore: bool,
@@ -202,9 +202,9 @@ pub enum Sub {
         #[clap(short, long)]
         /// Recurse down directories and module declaration derived paths.
         recursive: bool,
-   
+
         /// Use gitignore files to determine which files to list.
-        /// This flag also modifies the behaviour of the recursive flag 
+        /// This flag also modifies the behaviour of the recursive flag
         /// to purely recurse down directories.
         #[clap(short, long)]
         gitignore: bool,

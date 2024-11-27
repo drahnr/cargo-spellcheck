@@ -464,27 +464,31 @@ pub(crate) fn extract(
 
         while let Some(path) = flow.pop_front() {
             let files = ignore::WalkBuilder::new(path)
-            .git_ignore(true)
-            .max_depth(max_depth)
-            .same_file_system(true)
-            .skip_stdout(true)
-            .build()
-            .filter_map(|entry| {
-                entry
-                    .ok()
-                    .filter(|entry| entry.file_type().map(|ft| ft.is_file()).unwrap_or(false))
-                    .map(|x| x.path().to_owned())
-            })
-            .filter(|path: &PathBuf| {
-                path.to_str()
-                    .map(|x| x.to_owned())
-                    .filter(|path| path.ends_with(".rs") || path.ends_with(".md") || path.ends_with("Cargo.toml"))
-                    .is_some()
-            });
-    
+                .git_ignore(true)
+                .max_depth(max_depth)
+                .same_file_system(true)
+                .skip_stdout(true)
+                .build()
+                .filter_map(|entry| {
+                    entry
+                        .ok()
+                        .filter(|entry| entry.file_type().map(|ft| ft.is_file()).unwrap_or(false))
+                        .map(|x| x.path().to_owned())
+                })
+                .filter(|path: &PathBuf| {
+                    path.to_str()
+                        .map(|x| x.to_owned())
+                        .filter(|path| {
+                            path.ends_with(".rs")
+                                || path.ends_with(".md")
+                                || path.ends_with("Cargo.toml")
+                        })
+                        .is_some()
+                });
+
             all_files.extend(files);
         }
-    
+
         while let Some(path) = all_files.pop_front() {
             let x = if let Ok(meta) = path.metadata() {
                 if meta.is_file() {
@@ -510,7 +514,7 @@ pub(crate) fn extract(
             } else {
                 Extraction::Missing(path)
             };
-    
+
             files_to_check.push(x);
         }
     } else {
@@ -577,7 +581,7 @@ pub(crate) fn extract(
             files_to_check.push(x);
         }
     }
-    
+
     log::debug!("Found a total of {} files to check ", files_to_check.len());
 
     // stage 3 - resolve the manifest products and workspaces, warn about missing
@@ -890,8 +894,8 @@ mod tests {
         "src/nested/mod.rs",
         "member/true/lib.rs",
         "member/procmacro/src/lib.rs",
-        "member/stray.rs", 
-        "member/true/README.md", 
+        "member/stray.rs",
+        "member/true/README.md",
     ]);
 
     extract_test!(traverse_manifest_rec, false, ["Cargo.toml"] + true => [
