@@ -35,7 +35,7 @@ impl TraverseModulesIter {
         if meta.is_file() {
             self.queue.push_front((path, level));
         } else if meta.is_dir() {
-           ignore::WalkBuilder::new(path)
+            ignore::WalkBuilder::new(path)
                 .git_ignore(true)
                 .max_depth(1.into())
                 .same_file_system(true)

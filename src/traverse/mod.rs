@@ -771,7 +771,7 @@ mod tests {
 
     macro_rules! extract_test {
 
-        ($name:ident, $gitignore:literal, [ $( $path:literal ),* $(,)?] + $recurse: expr  => [ $( $file:literal ),* $(,)?] ) => {
+        ($name:ident, $gitignore:literal, [ $( $path:literal ),* $(,)?] + $recurse: expr => [ $( $file:literal ),* $(,)?] ) => {
 
             #[test]
             fn $name() {
