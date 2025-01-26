@@ -237,7 +237,7 @@ fn obtain_suggestions<'s>(
             }
             for (range, span) in plain.find_spans(range.clone()) {
                 acc.push(Suggestion {
-                    detector: Detector::ZSpell,
+                    detector: Detector::Spellbook,
                     range,
                     span,
                     origin: origin.clone(),

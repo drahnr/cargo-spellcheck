@@ -287,6 +287,24 @@ struct CAPI;
     }
 
     #[test]
+    fn issue_340() {
+        // The test
+        end2end!(
+            r####"
+/// An image tag <img /> missselled1
+/// Another <img>enclosed</img> missselled2
+/// Yet again <img> missselled3
+/// missselled4
+struct Foo;
+"####,
+            ContentOrigin::TestEntityRust,
+            4,
+            HunspellChecker,
+            Default::default()
+        );
+    }
+
+    #[test]
     fn file_justone() {
         end2end_file_rust!("demo/src/nested/justone.rs", 2);
     }
