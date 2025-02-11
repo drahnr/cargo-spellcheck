@@ -144,6 +144,7 @@ pub fn run(args: Args) -> Result<ExitCode> {
             action,
             paths,
             recursive,
+            gitignore,
             skip_readme,
             config_path,
             dev_comments,
@@ -151,8 +152,14 @@ pub fn run(args: Args) -> Result<ExitCode> {
         } => {
             log::debug!("Executing: {action:?} with {config:?} from {config_path:?}");
 
-            let documents =
-                traverse::extract(paths, recursive, skip_readme, dev_comments, &config)?;
+            let documents = traverse::extract(
+                paths,
+                recursive,
+                gitignore,
+                skip_readme,
+                dev_comments,
+                &config,
+            )?;
 
             let rt = tokio::runtime::Runtime::new()?;
             let finish = rt.block_on(async move { action.run(documents, config).await })?;
