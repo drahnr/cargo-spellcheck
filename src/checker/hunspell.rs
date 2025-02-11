@@ -439,6 +439,8 @@ fn obtain_suggestions<'s>(
 
 #[cfg(test)]
 mod tests {
+    use io::BufRead;
+
     use crate::checker::dictaffix::is_valid_hunspell_dic;
     use std::io::BufRead;
 
