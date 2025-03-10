@@ -415,6 +415,7 @@ fn handle_manifest<P: AsRef<Path>>(
 pub(crate) fn extract(
     mut paths: Vec<PathBuf>,
     mut recurse: bool,
+    gitignore: bool,
     skip_readme: bool,
     dev_comments: bool,
     _config: &Config,
@@ -450,69 +451,135 @@ pub(crate) fn extract(
 
     log::debug!("Running on absolute dirs {flow:?}");
 
-    // stage 2 - check for manifest, .rs , .md files and directories
     let mut files_to_check = Vec::with_capacity(64);
-    while let Some(path) = flow.pop_front() {
-        let x = if let Ok(meta) = path.metadata() {
-            if meta.is_file() {
-                match path.file_name().and_then(|x| x.to_str()) {
-                    Some(file_name) if file_name == "Cargo.toml" => Extraction::Manifest(path),
-                    Some(file_name) if file_name.ends_with(".md") => Extraction::Markdown(path),
-                    Some(file_name) if file_name.ends_with(".rs") => Extraction::Source(path),
-                    _ => {
-                        // This branch is commonly entered when ran on a non-cargo
-                        // path.
-                        // Potentially become mdbook aware
-                        // <https://github.com/drahnr/cargo-spellcheck/issues/273>
-                        log::debug!(
-                            "Unknown file type encountered, skipping path: {}",
-                            path.display()
-                        );
-                        continue;
-                    }
-                }
-            } else if meta.is_dir() {
-                let cargo_toml = to_manifest_dir(&path).unwrap().join("Cargo.toml");
-                if cargo_toml.is_file() {
-                    Extraction::Manifest(cargo_toml)
-                } else if recurse {
-                    // keep walking directories and feed the path back
-                    // if recursing is wanted
-                    // and if it doesn't contain a manifest file
-                    match fs::read_dir(path) {
-                        Err(err) => log::warn!("Listing directory contents {err} failed"),
-                        Ok(entries) => {
-                            for entry in entries.flatten() {
-                                let path = entry.path();
-                                // let's try with that path again
-                                flow.push_back(path);
-                            }
+
+    // stage 2 - check for manifest, .rs , .md files and directories
+    if gitignore {
+        let max_depth = match recurse {
+            true => None,
+            false => Some(1),
+        };
+
+        let mut all_files = VecDeque::<PathBuf>::with_capacity(32);
+
+        while let Some(path) = flow.pop_front() {
+            let files = ignore::WalkBuilder::new(path)
+                .git_ignore(true)
+                .max_depth(max_depth)
+                .same_file_system(true)
+                .skip_stdout(true)
+                .build()
+                .filter_map(|entry| {
+                    entry
+                        .ok()
+                        .filter(|entry| entry.file_type().map(|ft| ft.is_file()).unwrap_or(false))
+                        .map(|x| x.path().to_owned())
+                })
+                .filter(|path: &PathBuf| {
+                    path.to_str()
+                        .map(|x| x.to_owned())
+                        .filter(|path| {
+                            path.ends_with(".rs")
+                                || path.ends_with(".md")
+                                || path.ends_with("Cargo.toml")
+                        })
+                        .is_some()
+                });
+
+            all_files.extend(files);
+        }
+
+        while let Some(path) = all_files.pop_front() {
+            let x = if let Ok(meta) = path.metadata() {
+                if meta.is_file() {
+                    match path.file_name().and_then(|x| x.to_str()) {
+                        Some(file_name) if file_name == "Cargo.toml" => Extraction::Manifest(path),
+                        Some(file_name) if file_name.ends_with(".md") => Extraction::Markdown(path),
+                        Some(file_name) if file_name.ends_with(".rs") => Extraction::Source(path),
+                        _ => {
+                            // This branch is commonly entered when ran on a non-cargo
+                            // path.
+                            // Potentially become mdbook aware
+                            // <https://github.com/drahnr/cargo-spellcheck/issues/273>
+                            log::debug!(
+                                "Unknown file type encountered, skipping path: {}",
+                                path.display()
+                            );
+                            continue;
                         }
                     }
-                    continue;
                 } else {
-                    match fs::read_dir(path) {
-                        Err(err) => log::warn!("Listing directory contents {err} failed"),
-                        Ok(entries) => {
-                            for entry in entries.flatten() {
-                                let path = entry.path();
-                                // let's try attempt with that .rs file
-                                // if we end up here, recursion is off already
-                                if path.is_file() {
+                    Extraction::Missing(path)
+                }
+            } else {
+                Extraction::Missing(path)
+            };
+
+            files_to_check.push(x);
+        }
+    } else {
+        while let Some(path) = flow.pop_front() {
+            let x = if let Ok(meta) = path.metadata() {
+                if meta.is_file() {
+                    match path.file_name().and_then(|x| x.to_str()) {
+                        Some(file_name) if file_name == "Cargo.toml" => Extraction::Manifest(path),
+                        Some(file_name) if file_name.ends_with(".md") => Extraction::Markdown(path),
+                        Some(file_name) if file_name.ends_with(".rs") => Extraction::Source(path),
+                        _ => {
+                            // This branch is commonly entered when ran on a non-cargo
+                            // path.
+                            // Potentially become mdbook aware
+                            // <https://github.com/drahnr/cargo-spellcheck/issues/273>
+                            log::debug!(
+                                "Unknown file type encountered, skipping path: {}",
+                                path.display()
+                            );
+                            continue;
+                        }
+                    }
+                } else if meta.is_dir() {
+                    let cargo_toml = to_manifest_dir(&path).unwrap().join("Cargo.toml");
+                    if cargo_toml.is_file() {
+                        Extraction::Manifest(cargo_toml)
+                    } else if recurse {
+                        // keep walking directories and feed the path back
+                        // if recursing is wanted
+                        // and if it doesn't contain a manifest file
+                        match fs::read_dir(path) {
+                            Err(err) => log::warn!("Listing directory contents {err} failed"),
+                            Ok(entries) => {
+                                for entry in entries.flatten() {
+                                    let path = entry.path();
+                                    // let's try with that path again
                                     flow.push_back(path);
                                 }
                             }
                         }
+                        continue;
+                    } else {
+                        match fs::read_dir(path) {
+                            Err(err) => log::warn!("Listing directory contents {err} failed"),
+                            Ok(entries) => {
+                                for entry in entries.flatten() {
+                                    let path = entry.path();
+                                    // let's try attempt with that .rs file
+                                    // if we end up here, recursion is off already
+                                    if path.is_file() {
+                                        flow.push_back(path);
+                                    }
+                                }
+                            }
+                        }
+                        continue;
                     }
-                    continue;
+                } else {
+                    Extraction::Missing(path)
                 }
             } else {
                 Extraction::Missing(path)
-            }
-        } else {
-            Extraction::Missing(path)
-        };
-        files_to_check.push(x);
+            };
+            files_to_check.push(x);
+        }
     }
 
     log::debug!("Found a total of {} files to check ", files_to_check.len());
@@ -523,8 +590,10 @@ pub(crate) fn extract(
         .try_fold::<Vec<_>, _, Result<_>>(Vec::with_capacity(64), |mut acc, tagged_path| {
             match tagged_path {
                 Extraction::Manifest(ref cargo_toml_path) => {
-                    let manifest_list = handle_manifest(cargo_toml_path, skip_readme)?;
-                    acc.extend(manifest_list);
+                    if !gitignore {
+                        let manifest_list = handle_manifest(cargo_toml_path, skip_readme)?;
+                        acc.extend(manifest_list);
+                    }
                 }
                 Extraction::Missing(ref missing_path) => log::warn!(
                     "File passed as argument or listed in Cargo.toml manifest does not exist: {}",
@@ -550,7 +619,7 @@ pub(crate) fn extract(
                         dev_comments,
                     )?;
 
-                    if recurse {
+                    if recurse && !gitignore {
                         let iter =
                             Vec::from_iter(traverse(path.as_path(), true, dev_comments)?.flat_map(
                                 |documentation| {
@@ -706,15 +775,15 @@ mod tests {
 
     macro_rules! extract_test {
 
-        ($name:ident, [ $( $path:literal ),* $(,)?] + $recurse: expr => [ $( $file:literal ),* $(,)?] ) => {
+        ($name:ident, $gitignore:literal, [ $( $path:literal ),* $(,)?] + $recurse: expr => [ $( $file:literal ),* $(,)?] ) => {
 
             #[test]
             fn $name() {
-                extract_test!([ $( $path ),* ] + $recurse => [ $( $file ),* ]);
+                extract_test!($gitignore, [ $( $path ),* ] + $recurse => [ $( $file ),* ]);
             }
         };
 
-        ([ $( $path:literal ),* $(,)?] + $recurse: expr => [ $( $file:literal ),* $(,)?] ) => {
+        ($gitignore:literal, [ $( $path:literal ),* $(,)?] + $recurse: expr => [ $( $file:literal ),* $(,)?] ) => {
             let _ = env_logger::builder()
                 .is_test(true)
                 .filter(None, log::LevelFilter::Trace)
@@ -727,6 +796,7 @@ mod tests {
                     )*
                 ],
                 $recurse,
+                $gitignore,
                 false,
                 true,
                 &Config::default(),
@@ -754,7 +824,7 @@ mod tests {
 
     #[test]
     fn traverse_manifest_1() {
-        extract_test!(["Cargo.toml"] + false => [
+        extract_test!(false, ["Cargo.toml"] + false => [
             // "Cargo.toml",
             "README.md",
             "src/lib.rs",
@@ -772,11 +842,11 @@ mod tests {
         ]);
     }
 
-    extract_test!(traverse_source_dir_1, ["src"] + false => [
+    extract_test!(traverse_source_dir_1, false, ["src"] + false => [
         "src/lib.rs",
         "src/main.rs"]);
 
-    extract_test!(traverse_source_dir_rec, ["src"] + true => [
+    extract_test!(traverse_source_dir_rec, false, ["src"] + true => [
         "src/lib.rs",
         "src/main.rs",
         "src/nested/again/mod.rs",
@@ -789,7 +859,7 @@ mod tests {
         "src/nested/mod.rs"
     ]);
 
-    extract_test!(traverse_manifest_dir_rec, ["."] + true => [
+    extract_test!(traverse_manifest_dir_rec, false, ["."] + true => [
         // "Cargo.toml",
         "README.md",
         "src/lib.rs",
@@ -806,7 +876,29 @@ mod tests {
         "member/procmacro/src/lib.rs",
     ]);
 
-    extract_test!(traverse_manifest_rec, ["Cargo.toml"] + true => [
+    extract_test!(traverse_dir_gitignore, true, ["."] + false => [
+        "README.md",
+    ]);
+
+    extract_test!(traverse_dir_rec_gitignore, true, ["."] + true => [
+        "README.md",
+        "src/lib.rs",
+        "src/main.rs",
+        "src/nested/again/mod.rs",
+        "src/nested/again/code.rs",
+        "src/nested/fragments/enumerate.rs",
+        "src/nested/fragments/simple.rs",
+        "src/nested/fragments.rs",
+        "src/nested/justone.rs",
+        "src/nested/justtwo.rs",
+        "src/nested/mod.rs",
+        "member/true/lib.rs",
+        "member/procmacro/src/lib.rs",
+        "member/stray.rs",
+        "member/true/README.md",
+    ]);
+
+    extract_test!(traverse_manifest_rec, false, ["Cargo.toml"] + true => [
         // "Cargo.toml",
         "README.md",
         "src/lib.rs",
@@ -823,11 +915,11 @@ mod tests {
         "member/procmacro/src/lib.rs",
     ]);
 
-    extract_test!(traverse_nested_mod_rs_1, ["src/nested/mod.rs"] + false => [
+    extract_test!(traverse_nested_mod_rs_1, false, ["src/nested/mod.rs"] + false => [
         "src/nested/mod.rs"
     ]);
 
-    extract_test!(traverse_nested_mod_rs_rec, ["src/nested/mod.rs"] + true => [
+    extract_test!(traverse_nested_mod_rs_rec, false, ["src/nested/mod.rs"] + true => [
         "src/nested/again/mod.rs",
         "src/nested/again/code.rs",
         "src/nested/fragments/enumerate.rs",
@@ -838,7 +930,7 @@ mod tests {
         "src/nested/mod.rs"
     ]);
 
-    extract_test!(traverse_dir_wo_manifest, ["member"] + true => [
+    extract_test!(traverse_dir_wo_manifest, false, ["member"] + true => [
         "member/true/lib.rs",
         "member/true/README.md",
         // "member/true/Cargo.toml",
