@@ -1,6 +1,6 @@
 [package]
 name = "cargo-spellcheck"
-version = "0.15.2"
+version = "0.15.3"
 authors = ["Bernhard Schuster <bernhard@ahoi.io>"]
 edition = "2021"
 rust-version = "1.76.0"
