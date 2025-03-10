@@ -38,7 +38,7 @@ xz2 = "0.1"
 doc-chunks = { version = "0.2.0", path = "./doc-chunks" }
 
 color-eyre = "0.6"
-cargo_toml = "0.20"
+cargo_toml = "0.21"
 console = "0.15"
 crossterm = "0.27"
 # for the config file
