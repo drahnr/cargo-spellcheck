@@ -20,7 +20,7 @@ Specify your arguments as needed.
   with:
     tool: cargo-spellcheck
     
-- uses: actions/checkout@v3
+- uses: actions/checkout@v4
 
 - name: Run cargo-spellcheck
   run: cargo spellcheck --code 1
