@@ -411,6 +411,87 @@ fn handle_manifest<P: AsRef<Path>>(
     Ok(acc)
 }
 
+#[derive(Debug, Clone)]
+enum Extraction {
+    Manifest(PathBuf),
+    Missing(PathBuf),
+    Source(PathBuf),
+    Markdown(PathBuf),
+}
+
+/// Process a path that could be a file or directory, with optional directory traversal logic
+fn process_path(
+    path: PathBuf,
+    recurse: bool,
+    flow: Option<&mut VecDeque<PathBuf>>,
+) -> Option<Extraction> {
+    if let Ok(meta) = path.metadata() {
+        if meta.is_file() {
+            match path.file_name().and_then(|x| x.to_str()) {
+                Some(file_name) if file_name == "Cargo.toml" => Some(Extraction::Manifest(path)),
+                Some(file_name) if file_name.ends_with(".md") => Some(Extraction::Markdown(path)),
+                Some(file_name) if file_name.ends_with(".rs") => Some(Extraction::Source(path)),
+                _ => {
+                    // This branch is commonly entered when ran on a non-cargo
+                    // path.
+                    // Potentially become mdbook aware
+                    // <https://github.com/drahnr/cargo-spellcheck/issues/273>
+                    log::debug!(
+                        "Unknown file type encountered, skipping path: {}",
+                        path.display()
+                    );
+                    None
+                }
+            }
+        } else if meta.is_dir() {
+            // Only handle directories if we have a flow queue (non-gitignore mode)
+            if let Some(flow) = flow {
+                let cargo_toml = to_manifest_dir(&path).unwrap().join("Cargo.toml");
+                if cargo_toml.is_file() {
+                    Some(Extraction::Manifest(cargo_toml))
+                } else if recurse {
+                    // keep walking directories and feed the path back
+                    // if recursing is wanted
+                    // and if it doesn't contain a manifest file
+                    match fs::read_dir(path) {
+                        Err(err) => log::warn!("Listing directory contents {err} failed"),
+                        Ok(entries) => {
+                            for entry in entries.flatten() {
+                                let path = entry.path();
+                                // let's try with that path again
+                                flow.push_back(path);
+                            }
+                        }
+                    }
+                    None // continue processing, don't add to files_to_check
+                } else {
+                    match fs::read_dir(path) {
+                        Err(err) => log::warn!("Listing directory contents {err} failed"),
+                        Ok(entries) => {
+                            for entry in entries.flatten() {
+                                let path = entry.path();
+                                // let's try attempt with that .rs file
+                                // if we end up here, recursion is off already
+                                if path.is_file() {
+                                    flow.push_back(path);
+                                }
+                            }
+                        }
+                    }
+                    None // continue processing, don't add to files_to_check
+                }
+            } else {
+                // In gitignore mode, directories are not processed here
+                Some(Extraction::Missing(path))
+            }
+        } else {
+            Some(Extraction::Missing(path))
+        }
+    } else {
+        Some(Extraction::Missing(path))
+    }
+}
+
 /// Extract all chunks from
 pub(crate) fn extract(
     mut paths: Vec<PathBuf>,
@@ -421,40 +502,11 @@ pub(crate) fn extract(
     _config: &Config,
 ) -> Result<Documentation> {
     let cwd = cwd()?;
-    // if there are no arguments, pretend to be told to check the whole project
-    if paths.is_empty() {
-        paths.push(cwd.clone());
-        recurse = true;
-    }
 
-    log::debug!("Running on inputs {paths:?} / recursive={recurse}");
-
-    #[derive(Debug, Clone)]
-    enum Extraction {
-        Manifest(PathBuf),
-        Missing(PathBuf),
-        Source(PathBuf),
-        Markdown(PathBuf),
-    }
-
-    // stage 1 - obtain canonical paths
-    let mut flow = VecDeque::<PathBuf>::with_capacity(32);
-    flow.extend(paths.into_iter().filter_map(|path_in| {
-        let path = if path_in.is_absolute() {
-            path_in.to_owned()
-        } else {
-            cwd.join(&path_in)
-        };
-        log::debug!("Processing {} -> {}", path_in.display(), path.display());
-        path.canonicalize().ok()
-    }));
-
-    log::debug!("Running on absolute dirs {flow:?}");
-
-    let mut files_to_check = Vec::with_capacity(64);
-
-    // stage 2 - check for manifest, .rs , .md files and directories
-    if gitignore {
+    // Collect files using gitignore rules
+    let collect_gitignore_files = |flow: &mut VecDeque<PathBuf>,
+                                   recurse: bool|
+     -> VecDeque<PathBuf> {
         let max_depth = match recurse {
             true => None,
             false => Some(1),
@@ -488,97 +540,47 @@ pub(crate) fn extract(
 
             all_files.extend(files);
         }
+        all_files
+    };
+
+    // if there are no arguments, pretend to be told to check the whole project
+    if paths.is_empty() {
+        paths.push(cwd.clone());
+        recurse = true;
+    }
+
+    log::debug!("Running on inputs {paths:?} / recursive={recurse}");
+
+    // stage 1 - obtain canonical paths
+    let mut flow = VecDeque::<PathBuf>::with_capacity(32);
+    flow.extend(paths.into_iter().filter_map(|path_in| {
+        let path = if path_in.is_absolute() {
+            path_in.to_owned()
+        } else {
+            cwd.join(&path_in)
+        };
+        log::debug!("Processing {} -> {}", path_in.display(), path.display());
+        path.canonicalize().ok()
+    }));
+
+    log::debug!("Running on absolute dirs {flow:?}");
+
+    let mut files_to_check = Vec::with_capacity(64);
+
+    // stage 2 - check for manifest, .rs , .md files and directories
+    if gitignore {
+        let mut all_files = collect_gitignore_files(&mut flow, recurse);
 
         while let Some(path) = all_files.pop_front() {
-            let x = if let Ok(meta) = path.metadata() {
-                if meta.is_file() {
-                    match path.file_name().and_then(|x| x.to_str()) {
-                        Some(file_name) if file_name == "Cargo.toml" => Extraction::Manifest(path),
-                        Some(file_name) if file_name.ends_with(".md") => Extraction::Markdown(path),
-                        Some(file_name) if file_name.ends_with(".rs") => Extraction::Source(path),
-                        _ => {
-                            // This branch is commonly entered when ran on a non-cargo
-                            // path.
-                            // Potentially become mdbook aware
-                            // <https://github.com/drahnr/cargo-spellcheck/issues/273>
-                            log::debug!(
-                                "Unknown file type encountered, skipping path: {}",
-                                path.display()
-                            );
-                            continue;
-                        }
-                    }
-                } else {
-                    Extraction::Missing(path)
-                }
-            } else {
-                Extraction::Missing(path)
-            };
-
-            files_to_check.push(x);
+            if let Some(extraction) = process_path(path, recurse, None) {
+                files_to_check.push(extraction);
+            }
         }
     } else {
         while let Some(path) = flow.pop_front() {
-            let x = if let Ok(meta) = path.metadata() {
-                if meta.is_file() {
-                    match path.file_name().and_then(|x| x.to_str()) {
-                        Some(file_name) if file_name == "Cargo.toml" => Extraction::Manifest(path),
-                        Some(file_name) if file_name.ends_with(".md") => Extraction::Markdown(path),
-                        Some(file_name) if file_name.ends_with(".rs") => Extraction::Source(path),
-                        _ => {
-                            // This branch is commonly entered when ran on a non-cargo
-                            // path.
-                            // Potentially become mdbook aware
-                            // <https://github.com/drahnr/cargo-spellcheck/issues/273>
-                            log::debug!(
-                                "Unknown file type encountered, skipping path: {}",
-                                path.display()
-                            );
-                            continue;
-                        }
-                    }
-                } else if meta.is_dir() {
-                    let cargo_toml = to_manifest_dir(&path).unwrap().join("Cargo.toml");
-                    if cargo_toml.is_file() {
-                        Extraction::Manifest(cargo_toml)
-                    } else if recurse {
-                        // keep walking directories and feed the path back
-                        // if recursing is wanted
-                        // and if it doesn't contain a manifest file
-                        match fs::read_dir(path) {
-                            Err(err) => log::warn!("Listing directory contents {err} failed"),
-                            Ok(entries) => {
-                                for entry in entries.flatten() {
-                                    let path = entry.path();
-                                    // let's try with that path again
-                                    flow.push_back(path);
-                                }
-                            }
-                        }
-                        continue;
-                    } else {
-                        match fs::read_dir(path) {
-                            Err(err) => log::warn!("Listing directory contents {err} failed"),
-                            Ok(entries) => {
-                                for entry in entries.flatten() {
-                                    let path = entry.path();
-                                    // let's try attempt with that .rs file
-                                    // if we end up here, recursion is off already
-                                    if path.is_file() {
-                                        flow.push_back(path);
-                                    }
-                                }
-                            }
-                        }
-                        continue;
-                    }
-                } else {
-                    Extraction::Missing(path)
-                }
-            } else {
-                Extraction::Missing(path)
-            };
-            files_to_check.push(x);
+            if let Some(extraction) = process_path(path, recurse, Some(&mut flow)) {
+                files_to_check.push(extraction);
+            }
         }
     }
 
