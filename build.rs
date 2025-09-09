@@ -40,11 +40,13 @@ fn main() -> std::result::Result<(), Box<(dyn std::error::Error + 'static)>> {
                     Ok(())
                 },
                 |mut path: PathBuf| -> Result<PathBuf, Box<(dyn std::error::Error + Send + Sync + 'static)>> {
-                    let mut ext = path.extension().map(|s| {
-                        s.to_os_string()
-                            .into_string()
-                            .expect("Extension conversion from OSString to regular string works. qed") })
-                            .unwrap_or_else(|| String::with_capacity(4));
+                    let mut ext = path.extension().map_or_else(
+                        || String::with_capacity(4),
+                        |s| {
+                            s.to_os_string()
+                                .into_string()
+                                .expect("Extension conversion from OSString to regular string works. qed") 
+                        });
 
                     ext.push('.');
                     ext.push_str(COMPRESSION_EXTENSION);
@@ -59,9 +61,9 @@ fn main() -> std::result::Result<(), Box<(dyn std::error::Error + 'static)>> {
                     Ok(())
                 },
                 |mut path: PathBuf| -> PathBuf {
-                    let ext = path.extension()
-                        .map(|s| { s.to_os_string().into_string().expect("Extension conversion from OSString to regular string works. qed") })
-                        .unwrap_or_else(|| String::with_capacity(4));
+                    let ext = path.extension().map_or_else(
+                        || String::with_capacity(4),
+                        |s| { s.to_os_string().into_string().expect("Extension conversion from OSString to regular string works. qed") });
 
                     assert!(&ext.ends_with(COMPRESSION_EXTENSION));
                     let k = ext.len().saturating_sub(COMPRESSION_EXTENSION.len() + 1);

@@ -67,6 +67,11 @@ impl LiteralSet {
         self.literals.len()
     }
 
+    /// Check if the literal set is empty.
+    pub fn is_empty(&self) -> bool {
+        self.literals.is_empty()
+    }
+
     /// Convert to a checkable chunk.
     ///
     /// Creates the map from content ranges to source spans.

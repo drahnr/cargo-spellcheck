@@ -89,7 +89,7 @@ impl CommentVariant {
                     0 => "\"".to_owned(),
                     x => format!("r{}\"", "#".repeat(x.saturating_sub(1))),
                 };
-                format!(r#"{d}{raw}"#)
+                format!(r"{d}{raw}")
             }
             CommentVariant::CommonMark => "".to_string(),
             CommentVariant::DoubleSlash => "//".to_string(),
@@ -303,7 +303,7 @@ fn detect_comment_variant(
         //^r(#+?)"(?:.*\s*)+(?=(?:"\1))("\1)$
         lazy_static! {
             static ref BOUNDED_RAW_STR: Regex =
-                Regex::new(r##"^(r(#*)")(?:.*\s*)+?(?=(?:"\2))("\2)\s*\]?\s*$"##)
+                Regex::new(r#"^(r(#*)")(?:.*\s*)+?(?=(?:"\2))("\2)\s*\]?\s*$"#)
                     .expect("BOUNEDED_RAW_STR regex compiles");
             static ref BOUNDED_STR: Regex = Regex::new(r##"^"(?:.(?!"\\"))*?"*\s*\]?\s*"$"##)
                 .expect("BOUNEDED_STR regex compiles");
@@ -511,6 +511,11 @@ impl TrimmedLiteral {
         self.len_in_bytes
     }
 
+    /// Check if the literal is empty.
+    pub fn is_empty(&self) -> bool {
+        self.len_in_bytes == 0
+    }
+
     /// Obtain the number of characters in `pre()`.
     ///
     /// Since all pre characters are ASCII, this is equivalent to the number of
@@ -547,7 +552,7 @@ impl TrimmedLiteral {
 
     /// Display helper, mostly used for debug investigations
     #[allow(unused)]
-    pub(crate) fn display(&self, highlight: Range) -> TrimmedLiteralDisplay {
+    pub(crate) fn display(&self, highlight: Range) -> TrimmedLiteralDisplay<'_> {
         TrimmedLiteralDisplay::from((self, highlight))
     }
 }
