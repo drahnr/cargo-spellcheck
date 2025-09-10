@@ -40,6 +40,7 @@ pub fn apply_offset(range: &mut Range, offset: usize) {
     range.end = range.end.saturating_add(offset);
 }
 
+pub mod cfg_eval;
 pub mod chunk;
 pub mod cluster;
 mod developer;

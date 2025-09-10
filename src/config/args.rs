@@ -167,6 +167,29 @@ pub enum Sub {
     Reflow {
         #[clap(flatten)]
         common: Common,
+
+        #[clap(long)]
+        /// Respect cfg attribute boundaries when reflowing doc comments.
+        /// When enabled, doc comments separated by #[cfg(...)] attributes
+        /// will not be merged during reflow.
+        respect_cfg: bool,
+
+        #[clap(long)]
+        /// Target triple for cfg evaluation (e.g., x86_64-unknown-linux-gnu)
+        target: Option<String>,
+
+        #[clap(long)]
+        /// Host triple for cfg evaluation (defaults to current host)
+        host: Option<String>,
+
+        #[clap(long, value_delimiter = ',')]
+        /// Comma-separated list of features to enable for cfg evaluation
+        features: Option<Vec<String>>,
+
+        #[clap(long)]
+        /// Evaluate cfg_attr conditions and only include matching documentation.
+        /// When disabled, all cfg_attr docs are included regardless of condition.
+        eval_cfg: bool,
     },
 
     /// Print the config being in use, default config if none.

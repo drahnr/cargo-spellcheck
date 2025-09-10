@@ -618,6 +618,54 @@ struct Fff;
 }
 
 #[test]
+fn reflow_with_cfg_attribute() {
+    const CONFIG: ReflowConfig = ReflowConfig {
+        max_line_length: 40,
+    };
+
+    const CONTENT: &str = r#"
+/// This is a very long documentation comment that exceeds our
+/// maximum line length and should be reflowed.
+#[cfg(feature = "foo")]
+/// This is another documentation comment that is cfg-gated
+/// and should be reflowed separately from the previous one.
+struct Foo;
+
+/// A third documentation comment that comes after the cfg block
+/// and should also be reflowed independently.
+struct Bar;
+"#;
+
+    let docs = Documentation::load_from_str(ContentOrigin::TestEntityRust, CONTENT, true, false);
+    assert_eq!(docs.entry_count(), 1);
+    let chunks = docs
+        .get(&ContentOrigin::TestEntityRust)
+        .expect("Contains test data. qed");
+
+    // Should have 3 separate chunks due to cfg boundary
+    assert_eq!(chunks.len(), 3, "Should have 3 separate chunks");
+
+    // Test that each chunk can be reflowed independently
+    for (i, chunk) in chunks.iter().enumerate() {
+        let suggestions =
+            reflow(&ContentOrigin::TestEntityRust, &chunk, &CONFIG).expect("Reflow should work");
+
+        // Each chunk should produce a reflow suggestion since they exceed max_line_length
+        assert!(suggestions.len() > 0, "Chunk {} should need reflow", i);
+
+        // Verify that suggestions don't span across cfg boundaries
+        for suggestion in &suggestions {
+            // The span should be within the chunk's boundaries
+            let chunk_lines: Vec<_> = chunk.as_str().lines().collect();
+            assert!(
+                suggestion.span.end.line - suggestion.span.start.line + 1 <= chunk_lines.len(),
+                "Suggestion span should not exceed chunk boundaries"
+            );
+        }
+    }
+}
+
+#[test]
 fn reflow_readme() {
     // TODO reduce this to the minimal failing test case
     const README: &str = include_str!("../../README.md");
@@ -756,4 +804,125 @@ fn reflow_crlf() {
     => patches [
         "cargo spellcheck can be\r\n        /// configured with `-m <code>`\r\n        /// to return a non-zero return\r\n        /// code."
     ]);
+}
+
+#[test]
+fn reflow_cfg_attr_split_code_blocks() {
+    const CONFIG: ReflowConfig = ReflowConfig {
+        max_line_length: 80,
+    };
+
+    // Test case where code block delimiters are split across cfg_attr
+    const CONTENT: &str = r#"
+/// This documentation has a conditionally-opened code block.
+#[cfg_attr(feature = "foo", doc = "```rust")]
+#[cfg_attr(not(feature = "foo"), doc = "```python")]
+/// funky_function();
+/// bro.call();
+/// ```
+/// This text should NOT be treated as code since it's after the closing delimiter.
+/// It should be reflowed normally if it exceeds the line limit.
+struct ConditionalCodeBlock;
+"#;
+
+    let docs = Documentation::load_from_str(ContentOrigin::TestEntityRust, CONTENT, true, false);
+    assert_eq!(
+        docs.entry_count(),
+        1,
+        "Should have exactly 1 document entry"
+    );
+
+    let chunks = docs
+        .get(&ContentOrigin::TestEntityRust)
+        .expect("Contains test data. qed");
+
+    eprintln!("Number of chunks: {}", chunks.len());
+
+    // With the fix, cfg_attr docs with code blocks are in separate clusters
+    // This prevents the markdown parser from getting confused
+    assert_eq!(
+        chunks.len(),
+        3,
+        "Should have exactly 3 chunks due to cfg_attr code block separation"
+    );
+
+    // Verify chunk contents
+    let chunk0_str = chunks[0].as_str();
+    let chunk1_str = chunks[1].as_str();
+    let chunk2_str = chunks[2].as_str();
+
+    eprintln!("Chunk 0: {:?}", chunk0_str);
+    eprintln!("Chunk 1: {:?}", chunk1_str);
+    eprintln!("Chunk 2: {:?}", chunk2_str);
+
+    // First chunk: initial documentation
+    assert_eq!(
+        chunk0_str.contains("This documentation has a conditionally-opened code block"),
+        true,
+        "First chunk should contain the initial documentation"
+    );
+
+    // Second chunk: cfg_attr with code block opener
+    assert_eq!(
+        chunk1_str.contains("```"),
+        true,
+        "Second chunk should contain code block delimiter from cfg_attr"
+    );
+
+    // Third chunk: should contain the actual code and remaining docs
+    assert_eq!(
+        chunk2_str.contains("funky_function()"),
+        true,
+        "Third chunk should contain funky_function()"
+    );
+    assert_eq!(
+        chunk2_str.contains("bro.call()"),
+        true,
+        "Third chunk should contain bro.call()"
+    );
+    assert_eq!(
+        chunk2_str.contains("```"),
+        true,
+        "Third chunk should contain closing code block delimiter"
+    );
+    assert_eq!(
+        chunk2_str.contains("This text should NOT be treated as code"),
+        true,
+        "Third chunk should contain text after code block"
+    );
+
+    // Process each chunk for reflow and verify behavior
+    for (i, chunk) in chunks.iter().enumerate() {
+        let suggestions =
+            reflow(&ContentOrigin::TestEntityRust, chunk, &CONFIG).expect("Reflow should work");
+
+        eprintln!("Chunk {} suggestions: {}", i, suggestions.len());
+
+        // The third chunk might have reflow suggestions for the long line after the code block
+        if i == 2 && !suggestions.is_empty() {
+            // Verify that code content is preserved in any reflow suggestions
+            for suggestion in &suggestions {
+                let replacement = suggestion
+                    .replacements
+                    .first()
+                    .expect("Should have replacement");
+                eprintln!("Chunk {} replacement: {:?}", i, replacement);
+
+                // The reflow should only affect the text after the code block
+                // The code block content itself should remain unchanged
+                if replacement.contains("funky_function") || replacement.contains("bro.call") {
+                    assert_eq!(
+                        replacement.contains("funky_function()"),
+                        true,
+                        "Code content funky_function() should be preserved exactly"
+                    );
+                    assert_eq!(
+                        replacement.contains("bro.call()"),
+                        true,
+                        "Code content bro.call() should be preserved exactly"
+                    );
+                }
+            }
+        }
+    }
 }
