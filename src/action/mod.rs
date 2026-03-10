@@ -34,10 +34,7 @@ pub enum Finish {
 impl Finish {
     /// A helper to determine if any mistakes were found.
     pub fn found_any(&self) -> bool {
-        match *self {
-            Self::MistakeCount(n) if n > 0 => true,
-            _ => false,
-        }
+        matches!(*self, Self::MistakeCount(n) if n > 0)
     }
 }
 
@@ -90,7 +87,7 @@ impl From<BandAid> for Patch {
 ///
 /// This function is not concerned with _any_ semantics or comments or
 /// whatsoever at all, it blindly replaces what is given to it.
-pub(crate) fn apply_patches<'s, II, I>(
+pub(crate) fn apply_patches<II, I>(
     patches: II,
     source_buffer: &str,
     mut sink: impl Write,

@@ -612,7 +612,7 @@ impl<'s> SuggestionSet<'s> {
     pub fn entry(
         &mut self,
         origin: ContentOrigin,
-    ) -> indexmap::map::Entry<ContentOrigin, Vec<Suggestion<'s>>> {
+    ) -> indexmap::map::Entry<'_, ContentOrigin, Vec<Suggestion<'s>>> {
         self.per_file.entry(origin)
     }
 
@@ -664,6 +664,12 @@ impl<'s> SuggestionSet<'s> {
     #[inline]
     pub fn len(&self) -> usize {
         self.per_file.len()
+    }
+
+    /// Returns `true` if the set contains no items.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.per_file.is_empty()
     }
 
     /// Sorts the files in alphabetical order, then sorts the per-file

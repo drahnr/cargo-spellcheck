@@ -198,6 +198,7 @@ impl Checker for SpellbookChecker {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn obtain_suggestions<'s>(
     plain: &PlainOverlay,
     chunk: &'s CheckableChunk,

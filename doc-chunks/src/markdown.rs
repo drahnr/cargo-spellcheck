@@ -263,7 +263,7 @@ impl<'a> PlainOverlay<'a> {
                 },
                 Event::End(tag) => {
                     match tag {
-                        TagEnd::Table { .. } => {
+                        TagEnd::Table => {
                             skip_table_text = false;
                             Self::newlines(&mut plain, 1);
                         }
@@ -294,8 +294,7 @@ impl<'a> PlainOverlay<'a> {
                     }
                 }
                 Event::Text(s) => {
-                    if html_block > 0 {
-                    } else if html_code_block > 0 {
+                    if html_block > 0 || html_code_block > 0 {
                     } else if code_block > 0 {
                         if inception {
                             // let offset = char_range.start;
@@ -436,11 +435,7 @@ impl<'a> PlainOverlay<'a> {
             })
             .filter(|(_, raw)| {
                 // aliases are not required for span search
-                if let SourceRange::Direct(_) = raw {
-                    true
-                } else {
-                    false
-                }
+                matches!(raw, SourceRange::Direct(_))
             })
             .fold(
                 IndexMap::<Range, Span>::with_capacity(n),

@@ -511,6 +511,10 @@ impl TrimmedLiteral {
         self.len_in_bytes
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len_in_bytes == 0
+    }
+
     /// Obtain the number of characters in `pre()`.
     ///
     /// Since all pre characters are ASCII, this is equivalent to the number of
@@ -547,7 +551,7 @@ impl TrimmedLiteral {
 
     /// Display helper, mostly used for debug investigations
     #[allow(unused)]
-    pub(crate) fn display(&self, highlight: Range) -> TrimmedLiteralDisplay {
+    pub(crate) fn display(&self, highlight: Range) -> TrimmedLiteralDisplay<'_> {
         TrimmedLiteralDisplay::from((self, highlight))
     }
 }

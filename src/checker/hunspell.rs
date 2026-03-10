@@ -110,10 +110,10 @@ pub fn consists_of_vulgar_fractions_or_emojis(word: &str) -> bool {
 }
 
 #[derive(Clone)]
+#[allow(clippy::arc_with_non_send_sync)]
 struct HunspellSafe(Arc<Hunspell>);
 
 unsafe impl Send for HunspellSafe {}
-// We only use it in RO so it's ok.
 unsafe impl Sync for HunspellSafe {}
 
 impl std::ops::Deref for HunspellSafe {
@@ -124,6 +124,7 @@ impl std::ops::Deref for HunspellSafe {
 }
 
 impl From<Hunspell> for HunspellSafe {
+    #[allow(clippy::arc_with_non_send_sync)]
     fn from(hunspell: Hunspell) -> Self {
         Self(Arc::new(hunspell))
     }
@@ -381,6 +382,7 @@ impl Checker for HunspellChecker {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn obtain_suggestions<'s>(
     plain: &PlainOverlay,
     chunk: &'s CheckableChunk,

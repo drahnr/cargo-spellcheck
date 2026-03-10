@@ -35,7 +35,7 @@ pub struct Cached<T> {
     _phantom: std::marker::PhantomData<T>,
 }
 
-impl<'a, T> Cached<T>
+impl<T> Cached<T>
 where
     T: Serialize + DeserializeOwned,
 {

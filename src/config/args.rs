@@ -226,7 +226,7 @@ enum ShellErr {
 fn load_shell_name(shell: &str) -> Result<Shell, ShellErr> {
     shell
         .split('/')
-        .last()
+        .next_back()
         .map(|shell| {
             Shell::from_str(shell).map_err(|unknown_shell| ShellErr::UnknownShell {
                 shell: unknown_shell,

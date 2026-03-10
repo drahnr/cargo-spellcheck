@@ -26,7 +26,10 @@ pub struct Lang5 {
 
 impl PartialEq<str> for Lang5 {
     fn eq(&self, other: &str) -> bool {
-        self.to_string().as_str() == other
+        use std::fmt::Write as _;
+        let mut s = String::with_capacity(5);
+        let _ = write!(s, "{self}");
+        s == other
     }
 }
 
@@ -35,20 +38,28 @@ where
     X: AsRef<str>,
 {
     fn eq(&self, other: &X) -> bool {
-        self.to_string().as_str() == other.as_ref()
+        use std::fmt::Write as _;
+        let mut s = String::with_capacity(5);
+        let _ = write!(s, "{self}");
+        s == other.as_ref()
     }
 }
 
-impl<'a> PartialEq<Lang5> for &'a str {
+impl PartialEq<Lang5> for &str {
     fn eq(&self, other: &Lang5) -> bool {
-        let other = other.to_string();
-        *self == other.as_str()
+        use std::fmt::Write as _;
+        let mut s = String::with_capacity(5);
+        let _ = write!(s, "{other}");
+        *self == s.as_str()
     }
 }
 
 impl PartialEq<Lang5> for String {
     fn eq(&self, other: &Lang5) -> bool {
-        *self == other.to_string()
+        use std::fmt::Write as _;
+        let mut s = String::with_capacity(5);
+        let _ = write!(s, "{other}");
+        *self == s
     }
 }
 

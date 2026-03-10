@@ -6,7 +6,7 @@ fn os_specific_search_dirs() -> &'static [PathBuf] {
         static ref OS_SPECIFIC_LOOKUP_DIRS: Vec<PathBuf> =
             if cfg!(target_os = "macos") {
                 directories::BaseDirs::new()
-                    .map(|base| vec![base.home_dir().to_owned().join("/Library/Spelling/"), PathBuf::from("/Library/Spelling/")])
+                    .map(|base| vec![base.home_dir().to_owned().join("Library/Spelling/"), PathBuf::from("/Library/Spelling/")])
                     .unwrap_or_default()
             } else if cfg!(target_os = "linux") {
                 vec![

@@ -182,7 +182,7 @@ impl CheckableChunk {
                 }
                 Some((fragment_span, fragment_range, sub_fragment_range))
             })
-            .filter_map(|(fragment_span, fragment_range, sub_fragment_range)| {
+            .map(|(fragment_span, fragment_range, sub_fragment_range)| {
                 // take the full fragment string, we need to count newlines before and after
                 let s = sub_char_range(self.as_str(), fragment_range.clone());
 
@@ -223,7 +223,7 @@ impl CheckableChunk {
                     self.display(sub_fragment_range.clone()),
                 );
 
-                Some((sub_fragment_range, sub_fragment_span))
+                (sub_fragment_range, sub_fragment_span)
             })
             .collect::<IndexMap<_, _>>()
     }
@@ -345,12 +345,12 @@ impl CheckableChunk {
     }
 
     /// Get the display wrapper type to be used with i.e. `format!(..)`.
-    pub fn display(&self, range: Range) -> ChunkDisplay {
+    pub fn display(&self, range: Range) -> ChunkDisplay<'_> {
         ChunkDisplay::from((self, range))
     }
 
     /// Iterate over all ranges and the associated span.
-    pub fn iter(&self) -> indexmap::map::Iter<Range, Span> {
+    pub fn iter(&self) -> indexmap::map::Iter<'_, Range, Span> {
         self.source_mapping.iter()
     }
 
@@ -363,7 +363,7 @@ impl CheckableChunk {
 
     /// Obtain an accessor object containing mapping and string representation,
     /// removing the markdown annotations.
-    pub fn erase_cmark(&self, ignores: &Ignores) -> PlainOverlay {
+    pub fn erase_cmark(&self, ignores: &Ignores) -> PlainOverlay<'_> {
         PlainOverlay::erase_cmark(self, ignores)
     }
 

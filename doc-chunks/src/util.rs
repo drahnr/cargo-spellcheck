@@ -13,7 +13,7 @@ struct LineSepStat {
 }
 
 #[inline(always)]
-fn extract_delimiter_inner<'a>(
+fn extract_delimiter_inner(
     mut iter: impl Iterator<Item = usize>,
     newline: &'static str,
 ) -> Option<LineSepStat> {

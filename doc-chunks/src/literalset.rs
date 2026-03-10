@@ -67,6 +67,10 @@ impl LiteralSet {
         self.literals.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.literals.is_empty()
+    }
+
     /// Convert to a checkable chunk.
     ///
     /// Creates the map from content ranges to source spans.
@@ -120,7 +124,7 @@ impl LiteralSet {
     }
 }
 
-impl<'s> fmt::Display for LiteralSet {
+impl fmt::Display for LiteralSet {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let n = self.len();
         if n > 0 {

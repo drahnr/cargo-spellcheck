@@ -103,6 +103,7 @@ fn extract_modules_recurse<P: AsRef<Path>>(
     let mut acc = HashSet::with_capacity(16);
 
     #[derive(Debug, Clone)]
+    #[allow(clippy::enum_variant_names)]
     enum SeekingFor {
         ModulKeyword,
         ModulName,
@@ -456,7 +457,7 @@ pub(crate) fn extract(
         let x = if let Ok(meta) = path.metadata() {
             if meta.is_file() {
                 match path.file_name().and_then(|x| x.to_str()) {
-                    Some(file_name) if file_name == "Cargo.toml" => Extraction::Manifest(path),
+                    Some("Cargo.toml") => Extraction::Manifest(path),
                     Some(file_name) if file_name.ends_with(".md") => Extraction::Markdown(path),
                     Some(file_name) if file_name.ends_with(".rs") => Extraction::Source(path),
                     _ => {

@@ -14,7 +14,7 @@ pub(crate) fn replacements_contain_dashless<T: AsRef<str>>(word: &str, replaceme
     replacements
         .iter()
         .map(|s| s.as_ref())
-        .any(|x| x == &dashless)
+        .any(|x| x == dashless)
 }
 
 /// Returns `true` iff the replacements contains a variant of `word` with

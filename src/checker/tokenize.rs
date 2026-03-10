@@ -191,10 +191,7 @@ where
                 acc.push((char_range.start + 1)..(char_range.end));
                 continue;
             }
-            let belongs_to_genitive_s = match s {
-                "(" | ")" | r#"""# => false,
-                _ => true,
-            };
+            let belongs_to_genitive_s = !matches!(s, "(" | ")" | r#"""#);
             stage = if belongs_to_genitive_s {
                 match stage {
                     Stage::Empty if s != "'" && !space => {

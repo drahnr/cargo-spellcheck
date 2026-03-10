@@ -14,6 +14,7 @@ use crate::util::{byte_range_to_char_range, byte_range_to_char_range_many, sub_c
 use crate::{CommentVariant, ContentOrigin, Detector, Range, Span, Suggestion};
 
 use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
+use std::fmt;
 
 pub use crate::config::ReflowConfig;
 
@@ -146,11 +147,11 @@ fn reflow_inner<'s>(
             _ => (variant.prefix_len(), ""),
         };
         let pre = if let Some(indentation) = indents_iter.next() {
-            indentation
+            *indentation
         } else {
-            &last_indent
+            last_indent
         }
-        .to_string_but_skip_n(indentation_skip_n);
+        .skipping_n(indentation_skip_n);
 
         log::trace!(target: "glue", "glue[shift={}]: acc = {:?} + {:?} + {:?} + {:?} + {:?} + {:?}",
                 indentation_skip_n,
@@ -208,12 +209,15 @@ pub(crate) struct Indentation<'s> {
     s: Option<&'s str>,
 }
 
-impl<'s> ToString for Indentation<'s> {
-    fn to_string(&self) -> String {
+impl<'s> fmt::Display for Indentation<'s> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(s) = self.s {
-            s.to_owned()
+            f.write_str(s)
         } else {
-            " ".repeat(self.offset)
+            for _ in 0..self.offset {
+                f.write_str(" ")?;
+            }
+            Ok(())
         }
     }
 }
@@ -235,7 +239,7 @@ impl<'s> Indentation<'s> {
     }
 
     /// Convert to a string but skip `n` chars
-    pub(crate) fn to_string_but_skip_n(&self, n: usize) -> String {
+    pub(crate) fn skipping_n(self, n: usize) -> String {
         if let Some(s) = self.s {
             sub_char_range(s, 0..n).to_owned()
         } else {
@@ -303,7 +307,7 @@ fn store_suggestion<'s>(
         } else {
             return Ok((bytes_paragraph, None));
         };
-        let end = if let Some(last) = spans_iter.last() {
+        let end = if let Some(last) = spans_iter.next_back() {
             last.end
         } else {
             fallback_end
@@ -443,8 +447,8 @@ fn reflow<'s>(
                     continue;
                 }
                 match tag {
-                    TagEnd::Image { .. }
-                    | TagEnd::Link { .. }
+                    TagEnd::Image
+                    | TagEnd::Link
                     | TagEnd::Strong
                     | TagEnd::Emphasis
                     | TagEnd::Strikethrough
