@@ -1388,6 +1388,44 @@ ff"#,
     );
 }
 
+#[test]
+fn reduce_w_html_block_prefix() {
+    cmark_reduction_test(
+        r#"
+<div>
+ignored
+</div>
+keep
+"#,
+        r#"keep"#,
+        1,
+    );
+}
+
+#[test]
+fn reduce_w_html_block_alternating_sections() {
+    cmark_reduction_test(
+        r#"
+<div>
+ignored
+</div>
+first
+
+<span>skip</span>
+second
+
+<p>skip</p>
+third
+"#,
+        r#"first
+
+second
+
+third"#,
+        3,
+    );
+}
+
 const PREFIX_RAW_LEN: usize = 3;
 const SUFFIX_RAW_LEN: usize = 2;
 const GAENSEFUESSCHEN: usize = 1;
