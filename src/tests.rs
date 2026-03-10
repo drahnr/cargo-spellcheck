@@ -1224,6 +1224,27 @@ fn cmark_reduction_test(input: &'static str, expected: &'static str, expected_ma
     }
 }
 
+fn cmark_reduction_file_test(
+    input: &'static str,
+    expected: &'static str,
+    expected_mapping_len: usize,
+) {
+    let path = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string() + ".md");
+    fs_err::write(&path, input).unwrap();
+    let path = path.canonicalize().unwrap();
+    let docs = crate::traverse::extract(vec![path.clone()], false, false, false, &Default::default())
+        .expect("Must extract commonmark file");
+    let chunks = docs
+        .get(&ContentOrigin::CommonMarkFile(path.clone()))
+        .expect("Must contain commonmark chunk");
+    assert_eq!(chunks.len(), 1);
+    let (plain, mapping) =
+        PlainOverlay::extract_plain_with_mapping(chunks[0].as_str(), &Default::default());
+    assert_eq!(plain.as_str(), expected);
+    assert_eq!(mapping.len(), expected_mapping_len);
+    fs_err::remove_file(&path).unwrap();
+}
+
 #[test]
 fn reduce_w_emoji() {
     cmark_reduction_test(
@@ -1342,6 +1363,15 @@ fn reduce_w_link_shortcut_ref() {
         1,
     );
 }
+
+#[test]
+fn reduce_w_inline_html_basic_tags() {
+    cmark_reduction_test(
+        r#"A <b>bold</b> and <i>italic</i> word."#,
+        r#"A bold and italic word."#,
+        5,
+    );
+}
 // Nested links as well as nested code blocks are
 // impossible according to the common mark spec.
 
@@ -1390,11 +1420,12 @@ ff"#,
 
 #[test]
 fn reduce_w_html_block_prefix() {
-    cmark_reduction_test(
+    cmark_reduction_file_test(
         r#"
 <div>
 ignored
 </div>
+
 keep
 "#,
         r#"keep"#,
@@ -1404,17 +1435,22 @@ keep
 
 #[test]
 fn reduce_w_html_block_alternating_sections() {
-    cmark_reduction_test(
+    cmark_reduction_file_test(
         r#"
 <div>
 ignored
 </div>
+
 first
 
-<span>skip</span>
+<p>skip</p>
+
 second
 
-<p>skip</p>
+<div>
+skip
+</div>
+
 third
 "#,
         r#"first

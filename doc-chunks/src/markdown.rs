@@ -222,6 +222,9 @@ impl<'a> PlainOverlay<'a> {
                         code_block += 1;
                         inception = fenced == rust_fence;
                     }
+                    Tag::HtmlBlock => {
+                        html_block += 1;
+                    }
                     Tag::Link {
                         link_type,
                         dest_url: _,
@@ -277,6 +280,9 @@ impl<'a> PlainOverlay<'a> {
                             // if fenced == rust_fence {
                             // TODO validate as if it was another document entity
                             // }
+                        }
+                        TagEnd::HtmlBlock => {
+                            html_block = html_block.saturating_sub(1);
                         }
                         TagEnd::Paragraph => Self::newlines(&mut plain, 2),
 
@@ -341,10 +347,6 @@ impl<'a> PlainOverlay<'a> {
                 }
                 Event::Html(tag) => {
                     if is_html_tag_on_no_scope_list(&tag) {
-                    } else if tag.ends_with("/>") {
-                        html_block = html_block.saturating_sub(1);
-                    } else {
-                        html_block += 1;
                     }
                 }
                 Event::FootnoteReference(s) => {
