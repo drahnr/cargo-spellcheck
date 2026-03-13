@@ -1,0 +1,306 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: "${{ github.workflow }} @ ${{ github.ref_name }}"
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: full
+
+jobs:
+  fmt:
+    name: Format check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          show-progress: false
+
+      - name: Set up toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Check formatting
+        shell: bash
+        run: cargo fmt -- --check
+
+  build:
+    name: Build (Linux x86_64, GNU)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          show-progress: false
+
+      - name: Set up toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install libclang
+        shell: bash
+        run: sudo apt-get install --no-install-recommends --yes libclang-dev
+
+      - name: Build
+        shell: bash
+        run: cargo build --release
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-spellcheck-linux-x86_64
+          path: target/release/cargo-spellcheck
+
+  build-aarch64-linux:
+    name: Build (Linux aarch64, GNU)
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          show-progress: false
+
+      - name: Set up toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install libclang
+        shell: bash
+        run: sudo apt-get install --no-install-recommends --yes libclang-dev
+
+      - name: Build
+        shell: bash
+        run: cargo build --release
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-spellcheck-linux-aarch64
+          path: target/release/cargo-spellcheck
+
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          show-progress: false
+
+      - name: Set up toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install libclang
+        shell: bash
+        run: sudo apt-get install --no-install-recommends --yes libclang-dev
+
+      - name: Run tests
+        shell: bash
+        run: cargo test --workspace
+
+  cross-win64:
+    name: Cross-compile (Windows x86_64, GNU, cross)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          show-progress: false
+
+      - name: Set up toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-gnu
+
+      - name: Install MinGW and libclang
+        shell: bash
+        run: sudo apt-get install --no-install-recommends --yes g++-mingw-w64-x86-64 gcc-mingw-w64-x86-64 libclang-dev
+
+      - name: Set up cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        shell: bash
+        run: cargo build --target x86_64-pc-windows-gnu
+
+  build-win-aarch64:
+    name: Build (Windows aarch64, MSVC)
+    runs-on: windows-11-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          show-progress: false
+
+      - name: Set up toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        shell: pwsh
+        run: cargo build --target aarch64-pc-windows-msvc
+
+  build-win-x86_64:
+    name: Build (Windows x86_64, MSVC)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          show-progress: false
+
+      - name: Set up toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        shell: pwsh
+        run: cargo build --target x86_64-pc-windows-msvc
+
+  validate-spellcheck:
+    name: Validate spellcheck
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          show-progress: false
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: cargo-spellcheck-linux-x86_64
+          path: bin
+
+      - name: Make executable
+        shell: bash
+        run: chmod +x bin/cargo-spellcheck
+
+      - name: Run spellcheck validation
+        shell: bash
+        run: |
+          EXE="bin/cargo-spellcheck"
+          "${EXE}" --version
+          "${EXE}" spellcheck demo/Cargo.toml
+          "${EXE}" --dev-comments spellcheck demo/Cargo.toml
+          "${EXE}" spellcheck demo/src/main.rs
+          "${EXE}" --dev-comments spellcheck demo/src/main.rs
+          "${EXE}" spellcheck demo/
+          "${EXE}" --dev-comments spellcheck demo/
+          "${EXE}" spellcheck
+          "${EXE}" --dev-comments spellcheck
+          "${EXE}"
+
+  validate-reflow:
+    name: Validate reflow
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          show-progress: false
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: cargo-spellcheck-linux-x86_64
+          path: bin
+
+      - name: Make executable
+        shell: bash
+        run: chmod +x bin/cargo-spellcheck
+
+      - name: Run reflow validation
+        shell: bash
+        run: |
+          EXE="bin/cargo-spellcheck"
+          "${EXE}" --version
+          "${EXE}" reflow demo/Cargo.toml
+          "${EXE}" reflow -vvvv demo/src/main.rs
+          "${EXE}" reflow demo/
+          "${EXE}" reflow demo/README.md
+          "${EXE}"
+
+  test-on-spearow-juice:
+    name: Test on spearow/juice
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout spearow/juice
+        uses: actions/checkout@v4
+        with:
+          repository: spearow/juice
+          path: juice
+          fetch-depth: 3
+          show-progress: false
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: cargo-spellcheck-linux-x86_64
+          path: bin
+
+      - name: Make executable
+        shell: bash
+        run: chmod +x bin/cargo-spellcheck
+
+      - name: Run on spearow/juice
+        shell: bash
+        run: |
+          cd juice
+          ../bin/cargo-spellcheck -vvv
+
+#   test-on-rustlang-rust:
+#     name: Test on rust-lang/rust
+#     needs: build
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Checkout rust-lang/rust
+#         uses: actions/checkout@v4
+#         with:
+#           repository: rust-lang/rust
+#           path: rust
+#           fetch-depth: 3
+#           submodules: false
+#           show-progress: false
+
+#       - name: Download artifact
+#         uses: actions/download-artifact@v4
+#         with:
+#           name: cargo-spellcheck-linux-x86_64
+#           path: bin
+
+#       - name: Make executable
+#         shell: bash
+#         run: chmod +x bin/cargo-spellcheck
+
+#       - name: Init submodules
+#         shell: bash
+#         run: git -C rust submodule update --init
+
+#       - name: Run on rust-lang/rust
+#         shell: bash
+#         run: |
+#           cd rust
+#           ../bin/cargo-spellcheck -vvv

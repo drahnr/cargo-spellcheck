@@ -1232,8 +1232,9 @@ fn cmark_reduction_file_test(
     let path = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string() + ".md");
     fs_err::write(&path, input).unwrap();
     let path = path.canonicalize().unwrap();
-    let docs = crate::traverse::extract(vec![path.clone()], false, false, false, &Default::default())
-        .expect("Must extract commonmark file");
+    let docs =
+        crate::traverse::extract(vec![path.clone()], false, false, false, &Default::default())
+            .expect("Must extract commonmark file");
     let chunks = docs
         .get(&ContentOrigin::CommonMarkFile(path.clone()))
         .expect("Must contain commonmark chunk");
