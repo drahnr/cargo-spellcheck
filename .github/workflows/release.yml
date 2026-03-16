@@ -13,6 +13,9 @@ jobs:
   build-linux-x86_64:
     name: Build Linux binary (x86_64, GNU)
     runs-on: ubuntu-latest
+    container:
+      image: cgr.dev/chainguard/rust:latest-dev
+      options: --user root
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -48,6 +51,9 @@ jobs:
   build-linux-aarch64:
     name: Build Linux binary (aarch64, GNU)
     runs-on: ubuntu-24.04-arm
+    container:
+      image: cgr.dev/chainguard/rust:latest-dev
+      options: --user root
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -149,6 +155,9 @@ jobs:
       - build-windows-aarch64
 
     runs-on: ubuntu-latest
+    container:
+      image: cgr.dev/chainguard/rust:latest-dev
+      options: --user root
     permissions:
       contents: write
     steps:
