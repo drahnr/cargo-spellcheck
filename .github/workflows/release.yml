@@ -27,9 +27,7 @@ jobs:
       - name: Set up cache
         uses: Swatinem/rust-cache@v2
 
-      - name: Install libclang
-        shell: bash
-        run: sudo apt-get install --no-install-recommends --yes libclang-dev
+      - uses: ./.github/actions/install-clang
 
       - name: Build
         shell: bash
@@ -62,9 +60,7 @@ jobs:
       - name: Set up cache
         uses: Swatinem/rust-cache@v2
 
-      - name: Install libclang
-        shell: bash
-        run: sudo apt-get install --no-install-recommends --yes libclang-dev
+      - uses: ./.github/actions/install-clang
 
       - name: Build
         shell: bash
