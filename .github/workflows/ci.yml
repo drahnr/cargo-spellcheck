@@ -2,7 +2,8 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
   pull_request:
 
 concurrency:
@@ -112,31 +113,6 @@ jobs:
       - name: Run tests
         shell: bash
         run: cargo test --workspace
-
-  cross-win64:
-    name: Cross-compile (Windows x86_64, GNU, cross)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          show-progress: false
-
-      - name: Set up toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-gnu
-
-      - name: Install MinGW and libclang
-        shell: bash
-        run: sudo apt-get install --no-install-recommends --yes g++-mingw-w64-x86-64 gcc-mingw-w64-x86-64 libclang-dev
-
-      - name: Set up cache
-        uses: Swatinem/rust-cache@v2
-
-      - name: Build
-        shell: bash
-        run: cargo build --target x86_64-pc-windows-gnu
 
   build-win-aarch64:
     name: Build (Windows aarch64, MSVC)

@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+*'
+      - "v[0-9]+.[0-9]+.[0-9]+*"
 
 env:
   CARGO_TERM_COLOR: always
@@ -83,43 +83,6 @@ jobs:
           path: cargo-spellcheck-*-aarch64-unknown-linux-gnu
 
   build-windows-x86_64:
-    name: Build Windows binary (x86_64, GNU, cross)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          show-progress: false
-
-      - name: Set up toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-gnu
-
-      - name: Install MinGW and libclang
-        shell: bash
-        run: sudo apt-get install --no-install-recommends --yes g++-mingw-w64-x86-64 gcc-mingw-w64-x86-64 libclang-dev
-
-      - name: Set up cache
-        uses: Swatinem/rust-cache@v2
-
-      - name: Build
-        shell: bash
-        run: cargo build --release --target x86_64-pc-windows-gnu
-
-      - name: Stage artifact
-        shell: bash
-        run: |
-          cp target/x86_64-pc-windows-gnu/release/cargo-spellcheck.exe \
-             "cargo-spellcheck-${{ github.ref_name }}-x86_64-pc-windows-gnu.exe"
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-x86_64-binary
-          path: cargo-spellcheck-*-x86_64-pc-windows-gnu.exe
-
-  build-windows-x86_64-msvc:
     name: Build Windows binary (x86_64, MSVC)
     runs-on: windows-latest
     steps:
@@ -183,7 +146,12 @@ jobs:
 
   release:
     name: Create GitHub Release
-    needs: [build-linux-x86_64, build-linux-aarch64, build-windows-x86_64, build-windows-x86_64-msvc, build-windows-aarch64]
+    needs:
+      - build-linux-x86_64
+      - build-linux-aarch64
+      - build-windows-x86_64
+      - build-windows-aarch64
+
     runs-on: ubuntu-latest
     permissions:
       contents: write
