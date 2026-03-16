@@ -1,0 +1,9 @@
+name: "Install libclang-dev"
+description: "Reusable action to set up libclang-dev"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install libclang-dev
+      shell: bash
+      run: sudo apt-get install --no-install-recommends --yes libclang-dev

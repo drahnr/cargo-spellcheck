@@ -1,0 +1,189 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+*"
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: full
+
+jobs:
+  build-linux-x86_64:
+    name: Build Linux binary (x86_64, GNU)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          show-progress: false
+
+      - name: Set up toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Set up cache
+        uses: Swatinem/rust-cache@v2
+
+      - uses: ./.github/actions/install-clang
+
+      - name: Build
+        shell: bash
+        run: cargo build --release --target x86_64-unknown-linux-gnu
+
+      - name: Stage artifact
+        shell: bash
+        run: |
+          cp target/x86_64-unknown-linux-gnu/release/cargo-spellcheck \
+             "cargo-spellcheck-${{ github.ref_name }}-x86_64-unknown-linux-gnu"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-x86_64-binary
+          path: cargo-spellcheck-*-x86_64-unknown-linux-gnu
+
+  build-linux-aarch64:
+    name: Build Linux binary (aarch64, GNU)
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          show-progress: false
+
+      - name: Set up toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up cache
+        uses: Swatinem/rust-cache@v2
+
+      - uses: ./.github/actions/install-clang
+
+      - name: Build
+        shell: bash
+        run: cargo build --release
+
+      - name: Stage artifact
+        shell: bash
+        run: |
+          cp target/release/cargo-spellcheck \
+             "cargo-spellcheck-${{ github.ref_name }}-aarch64-unknown-linux-gnu"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-aarch64-binary
+          path: cargo-spellcheck-*-aarch64-unknown-linux-gnu
+
+  build-windows-x86_64:
+    name: Build Windows binary (x86_64, MSVC)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          show-progress: false
+
+      - name: Set up toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        shell: pwsh
+        run: cargo build --release --target x86_64-pc-windows-msvc
+
+      - name: Stage artifact
+        shell: pwsh
+        run: |
+          cp target/x86_64-pc-windows-msvc/release/cargo-spellcheck.exe `
+             "cargo-spellcheck-${{ github.ref_name }}-x86_64-pc-windows-msvc.exe"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-x86_64-msvc-binary
+          path: cargo-spellcheck-*-x86_64-pc-windows-msvc.exe
+
+  build-windows-aarch64:
+    name: Build Windows binary (aarch64, MSVC)
+    runs-on: windows-11-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          show-progress: false
+
+      - name: Set up toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        shell: pwsh
+        run: cargo build --release --target aarch64-pc-windows-msvc
+
+      - name: Stage artifact
+        shell: pwsh
+        run: |
+          cp target/aarch64-pc-windows-msvc/release/cargo-spellcheck.exe `
+             "cargo-spellcheck-${{ github.ref_name }}-aarch64-pc-windows-msvc.exe"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-aarch64-binary
+          path: cargo-spellcheck-*-aarch64-pc-windows-msvc.exe
+
+  release:
+    name: Create GitHub Release
+    needs:
+      - build-linux-x86_64
+      - build-linux-aarch64
+      - build-windows-x86_64
+      - build-windows-aarch64
+
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-x86_64-binary
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-aarch64-binary
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-x86_64-binary
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-x86_64-msvc-binary
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-aarch64-binary
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: cargo-spellcheck-${{ github.ref_name }}
+          files: |
+            cargo-spellcheck-*-x86_64-unknown-linux-gnu
+            cargo-spellcheck-*-aarch64-unknown-linux-gnu
+            cargo-spellcheck-*-x86_64-pc-windows-gnu.exe
+            cargo-spellcheck-*-x86_64-pc-windows-msvc.exe
+            cargo-spellcheck-*-aarch64-pc-windows-msvc.exe

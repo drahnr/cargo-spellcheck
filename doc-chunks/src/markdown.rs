@@ -344,10 +344,7 @@ impl<'a> PlainOverlay<'a> {
                         );
                     }
                 }
-                Event::Html(tag) => {
-                    if is_html_tag_on_no_scope_list(&tag) {
-                    }
-                }
+                Event::Html(tag) => if is_html_tag_on_no_scope_list(&tag) {},
                 Event::FootnoteReference(s) => {
                     if !ignores.footnote_references && !s.is_empty() {
                         let char_range = Range {
