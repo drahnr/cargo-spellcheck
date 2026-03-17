@@ -1,9 +1,13 @@
-name: "Install libclang-dev"
-description: "Reusable action to set up libclang-dev"
+name: Install build prerequisites
+description: Reusable action to set up build prerequisites
 
 runs:
   using: "composite"
   steps:
-    - name: Install libclang-dev
+    - name: Install build prerequisites
       shell: bash
-      run: sudo apt-get install --no-install-recommends --yes libclang-dev
+      run: apk add clang oniguruma-dev
+
+    - name: Ensure onig_sys uses libonig
+      shell: bash
+      run: echo "RUSTONIG_SYSTEM_LIBONIG=1" >> "${GITHUB_ENV}"

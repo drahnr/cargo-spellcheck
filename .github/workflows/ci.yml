@@ -18,6 +18,9 @@ jobs:
   fmt:
     name: Format check
     runs-on: ubuntu-latest
+    container:
+      image: cgr.dev/chainguard/rust:latest-dev
+      options: --user root
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,6 +39,9 @@ jobs:
   build:
     name: Build (Linux x86_64, GNU)
     runs-on: ubuntu-latest
+    container:
+      image: cgr.dev/chainguard/rust:latest-dev
+      options: --user root
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -63,6 +69,9 @@ jobs:
   build-aarch64-linux:
     name: Build (Linux aarch64, GNU)
     runs-on: ubuntu-24.04-arm
+    container:
+      image: cgr.dev/chainguard/rust:latest-dev
+      options: --user root
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -90,6 +99,9 @@ jobs:
   test:
     name: Unit tests
     runs-on: ubuntu-latest
+    container:
+      image: cgr.dev/chainguard/rust:latest-dev
+      options: --user root
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -103,6 +115,10 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - uses: ./.github/actions/install-clang
+
+      - name: Install english dictionary
+        shell: bash
+        run: apk add hunspell-dictionary-en
 
       - name: Run tests
         shell: bash
@@ -150,11 +166,18 @@ jobs:
     name: Validate spellcheck
     needs: build
     runs-on: ubuntu-latest
+    container:
+      image: cgr.dev/chainguard/rust:latest-dev
+      options: --user root
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           show-progress: false
+
+      - name: Install oniguruma
+        shell: bash
+        run: apk add oniguruma-dev
 
       - name: Download artifact
         uses: actions/download-artifact@v4
@@ -185,11 +208,18 @@ jobs:
     name: Validate reflow
     needs: build
     runs-on: ubuntu-latest
+    container:
+      image: cgr.dev/chainguard/rust:latest-dev
+      options: --user root
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           show-progress: false
+
+      - name: Install oniguruma
+        shell: bash
+        run: apk add oniguruma-dev
 
       - name: Download artifact
         uses: actions/download-artifact@v4
