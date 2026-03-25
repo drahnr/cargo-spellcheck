@@ -27,9 +27,6 @@ jobs:
         with:
           targets: x86_64-unknown-linux-gnu
 
-      - name: Set up cache
-        uses: Swatinem/rust-cache@v2
-
       - uses: ./.github/actions/install-clang
 
       - name: Build
@@ -63,9 +60,6 @@ jobs:
       - name: Set up toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Set up cache
-        uses: Swatinem/rust-cache@v2
-
       - uses: ./.github/actions/install-clang
 
       - name: Build
@@ -96,9 +90,6 @@ jobs:
       - name: Set up toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Set up cache
-        uses: Swatinem/rust-cache@v2
-
       - name: Build
         shell: pwsh
         run: cargo build --release --target x86_64-pc-windows-msvc
@@ -126,9 +117,6 @@ jobs:
 
       - name: Set up toolchain
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Set up cache
-        uses: Swatinem/rust-cache@v2
 
       - name: Build
         shell: pwsh
