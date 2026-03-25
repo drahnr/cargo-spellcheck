@@ -8,11 +8,8 @@ runs:
       shell: bash
       run: apk add clang oniguruma-dev
 
-    - name: Ensure rust-onig builds, and does so statically
+    - name: Force rust-onig static linking
       shell: bash
       run: |
-        # rust-onig does not build against anything newer.
-        # echo "CFLAGS=-std=gnu17" >> "${GITHUB_ENV}"
-
         # ensure we statically link against libonig
         echo "RUSTONIG_STATIC_LIBONIG=1" >> "${GITHUB_ENV}"
