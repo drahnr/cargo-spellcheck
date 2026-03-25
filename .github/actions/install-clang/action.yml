@@ -12,7 +12,7 @@ runs:
       shell: bash
       run: |
         # rust-onig does not build against anything newer.
-        echo "CFLAGS=-std=gnu17" >> "${GITHUB_ENV}"
+        # echo "CFLAGS=-std=gnu17" >> "${GITHUB_ENV}"
 
         # ensure we statically link against libonig
         echo "RUSTONIG_STATIC_LIBONIG=1" >> "${GITHUB_ENV}"
