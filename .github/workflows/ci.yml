@@ -60,6 +60,16 @@ jobs:
         shell: bash
         run: cargo build --release
 
+      - name: Verify no libonig dependency
+        shell: bash
+        run: |
+          dynamic=$(readelf --dynamic target/release/cargo-spellcheck)
+          echo "${dynamic}"
+          if echo "${dynamic}" | grep -q libonig; then
+            echo "ERROR: binary has a runtime dependency on libonig"
+            exit 1
+          fi
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -89,6 +99,16 @@ jobs:
       - name: Build
         shell: bash
         run: cargo build --release
+
+      - name: Verify no libonig dependency
+        shell: bash
+        run: |
+          dynamic=$(readelf --dynamic target/release/cargo-spellcheck)
+          echo "${dynamic}"
+          if echo "${dynamic}" | grep -q libonig; then
+            echo "ERROR: binary has a runtime dependency on libonig"
+            exit 1
+          fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
