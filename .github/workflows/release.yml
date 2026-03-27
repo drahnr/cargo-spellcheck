@@ -103,7 +103,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: windows-x86_64-msvc-binary
+          name: windows-x86_64-binary
           path: cargo-spellcheck-*-x86_64-pc-windows-msvc.exe
 
   build-windows-aarch64:
@@ -167,11 +167,6 @@ jobs:
       - name: Download artifact
         uses: actions/download-artifact@v4
         with:
-          name: windows-x86_64-msvc-binary
-
-      - name: Download artifact
-        uses: actions/download-artifact@v4
-        with:
           name: windows-aarch64-binary
 
       - name: Create release
@@ -181,6 +176,5 @@ jobs:
           files: |
             cargo-spellcheck-*-x86_64-unknown-linux-gnu
             cargo-spellcheck-*-aarch64-unknown-linux-gnu
-            cargo-spellcheck-*-x86_64-pc-windows-gnu.exe
             cargo-spellcheck-*-x86_64-pc-windows-msvc.exe
             cargo-spellcheck-*-aarch64-pc-windows-msvc.exe
