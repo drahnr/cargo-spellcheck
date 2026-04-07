@@ -18,6 +18,9 @@ jobs:
   fmt:
     name: Format check
     runs-on: ubuntu-latest
+    container:
+      image: cgr.dev/chainguard/rust:latest-dev
+      options: --user root
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,6 +39,9 @@ jobs:
   build:
     name: Build (Linux x86_64, GNU)
     runs-on: ubuntu-latest
+    container:
+      image: cgr.dev/chainguard/rust:latest-dev
+      options: --user root
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -45,14 +51,21 @@ jobs:
       - name: Set up toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Set up cache
-        uses: Swatinem/rust-cache@v2
-
       - uses: ./.github/actions/install-clang
 
       - name: Build
         shell: bash
         run: cargo build --release
+
+      - name: Verify no libonig dependency
+        shell: bash
+        run: |
+          dynamic=$(readelf --dynamic target/release/cargo-spellcheck)
+          echo "${dynamic}"
+          if echo "${dynamic}" | grep -q libonig; then
+            echo "ERROR: binary has a runtime dependency on libonig"
+            exit 1
+          fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -63,6 +76,9 @@ jobs:
   build-aarch64-linux:
     name: Build (Linux aarch64, GNU)
     runs-on: ubuntu-24.04-arm
+    container:
+      image: cgr.dev/chainguard/rust:latest-dev
+      options: --user root
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -72,14 +88,21 @@ jobs:
       - name: Set up toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Set up cache
-        uses: Swatinem/rust-cache@v2
-
       - uses: ./.github/actions/install-clang
 
       - name: Build
         shell: bash
         run: cargo build --release
+
+      - name: Verify no libonig dependency
+        shell: bash
+        run: |
+          dynamic=$(readelf --dynamic target/release/cargo-spellcheck)
+          echo "${dynamic}"
+          if echo "${dynamic}" | grep -q libonig; then
+            echo "ERROR: binary has a runtime dependency on libonig"
+            exit 1
+          fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -90,6 +113,9 @@ jobs:
   test:
     name: Unit tests
     runs-on: ubuntu-latest
+    container:
+      image: cgr.dev/chainguard/rust:latest-dev
+      options: --user root
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -99,10 +125,11 @@ jobs:
       - name: Set up toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Set up cache
-        uses: Swatinem/rust-cache@v2
-
       - uses: ./.github/actions/install-clang
+
+      - name: Install english dictionary
+        shell: bash
+        run: apk add hunspell-dictionary-en
 
       - name: Run tests
         shell: bash
@@ -120,9 +147,6 @@ jobs:
       - name: Set up toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Set up cache
-        uses: Swatinem/rust-cache@v2
-
       - name: Build
         shell: pwsh
         run: cargo build --target aarch64-pc-windows-msvc
@@ -139,9 +163,6 @@ jobs:
       - name: Set up toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Set up cache
-        uses: Swatinem/rust-cache@v2
-
       - name: Build
         shell: pwsh
         run: cargo build --target x86_64-pc-windows-msvc
@@ -150,11 +171,18 @@ jobs:
     name: Validate spellcheck
     needs: build
     runs-on: ubuntu-latest
+    container:
+      image: cgr.dev/chainguard/rust:latest-dev
+      options: --user root
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           show-progress: false
+
+      - name: Install oniguruma
+        shell: bash
+        run: apk add oniguruma-dev
 
       - name: Download artifact
         uses: actions/download-artifact@v4
@@ -185,11 +213,18 @@ jobs:
     name: Validate reflow
     needs: build
     runs-on: ubuntu-latest
+    container:
+      image: cgr.dev/chainguard/rust:latest-dev
+      options: --user root
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           show-progress: false
+
+      - name: Install oniguruma
+        shell: bash
+        run: apk add oniguruma-dev
 
       - name: Download artifact
         uses: actions/download-artifact@v4

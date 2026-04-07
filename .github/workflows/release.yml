@@ -13,6 +13,9 @@ jobs:
   build-linux-x86_64:
     name: Build Linux binary (x86_64, GNU)
     runs-on: ubuntu-latest
+    container:
+      image: cgr.dev/chainguard/rust:latest-dev
+      options: --user root
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -23,9 +26,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-unknown-linux-gnu
-
-      - name: Set up cache
-        uses: Swatinem/rust-cache@v2
 
       - uses: ./.github/actions/install-clang
 
@@ -48,6 +48,9 @@ jobs:
   build-linux-aarch64:
     name: Build Linux binary (aarch64, GNU)
     runs-on: ubuntu-24.04-arm
+    container:
+      image: cgr.dev/chainguard/rust:latest-dev
+      options: --user root
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -56,9 +59,6 @@ jobs:
 
       - name: Set up toolchain
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Set up cache
-        uses: Swatinem/rust-cache@v2
 
       - uses: ./.github/actions/install-clang
 
@@ -90,9 +90,6 @@ jobs:
       - name: Set up toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Set up cache
-        uses: Swatinem/rust-cache@v2
-
       - name: Build
         shell: pwsh
         run: cargo build --release --target x86_64-pc-windows-msvc
@@ -106,7 +103,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: windows-x86_64-msvc-binary
+          name: windows-x86_64-binary
           path: cargo-spellcheck-*-x86_64-pc-windows-msvc.exe
 
   build-windows-aarch64:
@@ -120,9 +117,6 @@ jobs:
 
       - name: Set up toolchain
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Set up cache
-        uses: Swatinem/rust-cache@v2
 
       - name: Build
         shell: pwsh
@@ -149,6 +143,9 @@ jobs:
       - build-windows-aarch64
 
     runs-on: ubuntu-latest
+    container:
+      image: cgr.dev/chainguard/rust:latest-dev
+      options: --user root
     permissions:
       contents: write
     steps:
@@ -170,11 +167,6 @@ jobs:
       - name: Download artifact
         uses: actions/download-artifact@v4
         with:
-          name: windows-x86_64-msvc-binary
-
-      - name: Download artifact
-        uses: actions/download-artifact@v4
-        with:
           name: windows-aarch64-binary
 
       - name: Create release
@@ -184,6 +176,5 @@ jobs:
           files: |
             cargo-spellcheck-*-x86_64-unknown-linux-gnu
             cargo-spellcheck-*-aarch64-unknown-linux-gnu
-            cargo-spellcheck-*-x86_64-pc-windows-gnu.exe
             cargo-spellcheck-*-x86_64-pc-windows-msvc.exe
             cargo-spellcheck-*-aarch64-pc-windows-msvc.exe
