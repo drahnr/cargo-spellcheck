@@ -53,7 +53,7 @@ can be resolved by using
 
 with additional ticks.
 
-This is a general pattern for _types_ that make an appearence in the doc comments.
+This is a general pattern for _types_ that make an appearance in the doc comments.
 
 ### Patterns
 
