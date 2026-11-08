@@ -56,7 +56,8 @@ for you. This can be done by appending these lines to `.pre-commit-config.yaml` 
 ```yaml
 - repo: https://github.com/drahnr/cargo-spellcheck.git
   rev: master
-  - id: cargo-spellcheck
+  hooks:
+    - id: cargo-spellcheck
 
 ```
 
