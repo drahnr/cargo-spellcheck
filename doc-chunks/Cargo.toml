@@ -11,6 +11,9 @@ keywords = ["documentation", "chunks", "cluster"]
 description = "Clusters of doc comments and dev comments as coherent view."
 readme = "README.md"
 
+[lints]
+workspace = true
+
 [dependencies]
 console = "0.15"
 fs-err = "2"

@@ -26,6 +26,13 @@ include = [
 [workspace]
 members = ["./doc-chunks"]
 
+[workspace.lints.clippy]
+bool_assert_comparison = "allow"
+len_zero = "allow"
+
+[lints]
+workspace = true
+
 
 [build-dependencies]
 nlprule-build = { version = "=0.6.4", optional = true }
