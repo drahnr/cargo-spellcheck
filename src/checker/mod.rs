@@ -41,6 +41,16 @@ mod dictaffix;
 #[cfg(any(feature = "spellbook", feature = "zet", feature = "hunspell"))]
 mod quirks;
 
+#[cfg(any(feature = "spellbook", feature = "zet", feature = "hunspell"))]
+struct SuggestionContext<'a, 's> {
+    plain: &'a crate::documentation::PlainOverlay<'s>,
+    chunk: &'s CheckableChunk,
+    origin: &'a ContentOrigin,
+    allow_concatenated: bool,
+    allow_dashed: bool,
+    allow_emojis: bool,
+}
+
 /// Implementation for a checker
 pub trait Checker {
     type Config;

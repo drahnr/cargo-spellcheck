@@ -341,7 +341,7 @@ mod tests {
 
         // note that this may only be single lines, since `///` implies separate literals
         // and as such multiple spans
-        const FRAGMENT_STR: &[&'static str] = &["you!!", "Game-Over"];
+        const FRAGMENT_STR: &[&str] = &["you!!", "Game-Over"];
 
         for (input, expected, fragment) in itertools::cons_tuples(
             INPUTS
@@ -419,7 +419,7 @@ mod tests {
 
         const EXPECTED_RANGE: &[Range] = &[0..(26 + 1 + 0 + 1 + 10 + 1), 3..8, 28..33];
 
-        const FRAGMENT_STR: &[&'static str] = &[
+        const FRAGMENT_STR: &[&str] = &[
             r#"Xy fff?? Not.., you again!
 
 AlphaOmega

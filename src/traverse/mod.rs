@@ -105,29 +105,29 @@ fn extract_modules_recurse<P: AsRef<Path>>(
     #[derive(Debug, Clone)]
     #[allow(clippy::enum_variant_names)]
     enum SeekingFor {
-        ModulKeyword,
-        ModulName,
-        ModulFin(String),
+        Keyword,
+        Name,
+        End(String),
     }
 
-    let mut state = SeekingFor::ModulKeyword;
+    let mut state = SeekingFor::Keyword;
     for tt in stream {
         match tt {
             TokenTree::Ident(ident) => match state {
-                SeekingFor::ModulKeyword => {
+                SeekingFor::Keyword => {
                     if ident == "mod" {
-                        state = SeekingFor::ModulName;
+                        state = SeekingFor::Name;
                     }
                 }
-                SeekingFor::ModulName => {
-                    state = SeekingFor::ModulFin(ident.to_string());
+                SeekingFor::Name => {
+                    state = SeekingFor::End(ident.to_string());
                 }
                 _x => {
-                    state = SeekingFor::ModulKeyword;
+                    state = SeekingFor::Keyword;
                 }
             },
             TokenTree::Punct(punct) => {
-                if let SeekingFor::ModulFin(ref mod_name) = state {
+                if let SeekingFor::End(ref mod_name) = state {
                     log::trace!("✨ Found a module: {mod_name}");
                     if punct.as_char() == ';' && punct.spacing() == Spacing::Alone {
                         extract_modules_recurse_collect(path, &mut acc, mod_name)?;
@@ -135,14 +135,14 @@ fn extract_modules_recurse<P: AsRef<Path>>(
                         log::trace!("🍂 Either not alone or not a semi colon {punct:?} - incomplete mod {mod_name}");
                     }
                 }
-                state = SeekingFor::ModulKeyword;
+                state = SeekingFor::Keyword;
             }
             TokenTree::Group(grp) => {
-                state = SeekingFor::ModulKeyword;
-                acc.extend(extract_modules_recurse(path, grp.stream())?.into_iter());
+                state = SeekingFor::Keyword;
+                acc.extend(extract_modules_recurse(path, grp.stream())?);
             }
             _y => {
-                state = SeekingFor::ModulKeyword;
+                state = SeekingFor::Keyword;
             }
         };
     }
@@ -392,7 +392,7 @@ fn handle_manifest<P: AsRef<Path>>(
                         })
                     {
                         if let Ok(member) = extract_products(&member_manifest, &member_dir) {
-                            acc.extend(member.into_iter());
+                            acc.extend(member);
                         } else {
                             bail!(
                                 "Workspace member {} product extraction failed",
@@ -569,13 +569,13 @@ pub(crate) fn extract(
                     let content = fs::read_to_string(&path)
                         .wrap_err_with(|| eyre!("Common mark / markdown file does not exist"))?;
                     if content.is_empty() {
-                        bail!("Common mark / markdown file is empty")
+                        bail!("Common mark / markdown file is empty");
                     }
                     docs.add_commonmark(ContentOrigin::CommonMarkFile(path), content.as_str())?;
                 }
                 CheckEntity::ManifestDescription(path, content) => {
                     if content.is_empty() {
-                        bail!("Cargo.toml manifest description field is empty")
+                        bail!("Cargo.toml manifest description field is empty");
                     }
                     docs.add_cargo_manifest_description(path, content.as_str())?;
                 }

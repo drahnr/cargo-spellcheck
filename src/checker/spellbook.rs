@@ -4,11 +4,11 @@
 //! the individual tokens against the dictionary using the defined affixes. Can
 //! handle multiple dictionaries.
 
-use super::{apply_tokenizer, Checker, Detector, Suggestion};
+use super::{apply_tokenizer, Checker, Detector, Suggestion, SuggestionContext};
 
 use crate::checker::dictaffix::DicAff;
 use crate::config::WrappedRegex;
-use crate::documentation::{CheckableChunk, ContentOrigin, PlainOverlay};
+use crate::documentation::{CheckableChunk, ContentOrigin};
 use crate::util::sub_chars;
 use crate::Range;
 
@@ -132,6 +132,14 @@ impl Checker for SpellbookChecker {
             });
             log::trace!("{plain:?}");
             let txt = plain.as_str();
+            let context = SuggestionContext {
+                plain: &plain,
+                chunk,
+                origin,
+                allow_concatenated: self.allow_concatenated,
+                allow_dashed: self.allow_dashed,
+                allow_emojis: self.allow_emojis,
+            };
 
             'tokenization: for range in apply_tokenizer(&self.1, txt) {
                 let word = sub_chars(txt, range.clone());
@@ -145,47 +153,26 @@ impl Checker for SpellbookChecker {
                     continue 'tokenization;
                 }
                 if self.transform_regex.is_empty() {
-                    obtain_suggestions(
-                        &plain,
-                        chunk,
-                        &self.spellbook,
-                        origin,
-                        word,
-                        range,
-                        self.allow_concatenated,
-                        self.allow_dashed,
-                        self.allow_emojis,
-                        &mut acc,
-                    )
+                    obtain_suggestions(&context, &self.spellbook, word, range, &mut acc)
                 } else {
                     match transform(&self.transform_regex[..], word.as_str(), range.clone()) {
                         Transformed::Fragments(word_fragments) => {
                             for (range, word_fragment) in word_fragments {
                                 obtain_suggestions(
-                                    &plain,
-                                    chunk,
+                                    &context,
                                     &self.spellbook,
-                                    origin,
                                     word_fragment.to_owned(),
                                     range,
-                                    self.allow_concatenated,
-                                    self.allow_dashed,
-                                    self.allow_emojis,
                                     &mut acc,
                                 );
                             }
                         }
                         Transformed::Atomic((range, word)) => {
                             obtain_suggestions(
-                                &plain,
-                                chunk,
+                                &context,
                                 &self.spellbook,
-                                origin,
                                 word.to_owned(),
                                 range,
-                                self.allow_concatenated,
-                                self.allow_dashed,
-                                self.allow_emojis,
                                 &mut acc,
                             );
                         }
@@ -200,17 +187,20 @@ impl Checker for SpellbookChecker {
 
 #[allow(clippy::too_many_arguments)]
 fn obtain_suggestions<'s>(
-    plain: &PlainOverlay,
-    chunk: &'s CheckableChunk,
+    context: &SuggestionContext<'_, 's>,
     dictionary: &::spellbook::Dictionary,
-    origin: &ContentOrigin,
     word: String,
     range: Range,
-    allow_concatenated: bool,
-    allow_dashed: bool,
-    allow_emojis: bool,
     acc: &mut Vec<Suggestion<'s>>,
 ) {
+    let SuggestionContext {
+        plain,
+        chunk,
+        origin,
+        allow_concatenated,
+        allow_dashed,
+        allow_emojis,
+    } = *context;
     log::trace!("Checking {word} in {range:?}..");
 
     match dictionary.check(&word) {

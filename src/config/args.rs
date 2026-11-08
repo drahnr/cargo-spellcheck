@@ -366,7 +366,7 @@ impl Args {
                 1_usize + cfg!(feature = "nlprules") as usize + cfg!(feature = "hunspell") as usize;
 
             if checkers.iter().unique().count() == EXPECTED_COUNT {
-                bail!("Argument override for checkers disabled all checkers")
+                bail!("Argument override for checkers disabled all checkers");
             }
         }
         Ok(())
@@ -526,7 +526,9 @@ impl Args {
                         overwrite,
                         path: Config::default_path()?,
                     },
-                    _ => bail!("Neither --user or --stdout are given, invalid flags passed."),
+                    _ => {
+                        bail!("Neither --user or --stdout are given, invalid flags passed.");
+                    }
                 };
                 UnifiedArgs::Config {
                     dest_config,
@@ -731,7 +733,7 @@ mod tests {
     use assert_matches::assert_matches;
 
     fn commandline_to_iter(s: &'static str) -> impl Iterator<Item = String> {
-        s.split(' ').map(|s| s.to_owned()).into_iter()
+        s.split(' ').map(|s| s.to_owned())
     }
 
     lazy_static::lazy_static!(
@@ -797,7 +799,7 @@ mod tests {
     #[test]
     fn unify_ops_check() {
         let args = Args::parse(
-            &mut [
+            [
                 "cargo",
                 "spellcheck",
                 "-vvvvv",
@@ -836,7 +838,7 @@ mod tests {
     #[test]
     fn unify_config() {
         let args = Args::parse(
-            &mut [
+            [
                 "cargo-spellcheck",
                 "--cfg=.config/spellcheck.toml",
                 "config",

@@ -58,7 +58,7 @@ impl DicAff {
             let aff = search_dir.join(lang).with_extension("aff");
             if !aff.is_file() {
                 log::debug!(
-                    target: "affdic", 
+                    target: "affdic",
                     "Affixes path dervied from search dir is not a file {}",
                     aff.display()
                 );
@@ -148,7 +148,7 @@ pub(crate) fn is_valid_hunspell_dic(reader: impl BufRead) -> Result<()> {
     for (lineno, line) in iter.take(10) {
         // All lines after must be format x.
         if let Ok(num) = line?.parse::<i64>() {
-            bail!("Line {lineno} of extra dictionary must not be a number, but is: >{num}<",)
+            bail!("Line {lineno} of extra dictionary must not be a number, but is: >{num}<",);
         };
     }
     Ok(())

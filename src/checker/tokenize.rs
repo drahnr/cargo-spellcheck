@@ -352,7 +352,7 @@ mod tests {
         let ranges = apply_tokenizer(&tok, r#"foo"#);
 
         ranges
-            .zip([0_usize..3].iter().cloned())
+            .zip(std::iter::once(0_usize..3))
             .for_each(|(is, expect)| {
                 assert_eq!(is, expect);
             });

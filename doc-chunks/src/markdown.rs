@@ -294,7 +294,9 @@ impl<'a> PlainOverlay<'a> {
                     }
                 }
                 Event::Text(s) => {
-                    if html_block > 0 || html_code_block > 0 {
+                    #[allow(clippy::if_same_then_else)]
+                    if html_block > 0 {
+                    } else if html_code_block > 0 {
                     } else if code_block > 0 {
                         if inception {
                             // let offset = char_range.start;

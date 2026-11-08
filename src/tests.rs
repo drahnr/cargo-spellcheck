@@ -57,7 +57,7 @@ fn parse_and_construct() {
 
     let z: indexmap::IndexMap<Range, Span> = plain.find_spans(expected_plain_range);
     // FIXME the expected result would be
-    let (_range, _span) = z.first().unwrap().clone();
+    let (_range, _span) = z.first().unwrap();
 
     let chunk = &chunks[0];
     log::trace!("full: {}", chunk.display(expected_raw_range.clone()));
@@ -74,9 +74,9 @@ macro_rules! end2end {
     ($test:expr, $n:expr) => {{
         end2end!(
             $test,
-            crate::ContentOrigin::TestEntityRust,
+            $crate::ContentOrigin::TestEntityRust,
             $n,
-            crate::tests::e2e::DummyChecker
+            $crate::tests::e2e::DummyChecker
         );
     }};
 
@@ -91,9 +91,9 @@ macro_rules! end2end {
             .filter_level(::log::LevelFilter::Trace)
             .try_init();
 
-        let origin: crate::ContentOrigin = $origin;
+        let origin: $crate::ContentOrigin = $origin;
         let docs =
-            crate::documentation::Documentation::load_from_str(origin.clone(), $test, true, true);
+            $crate::documentation::Documentation::load_from_str(origin.clone(), $test, true, true);
         assert_eq!(docs.len(), 1);
         let chunks = docs.get(&origin).expect("Must contain dummy path");
         assert_eq!(dbg!(chunks).len(), 1);
@@ -772,7 +772,7 @@ fn find_spans_multiline() {
             },
         },
     ];
-    const EXPECTED_STR: &[&'static str] = &[
+    const EXPECTED_STR: &[&str] = &[
         "xyz",
         "third",
         "Converts a span to a range, where `self` is converted to a range reltive to the",
@@ -810,7 +810,7 @@ fn find_spans_chyrp() {
     let set = gen_literal_set(SOURCE);
     let chunk = dbg!(CheckableChunk::from_literalset(set));
 
-    const CHUNK_RANGES: &[Range] = &[0..(5 + 1 + 16 + 1 + 8)];
+    const CHUNK_RANGES: &[Range] = std::slice::from_ref(&(0..(5 + 1 + 16 + 1 + 8)));
     const EXPECTED_SPANS: &[Span] = &[Span {
         start: LineColumn {
             line: 1,
@@ -826,7 +826,7 @@ fn find_spans_chyrp() {
         dbg!(&CHUNK_RANGES[0])
     );
 
-    const EXPECTED_STR: &[&'static str] = &[r#"Amsel
+    const EXPECTED_STR: &[&str] = &[r#"Amsel
 Wacholderdrossel
 Buchfink"#];
 
@@ -931,10 +931,10 @@ fn find_spans_and_coverage_integrity() -> Result<()> {
     for (coverage_span, (find_range, find_span), expected) in
         itertools::cons_tuples(coverage.zip(mapping.iter()).zip(EXPECTED_SPANS))
     {
-        let cs = load_span_from(SOURCE.as_bytes(), coverage_span.clone())?;
-        let fs = load_span_from(SOURCE.as_bytes(), find_span.clone())?;
+        let cs = load_span_from(SOURCE.as_bytes(), *coverage_span)?;
+        let fs = load_span_from(SOURCE.as_bytes(), *find_span)?;
         let fr = sub_char_range(chunk.as_str(), find_range.clone());
-        let x = load_span_from(SOURCE.as_bytes(), expected.clone())?;
+        let x = load_span_from(SOURCE.as_bytes(), *expected)?;
         log::trace!("[find]chunk[range]: {fr:?}");
         log::trace!("[find]excerpt(true): {fs:?}");
         log::trace!("[cove]excerpt(true): {cs:?}");
@@ -1217,7 +1217,7 @@ fn cmark_reduction_test(input: &'static str, expected: &'static str, expected_ma
         match markdown_range {
             SourceRange::Direct(cmark_range) => assert_eq!(
                 dbg!(sub_chars(&plain, reduced_range.clone())),
-                dbg!(sub_chars(&input, cmark_range))
+                dbg!(sub_chars(input, cmark_range))
             ),
             SourceRange::Alias(_cmark_range, _alias) => {}
         }
@@ -1561,18 +1561,18 @@ struct Two;
                     column: 0_usize + 10 - GAENSEFUESSCHEN,
                 },
                 end: LineColumn {
-                    line: 2__usize,
-                    column: 6__usize + 10 + GAENSEFUESSCHEN,
+                    line: 2_usize,
+                    column: 6_usize + 10 + GAENSEFUESSCHEN,
                 },
             },
             trimmed_span: Span {
                 start: LineColumn {
-                    line: 2__usize,
-                    column: 0__usize + 9,
+                    line: 2_usize,
+                    column: 0_usize + 9,
                 },
                 end: LineColumn {
-                    line: 2__usize,
-                    column: 6__usize + 9,
+                    line: 2_usize,
+                    column: 6_usize + 9,
                 },
             },
             variant: CommentVariant::MacroDocEqStr("#[doc = ".to_string(), 0),
@@ -1588,21 +1588,21 @@ struct Three;
             extracted_span: Span {
                 start: LineColumn {
                     line: 2_usize,
-                    column: 4__usize + 11,
+                    column: 4_usize + 11,
                 },
                 end: LineColumn {
-                    line: 2__usize,
-                    column: 13__usize + 11,
+                    line: 2_usize,
+                    column: 13_usize + 11,
                 },
             },
             trimmed_span: Span {
                 start: LineColumn {
-                    line: 2__usize,
-                    column: 0__usize + 13,
+                    line: 2_usize,
+                    column: 0_usize + 13,
                 },
                 end: LineColumn {
-                    line: 2__usize,
-                    column: 13__usize + 8,
+                    line: 2_usize,
+                    column: 13_usize + 8,
                 },
             },
             variant: CommentVariant::MacroDocEqStr("#[doc=".to_string(), 2),
@@ -1629,22 +1629,22 @@ lines
 "#,
             extracted_span: Span {
                 start: LineColumn {
-                    line: 2__usize,
-                    column: 12__usize - 4,
+                    line: 2_usize,
+                    column: 12_usize - 4,
                 },
                 end: LineColumn {
-                    line: 6__usize,
-                    column: 0__usize + 3,
+                    line: 6_usize,
+                    column: 0_usize + 3,
                 },
             },
             trimmed_span: Span {
                 start: LineColumn {
-                    line: 2__usize,
-                    column: 12__usize,
+                    line: 2_usize,
+                    column: 12_usize,
                 },
                 end: LineColumn {
-                    line: 6__usize,
-                    column: 0__usize,
+                    line: 6_usize,
+                    column: 0_usize,
                 },
             },
             variant: CommentVariant::MacroDocEqStr("#[doc = ".to_string(), 3),
@@ -1659,17 +1659,17 @@ struct Five;
             trimmed: r#"XYZ"#,
             extracted_span: Span {
                 start: LineColumn {
-                    line: 2__usize,
-                    column: 15__usize - GAENSEFUESSCHEN,
+                    line: 2_usize,
+                    column: 15_usize - GAENSEFUESSCHEN,
                 },
                 end: LineColumn {
-                    line: 2__usize,
-                    column: 15__usize + 2 + GAENSEFUESSCHEN,
+                    line: 2_usize,
+                    column: 15_usize + 2 + GAENSEFUESSCHEN,
                 },
             },
             trimmed_span: Span {
                 start: LineColumn {
-                    line: 2__usize,
+                    line: 2_usize,
                     column: 15_usize,
                 },
                 end: LineColumn {

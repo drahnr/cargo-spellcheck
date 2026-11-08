@@ -625,7 +625,7 @@ mod tests {
         let tokens = source_to_iter(source).collect::<Vec<_>>();
         assert!(tokens.len() > 0);
         let token = tokens.last().unwrap();
-        let literal_set = literal_set_from_block_comment(&token);
+        let literal_set = literal_set_from_block_comment(token);
         assert!(literal_set.is_ok());
         let literal_set = literal_set.unwrap();
         assert_eq!(literal_set.len(), 1);
@@ -657,7 +657,7 @@ mod tests {
         assert_eq!(literal_set.len(), 3);
         let literals = literal_set.literals();
         {
-            let literal = literals.get(0).unwrap();
+            let literal = literals.first().unwrap();
             assert_eq!(literal.pre(), TokenType::BlockComment.pre_in_chars());
             assert_eq!(literal.post(), "".chars().count());
             assert_eq!(literal.len_in_chars(), " block".chars().count());
@@ -733,7 +733,7 @@ mod tests {
             .map(|t| literal_from_line_comment(&t))
             .collect();
         {
-            let literal = literals.get(0).unwrap();
+            let literal = literals.first().unwrap();
             assert!(literal.is_ok());
             let literal = literal.as_ref().unwrap();
             assert_eq!(literal.pre(), TokenType::LineComment.pre_in_chars());
@@ -775,9 +775,9 @@ mod tests {
         let tokens = source_to_iter(&source);
         let literal_sets = construct_literal_sets(tokens);
         assert_eq!(literal_sets.len(), 1);
-        let literal_set = literal_sets.get(0).unwrap();
+        let literal_set = literal_sets.first().unwrap();
         let all_literals = literal_set.literals();
-        let literal = all_literals.get(0);
+        let literal = all_literals.first();
         assert!(literal.is_some());
         let literal = literal.unwrap();
         assert!(literal.as_str().contains(content));
@@ -791,11 +791,11 @@ mod tests {
         let tokens = source_to_iter(&source);
         let literal_sets = construct_literal_sets(tokens);
         assert_eq!(literal_sets.len(), 1);
-        let literal_set = literal_sets.get(0).unwrap();
+        let literal_set = literal_sets.first().unwrap();
         let all_literals = literal_set.literals();
         assert_eq!(all_literals.len(), 2);
         {
-            let literal = all_literals.get(0).unwrap();
+            let literal = all_literals.first().unwrap();
             assert!(literal.as_str().contains(content_1));
         }
         {
@@ -813,17 +813,17 @@ mod tests {
         let literal_sets = construct_literal_sets(tokens);
         assert_eq!(literal_sets.len(), 2);
         {
-            let literal_set = literal_sets.get(0).unwrap();
+            let literal_set = literal_sets.first().unwrap();
             let all_literals = literal_set.literals();
             assert_eq!(all_literals.len(), 1);
-            let literal = all_literals.get(0).unwrap();
+            let literal = all_literals.first().unwrap();
             assert!(literal.as_str().contains(content_1));
         }
         {
             let literal_set = literal_sets.get(1).unwrap();
             let all_literals = literal_set.literals();
             assert_eq!(all_literals.len(), 1);
-            let literal = all_literals.get(0).unwrap();
+            let literal = all_literals.first().unwrap();
             assert!(literal.as_str().contains(content_2));
         }
     }

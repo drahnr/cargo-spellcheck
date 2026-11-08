@@ -318,7 +318,7 @@ impl Action {
         if userpicked.total_count() > 0 {
             log::debug!("Writing changes back to disk");
             for (origin, bandaids) in userpicked.bandaids.into_iter() {
-                self.write_changes_to_disk(origin, bandaids.into_iter())?;
+                self.write_changes_to_disk(origin, bandaids)?;
             }
         } else {
             log::debug!("No band aids to apply");

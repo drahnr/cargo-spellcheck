@@ -191,7 +191,6 @@ mod tests {
 
         let found = TraverseModulesIter::new(manifest_path.as_path())
             .expect("Must succeed to traverse file tree.")
-            .into_iter()
             .collect::<Vec<PathBuf>>();
 
         let unexpected_files: Vec<_> = dbg!(&found)

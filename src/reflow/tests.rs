@@ -511,7 +511,7 @@ Some <pre>Hmtl tags</pre>.
 Some more text after the newline which **represents** a paragraph
 in two lines. In my opinion paraghraphs are always multiline. Fullstop.";
 
-    const EXPECTED: &[(&'static str, Span)] = &[
+    const EXPECTED: &[(&str, Span)] = &[
         (
             r#"A short line but long enough such that we reflow it. Yada
 lorem ipsum stuff needed."#,
@@ -554,7 +554,7 @@ multiline. Fullstop."#,
     assert_eq!(dbg!(chunks).len(), 1);
     let chunk = chunks.first().unwrap();
 
-    let suggestion_set = reflow(&ContentOrigin::TestEntityCommonMark, &chunk, &CONFIG)
+    let suggestion_set = reflow(&ContentOrigin::TestEntityCommonMark, chunk, &CONFIG)
         .expect("Reflow is working. qed");
     assert_eq!(suggestion_set.len(), 2);
 
@@ -575,7 +575,7 @@ multiline. Fullstop."#,
 
 #[test]
 fn reflow_line_delimiters() {
-    const TEST_DATA: &[(&'static str, &'static str)] = &[
+    const TEST_DATA: &[(&str, &str)] = &[
         ("Two lines\nhere", "\n"),
         ("Two lines\r\nhere", "\r\n"),
         ("\r\n\r\n", "\r\n"),
@@ -606,7 +606,7 @@ fn reflow_check_span() {
 struct Fff;
 ";
 
-    const EXPECTED_REPLACEMENT: &[&'static str] =
+    const EXPECTED_REPLACEMENT: &[&str] =
         &["A comment as we have\n/// many here and we will\n/// always have."];
 
     const EXPECTED_SPAN: Span = Span {
@@ -623,7 +623,7 @@ struct Fff;
     let chunk = chunks.first().unwrap();
 
     let suggestion_set =
-        reflow(&ContentOrigin::TestEntityRust, &chunk, &CONFIG).expect("Reflow is working. qed");
+        reflow(&ContentOrigin::TestEntityRust, chunk, &CONFIG).expect("Reflow is working. qed");
     assert_eq!(suggestion_set.len(), 1);
     let suggestion = suggestion_set
         .first()

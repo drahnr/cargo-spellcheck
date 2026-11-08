@@ -382,11 +382,8 @@ Schlupfwespe,
 Grünfink"#;
 
         const SPAN: Span = Span {
-            start: LineColumn {
-                line: 1,
-                column: 0 + 9,
-            }, // prefix is #[doc=r#"
-            end: LineColumn { line: 3, column: 7 }, // suffix is pointeless
+            start: LineColumn { line: 1, column: 9 }, // prefix is #[doc=r#"
+            end: LineColumn { line: 3, column: 7 },   // suffix is pointeless
         };
 
         assert_eq!(
@@ -405,10 +402,7 @@ Schlupfwespe,
 "#;
 
         const SPAN: Span = Span {
-            start: LineColumn {
-                line: 1,
-                column: 0 + 9,
-            }, // prefix is #[doc=r#"
+            start: LineColumn { line: 1, column: 9 }, // prefix is #[doc=r#"
             end: LineColumn {
                 line: 2,
                 column: 13,

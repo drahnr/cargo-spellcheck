@@ -666,7 +666,7 @@ impl<'s> SuggestionSet<'s> {
         self.per_file.len()
     }
 
-    /// Returns `true` if the set contains no items.
+    /// Returns `true` if the set contains no files.
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.per_file.is_empty()
@@ -719,7 +719,7 @@ impl<'s> IntoIterator for &'s SuggestionSet<'s> {
 mod tests {
     use super::*;
     use crate::{CommentVariant, LineColumn};
-    use console;
+
     use std::fmt;
 
     /// A test helper comparing the output against an expected output.

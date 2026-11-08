@@ -56,10 +56,7 @@ impl PartialEq<Lang5> for &str {
 
 impl PartialEq<Lang5> for String {
     fn eq(&self, other: &Lang5) -> bool {
-        use std::fmt::Write as _;
-        let mut s = String::with_capacity(5);
-        let _ = write!(s, "{other}");
-        *self == s
+        other.eq(self)
     }
 }
 
@@ -129,7 +126,7 @@ impl<'de> de::Visitor<'de> for Lang5Visitor {
             .map_err(serde::de::Error::custom)?;
         let c = s.chars().nth(2).unwrap();
         if c != '_' {
-            return Err(serde::de::Error::custom(Lang5SpacerError(c)))?;
+            Err(serde::de::Error::custom(Lang5SpacerError(c)))?;
         }
         let country = Country::from_str(&s[3..5]).map_err(serde::de::Error::custom)?;
         Ok(Lang5 { lang, country })
@@ -173,6 +170,8 @@ mod tests {
     }
 
     #[test]
+    // Exercise the comparison implementations for owned and borrowed operands.
+    #[allow(clippy::op_ref, clippy::cmp_owned)]
     fn cmp_variants() {
         assert!(EXPECTED == S);
         assert!(EXPECTED == &S);

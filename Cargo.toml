@@ -27,7 +27,16 @@ include = [
 members = ["./doc-chunks"]
 
 [workspace.lints.clippy]
+# asserting against a bool literal
+# is a lot easier to read compared
+# to the prefix !
 bool_assert_comparison = "allow"
+# for clarity, we sometimes do
+# add 0_usize and is not consdiered
+# a code smell in this context
+identity_op = "allow"
+# asserts with length checks with zero
+# are more expressive
 len_zero = "allow"
 
 [lints]

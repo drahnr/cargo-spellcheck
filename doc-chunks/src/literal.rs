@@ -511,6 +511,7 @@ impl TrimmedLiteral {
         self.len_in_bytes
     }
 
+    /// Whether the content is empty, excluding `pre` and `post`.
     pub fn is_empty(&self) -> bool {
         self.len_in_bytes == 0
     }
@@ -674,6 +675,19 @@ mod tests {
     use super::*;
     use crate::testcase::annotated_literals_raw;
     use assert_matches::assert_matches;
+
+    #[test]
+    fn trimmed_content_is_empty() {
+        for (content, pre, post, expected_empty) in [("/**/", 2, 2, true), ("/*🌡*/", 2, 2, false)]
+        {
+            let literal =
+                TrimmedLiteral::from(CommentVariant::SlashAsterisk, content, pre, post, 1, 0)
+                    .unwrap();
+            assert_eq!(literal.is_empty(), expected_empty);
+            assert_eq!(literal.is_empty(), literal.as_str().is_empty());
+            assert_eq!(literal.len(), literal.as_str().len());
+        }
+    }
 
     #[test]
     fn variant_detect() {

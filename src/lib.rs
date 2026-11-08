@@ -6,6 +6,8 @@
 #![allow(clippy::identity_op)]
 // in small cli projects, this is ok for now
 #![allow(clippy::wildcard_imports)]
+// Keep lint preferences compatible with Clippy versions that removed these lints.
+#![allow(renamed_and_removed_lints)]
 // personal strong preference for `from_iter`
 #![allow(clippy::from_iter_instead_of_collect)]
 #![allow(clippy::new_without_default)]

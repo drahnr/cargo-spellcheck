@@ -120,7 +120,7 @@ impl Clusters {
     /// ensure that the comments higher up in the source file appear first to
     /// the user
     fn ensure_sorted(&mut self) {
-        self.set.sort_by(|ls1, ls2| ls1.coverage.cmp(&ls2.coverage));
+        self.set.sort_by_key(|ls| ls.coverage);
     }
 
     /// Load clusters from a `&str`. Optionally loads developer comments as

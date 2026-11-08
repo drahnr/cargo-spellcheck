@@ -67,6 +67,7 @@ impl LiteralSet {
         self.literals.len()
     }
 
+    /// Whether this set contains no literals.
     pub fn is_empty(&self) -> bool {
         self.literals.is_empty()
     }
@@ -227,6 +228,20 @@ mod tests {
     use crate::util::sub_chars;
 
     #[test]
+    fn set_is_empty() {
+        let empty_set = LiteralSet::default();
+        assert!(empty_set.is_empty());
+        assert_eq!(empty_set.len(), 0);
+
+        let empty_literal =
+            TrimmedLiteral::from(CommentVariant::DoubleSlash, "//", 2, 0, 1, 0).unwrap();
+        assert!(empty_literal.is_empty());
+        let set = LiteralSet::from(empty_literal);
+        assert!(!set.is_empty());
+        assert_eq!(set.len(), 1);
+    }
+
+    #[test]
     fn fluff_one() {
         const RAW: &str = fluff_up!(["a"]);
         const EXPECT: &str = r#"/// a
@@ -362,11 +377,11 @@ struct Vikings;
         let it = literal_set.literals();
 
         for (range, span, s) in itertools::cons_tuples(chunk.iter().zip(it)) {
-            if range.len() == 0 {
+            if range.is_empty() {
                 continue;
             }
             assert_eq!(
-                load_span_from(RAW.as_bytes(), span.clone()).expect("Span extraction must work"),
+                load_span_from(RAW.as_bytes(), *span).expect("Span extraction must work"),
                 sub_chars(chunk.as_str(), range.clone())
             );
 
