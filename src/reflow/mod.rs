@@ -130,7 +130,7 @@ fn reflow_inner<'s>(
 
     // construct replacement string from prefix and Gluon iterations
     let content = gluon.fold(acc, |mut acc, (_lineno, content, _range)| {
-        if lines.next() == Some(&content) {
+        if lines.next() != Some(&content) {
             reflow_applied = true;
         }
 

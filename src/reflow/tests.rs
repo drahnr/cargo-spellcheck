@@ -261,6 +261,22 @@ fn reflow_shorter_than_limit() {
 }
 
 #[test]
+fn reflow_unchanged_first_line() {
+    // Regression for #363: only the later lines change when reflowing this paragraph.
+    const CONTENT: &str = r#"/// The first line of this paragraph is already filled up to the line width so
+/// the second line is far too long and should be wrapped by the reflow command, but it is not.
+pub fn a() {}
+"#;
+
+    reflow_content!(80 break ContentOrigin::TestEntityRust, CONTENT => applied
+        r#"/// The first line of this paragraph is already filled up to the line width so
+/// the second line is far too long and should be wrapped by the reflow command,
+/// but it is not.
+pub fn a() {}
+"#);
+}
+
+#[test]
 fn reflow_multiple_lines() {
     reflow_fluff!(43 break ["This module contains documentation that is broken",
                         "into multiple short lines resulting in multiple spans."] =>

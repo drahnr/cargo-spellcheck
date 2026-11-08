@@ -105,8 +105,7 @@ Generally the preferred way of doing so, is to comment in an issue that you
 would like to tackle the implementation/fix.
 
 This is usually followed by an initial PR where the implementation is then
-discussed and iteratively refined. No need to get it all correct
-the first time!
+discussed and iteratively refined. No need to get it all correct the first time!
 
 ## Documentation
 
