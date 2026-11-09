@@ -1,9 +1,14 @@
+#[cfg(all(not(feature = "hunspell"), not(feature = "nlprules")))]
+compile_error!("Well, cargo-spellcheck needs either `nlprules` or `hunspell` feature enabled.");
+
 use std::env;
+#[cfg(feature = "nlprules")]
 use std::io::BufReader;
 use std::path::PathBuf;
+#[cfg(feature = "nlprules")]
 use xz2::bufread::{XzDecoder, XzEncoder};
 
-fn main() -> std::result::Result<(), Box<(dyn std::error::Error + 'static)>> {
+fn main() -> std::result::Result<(), Box<dyn std::error::Error + 'static>> {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=Cargo.toml");
 
@@ -34,7 +39,7 @@ fn main() -> std::result::Result<(), Box<(dyn std::error::Error + 'static)>> {
                     std::io::copy(&mut encoder, &mut sink)?;
                     Ok(())
                 },
-                |mut path: PathBuf| -> Result<PathBuf, Box<(dyn std::error::Error + Send + Sync + 'static)>> {
+                |mut path: PathBuf| -> Result<PathBuf, Box<dyn std::error::Error + Send + Sync + 'static>> {
                     let mut ext = path.extension().map(|s| {
                         s.to_os_string()
                             .into_string()

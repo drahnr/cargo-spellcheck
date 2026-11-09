@@ -25,6 +25,10 @@ use crate::{Range, Span};
 pub enum Detector {
     /// Hunspell lib based detector.
     Hunspell,
+    /// ZSpell, compatible with hunspell dictionaries and affix files.
+    ZSpell,
+    /// Spellbook
+    Spellbook,
     /// Language server rules based on NLP detector.
     NlpRules,
     /// Reflow according to a given max column.
@@ -39,6 +43,8 @@ impl Detector {
     pub const fn as_str(&self) -> &'static str {
         match self {
             Self::Hunspell => "Hunspell",
+            Self::ZSpell => "ZSpell",
+            Self::Spellbook => "Spellbook",
             Self::NlpRules => "NlpRules",
             Self::Reflow => "Reflow",
             #[cfg(test)]
@@ -61,10 +67,7 @@ pub fn get_terminal_size() -> usize {
 
             static WARN_ONCE: Once = Once::new();
             WARN_ONCE.call_once(|| {
-                log::warn!(
-                    "Unable to get terminal size. Using default: {}",
-                    DEFAULT_TERMINAL_SIZE
-                );
+                log::warn!("Unable to get terminal size. Using default: {DEFAULT_TERMINAL_SIZE}");
             });
 
             DEFAULT_TERMINAL_SIZE
@@ -174,7 +177,7 @@ pub fn condition_display_content(
             .take(TAIL_DISPLAY_LEN)
             .collect::<String>();
 
-        let shortened = format!("{}...{}", head_sub, tail_sub);
+        let shortened = format!("{head_sub}...{tail_sub}");
         // FIXME if characters width a width of ineq of 1
         // ISSUE: https://github.com/drahnr/cargo-spellcheck/issues/145
         let marker_size = head_sub_range.len() + CENTER_DOTS.len() + tail_sub_range.len();
@@ -315,6 +318,29 @@ pub struct Suggestion<'s> {
     pub description: Option<String>,
 }
 
+impl<'s> Suggestion<'s> {
+    /// Determine if there is overlap.
+    pub fn is_overlapped(&self, other: &Self) -> bool {
+        if self.origin != other.origin {
+            return false;
+        }
+
+        if self.span.end.line < other.span.start.line || other.span.end.line < self.span.start.line
+        {
+            return false;
+        }
+
+        if self.span.start.line < other.span.start.line
+            || (self.span.start.line == other.span.start.line
+                && self.span.start.column < other.span.start.column)
+        {
+            self.span.end.column > other.span.start.column
+        } else {
+            self.span.start.column < other.span.end.column
+        }
+    }
+}
+
 impl<'s> fmt::Display for Suggestion<'s> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         use console::Style;
@@ -331,7 +357,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
 
         error.apply_to("error").fmt(formatter)?;
         highlight
-            .apply_to(format!(": spellcheck({})", &self.detector))
+            .apply_to(format!(": spellcheck({})", self.detector))
             .fmt(formatter)?;
         formatter.write_str("\n")?;
 
@@ -410,7 +436,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
             marker_size,
         );
 
-        writeln!(formatter, " {}", formatted.as_str())?;
+        writeln!(formatter, " {formatted}")?;
 
         if marker_size > 0 {
             context_marker
@@ -447,8 +473,8 @@ impl<'s> fmt::Display for Suggestion<'s> {
             1 => format!(" - {}", fix.apply_to(&self.replacements[0])),
             2 => format!(
                 " - {} or {}",
-                fix.apply_to(&self.replacements[0]).to_string(),
-                fix.apply_to(&self.replacements[1]).to_string()
+                fix.apply_to(&self.replacements[0]),
+                fix.apply_to(&self.replacements[1])
             ),
             n if (n < 7) => {
                 let last = fix.apply_to(&self.replacements[n - 1]).to_string();
@@ -458,7 +484,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
                     .collect::<Vec<String>>()
                     .as_slice()
                     .join(", ");
-                format!(" - {}, or {}", joined, last)
+                format!(" - {joined}, or {last}")
             }
             _n => {
                 let joined = self.replacements[..=6]
@@ -469,8 +495,8 @@ impl<'s> fmt::Display for Suggestion<'s> {
                     .join(", ");
 
                 let remaining = self.replacements.len() - 6;
-                let remaining = fix.apply_to(format!("{}", remaining)).to_string();
-                format!(" - {}, or one of {} others", joined, remaining)
+                let remaining = fix.apply_to(format!("{remaining}")).to_string();
+                format!(" - {joined}, or one of {remaining} others")
             }
         };
 
@@ -487,7 +513,7 @@ impl<'s> fmt::Display for Suggestion<'s> {
         }
 
         if let Some(ref description) = self.description {
-            writeln!(formatter, "   {}", description)?;
+            writeln!(formatter, "   {description}")?;
         }
         Ok(())
     }
@@ -499,7 +525,7 @@ impl<'s> fmt::Debug for Suggestion<'s> {
             Ok(printable) => write!(
                 formatter,
                 "({}, {:?}, {:?})",
-                &printable,
+                printable,
                 printable.1,
                 self.replacements.as_slice()
             ),
@@ -521,8 +547,8 @@ impl<'s> Ord for Suggestion<'s> {
         if cmp != std::cmp::Ordering::Equal {
             return cmp;
         }
-        let cmp = self.span.end.cmp(&other.span.end);
-        return cmp;
+
+        self.span.end.cmp(&other.span.end)
     }
 }
 
@@ -579,14 +605,14 @@ impl<'s> SuggestionSet<'s> {
             .per_file
             .entry(origin)
             .or_insert_with(|| Vec::with_capacity(32));
-        v.extend(suggestions.into_iter());
+        v.extend(suggestions);
     }
 
     /// Obtain an accessor `Entry` for the given `origin`
     pub fn entry(
         &mut self,
         origin: ContentOrigin,
-    ) -> indexmap::map::Entry<ContentOrigin, Vec<Suggestion<'s>>> {
+    ) -> indexmap::map::Entry<'_, ContentOrigin, Vec<Suggestion<'s>>> {
         self.per_file.entry(origin)
     }
 
@@ -609,7 +635,7 @@ impl<'s> SuggestionSet<'s> {
     where
         'a: 's,
     {
-        if let Some(ref suggestions) = self.per_file.get(origin) {
+        if let Some(suggestions) = self.per_file.get(origin) {
             suggestions.iter()
         } else {
             panic!("origin must exist")
@@ -640,6 +666,12 @@ impl<'s> SuggestionSet<'s> {
         self.per_file.len()
     }
 
+    /// Returns `true` if the set contains no files.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.per_file.is_empty()
+    }
+
     /// Sorts the files in alphabetical order, then sorts the per-file
     /// suggestions based on start and end spans.
     pub fn sort(&mut self) {
@@ -651,8 +683,8 @@ impl<'s> SuggestionSet<'s> {
                     if cmp != std::cmp::Ordering::Equal {
                         return cmp;
                     }
-                    let cmp = a.span.end.cmp(&b.span.end);
-                    return cmp;
+
+                    a.span.end.cmp(&b.span.end)
                 });
             });
         self.per_file
@@ -687,7 +719,7 @@ impl<'s> IntoIterator for &'s SuggestionSet<'s> {
 mod tests {
     use super::*;
     use crate::{CommentVariant, LineColumn};
-    use console;
+
     use std::fmt;
 
     /// A test helper comparing the output against an expected output.
@@ -710,15 +742,15 @@ mod tests {
         let chunk = CheckableChunk::from_str(
             CONTENT,
             indexmap::indexmap! { 0..18 => Span {
-                    start: LineColumn {
-                        line: 1,
-                        column: 0,
-                    },
-                    end: LineColumn {
-                        line: 1,
-                        column: 17,
-                    }
+                start: LineColumn {
+                    line: 1,
+                    column: 0,
+                },
+                end: LineColumn {
+                    line: 1,
+                    column: 17,
                 }
+            }
             },
             CommentVariant::TripleSlash,
         );
@@ -761,15 +793,15 @@ mod tests {
         let chunk = CheckableChunk::from_str(
             CONTENT,
             indexmap::indexmap! { 0..18 => Span {
-                    start: LineColumn {
-                        line: 1,
-                        column: 0,
-                    },
-                    end: LineColumn {
-                        line: 1,
-                        column: 17,
-                    }
+                start: LineColumn {
+                    line: 1,
+                    column: 0,
+                },
+                end: LineColumn {
+                    line: 1,
+                    column: 17,
                 }
+            }
             },
             CommentVariant::TripleSlash,
         );
@@ -991,7 +1023,85 @@ mod tests {
 
         let suggestion = dbg!(suggestion);
 
-        log::info!("fmt debug=\n{:?}\n<", suggestion);
-        log::info!("fmt display=\n{}\n<", suggestion);
+        log::info!("fmt debug=\n{suggestion:?}\n<");
+        log::info!("fmt display=\n{suggestion}\n<");
+    }
+
+    #[test]
+    fn overlapped() {
+        let chunk = CheckableChunk::from_str(
+            r#"0
+2345
+7@n"#,
+            indexmap::indexmap! { 0..10 => Span {
+                start : LineColumn {
+                    line: 7usize,
+                    column: 8usize,
+                },
+                end : LineColumn {
+                    line: 9usize,
+                    column: 4usize,
+                }
+            } },
+            CommentVariant::TripleSlash,
+        );
+        let suggestion = Suggestion {
+            detector: Detector::Dummy,
+            origin: ContentOrigin::TestEntityRust,
+            chunk: &chunk,
+            span: Span {
+                start: LineColumn {
+                    line: 8usize,
+                    column: 1,
+                },
+                end: LineColumn {
+                    line: 8usize,
+                    column: 3,
+                },
+            },
+            range: 2..6,
+            replacements: vec!["whocares".to_owned()],
+            description: None,
+        };
+        let overlapped_smaller_suggestion = Suggestion {
+            detector: Detector::Dummy,
+            origin: ContentOrigin::TestEntityRust,
+            chunk: &chunk,
+            span: Span {
+                start: LineColumn {
+                    line: 8usize,
+                    column: 0,
+                },
+                end: LineColumn {
+                    line: 8usize,
+                    column: 2,
+                },
+            },
+            range: 2..6,
+            replacements: vec!["whocares".to_owned()],
+            description: None,
+        };
+
+        let overlapped_larger_suggestion = Suggestion {
+            detector: Detector::Dummy,
+            origin: ContentOrigin::TestEntityRust,
+            chunk: &chunk,
+            span: Span {
+                start: LineColumn {
+                    line: 8usize,
+                    column: 2,
+                },
+                end: LineColumn {
+                    line: 8usize,
+                    column: 3,
+                },
+            },
+            range: 2..6,
+            replacements: vec!["whocares".to_owned()],
+            description: None,
+        };
+
+        assert!(suggestion.is_overlapped(&overlapped_smaller_suggestion));
+        assert!(suggestion.is_overlapped(&overlapped_larger_suggestion));
     }
 }

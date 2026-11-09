@@ -102,7 +102,7 @@ impl<'s> Iterator for Tokeneer<'s> {
                 // are we within an unbreakable area
                 // iff so, just continue until we are out of the weeds
                 if unbreakable.contains(&char_idx) {
-                    // watchout for the transition, so we do not overshoot by one!
+                    // watch out for the transition, so we do not overshoot by one!
                     if unbreakable.contains(&(char_idx + 1)) {
                         continue 'outer;
                     } else {
@@ -207,7 +207,7 @@ impl<'s> Gluon<'s> {
                 char_range.end = std::cmp::max(range.end, char_range.end);
                 s
             })
-            .inspect(|x| log::trace!("Gluing together: {:?} with > <", x))
+            .inspect(|x| log::trace!("Gluing together: {x:?} with > <"))
             .join(" ");
         (self.line_counter, line_content, char_range)
     }
@@ -230,8 +230,8 @@ impl<'s> Iterator for Gluon<'s> {
                 // the next not yet crafted line
                 self.line_counter + 1,
             )
-            .map(|x| *x)
-            .unwrap_or_else(|| self.indentations.last().map(|x| *x).unwrap_or_default());
+            .copied()
+            .unwrap_or_else(|| self.indentations.last().copied().unwrap_or_default());
 
         while let Some((char_range, _byte_range, cow_str)) = self.inner.next() {
             // calculate the current characters that are already in that line
@@ -311,7 +311,7 @@ mod tests {
     ) {
         let indentations = indentations
             .into_iter()
-            .map(|n| Indentation::<'static>::new(n))
+            .map(Indentation::<'static>::new)
             .collect::<Vec<_>>();
         let expected = expected
             .lines()
@@ -336,36 +336,36 @@ mod tests {
         use super::*;
 
         fn verify(content: &'static str, expected: &[&'static str], unbreakables: Vec<Range>) {
-            let mut expected_iter = expected.into_iter();
+            let mut expected_iter = expected.iter();
             let tokeneer = Tokeneer::new(content, unbreakables);
             for (idx, (_char_range, _byte_range, s)) in tokeneer.enumerate() {
                 let expected = expected_iter
                     .next()
                     .expect("Must be of equal length at index");
-                println!("idx {} : {} <=> {}", idx, s, expected);
-                assert_eq!(s.to_owned(), expected.to_owned());
+                println!("idx {idx} : {s} <=> {expected}");
+                assert_eq!(s.as_ref(), *expected);
             }
         }
 
         #[test]
         fn smilies() {
             const CONTENT: &str = "🍇🌡 🌤";
-            const EXPECTED: &[&'static str] = &["🍇🌡", "🌤"];
-            verify(CONTENT, EXPECTED, vec![0..2]);
+            const EXPECTED: &[&str] = &["🍇🌡", "🌤"];
+            verify(CONTENT, EXPECTED, std::iter::once(0..2).collect());
         }
 
         #[test]
         fn multi_char() {
             const CONTENT: &str = "abc xyz qwert";
-            const EXPECTED: &[&'static str] = &["abc", "xyz", "qwert"];
+            const EXPECTED: &[&str] = &["abc", "xyz", "qwert"];
             verify(CONTENT, EXPECTED, vec![]);
         }
 
         #[test]
         fn partial_covered_word_unbreakable() {
             const CONTENT: &str = "abc xyz qwert";
-            const EXPECTED: &[&'static str] = &["abc xyz", "qwert"];
-            verify(CONTENT, EXPECTED, vec![2..5]);
+            const EXPECTED: &[&str] = &["abc xyz", "qwert"];
+            verify(CONTENT, EXPECTED, std::iter::once(2..5).collect());
         }
     }
 
@@ -409,7 +409,13 @@ a single line"#;
             const CONTENT: &str = "something kinda too Xong for a singlX line";
             const EXPECTED: &str = r#"something kinda too
 Xong for a singlX line"#;
-            verify_reflow(CONTENT, EXPECTED, 30usize, vec![20..37], vec![0]);
+            verify_reflow(
+                CONTENT,
+                EXPECTED,
+                30usize,
+                std::iter::once(20..37).collect(),
+                vec![0],
+            );
         }
 
         #[test]

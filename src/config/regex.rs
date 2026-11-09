@@ -44,9 +44,9 @@ impl<'de> Deserialize<'de> for WrappedRegex {
     }
 }
 
-impl Into<Regex> for WrappedRegex {
-    fn into(self) -> Regex {
-        self.0
+impl From<WrappedRegex> for Regex {
+    fn from(val: WrappedRegex) -> Self {
+        val.0
     }
 }
 

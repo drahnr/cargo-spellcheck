@@ -4,10 +4,9 @@ use super::*;
 use crate::checker::Checkers;
 use crate::errors::*;
 use crate::reflow::Reflow;
-use log::{debug, trace};
 
 use fs_err as fs;
-use futures::stream::{self, StreamExt, TryStreamExt};
+use futures::stream::{self, StreamExt};
 use rayon::iter::ParallelIterator;
 
 use std::io::{Read, Write};
@@ -35,10 +34,7 @@ pub enum Finish {
 impl Finish {
     /// A helper to determine if any mistakes were found.
     pub fn found_any(&self) -> bool {
-        match *self {
-            Self::MistakeCount(n) if n > 0 => true,
-            _ => false,
-        }
+        matches!(*self, Self::MistakeCount(n) if n > 0)
     }
 }
 
@@ -91,7 +87,7 @@ impl From<BandAid> for Patch {
 ///
 /// This function is not concerned with _any_ semantics or comments or
 /// whatsoever at all, it blindly replaces what is given to it.
-pub(crate) fn apply_patches<'s, II, I>(
+pub(crate) fn apply_patches<II, I>(
     patches: II,
     source_buffer: &str,
     mut sink: impl Write,
@@ -123,7 +119,7 @@ where
                     replace_span,
                     replacement,
                 } => (replace_span.end, replacement.as_str(), false),
-                Patch::Insert { insert_at, content } => (insert_at.clone(), content.as_str(), true),
+                Patch::Insert { insert_at, content } => (*insert_at, content.as_str(), true),
             };
 
             write_to_sink("new", data)?;
@@ -166,7 +162,7 @@ where
         cc_end_byte_offset = if let Some(upcoming) = patches.peek() {
             let cc_end = match upcoming {
                 Patch::Replace { replace_span, .. } => replace_span.start,
-                Patch::Insert { insert_at, .. } => insert_at.clone(),
+                Patch::Insert { insert_at, .. } => *insert_at,
             };
 
             // do not write anything
@@ -249,9 +245,7 @@ impl Action {
             ContentOrigin::CommonMarkFile(path) => self.correct_file(path, bandaids),
             ContentOrigin::RustSourceFile(path) => self.correct_file(path, bandaids),
             ContentOrigin::RustDocTest(path, _span) => self.correct_file(path, bandaids),
-            #[cfg(test)]
             ContentOrigin::TestEntityRust => unreachable!("Use a proper file"),
-            #[cfg(test)]
             ContentOrigin::TestEntityCommonMark => unreachable!("Use a proper file"),
         }
     }
@@ -265,7 +259,7 @@ impl Action {
     ) -> Result<()> {
         let path = fs::canonicalize(path.as_path())?;
         let path = path.as_path();
-        trace!("Attempting to open {} as read", path.display());
+        log::trace!("Attempting to open {} as read", path.display());
         let ro = fs::OpenOptions::new().read(true).open(path)?;
 
         let mut reader = std::io::BufReader::new(ro);
@@ -293,7 +287,7 @@ impl Action {
             let th = crate::TinHat::on();
 
             apply_patches(
-                bandaids.into_iter().map(|x| Patch::from(x)),
+                bandaids.into_iter().map(Patch::from),
                 content.as_str(), // FIXME for efficiency, correct_lines should integrate with `BufRead` instead of a `String` buffer
                 &mut writer,
             )?;
@@ -322,19 +316,19 @@ impl Action {
         userpicked: interactive::UserPicked,
     ) -> Result<()> {
         if userpicked.total_count() > 0 {
-            debug!("Writing changes back to disk");
+            log::debug!("Writing changes back to disk");
             for (origin, bandaids) in userpicked.bandaids.into_iter() {
-                self.write_changes_to_disk(origin, bandaids.into_iter())?;
+                self.write_changes_to_disk(origin, bandaids)?;
             }
         } else {
-            debug!("No band aids to apply");
+            log::debug!("No band aids to apply");
         }
         Ok(())
     }
     /// Run the requested action.
     pub async fn run(self, documents: Documentation, config: Config) -> Result<Finish> {
         let fin = match self {
-            Self::ListFiles { .. } => self.run_list_files(documents, &config).await?,
+            Self::ListFiles { .. } => self.run_list_files(documents, &config)?,
             Self::Reflow { .. } => self.run_reflow(documents, config).await?,
             Self::Check { .. } => self.run_check(documents, config).await?,
             Self::Fix { .. } => self.run_fix_interactive(documents, config).await?,
@@ -343,7 +337,7 @@ impl Action {
     }
 
     /// Run the requested action.
-    async fn run_list_files(self, documents: Documentation, _config: &Config) -> Result<Finish> {
+    fn run_list_files(self, documents: Documentation, _config: &Config) -> Result<Finish> {
         for (origin, _chunks) in documents.iter() {
             println!("{}", origin.as_path().display())
         }
@@ -357,12 +351,12 @@ impl Action {
         let checkers = Checkers::new(config)?;
 
         let n = documents.entry_count();
-        log::debug!("Running checkers on all documents {}", n);
+        log::debug!("Running checkers on all documents {n}");
         let mut pick_stream = stream::iter(documents.iter().enumerate())
             .map(|(mut idx, (origin, chunks))| {
                 // align the debug output with the user output
                 idx += 1;
-                log::trace!("Running checkers on {}/{},{:?}", idx, n, &origin);
+                log::trace!("Running checkers on {idx}/{n},{origin:?}");
                 let suggestions = checkers.check(origin, &chunks[..]);
                 async move { Ok::<_, color_eyre::eyre::Report>((idx, origin, suggestions?)) }
             })
@@ -381,15 +375,12 @@ impl Action {
                         UserSelection::Abort => return Ok(Finish::Abort),
                         UserSelection::Nop if !picked.is_empty() => {
                             log::debug!(
-                                "User picked patches to be applied for {}/{},{:?}",
-                                idx,
-                                n,
-                                &origin
+                                "User picked patches to be applied for {idx}/{n},{origin:?}"
                             );
                             collected_picks.extend(picked);
                         }
                         UserSelection::Nop => {
-                            log::debug!("Nothing to do for {}/{},{:?}", idx, n, &origin);
+                            log::debug!("Nothing to do for {idx}/{n},{origin:?}");
                         }
                         _ => unreachable!(
                             "All other variants are only internal to `select_interactive`. qed"
@@ -410,33 +401,28 @@ impl Action {
 
     /// Run the requested action.
     async fn run_check(self, documents: Documentation, config: Config) -> Result<Finish> {
-        let n_cpus = num_cpus::get();
-
         let checkers = Checkers::new(config)?;
+        let num_mistakes = documents
+            .into_par_iter()
+            .map(|(origin, chunks)| {
+                checkers.check(&origin, &chunks).map(|suggestions| {
+                    let path = origin.as_path();
+                    let n = suggestions.len();
+                    match suggestions.is_empty() {
+                        true => log::info!("✅ {}", path.display()),
+                        false => log::info!("❌ {} : {}", path.display(), n),
+                    };
+                    for suggestion in suggestions {
+                        println!("{suggestion}");
+                    }
+                    n
+                })
+            })
+            .try_fold_with(0, |count, res| res.map(|it| it + count))
+            .try_reduce(|| 0, |l, r| Ok(l + r))?;
 
-        // TODO per file clustering might make sense here
-        let mistakes_count = stream::iter(documents.iter().enumerate())
-            .map(move |(idx, (origin, chunks))| {
-                let suggestions = checkers.check(origin, &chunks[..]);
-                async move { Ok::<_, color_eyre::eyre::Report>((idx, origin, suggestions?)) }
-            })
-            .buffered(n_cpus)
-            .try_fold(0_usize, |acc, (_idx, origin, suggestions)| async move {
-                let n = suggestions.len();
-                let path = origin.as_path();
-                if n == 0 {
-                    info!("✅ {}", path.display());
-                } else {
-                    info!("❌ {} : {}", path.display(), n);
-                }
-                for suggestion in suggestions {
-                    println!("{}", suggestion);
-                }
-                Ok::<_, color_eyre::eyre::Report>(acc + n)
-            })
-            .await?;
-        if mistakes_count > 0 {
-            Ok(Finish::MistakeCount(mistakes_count))
+        if num_mistakes > 0 {
+            Ok(Finish::MistakeCount(num_mistakes))
         } else {
             Ok(Finish::Success)
         }
@@ -447,16 +433,14 @@ impl Action {
         let reflow_config = config.reflow.clone().unwrap_or_default();
         let reflow = Reflow::new(reflow_config)?;
 
-        let _ = documents
+        documents
             .into_par_iter()
             .map(|(origin, chunks)| {
                 let mut picked = UserPicked::default();
                 let suggestions = reflow.check(&origin, &chunks[..])?;
                 for suggestion in suggestions {
                     let bandaids = suggestion.replacements.first().map(|replacement| {
-                        let bandaid =
-                            super::BandAid::from((replacement.to_owned(), &suggestion.span));
-                        bandaid
+                        super::BandAid::from((replacement.to_owned(), &suggestion.span))
                     });
 
                     picked.add_bandaids(&origin, bandaids);

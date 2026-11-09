@@ -13,7 +13,7 @@ macro_rules! verify_reflow_inner {
             .try_init();
 
         const CONTENT: &str = fluff_up!($( $line ),+);
-        let docs = Documentation::load_from_str(ContentOrigin::TestEntityRust, CONTENT, false);
+        let docs = Documentation::load_from_str(ContentOrigin::TestEntityRust, CONTENT, true, false);
         assert_eq!(docs.entry_count(), 1);
         let chunks = docs.get(&ContentOrigin::TestEntityRust).expect("Must contain dummy path");
         assert_eq!(dbg!(chunks).len(), 1);
@@ -87,12 +87,12 @@ macro_rules! reflow_content {
             .is_test(true)
             .try_init();
 
-        let docs = Documentation::load_from_str($content_type, $content, false);
+        let docs = Documentation::load_from_str($content_type, $content, true, false);
         assert_eq!(docs.entry_count(), 1);
         let chunks = docs.get(&$content_type).expect("Contains test data. qed");
         assert_eq!(dbg!(chunks).len(), 1);
         let chunk = &chunks[0];
-        let _plain = chunk.erase_cmark();
+        let _plain = chunk.erase_cmark(&Default::default());
         let suggestions = reflow(&$content_type, chunk, &CFG).expect("Reflow is working. qed");
 
         let patches = suggestions
@@ -116,6 +116,8 @@ macro_rules! reflow_content {
             &mut dest,
         ).expect("Patches always apply nicely. qed");
         let s = std::string::String::from_utf8_lossy(&dest);
+        eprintln!(">>>{}<<<", s);
+        eprintln!(">>>{}<<<", $expected);
         assert_eq!(s, $expected, "Applied patches mismatch expected result");
     };
     ($max_line_width:literal break $content_type:expr, $content:expr => ok) => {
@@ -129,12 +131,12 @@ macro_rules! reflow_content {
             .is_test(true)
             .try_init();
 
-        let docs = Documentation::load_from_str($content_type, $content, false);
+        let docs = Documentation::load_from_str($content_type, $content, true, false);
         assert_eq!(docs.entry_count(), 1);
         let chunks = docs.get(&$content_type).expect("Contains test data. qed");
         assert_eq!(dbg!(chunks).len(), 1);
         let chunk = &chunks[0];
-        let _plain = chunk.erase_cmark();
+        let _plain = chunk.erase_cmark(&Default::default());
         let suggestions = reflow(&$content_type, chunk, &CFG).expect("Reflow is working. qed");
 
         assert_eq!(
@@ -154,12 +156,12 @@ macro_rules! reflow_content {
             .is_test(true)
             .try_init();
 
-        let docs = Documentation::load_from_str($content_type, $content, false);
+        let docs = Documentation::load_from_str($content_type, $content, true, false);
         assert_eq!(docs.entry_count(), 1);
         let chunks = docs.get(&$content_type).expect("Contains test data. qed");
         assert_eq!(dbg!(chunks).len(), 1);
         let chunk = &chunks[0];
-        let _plain = chunk.erase_cmark();
+        let _plain = chunk.erase_cmark(&Default::default());
         println!("reflow content:\n {:?}", $content);
         let suggestions = reflow(&$content_type, chunk, &CFG).expect("Reflow is working. qed");
         let patches = suggestions
@@ -183,15 +185,15 @@ macro_rules! reflow_content {
         let expected_n = expected.len();
         // it yields more info if we try to match as many as we can first
         for (idx, (patch, expected)) in patches.into_iter().zip(expected.into_iter()).enumerate() {
-            log::info!("Patch #{} {:?}", idx, patch);
+            log::info!("Patch #{idx} {patch:?}");
             assert_matches::assert_matches!(patch, crate::Patch::Replace {
                 replacement,
                 replace_span,
             } => {
                 let content: &'static str = $content;
                 let to_be_replaced = load_span_from(&mut content.as_bytes(), replace_span).expect("Test cases are well defined and do not cause out of bounds access. qed");
-                log::info!("Patch #{} replaces {:?} => {:?}", idx, to_be_replaced, replacement);
-                assert_eq!(replacement.as_str(), expected, "Patch #{}", idx);
+                log::info!("Patch #{idx} replaces {to_be_replaced:?} => {replacement:?}");
+                assert_eq!(replacement.as_str(), expected, "Patch #{idx}");
             })
         }
         assert_eq!(patches_n, expected_n, "Number of suggestions mismatches expected patches");
@@ -259,6 +261,22 @@ fn reflow_shorter_than_limit() {
 }
 
 #[test]
+fn reflow_unchanged_first_line() {
+    // Regression for #363: only the later lines change when reflowing this paragraph.
+    const CONTENT: &str = r#"/// The first line of this paragraph is already filled up to the line width so
+/// the second line is far too long and should be wrapped by the reflow command, but it is not.
+pub fn a() {}
+"#;
+
+    reflow_content!(80 break ContentOrigin::TestEntityRust, CONTENT => applied
+        r#"/// The first line of this paragraph is already filled up to the line width so
+/// the second line is far too long and should be wrapped by the reflow command,
+/// but it is not.
+pub fn a() {}
+"#);
+}
+
+#[test]
 fn reflow_multiple_lines() {
     reflow_fluff!(43 break ["This module contains documentation that is broken",
                         "into multiple short lines resulting in multiple spans."] =>
@@ -286,7 +304,7 @@ fn reflow_indentations() {
         max_line_length: 10,
     };
 
-    let docs = Documentation::load_from_str(ContentOrigin::TestEntityRust, CONTENT, false);
+    let docs = Documentation::load_from_str(ContentOrigin::TestEntityRust, CONTENT, true, false);
     assert_eq!(docs.entry_count(), 1);
     let chunks = docs
         .get(&ContentOrigin::TestEntityRust)
@@ -322,7 +340,7 @@ fn reflow_doc_indentations() {
     #[doc = r#"that spans over two lines and"#]
     #[doc = r#"should be rewrapped."##;
 
-    let docs = Documentation::load_from_str(ContentOrigin::TestEntityRust, CONTENT, false);
+    let docs = Documentation::load_from_str(ContentOrigin::TestEntityRust, CONTENT, true, false);
     assert_eq!(dbg!(&docs).entry_count(), 1);
     let chunks = docs
         .get(&ContentOrigin::TestEntityRust)
@@ -392,7 +410,7 @@ fn reflow_markdown_two_paragraphs() {
         .is_test(true)
         .try_init();
 
-    let docs = Documentation::load_from_str(ContentOrigin::TestEntityRust, CONTENT, false);
+    let docs = Documentation::load_from_str(ContentOrigin::TestEntityRust, CONTENT, true, false);
     assert_eq!(docs.entry_count(), 1);
     let chunks = docs
         .get(&ContentOrigin::TestEntityRust)
@@ -425,7 +443,7 @@ fn reflow_markdown_two_paragraphs_doc() {
 
 With a second part that is fine"#
     );
-    println!("{}", chyrped);
+    println!("{chyrped}");
 
     let expected = vec![
         r##"A long comment that spans over two"#]
@@ -433,7 +451,7 @@ With a second part that is fine"#
         r#"With a second part that is fine"#,
     ];
 
-    let docs = Documentation::load_from_str(ContentOrigin::TestEntityRust, chyrped, false);
+    let docs = Documentation::load_from_str(ContentOrigin::TestEntityRust, chyrped, true, false);
     assert_eq!(docs.entry_count(), 1);
     let chunks = docs
         .get(&ContentOrigin::TestEntityRust)
@@ -493,7 +511,7 @@ Some <pre>Hmtl tags</pre>.
 Some more text after the newline which **represents** a paragraph
 in two lines. In my opinion paraghraphs are always multiline. Fullstop.";
 
-    const EXPECTED: &[(&'static str, Span)] = &[
+    const EXPECTED: &[(&str, Span)] = &[
         (
             r#"A short line but long enough such that we reflow it. Yada
 lorem ipsum stuff needed."#,
@@ -527,7 +545,8 @@ multiline. Fullstop."#,
         .is_test(true)
         .try_init();
 
-    let docs = Documentation::load_from_str(ContentOrigin::TestEntityCommonMark, CONTENT, false);
+    let docs =
+        Documentation::load_from_str(ContentOrigin::TestEntityCommonMark, CONTENT, true, false);
     assert_eq!(docs.entry_count(), 1);
     let chunks = docs
         .get(&ContentOrigin::TestEntityCommonMark)
@@ -535,7 +554,7 @@ multiline. Fullstop."#,
     assert_eq!(dbg!(chunks).len(), 1);
     let chunk = chunks.first().unwrap();
 
-    let suggestion_set = reflow(&ContentOrigin::TestEntityCommonMark, &chunk, &CONFIG)
+    let suggestion_set = reflow(&ContentOrigin::TestEntityCommonMark, chunk, &CONFIG)
         .expect("Reflow is working. qed");
     assert_eq!(suggestion_set.len(), 2);
 
@@ -556,7 +575,7 @@ multiline. Fullstop."#,
 
 #[test]
 fn reflow_line_delimiters() {
-    const TEST_DATA: &[(&'static str, &'static str)] = &[
+    const TEST_DATA: &[(&str, &str)] = &[
         ("Two lines\nhere", "\n"),
         ("Two lines\r\nhere", "\r\n"),
         ("\r\n\r\n", "\r\n"),
@@ -571,7 +590,7 @@ fn reflow_line_delimiters() {
     ];
     for (input, expected) in TEST_DATA {
         let expected = *expected;
-        println!("{:?} should detect {:?}", input, expected);
+        println!("{input:?} should detect {expected:?}");
         assert_eq!(extract_delimiter(input), Some(expected));
     }
 }
@@ -587,7 +606,7 @@ fn reflow_check_span() {
 struct Fff;
 ";
 
-    const EXPECTED_REPLACEMENT: &[&'static str] =
+    const EXPECTED_REPLACEMENT: &[&str] =
         &["A comment as we have\n/// many here and we will\n/// always have."];
 
     const EXPECTED_SPAN: Span = Span {
@@ -595,7 +614,7 @@ struct Fff;
         end: LineColumn { line: 2, column: 8 },
     };
 
-    let docs = Documentation::load_from_str(ContentOrigin::TestEntityRust, CONTENT, false);
+    let docs = Documentation::load_from_str(ContentOrigin::TestEntityRust, CONTENT, true, false);
     assert_eq!(docs.entry_count(), 1);
     let chunks = docs
         .get(&ContentOrigin::TestEntityRust)
@@ -604,7 +623,7 @@ struct Fff;
     let chunk = chunks.first().unwrap();
 
     let suggestion_set =
-        reflow(&ContentOrigin::TestEntityRust, &chunk, &CONFIG).expect("Reflow is working. qed");
+        reflow(&ContentOrigin::TestEntityRust, chunk, &CONFIG).expect("Reflow is working. qed");
     assert_eq!(suggestion_set.len(), 1);
     let suggestion = suggestion_set
         .first()
@@ -665,7 +684,26 @@ return code if mistakes are found instead of `0`.
 * [x] Parse doc comments from arbitrary files
 * [x] Decent error printing
 
+## Footy
+
+Ref [^footnote]
+
+## Table, no touch
+
+|a                  |b               |c                          |d                                |
+|-------------------|----------------|---------------------------|---------------------------------|
+|0000000000000000000|1111111111111111|2                          |                                3|
+
+## Quote
+
+> I quote quoted quotes
+> quoting quoted
+> quotes, which
+> shall remain untouched for now.
+
+[footnote]: Down in the abyss.
 "###;
+
 #[test]
 fn reflow_minified_readme_patches() {
     reflow_content!(30usize break ContentOrigin::TestEntityCommonMark, MINIFIED_README
@@ -704,6 +742,24 @@ of `0`.
 * [x] Parse doc comments from arbitrary files
 * [x] Decent error printing
 
+## Footy
+
+Ref [^footnote]
+
+## Table, no touch
+
+|a                  |b               |c                          |d                                |
+|-------------------|----------------|---------------------------|---------------------------------|
+|0000000000000000000|1111111111111111|2                          |                                3|
+
+## Quote
+
+> I quote quoted quotes
+> quoting quoted
+> quotes, which
+> shall remain untouched for now.
+
+[footnote]: Down in the abyss.
 "###
     );
 }
@@ -711,7 +767,7 @@ of `0`.
 #[test]
 fn reflow_crlf() {
     const INPUT: &str = "        /// cargo spellcheck can be configured with `-m <code>` to return a non-zero return code.\r\n        struct Foo {}";
-    println!("{:?}", INPUT);
+    println!("{INPUT:?}");
     reflow_content!(40usize break ContentOrigin::TestEntityRust, INPUT
     => patches [
         "cargo spellcheck can be\r\n        /// configured with `-m <code>`\r\n        /// to return a non-zero return\r\n        /// code."

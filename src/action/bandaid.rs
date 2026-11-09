@@ -3,7 +3,7 @@
 //! A `BandAid` covers the mistake with a suggested replacement, as picked by
 //! the user.
 
-use crate::Span;
+use crate::documentation::Span;
 
 /// A chosen suggestion for a certain span
 #[derive(Debug, Clone, PartialEq, Eq)]

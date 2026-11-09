@@ -2,7 +2,6 @@
 
 use crate::Range;
 use fancy_regex::Regex;
-use log::{trace, warn};
 
 /// Returns `true` iff the replacements contains a variant of `word` without
 /// dashes.
@@ -15,8 +14,7 @@ pub(crate) fn replacements_contain_dashless<T: AsRef<str>>(word: &str, replaceme
     replacements
         .iter()
         .map(|s| s.as_ref())
-        .find(|x| *x == &dashless)
-        .is_some()
+        .any(|x| x == dashless)
 }
 
 /// Returns `true` iff the replacements contains a variant of `word` with
@@ -24,7 +22,7 @@ pub(crate) fn replacements_contain_dashless<T: AsRef<str>>(word: &str, replaceme
 pub(crate) fn replacements_contain_dashed<T: AsRef<str>>(word: &str, replacements: &[T]) -> bool {
     // before doing lots of work, check if the word itself contains a dash, if so
     // the below logic cannot yield and positive results
-    if word.chars().find(|c| *c == '-').is_some() {
+    if word.chars().any(|c| c == '-') {
         return false;
     }
 
@@ -32,9 +30,8 @@ pub(crate) fn replacements_contain_dashed<T: AsRef<str>>(word: &str, replacement
         .iter()
         .map(|s| s.as_ref())
         // avoid lots of string iterations in find
-        .filter(|s| s.as_bytes().get(0usize) == word.as_bytes().get(0usize))
-        .find(|s| itertools::equal(s.chars().filter(|c| *c != '-'), word.chars()))
-        .is_some()
+        .filter(|s| s.as_bytes().first() == word.as_bytes().first())
+        .any(|s| itertools::equal(s.chars().filter(|c| *c != '-'), word.chars()))
 }
 
 /// Transformed word with information on the transformation outcome.
@@ -105,10 +102,10 @@ fn transform_inner<'i, R: AsRef<Regex>>(
                 let intermediate = captures
                     .iter()
                     .skip(1)
-                    .filter_map(|m_opt| m_opt)
+                    .flatten()
                     .map(|m| {
                         let intra_word_range = m.start()..m.end();
-                        trace!(target:"quirks",
+                        log::trace!(target:"quirks",
                             "Found capture for word >{}<, with match >{}< and capture >{}< at {:?}",
                             captures.get(0).unwrap().as_str(),
                             word,
@@ -134,7 +131,7 @@ fn transform_inner<'i, R: AsRef<Regex>>(
                 continue;
             }
             Err(e) => {
-                warn!(target:"quirks", "Matching regex >{}< errored: {}", regex.as_str(), e);
+                log::warn!(target:"quirks", "Matching regex >{}< errored: {}", regex.as_str(), e);
                 break;
             }
         }
@@ -147,7 +144,6 @@ fn transform_inner<'i, R: AsRef<Regex>>(
 mod tests {
     use super::*;
     use crate::config::WrappedRegex;
-    use env_logger;
 
     #[test]
     fn dashed() {
@@ -156,7 +152,7 @@ mod tests {
             .filter(None, log::LevelFilter::Trace)
             .try_init();
 
-        const REPLACEMENTS: &'static [&'static str] = &["fffff", "qqq", "z", "zeta-ray"];
+        const REPLACEMENTS: &[&str] = &["fffff", "qqq", "z", "zeta-ray"];
         const WORD: &str = "zetaray";
         assert!(replacements_contain_dashed(WORD, REPLACEMENTS));
     }
@@ -169,7 +165,7 @@ mod tests {
             .try_init();
 
         const WORD: &str = "zeta-ray";
-        const REPLACEMENTS: &'static [&'static str] = &["fffff", "qqq", "z", "zetaray"];
+        const REPLACEMENTS: &[&str] = &["fffff", "qqq", "z", "zetaray"];
         assert!(replacements_contain_dashless(WORD, REPLACEMENTS));
     }
 
@@ -186,7 +182,7 @@ mod tests {
             WrappedRegex::from(Regex::new("(Alpha)(beta)").unwrap()),
         ];
 
-        let words = vec!["2x", r#"''so-to-speak''"#, "Alphabeta", "Nothing"];
+        let words = ["2x", r#"''so-to-speak''"#, "Alphabeta", "Nothing"];
 
         // whitelist
         assert_eq!(

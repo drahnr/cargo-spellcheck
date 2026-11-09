@@ -1,52 +1,53 @@
 #![deny(dead_code)]
 #![deny(missing_docs)]
 // #![deny(unused_crate_dependencies)]
-
-// Prevent the stray dbg! macros
-#![deny(clippy::dbg_macro)]
-#![warn(clippy::pedantic)]
 #![allow(clippy::non_ascii_literal)]
 // be explicit about certain offsets and how they are constructed
 #![allow(clippy::identity_op)]
 // in small cli projects, this is ok for now
 #![allow(clippy::wildcard_imports)]
+// Keep lint preferences compatible with Clippy versions that removed these lints.
+#![allow(renamed_and_removed_lints)]
+// personal strong preference for `from_iter`
+#![allow(clippy::from_iter_instead_of_collect)]
+#![allow(clippy::new_without_default)]
+#![allow(clippy::items_after_statements)]
+// Prevent the stray dbg! macros
+#![cfg_attr(not(test), deny(clippy::dbg_macro))]
+#![cfg_attr(test, allow(clippy::dbg_macro))]
 
 //! cargo-spellcheck
 //!
 //! A syntax tree based doc comment and common mark spell checker.
 
+pub use doc_chunks as documentation;
+#[cfg(test)]
+pub(crate) use doc_chunks::{chyrp_up, fluff_up};
+
 pub mod action;
 mod checker;
 mod config;
-mod documentation;
 pub mod errors;
 mod reflow;
-mod span;
 mod suggestion;
+mod tinhat;
 mod traverse;
-mod util;
 
 pub use self::action::*;
 pub use self::config::args::*;
 pub use self::config::{Config, HunspellConfig, LanguageToolConfig};
-pub use self::documentation::*;
-pub use self::span::*;
+pub use self::documentation::span::*;
+pub use self::documentation::util::*;
+pub use self::documentation::{
+    util, CheckableChunk, Clusters, CommentVariant, CommentVariantCategory, ContentOrigin,
+    Documentation, PlainOverlay, Range,
+};
 pub use self::suggestion::*;
-pub use self::util::*;
+pub use self::tinhat::*;
 
 use self::errors::{bail, Result};
 
-use log::{debug, info, trace, warn};
-use serde::Deserialize;
-
 use std::io::Write;
-use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
-
-#[cfg(not(target_os = "windows"))]
-use signal_hook::{
-    consts::signal::{SIGINT, SIGQUIT, SIGTERM},
-    iterator,
-};
 
 #[cfg(target_os = "windows")]
 use signal_hook as _;
@@ -80,67 +81,8 @@ impl ExitCode {
     }
 }
 
-/// Global atomic to block signal processing while a file write is currently in
-/// progress.
-static WRITE_IN_PROGRESS: AtomicU16 = AtomicU16::new(0);
-/// Delay if the signal handler is currently running.
-static SIGNAL_HANDLER_AT_WORK: AtomicBool = AtomicBool::new(false);
-
-/// Handle incoming signals.
-///
-/// Only relevant for *-nix platforms.
-#[cfg(not(target_os = "windows"))]
-pub fn signal_handler() {
-    let mut signals =
-        iterator::Signals::new(&[SIGTERM, SIGINT, SIGQUIT]).expect("Failed to create Signals");
-
-    std::thread::spawn(move || {
-        for s in signals.forever() {
-            match s {
-                SIGTERM | SIGINT | SIGQUIT => {
-                    SIGNAL_HANDLER_AT_WORK.store(true, Ordering::SeqCst);
-                    // Wait for potential writing to disk to be finished.
-                    while WRITE_IN_PROGRESS.load(Ordering::Acquire) > 0 {
-                        std::hint::spin_loop();
-                        std::thread::yield_now();
-                    }
-                    if let Err(e) = action::interactive::ScopedRaw::restore_terminal() {
-                        warn!("Failed to restore terminal: {}", e);
-                    }
-                    signal_hook::low_level::exit(130);
-                }
-                sig => warn!("Received unhandled signal {}, ignoring", sig),
-            }
-        }
-    });
-}
-
-/// Blocks (UNIX) signals.
-pub struct TinHat;
-
-impl TinHat {
-    /// Put the tin hat on, and only allow signals being processed once it's
-    /// dropped.
-    pub fn on() -> Self {
-        while SIGNAL_HANDLER_AT_WORK.load(Ordering::Acquire) {
-            std::hint::spin_loop();
-            std::thread::yield_now();
-        }
-        let _ = WRITE_IN_PROGRESS.fetch_add(1, Ordering::Release);
-        Self
-    }
-}
-
-impl Drop for TinHat {
-    fn drop(&mut self) {
-        let _ = WRITE_IN_PROGRESS.fetch_sub(1, Ordering::Release);
-    }
-}
-
 /// The inner main.
-pub fn run() -> Result<ExitCode> {
-    let args = Args::parse(std::env::args()).unwrap_or_else(|e| e.exit());
-
+pub fn run(args: Args) -> Result<ExitCode> {
     let _ = ::rayon::ThreadPoolBuilder::new()
         .num_threads(args.job_count())
         .build_global();
@@ -152,7 +94,11 @@ pub fn run() -> Result<ExitCode> {
         .init();
 
     #[cfg(not(target_os = "windows"))]
-    signal_handler();
+    signal_handler(move || {
+        if let Err(e) = action::interactive::ScopedRaw::restore_terminal() {
+            log::warn!("Failed to restore terminal: {e}");
+        }
+    });
 
     let (unified, config) = match &args.command {
         Some(Sub::Completions { shell }) => {
@@ -170,7 +116,7 @@ pub fn run() -> Result<ExitCode> {
             dest_config,
             checker_filter_set,
         } => {
-            trace!("Configuration chore");
+            log::trace!("Configuration chore");
             let mut config = Config::full();
             Args::checker_selection_override(
                 checker_filter_set.as_ref().map(AsRef::as_ref),
@@ -190,11 +136,11 @@ pub fn run() -> Result<ExitCode> {
                         );
                     }
 
-                    info!("Writing configuration file to {}", path.display());
+                    log::info!("Writing configuration file to {}", path.display());
                     config.write_values_to_path(path)?;
                 }
             }
-            return Ok(ExitCode::Success);
+            Ok(ExitCode::Success)
         }
         UnifiedArgs::Operate {
             action,
@@ -205,10 +151,7 @@ pub fn run() -> Result<ExitCode> {
             dev_comments,
             exit_code_override,
         } => {
-            debug!(
-                "Executing: {:?} with {:?} from {:?}",
-                action, &config, config_path
-            );
+            log::debug!("Executing: {action:?} with {config:?} from {config_path:?}");
 
             let documents =
                 traverse::extract(paths, recursive, skip_readme, dev_comments, &config)?;
@@ -224,3 +167,6 @@ pub fn run() -> Result<ExitCode> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

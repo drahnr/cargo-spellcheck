@@ -3,22 +3,23 @@
 //! Note that for commonmark this might not be possible with links. The reflow
 //! is done based on the comments no matter the content.
 
-use crate::errors::{eyre, Result};
-
 use crate::checker::Checker;
 use crate::documentation::CheckableChunk;
+use crate::errors::{eyre, Result};
+use crate::util::extract_delimiter;
 #[cfg(debug_assertions)]
 use crate::util::load_span_from;
 use crate::util::{byte_range_to_char_range, byte_range_to_char_range_many, sub_char_range};
 
 use crate::{CommentVariant, ContentOrigin, Detector, Range, Span, Suggestion};
 
-use pulldown_cmark::{Event, Options, Parser, Tag};
+use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
+use std::fmt;
 
 pub use crate::config::ReflowConfig;
 
 mod iter;
-pub use iter::{Gluon, Tokeneer};
+pub use iter::Gluon;
 
 #[derive(Debug)]
 pub struct Reflow {
@@ -54,76 +55,11 @@ impl Checker for Reflow {
                 | CommentVariant::SlashAsteriskEM => continue,
                 _ => {}
             }
-            let suggestions = reflow(&origin, chunk, &self.config)?;
+            let suggestions = reflow(origin, chunk, &self.config)?;
             acc.extend(suggestions);
         }
         Ok(acc)
     }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct LineSepStat {
-    first_appearance: usize,
-    count: usize,
-    newline: &'static str,
-}
-
-#[inline(always)]
-fn extract_delimiter_inner<'a>(
-    mut iter: impl Iterator<Item = usize>,
-    newline: &'static str,
-) -> Option<LineSepStat> {
-    if let Some(first) = iter.next() {
-        let n = iter.count() + 1;
-        Some(LineSepStat {
-            first_appearance: first,
-            count: n,
-            newline,
-        })
-    } else {
-        None
-    }
-}
-
-/// Extract line delimiter of a string.
-pub fn extract_delimiter<'s>(s: &'s str) -> Option<&'static str> {
-    // TODO lots of room for optimizations here
-    let lf = memchr::memchr_iter(b'\n', s.as_bytes());
-    let cr = memchr::memchr_iter(b'\r', s.as_bytes());
-    let crlf = memchr::memmem::find_iter(s.as_bytes(), "\r\n");
-    let lfcr = memchr::memmem::find_iter(s.as_bytes(), "\n\r");
-    // first look for two letter line delimiters
-    let lfcr = extract_delimiter_inner(lfcr, "\n\r");
-    let crlf = extract_delimiter_inner(crlf, "\r\n");
-
-    // remove the 2 line line delimiters from the single line line delimiters, since they overlap
-    let lf = extract_delimiter_inner(lf, "\n").map(|mut stat| {
-        stat.count = stat.count.saturating_sub(std::cmp::max(
-            crlf.as_ref().map(|stat| stat.count).unwrap_or_default(),
-            lfcr.as_ref().map(|stat| stat.count).unwrap_or_default(),
-        ));
-        stat
-    });
-    let cr = extract_delimiter_inner(cr, "\r").map(|mut stat| {
-        stat.count = stat.count.saturating_sub(std::cmp::max(
-            crlf.as_ref().map(|stat| stat.count).unwrap_or_default(),
-            lfcr.as_ref().map(|stat| stat.count).unwrap_or_default(),
-        ));
-        stat
-    });
-
-    // order is important, `max_by` prefers the latter ones over the earlier ones on equality
-    vec![cr, lf, crlf, lfcr]
-        .into_iter()
-        .filter_map(|x| x)
-        .max_by(|b, a| {
-            if a.count == b.count {
-                a.first_appearance.cmp(&b.first_appearance)
-            } else {
-                b.count.cmp(&a.count)
-            }
-        })
-        .map(|x| x.newline)
 }
 
 /// Reflows a parsed commonmark paragraph contained in `s`.
@@ -166,7 +102,7 @@ fn reflow_inner<'s>(
         .iter()
         .map(|r| (r.start.saturating_sub(range.start))..(r.end.saturating_sub(range.start)));
 
-    let mut gluon = Gluon::new(s_absolute, max_line_width, &indentations);
+    let mut gluon = Gluon::new(s_absolute, max_line_width, indentations);
     gluon.add_unbreakables(unbreakables);
 
     let mut reflow_applied = false;
@@ -194,7 +130,7 @@ fn reflow_inner<'s>(
 
     // construct replacement string from prefix and Gluon iterations
     let content = gluon.fold(acc, |mut acc, (_lineno, content, _range)| {
-        if lines.next() == Some(&content) {
+        if lines.next() != Some(&content) {
             reflow_applied = true;
         }
 
@@ -211,19 +147,19 @@ fn reflow_inner<'s>(
             _ => (variant.prefix_len(), ""),
         };
         let pre = if let Some(indentation) = indents_iter.next() {
-            indentation
+            *indentation
         } else {
-            &last_indent
+            last_indent
         }
-        .to_string_but_skip_n(indentation_skip_n);
+        .skipping_n(indentation_skip_n);
 
         log::trace!(target: "glue", "glue[shift={}]: acc = {:?} + {:?} + {:?} + {:?} + {:?} + {:?}",
                 indentation_skip_n,
-                &pre,
-                &variant.prefix_string(),
+                pre,
+                variant.prefix_string(),
                 extra_space,
-                &content,
-                &variant.suffix_string(),
+                content,
+                variant.suffix_string(),
                 line_delimiter
         );
         acc.push_str(&pre);
@@ -273,25 +209,28 @@ pub(crate) struct Indentation<'s> {
     s: Option<&'s str>,
 }
 
-impl<'s> ToString for Indentation<'s> {
-    fn to_string(&self) -> String {
+impl<'s> fmt::Display for Indentation<'s> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(s) = self.s {
-            s.to_owned()
+            f.write_str(s)
         } else {
-            " ".repeat(self.offset)
+            for _ in 0..self.offset {
+                f.write_str(" ")?;
+            }
+            Ok(())
         }
     }
 }
 
 impl<'s> Indentation<'s> {
     pub(crate) fn new(offset: usize) -> Self {
-        log::trace!("New offset with indentation of {} ", offset);
+        log::trace!("New offset with indentation of {offset}");
         Self { offset, s: None }
     }
 
     #[allow(unused)]
     pub(crate) fn with_str(offset: usize, s: &'s str) -> Self {
-        log::trace!("New offset with indentation of {} and {:?}", offset, s);
+        log::trace!("New offset with indentation of {offset} and {s:?}");
         Self { offset, s: Some(s) }
     }
 
@@ -300,7 +239,7 @@ impl<'s> Indentation<'s> {
     }
 
     /// Convert to a string but skip `n` chars
-    pub(crate) fn to_string_but_skip_n(&self, n: usize) -> String {
+    pub(crate) fn skipping_n(self, n: usize) -> String {
         if let Some(s) = self.s {
             sub_char_range(s, 0..n).to_owned()
         } else {
@@ -342,7 +281,7 @@ fn store_suggestion<'s>(
     #[cfg(debug_assertions)]
     log::trace!(
         "reflow::store_suggestion(chunk([{:?}]): {:?}",
-        &range,
+        range,
         &s[bytes_range.clone()],
     );
 
@@ -368,7 +307,7 @@ fn store_suggestion<'s>(
         } else {
             return Ok((bytes_paragraph, None));
         };
-        let end = if let Some(last) = spans_iter.last() {
+        let end = if let Some(last) = spans_iter.next_back() {
             last.end
         } else {
             fallback_end
@@ -421,17 +360,14 @@ fn store_suggestion<'s>(
             max_line_width,
             &chunk.variant(),
         )?
-        .map(|replacement| {
-            let suggestion = Suggestion {
-                chunk,
-                detector: Detector::Reflow,
-                origin: origin.clone(),
-                description: None,
-                range,
-                replacements: vec![replacement],
-                span,
-            };
-            suggestion
+        .map(|replacement| Suggestion {
+            chunk,
+            detector: Detector::Reflow,
+            origin: origin.clone(),
+            description: None,
+            range,
+            replacements: vec![replacement],
+            span,
         }),
     ))
 }
@@ -443,7 +379,7 @@ fn reflow<'s>(
     chunk: &'s CheckableChunk,
     cfg: &ReflowConfig,
 ) -> Result<Vec<Suggestion<'s>>> {
-    log::debug!("Reflowing {:?}", origin);
+    log::debug!("Reflowing {origin:?}");
     let parser = Parser::new_ext(chunk.as_str(), Options::all());
 
     let mut paragraph = 0_usize;
@@ -455,25 +391,35 @@ fn reflow<'s>(
 
     let mut acc = Vec::with_capacity(128);
 
+    let mut within_quote = false;
+
     for (event, cover) in parser.into_offset_iter() {
         #[cfg(debug_assertions)]
         {
-            log::trace!("CMark Token: {:?}", &event);
+            log::trace!("CMark Token: {event:?}");
             log::trace!(
-                "Current segment {:?}: {:?}",
-                cover,
+                "Current segment {cover:?}: {:?}",
                 &chunk.as_str()[cover.clone()]
             );
         }
         match event {
+            Event::InlineHtml(_html) => {}
             Event::Start(tag) => {
+                if within_quote {
+                    continue;
+                }
                 match tag {
-                    Tag::Image(_, _, _)
-                    | Tag::Link(_, _, _)
+                    Tag::Image { .. }
+                    | Tag::Link { .. }
                     | Tag::Strong
                     | Tag::Emphasis
-                    | Tag::Strikethrough => {
+                    | Tag::Strikethrough
+                    | Tag::BlockQuote
+                    | Tag::Table(..) => {
                         unbreakable_stack.push(cover);
+                        if tag == Tag::BlockQuote {
+                            within_quote = true;
+                        }
                     }
                     Tag::Paragraph => {
                         paragraph = cover.start;
@@ -497,12 +443,17 @@ fn reflow<'s>(
                 }
             }
             Event::End(tag) => {
+                if tag != TagEnd::BlockQuote && within_quote {
+                    continue;
+                }
                 match tag {
-                    Tag::Image(_, _, _)
-                    | Tag::Link(_, _, _)
-                    | Tag::Strong
-                    | Tag::Emphasis
-                    | Tag::Strikethrough => {
+                    TagEnd::Image
+                    | TagEnd::Link
+                    | TagEnd::Strong
+                    | TagEnd::Emphasis
+                    | TagEnd::Strikethrough
+                    | TagEnd::BlockQuote
+                    | TagEnd::Table => {
                         // technically we only need the bottom-most range, since all others - by def - are contained in there
                         // so there
                         if unbreakable_stack.len() == 1 {
@@ -512,8 +463,11 @@ fn reflow<'s>(
                             debug_assert!(parent.contains(&(cover.end - 1)));
                         }
                         let _ = unbreakable_stack.pop();
+                        if tag == TagEnd::BlockQuote {
+                            within_quote = false;
+                        }
                     }
-                    Tag::Paragraph => {
+                    TagEnd::Paragraph => {
                         // regular end of paragraph
                         let (p, suggestion) = store_suggestion(
                             chunk,
@@ -544,7 +498,7 @@ fn reflow<'s>(
                 // TODO verify this does not interfere with paragraphs
             }
             Event::FootnoteReference(_s) => {
-                // boring
+                unbreakables.push(cover);
             }
             Event::SoftBreak => {
                 // ignored

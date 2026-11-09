@@ -7,7 +7,7 @@ use super::{Checker, Detector, Suggestion};
 use crate::{CheckableChunk, ContentOrigin};
 
 use crate::errors::*;
-use log::{debug, trace};
+
 use std::collections::{hash_map::Entry, HashMap};
 use std::{
     path::{Path, PathBuf},
@@ -114,8 +114,13 @@ fn check_chunk<'a>(
     tokenizer: &Tokenizer,
     rules: &Rules,
 ) -> Vec<Suggestion<'a>> {
-    let plain = chunk.erase_cmark();
-    trace!("{:?}", &plain);
+    // TODO We should control which parts need to be ignored of the markdown
+    // entities, however the `NlpRulesConfig`, which is the only configuration
+    // we receive in the constructor does not contain the same quirks (or in
+    // fact any other similar settings) as the Hunspell one, so we cannot obtain
+    // this setting, therefore we fallback to default
+    let plain = chunk.erase_cmark(&Default::default());
+    log::trace!("{plain:?}");
     let txt = plain.as_str();
 
     let mut acc = Vec::with_capacity(32);
@@ -131,7 +136,7 @@ fn check_chunk<'a>(
         let start = fix.span().char().start;
         let end = fix.span().char().end;
         if start > end {
-            debug!("BUG: crate nlprule yielded a negative range {:?} for chunk in {}, please file a bug", start..end, &origin);
+            log::debug!("BUG: crate nlprule yielded a negative range {:?} for chunk in {}, please file a bug", start..end, &origin);
             continue 'nlp;
         }
         let range = start..end;
@@ -144,7 +149,7 @@ fn check_chunk<'a>(
                     range,
                     span,
                     origin: origin.clone(),
-                    replacements: replacements.iter().map(|x| x.clone()).collect(),
+                    replacements: replacements.to_vec(),
                     chunk,
                     description: Some(message.to_owned()),
                 }),

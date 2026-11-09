@@ -65,7 +65,7 @@ impl Display for TokenType {
             TokenType::LineComment => "developer line comment",
             TokenType::Other => "not a developer comment",
         };
-        write!(f, "{}", kind)
+        write!(f, "{kind}")
     }
 }
 
@@ -141,13 +141,14 @@ impl TokenWithType {
 /// source
 pub fn extract_developer_comments(source: &str) -> Vec<LiteralSet> {
     let tokens = source_to_iter(source).collect::<Vec<_>>();
-    let comments = construct_literal_sets(tokens);
-    comments
+
+    construct_literal_sets(tokens)
 }
 
 /// Creates a series of `TokenWithType`s from a source string
-fn source_to_iter<'a>(source: &'a str) -> impl Iterator<Item = TokenWithType> + 'a {
-    let parse = ast::SourceFile::parse(source);
+fn source_to_iter(source: &str) -> impl Iterator<Item = TokenWithType> + '_ {
+    // TODO: handle source
+    let parse = ast::SourceFile::parse(source, ra_ap_syntax::Edition::Edition2021);
     let node = parse.syntax_node();
     node.descendants_with_tokens()
         .filter_map(|nort| {
@@ -170,7 +171,7 @@ fn source_to_iter<'a>(source: &'a str) -> impl Iterator<Item = TokenWithType> + 
 /// Given a string, calculates the 1 indexed line number of the line on which
 /// the final character of the string appears
 fn count_lines(fragment: &str) -> usize {
-    fragment.chars().into_iter().filter(|c| *c == '\n').count() + 1
+    fragment.chars().filter(|c| *c == '\n').count() + 1
 }
 
 /// Given a string, calculates the 0 indexed column number of the character
@@ -186,7 +187,9 @@ fn calculate_column(fragment: &str) -> usize {
 /// Returns `None` if the token kind is not `TokenKind::BlockComment`, if the
 /// token content does not match the block comment regex, or if any line cannot
 /// be added by `LiteralSet::add_adjacent`
-fn literal_set_from_block_comment(token: &TokenWithType) -> Result<LiteralSet, String> {
+fn literal_set_from_block_comment(
+    token: &TokenWithType,
+) -> std::result::Result<LiteralSet, String> {
     let number_of_lines = token.content.split("\n").count();
     let mut lines = token.content.split("\n");
     if number_of_lines == 1 {
@@ -219,16 +222,14 @@ fn literal_set_from_block_comment(token: &TokenWithType) -> Result<LiteralSet, S
         ) {
             Err(s) => {
                 return Err(format!(
-                    "Failed to create literal from block comment with content \"{}\" \
-          due to error \"{}\"",
-                    next_line, s
+                    "Failed to create literal from block comment with content \"{next_line}\" due to error \"{s}\"",
                 ))
             }
             Ok(l) => l,
         };
         let mut literal_set = LiteralSet::from(literal);
         let mut line_number = token.line;
-        while let Some(next_line) = lines.next() {
+        for next_line in lines {
             line_number += 1;
             let post = if next_line.ends_with(BLOCK_COMMENT_POSTFIX) {
                 TokenType::BlockComment.post_in_chars()
@@ -245,9 +246,8 @@ fn literal_set_from_block_comment(token: &TokenWithType) -> Result<LiteralSet, S
             ) {
                 Err(s) => {
                     return Err(format!(
-                        "Failed to create literal from content \"{}\" due to error \"{}\"",
-                        next_line, s
-                    ))
+                    "Failed to create literal from content \"{next_line}\" due to error \"{s}\"",
+                ))
                 }
                 Ok(l) => l,
             };
@@ -255,8 +255,7 @@ fn literal_set_from_block_comment(token: &TokenWithType) -> Result<LiteralSet, S
                 Ok(_) => (),
                 Err(_) => {
                     return Err(format!(
-                        "Failed to add line with content {} to literal set",
-                        next_line
+                        "Failed to add line with content {next_line} to literal set",
                     ))
                 }
             }
@@ -268,7 +267,7 @@ fn literal_set_from_block_comment(token: &TokenWithType) -> Result<LiteralSet, S
 /// Attempt to create a literal from a developer line comment token. Returns
 /// `None` if the token's kind is not `TokenType::LineComment` or if the call to
 /// `TrimmedLiteral::from` fails.
-fn literal_from_line_comment(token: &TokenWithType) -> Result<TrimmedLiteral, String> {
+fn literal_from_line_comment(token: &TokenWithType) -> std::result::Result<TrimmedLiteral, String> {
     match token.kind {
         TokenType::LineComment => TrimmedLiteral::from(
             CommentVariant::DoubleSlash,
@@ -329,7 +328,7 @@ fn construct_literal_sets(tokens: impl IntoIterator<Item = TokenWithType>) -> Ve
 
 #[cfg(test)]
 mod tests {
-    use crate::documentation::developer::*;
+    use super::*;
     use assert_matches::assert_matches;
 
     #[test]
@@ -626,7 +625,7 @@ mod tests {
         let tokens = source_to_iter(source).collect::<Vec<_>>();
         assert!(tokens.len() > 0);
         let token = tokens.last().unwrap();
-        let literal_set = literal_set_from_block_comment(&token);
+        let literal_set = literal_set_from_block_comment(token);
         assert!(literal_set.is_ok());
         let literal_set = literal_set.unwrap();
         assert_eq!(literal_set.len(), 1);
@@ -658,7 +657,7 @@ mod tests {
         assert_eq!(literal_set.len(), 3);
         let literals = literal_set.literals();
         {
-            let literal = literals.get(0).unwrap();
+            let literal = literals.first().unwrap();
             assert_eq!(literal.pre(), TokenType::BlockComment.pre_in_chars());
             assert_eq!(literal.post(), "".chars().count());
             assert_eq!(literal.len_in_chars(), " block".chars().count());
@@ -729,12 +728,12 @@ mod tests {
         let source = "// First line comment\nconst ZERO: usize = 0; // A constant ";
         let filtered = source_to_iter(source).collect::<Vec<_>>();
         assert_eq!(filtered.len(), 2);
-        let literals: Vec<Result<TrimmedLiteral, String>> = filtered
+        let literals: Vec<std::result::Result<TrimmedLiteral, String>> = filtered
             .into_iter()
             .map(|t| literal_from_line_comment(&t))
             .collect();
         {
-            let literal = literals.get(0).unwrap();
+            let literal = literals.first().unwrap();
             assert!(literal.is_ok());
             let literal = literal.as_ref().unwrap();
             assert_eq!(literal.pre(), TokenType::LineComment.pre_in_chars());
@@ -772,13 +771,13 @@ mod tests {
     #[test]
     fn test_single_line_comment_put_in_one_literal_set() {
         let content = " line comment";
-        let source = format!("//{}", content);
+        let source = format!("//{content}");
         let tokens = source_to_iter(&source);
         let literal_sets = construct_literal_sets(tokens);
         assert_eq!(literal_sets.len(), 1);
-        let literal_set = literal_sets.get(0).unwrap();
+        let literal_set = literal_sets.first().unwrap();
         let all_literals = literal_set.literals();
-        let literal = all_literals.get(0);
+        let literal = all_literals.first();
         assert!(literal.is_some());
         let literal = literal.unwrap();
         assert!(literal.as_str().contains(content));
@@ -788,15 +787,15 @@ mod tests {
     fn test_adjacent_line_comments_put_in_same_literal_set() {
         let content_1 = " line comment 1 ";
         let content_2 = " line comment 2 ";
-        let source = format!("//{}\n//{}", content_1, content_2);
+        let source = format!("//{content_1}\n//{content_2}");
         let tokens = source_to_iter(&source);
         let literal_sets = construct_literal_sets(tokens);
         assert_eq!(literal_sets.len(), 1);
-        let literal_set = literal_sets.get(0).unwrap();
+        let literal_set = literal_sets.first().unwrap();
         let all_literals = literal_set.literals();
         assert_eq!(all_literals.len(), 2);
         {
-            let literal = all_literals.get(0).unwrap();
+            let literal = all_literals.first().unwrap();
             assert!(literal.as_str().contains(content_1));
         }
         {
@@ -809,22 +808,22 @@ mod tests {
     fn test_non_adjacent_line_comments_put_in_different_literal_sets() {
         let content_1 = " line comment 1 ";
         let content_2 = " line comment 2 ";
-        let source = format!("//{}\nfn(){{}}\n//{}", content_1, content_2);
+        let source = format!("//{content_1}\nfn(){{}}\n//{content_2}");
         let tokens = source_to_iter(&source);
         let literal_sets = construct_literal_sets(tokens);
         assert_eq!(literal_sets.len(), 2);
         {
-            let literal_set = literal_sets.get(0).unwrap();
+            let literal_set = literal_sets.first().unwrap();
             let all_literals = literal_set.literals();
             assert_eq!(all_literals.len(), 1);
-            let literal = all_literals.get(0).unwrap();
+            let literal = all_literals.first().unwrap();
             assert!(literal.as_str().contains(content_1));
         }
         {
             let literal_set = literal_sets.get(1).unwrap();
             let all_literals = literal_set.literals();
             assert_eq!(all_literals.len(), 1);
-            let literal = all_literals.get(0).unwrap();
+            let literal = all_literals.first().unwrap();
             assert!(literal.as_str().contains(content_2));
         }
     }

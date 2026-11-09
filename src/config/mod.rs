@@ -39,17 +39,6 @@ use std::fmt;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-// TODO figure out which ISO spec this actually is
-pub struct CommonLang(String);
-
-impl std::str::FromStr for CommonLang {
-    type Err = Error;
-    fn from_str(_s: &str) -> std::result::Result<Self, Self::Err> {
-        //
-        unimplemented!("Common Lang needs a ref spec")
-    }
-}
-
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
@@ -68,6 +57,15 @@ pub struct Config {
     #[serde(default = "default_hunspell")]
     pub hunspell: Option<HunspellConfig>,
 
+    #[serde(alias = "ZSpell")]
+    #[serde(default = "default_zspell")]
+    pub zet: Option<ZetConfig>,
+
+    #[serde(alias = "Spellbook")]
+    #[serde(alias = "book")]
+    #[serde(default = "default_spellbook")]
+    pub spellbook: Option<SpellbookConfig>,
+
     #[serde(alias = "Nlp")]
     #[serde(alias = "NLP")]
     #[serde(alias = "nlp")]
@@ -75,20 +73,27 @@ pub struct Config {
     #[serde(alias = "NlpRules")]
     #[serde(default = "default_nlprules")]
     pub nlprules: Option<NlpRulesConfig>,
+
     #[serde(alias = "ReFlow")]
     #[serde(alias = "Reflow")]
     pub reflow: Option<ReflowConfig>,
 }
 
 impl Config {
-    const QUALIFIER: &'static str = "io";
-    const ORGANIZATION: &'static str = "spearow";
+    const QUALIFIER: &'static str = "rs";
+    const ORGANIZATION: &'static str = "fff";
     const APPLICATION: &'static str = "cargo_spellcheck";
 
     /// Sanitize all relative paths to absolute paths in relation to `base`.
     fn sanitize_paths(&mut self, base: &Path) -> Result<()> {
         if let Some(ref mut hunspell) = self.hunspell {
             hunspell.sanitize_paths(base)?;
+        }
+        if let Some(ref mut zspell) = self.zet {
+            zspell.sanitize_paths(base)?;
+        }
+        if let Some(ref mut spellbook) = self.spellbook {
+            spellbook.sanitize_paths(base)?;
         }
         Ok(())
     }
@@ -102,7 +107,9 @@ impl Config {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 return Ok(None);
             }
-            Err(e) => bail!(e),
+            Err(e) => {
+                bail!(e);
+            }
             Ok(contents) => contents,
         };
         Self::parse(&contents)
@@ -137,7 +144,7 @@ impl Config {
                     .join("config.toml"),
             )
         } else {
-            bail!("No idea where your config directory is located. XDG compliance would be nice.")
+            bail!("No idea where your config directory is located. XDG compliance would be nice.");
         }
     }
 
@@ -188,7 +195,7 @@ impl Config {
         {
             Ok(base.config_dir().join("config.toml"))
         } else {
-            bail!("No idea where your config directory is located. `$HOME` must be set.")
+            bail!("No idea where your config directory is located. `$HOME` must be set.");
         }
     }
 
@@ -208,7 +215,7 @@ impl Config {
             bail!(
                 "Local project dir config {} does not exist or is not a file.",
                 path.display()
-            )
+            );
         }
     }
 
@@ -220,6 +227,8 @@ impl Config {
     pub fn is_enabled(&self, detector: Detector) -> bool {
         match detector {
             Detector::Hunspell => self.hunspell.is_some(),
+            Detector::ZSpell => self.zet.is_some(),
+            Detector::Spellbook => self.spellbook.is_some(),
             Detector::NlpRules => self.nlprules.is_some(),
             Detector::Reflow => self.reflow.is_some(),
             #[cfg(test)]
@@ -236,12 +245,19 @@ fn default_nlprules() -> Option<NlpRulesConfig> {
     if cfg!(feature = "nlprules") {
         Some(NlpRulesConfig::default())
     } else {
+        log::warn!("Cannot enable nlprules, since it wasn't compiled with `nlprules` as checker");
         None
     }
 }
 
 fn default_hunspell() -> Option<HunspellConfig> {
     Some(HunspellConfig::default())
+}
+fn default_zspell() -> Option<ZetConfig> {
+    Some(ZetConfig::default())
+}
+fn default_spellbook() -> Option<SpellbookConfig> {
+    Some(SpellbookConfig::default())
 }
 
 impl Default for Config {
@@ -250,6 +266,8 @@ impl Default for Config {
             dev_comments: false,
             skip_readme: false,
             hunspell: default_hunspell(),
+            zet: default_zspell(),
+            spellbook: default_spellbook(),
             nlprules: default_nlprules(),
             reflow: Some(ReflowConfig::default()),
         }
@@ -265,6 +283,14 @@ mod tests {
     fn can_serialize_to_toml() {
         let config = dbg!(Config::full());
         assert_matches!(config.to_toml(), Ok(_s));
+    }
+
+    #[test]
+    fn project_config_works() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join(".config")
+            .join("spellcheck.toml");
+        assert_matches!(Config::load_from(&path), Ok(_));
     }
 
     #[test]

@@ -1,9 +1,9 @@
 # cargo-spellcheck
 
 [![crates.io](https://img.shields.io/crates/v/cargo_spellcheck.svg)](https://crates.io/crates/cargo-spellcheck)
-[![CI](https://ci.spearow.io/api/v1/teams/main/pipelines/cargo-spellcheck/jobs/master-validate/badge)](https://ci.spearow.io/teams/main/pipelines/cargo-spellcheck/jobs/master-validate)
+[![CI](https://ci.fff.rs/api/v1/teams/main/pipelines/cargo-spellcheck/jobs/master-validate/badge)](https://ci.fff.rs/teams/main/pipelines/cargo-spellcheck/jobs/master-validate)
 ![commits-since](https://img.shields.io/github/commits-since/drahnr/cargo-spellcheck/latest.svg)
-[![rust 1.51.0+ badge](https://img.shields.io/badge/rust-1.51.0+-93450a.svg)](https://blog.rust-lang.org/2021/03/25/Rust-1.51.0.html)
+![Crates.io MSRV](https://img.shields.io/crates/msrv/cargo-spellcheck)
 
 Check your spelling with `hunspell` and/or `nlprule`.
 
@@ -14,7 +14,7 @@ documentation comments in order to avoid nasty typos all over your source tree.
 Meant as a helper simplifying review as well as improving CI checks after a
 learning phase for custom/topic specific lingo.
 
-`cargo-cpellcheck` is also a valuable tool to run from git commit hooks or CI/CD
+`cargo-spellcheck` is also a valuable tool to run from git commit hooks or CI/CD
 systems.
 
 ### Check For Spelling and/or Grammar Mistakes
@@ -61,6 +61,27 @@ cargo spellcheck fix
 The `--locked` flag is the preferred way of installing to get the tested set of
 dependencies.
 
+on OS X, you need to ensure that `libclang.dylib` can be found by the linker
+
+which can be achieved by setting `DYLB_FALLBACK_LIBRARY_PATH`:
+
+```
+export DYLD_FALLBACK_LIBRARY_PATH= \
+    "$(xcode-select --print-path)/Toolchains/XcodeDefault.xctoolchain/usr/lib/"
+```
+
+In Linux, the file is `libclang.so` which can be installed via:
+
+```
+apt-get install libclang-dev
+``` 
+
+Afterwards, you can set the variable `LIBCLANG_PATH` via:
+
+```
+export LIBCLANG_PATH=/usr/lib/llvm-14/lib/
+```
+
 ## Completions
 
 `cargo spellcheck completions` for autodetection of your current shell via
@@ -74,11 +95,7 @@ to explicitly specify your shell type.
 
 Commonly it's use like this from your shell's `.rc*` file:
 
-`source <(cargo spellcheck completion)`
-
-Note: There is a [relevant clap issue
-(#3508)](https://github.com/clap-rs/clap/issues/3508) that makes this fail in
-some cases.
+`source <(cargo spellcheck completions)`
 
 ## 🎈 Contribute!
 
@@ -88,8 +105,7 @@ Generally the preferred way of doing so, is to comment in an issue that you
 would like to tackle the implementation/fix.
 
 This is usually followed by an initial PR where the implementation is then
-discussed and iteratively refined. No need to get it all correct
-the first time!
+discussed and iteratively refined. No need to get it all correct the first time!
 
 ## Documentation
 

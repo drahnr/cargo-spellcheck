@@ -6,8 +6,8 @@ fn os_specific_search_dirs() -> &'static [PathBuf] {
         static ref OS_SPECIFIC_LOOKUP_DIRS: Vec<PathBuf> =
             if cfg!(target_os = "macos") {
                 directories::BaseDirs::new()
-                    .map(|base| vec![base.home_dir().to_owned().join("/Library/Spelling/"), PathBuf::from("/Library/Spelling/")])
-                    .unwrap_or_else(|| Vec::new())
+                    .map(|base| vec![base.home_dir().join("Library/Spelling/"), PathBuf::from("/Library/Spelling/")])
+                    .unwrap_or_default()
             } else if cfg!(target_os = "linux") {
                 vec![
                     // Fedora
@@ -72,9 +72,9 @@ impl<'de> Deserialize<'de> for SearchDirs {
     }
 }
 
-impl Into<Vec<PathBuf>> for SearchDirs {
-    fn into(self) -> Vec<PathBuf> {
-        self.0
+impl From<SearchDirs> for Vec<PathBuf> {
+    fn from(val: SearchDirs) -> Self {
+        val.0
     }
 }
 

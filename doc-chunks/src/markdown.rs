@@ -5,18 +5,18 @@
 use super::*;
 
 use indexmap::IndexMap;
-use log::trace;
-use pulldown_cmark::{Event, LinkType, Options, Parser, Tag};
 
-use crate::documentation::{CheckableChunk, Range};
+use pulldown_cmark::{Event, LinkType, Options, Parser, Tag, TagEnd};
+
 use crate::util::sub_chars;
 use crate::Span;
+use crate::{CheckableChunk, Range};
 
 /// Describes whether there is a matching segment in the source, of if it is a
 /// placeholder for i.e. a code block or inline code. These placeholders are
 /// required for grammar checks.
 #[derive(Debug, Clone)]
-pub(crate) enum SourceRange {
+pub enum SourceRange {
     Direct(Range),
     Alias(Range, String),
 }
@@ -35,7 +35,7 @@ impl SourceRange {
     /// Extract a clone of the inner `Range<usize>`.
     ///
     /// Use `deref()` or `*` for a reference.
-    pub(crate) fn range(&self) -> Range {
+    pub fn range(&self) -> Range {
         match self {
             Self::Direct(range) => range.clone(),
             Self::Alias(range, _) => range.clone(),
@@ -56,7 +56,7 @@ impl std::ops::Deref for SourceRange {
 pub(crate) fn is_html_tag_on_no_scope_list(text: &str) -> bool {
     use regex::RegexSet;
     lazy_static::lazy_static! {
-        static ref HTML_TAG_EMPTY_OR_SPECIAL_CASE: RegexSet = RegexSet::new(&[
+        static ref HTML_TAG_EMPTY_OR_SPECIAL_CASE: RegexSet = RegexSet::new([
             r####"^<\s*[A-Za-z0-9]+(?:\s+.*)*\s*/>$"####, // any self closing empty
             r####"^<\s*br\s*>$"####,
             r####"^</?\s*(?:i|b|span|font|color|style)\s*/?>$"####,
@@ -64,6 +64,14 @@ pub(crate) fn is_html_tag_on_no_scope_list(text: &str) -> bool {
         ]).unwrap();
     };
     HTML_TAG_EMPTY_OR_SPECIAL_CASE.is_match(text)
+}
+
+#[test]
+fn scoped() {
+    assert_eq!(false, is_html_tag_on_no_scope_list("<code>"));
+    assert_eq!(false, is_html_tag_on_no_scope_list("</code>"));
+    assert_eq!(true, is_html_tag_on_no_scope_list("<code />"));
+    assert_eq!(true, is_html_tag_on_no_scope_list("<pre>🌡</pre>\n"));
 }
 
 /// A plain representation of cmark riddled chunk.
@@ -97,7 +105,7 @@ impl<'a> PlainOverlay<'a> {
         let plain_range = match &cmark_range {
             SourceRange::Alias(_range, alias) => {
                 if alias.is_empty() {
-                    log::debug!("Alias for {:?} was empty. Ignoring.", s);
+                    log::debug!("Alias for {s:?} was empty. Ignoring.");
                     return;
                 }
                 // limit the lias names to 16 chars, all ascii
@@ -110,7 +118,7 @@ impl<'a> PlainOverlay<'a> {
                 }
             }
             SourceRange::Direct(_range) => {
-                plain_acc.push_str(&s);
+                plain_acc.push_str(s);
                 Range {
                     start: cursor,
                     end: cursor + s.chars().count(),
@@ -128,8 +136,9 @@ impl<'a> PlainOverlay<'a> {
     }
 
     /// Ranges are mapped `cmark reduced/plain -> raw`.
-    pub(crate) fn extract_plain_with_mapping(
+    pub fn extract_plain_with_mapping(
         cmark: &str,
+        ignores: &Ignores,
     ) -> (String, IndexMap<Range, SourceRange>) {
         let mut plain = String::with_capacity(cmark.len());
         let mut mapping = indexmap::IndexMap::with_capacity(128);
@@ -145,10 +154,7 @@ impl<'a> PlainOverlay<'a> {
         };
         let parser = Parser::new_with_broken_link_callback(
             cmark,
-            Options::ENABLE_TABLES
-                | Options::ENABLE_FOOTNOTES
-                | Options::ENABLE_STRIKETHROUGH
-                | Options::ENABLE_TASKLISTS,
+            Options::all() ^ Options::ENABLE_SMART_PUNCTUATION,
             Some(broken_link_handler),
         );
 
@@ -156,27 +162,28 @@ impl<'a> PlainOverlay<'a> {
             pulldown_cmark::CodeBlockKind::Fenced(pulldown_cmark::CowStr::Borrowed("rust"));
 
         let mut html_block = 0_usize;
-        let mut code_block = false;
+        let mut code_block = 0_usize;
+        let mut html_code_block = 0_usize;
         let mut inception = false;
         let mut skip_link_text = false;
         let mut skip_table_text = false;
 
         for (event, byte_range) in parser.into_offset_iter() {
             if byte_range.start > byte_range.end {
-                warn!(
-                    "Dropping event {:?} due to negative byte range {:?}, see {}",
-                    event, byte_range, "https://github.com/raphlinus/pulldown-cmark/issues/478"
+                log::warn!(
+                    "Dropping event {event:?} due to negative byte range {byte_range:?}, see {}",
+                    "https://github.com/raphlinus/pulldown-cmark/issues/478"
                 );
                 continue;
             }
 
-            trace!("Parsing event (bytes: {:?}): {:?}", &byte_range, &event);
+            log::trace!("Parsing event (bytes: {byte_range:?}): {event:?}");
 
-            let mut cursor = cmark.char_indices().enumerate().peekable();
+            let cursor = cmark.char_indices().enumerate().peekable();
             let mut char_cursor = 0usize;
 
             // let the cursor catch up to the current byte position
-            while let Some((char_idx, (byte_offset, _c))) = cursor.next() {
+            for (char_idx, (byte_offset, _c)) in cursor {
                 char_cursor = char_idx;
                 if byte_offset >= byte_range.start {
                     break;
@@ -193,16 +200,37 @@ impl<'a> PlainOverlay<'a> {
             };
 
             match event {
+                Event::InlineHtml(html) => {
+                    if html.starts_with("<code") {
+                        html_code_block += 1;
+                    } else if html.ends_with("code>") {
+                        html_code_block = html_code_block.saturating_sub(1);
+                    }
+                }
+                Event::InlineMath(_s) => {
+                    // skip math content
+                }
+                Event::DisplayMath(_s) => {
+                    // skip math content
+                }
                 Event::Start(tag) => match tag {
                     Tag::Table(_alignments) => {
                         skip_table_text = true;
                     }
                     Tag::TableCell | Tag::TableHead | Tag::TableRow => {}
                     Tag::CodeBlock(fenced) => {
-                        code_block = true;
+                        code_block += 1;
                         inception = fenced == rust_fence;
                     }
-                    Tag::Link(link_type, _url, _title) => {
+                    Tag::HtmlBlock => {
+                        html_block += 1;
+                    }
+                    Tag::Link {
+                        link_type,
+                        dest_url: _,
+                        title: _,
+                        id: _,
+                    } => {
                         skip_link_text = match link_type {
                             LinkType::ReferenceUnknown
                             | LinkType::Reference
@@ -218,38 +246,47 @@ impl<'a> PlainOverlay<'a> {
                         // make sure nested lists are not clumped together
                         Self::newlines(&mut plain, 1);
                     }
+                    Tag::Image {
+                        link_type: _,
+                        dest_url: _,
+                        title,
+                        id: _,
+                    } => {
+                        Self::track(
+                            &title,
+                            SourceRange::Direct(char_range),
+                            &mut plain,
+                            &mut mapping,
+                        );
+                    }
                     _ => {}
                 },
                 Event::End(tag) => {
                     match tag {
-                        Tag::Table(_) => {
+                        TagEnd::Table => {
                             skip_table_text = false;
                             Self::newlines(&mut plain, 1);
                         }
-                        Tag::Link(_link_type, _url, _title) => {
+                        TagEnd::Link => {
                             // the actual rendered content is in a text section
                         }
-                        Tag::Image(_link_type, _url, title) => {
-                            Self::track(
-                                &title,
-                                SourceRange::Direct(char_range),
-                                &mut plain,
-                                &mut mapping,
-                            );
-                        }
-                        Tag::Heading(_n, _fragment, _klasses) => {
+                        TagEnd::Image => {}
+                        TagEnd::Heading(_level) => {
                             Self::newlines(&mut plain, 2);
                         }
-                        Tag::CodeBlock(fenced) => {
-                            code_block = false;
+                        TagEnd::CodeBlock => {
+                            code_block = code_block.saturating_sub(1);
 
-                            if fenced == rust_fence {
-                                // TODO validate as if it was another document entity
-                            }
+                            // if fenced == rust_fence {
+                            // TODO validate as if it was another document entity
+                            // }
                         }
-                        Tag::Paragraph => Self::newlines(&mut plain, 2),
+                        TagEnd::HtmlBlock => {
+                            html_block = html_block.saturating_sub(1);
+                        }
+                        TagEnd::Paragraph => Self::newlines(&mut plain, 2),
 
-                        Tag::Item => {
+                        TagEnd::Item => {
                             // assure individual list items are not clumped together
                             Self::newlines(&mut plain, 1);
                         }
@@ -257,8 +294,10 @@ impl<'a> PlainOverlay<'a> {
                     }
                 }
                 Event::Text(s) => {
+                    #[allow(clippy::if_same_then_else)]
                     if html_block > 0 {
-                    } else if code_block {
+                    } else if html_code_block > 0 {
+                    } else if code_block > 0 {
                         if inception {
                             // let offset = char_range.start;
                             // TODO validate as additional, virtual document
@@ -307,16 +346,9 @@ impl<'a> PlainOverlay<'a> {
                         );
                     }
                 }
-                Event::Html(tag) => {
-                    if is_html_tag_on_no_scope_list(&tag) {
-                    } else if tag.starts_with("</") {
-                        html_block = html_block.saturating_sub(1);
-                    } else {
-                        html_block += 1;
-                    }
-                }
+                Event::Html(tag) => if is_html_tag_on_no_scope_list(&tag) {},
                 Event::FootnoteReference(s) => {
-                    if !s.is_empty() {
+                    if !ignores.footnote_references && !s.is_empty() {
                         let char_range = Range {
                             start: char_range.start + 2,
                             end: char_range.end - 1,
@@ -352,7 +384,18 @@ impl<'a> PlainOverlay<'a> {
             if plain_range.end > plain.len() {
                 plain_range.end = plain.len();
             }
-            assert!(plain_range.start <= plain_range.end);
+            if plain_range.start > plain_range.end {
+                let content = String::from_iter(
+                    cmark
+                        .char_indices()
+                        .filter(|(idx, _c)| raw_range.contains(idx))
+                        .map(|(_idx, c)| c),
+                );
+                panic!(
+                    "failed: {} <= {}, raw range: {:?}\ncontent: >>{}<<",
+                    plain_range.start, plain_range.end, raw_range, content
+                );
+            }
             mapping.insert(plain_range, raw_range);
         }
         (plain, mapping)
@@ -362,8 +405,8 @@ impl<'a> PlainOverlay<'a> {
     /// reference.
     // TODO consider returning a `Vec<PlainOverlay<'a>>` to account for list items
     // or other non-linear information which might not pass a grammar check as a whole
-    pub fn erase_cmark(chunk: &'a CheckableChunk) -> Self {
-        let (plain, mapping) = Self::extract_plain_with_mapping(chunk.as_str());
+    pub fn erase_cmark(chunk: &'a CheckableChunk, ignores: &Ignores) -> Self {
+        let (plain, mapping) = Self::extract_plain_with_mapping(chunk.as_str(), ignores);
         Self {
             raw: chunk,
             plain,
@@ -383,7 +426,7 @@ impl<'a> PlainOverlay<'a> {
             .skip_while(|(sub, _raw)| sub.end <= start)
             .take_while(|(sub, _raw)| sub.start < end)
             .inspect(|x| {
-                trace!(">>> item {:?} ∈ {:?}", &condensed_range, x.0);
+                log::trace!(">>> item {:?} ∈ {:?}", condensed_range, x.0);
             })
             .filter(|(sub, _)| {
                 // could possibly happen on empty documentation lines with `///`
@@ -391,11 +434,7 @@ impl<'a> PlainOverlay<'a> {
             })
             .filter(|(_, raw)| {
                 // aliases are not required for span search
-                if let SourceRange::Direct(_) = raw {
-                    true
-                } else {
-                    false
-                }
+                matches!(raw, SourceRange::Direct(_))
             })
             .fold(
                 IndexMap::<Range, Span>::with_capacity(n),
@@ -434,17 +473,16 @@ impl<'a> PlainOverlay<'a> {
                     } else {
                         None
                     }
-                    .and_then(|(sub, raw)| {
-                        trace!("convert:  cmark-erased={:?} -> raw={:?}", sub, raw);
+                    .map(|(sub, raw)| {
+                        log::trace!("convert:  cmark-erased={sub:?} -> raw={raw:?}");
 
                         if raw.is_empty() {
-                            warn!("linear range to spans: {:?} empty!", raw);
+                            log::warn!("linear range to spans: {raw:?} empty!");
                         } else {
                             let resolved = self.raw.find_spans(raw.clone());
-                            trace!("cmark-erased range to spans: {:?} -> {:?}", raw, resolved);
-                            acc.extend(resolved.into_iter());
+                            log::trace!("cmark-erased range to spans: {raw:?} -> {resolved:?}");
+                            acc.extend(resolved);
                         }
-                        Some(())
                     });
                     acc
                 },
@@ -469,7 +507,7 @@ impl<'a> fmt::Debug for PlainOverlay<'a> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         use console::Style;
 
-        let styles = vec![
+        let styles = [
             Style::new().italic().bold().dim().red(),
             Style::new().italic().bold().dim().green(),
             Style::new().italic().bold().dim().yellow(),
@@ -488,7 +526,7 @@ impl<'a> fmt::Debug for PlainOverlay<'a> {
 
         let mut previous_md_end = 0usize;
         for (plain_range, md_range, style) in
-            itertools::cons_tuples(itertools::zip(self.mapping.iter(), color_cycle))
+            itertools::cons_tuples(self.mapping.iter().zip(color_cycle))
         {
             // TODO do this properly, `saturating sub` just prevents crashing
             let delta = md_range.start.saturating_sub(previous_md_end);
@@ -505,10 +543,18 @@ impl<'a> fmt::Debug for PlainOverlay<'a> {
             let s = sub_chars(self.plain.as_str(), plain_range.clone());
             coloured_plain.push_str(style.apply_to(s.as_str()).to_string().as_str());
         }
-        // write!(formatter, "{}", coloured_md)?;
+        // write!(formatter, "{coloured_md}")?;
 
-        writeln!(formatter, "Commonmark:\n{}", coloured_md)?;
-        writeln!(formatter, "Plain:\n{}", coloured_plain)?;
+        writeln!(formatter, "Commonmark:\n{coloured_md}")?;
+        writeln!(formatter, "Plain:\n{coloured_plain}")?;
         Ok(())
     }
+}
+
+/// Explicitly ignored markdown entities.  The `Default` implementation means we
+/// do not ignore anything, which is the backwards compatible configuration.
+#[derive(Clone, Default)]
+pub struct Ignores {
+    /// Ignore [footnote references](Event::FootnoteReference).
+    pub footnote_references: bool,
 }

@@ -31,7 +31,7 @@ Tell the reviewer What changed, Why, and How were you able to accomplish that?
 <!---
 Leave a message to whoever is going to review this PR.
 Mainly, pointers to review the PR, and how they can test it.
-If things are still WIP or feedback on particulr impl details
+If things are still WIP or feedback on particular impl details
 are wanted, state them here too.
 -->
 

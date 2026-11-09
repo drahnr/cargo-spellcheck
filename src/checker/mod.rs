@@ -7,21 +7,49 @@ use crate::{CheckableChunk, Config, ContentOrigin, Detector, Suggestion};
 
 use crate::errors::*;
 
-use log::debug;
+mod cached;
+use self::cached::Cached;
+
+use std::collections::HashSet;
 
 mod tokenize;
+
+#[cfg(feature = "hunspell")]
 pub(crate) use self::hunspell::HunspellChecker;
+#[cfg(feature = "nlprules")]
 pub(crate) use self::nlprules::NlpRulesChecker;
+#[cfg(feature = "spellbook")]
+pub(crate) use self::spellbook::SpellbookChecker;
 pub(crate) use self::tokenize::*;
+#[cfg(feature = "zet")]
+pub(crate) use self::zspell::ZetChecker;
 
 #[cfg(feature = "hunspell")]
 mod hunspell;
 
+#[cfg(feature = "zet")]
+mod zspell;
+
+#[cfg(feature = "spellbook")]
+mod spellbook;
+
 #[cfg(feature = "nlprules")]
 mod nlprules;
 
-#[cfg(feature = "hunspell")]
+mod dictaffix;
+
+#[cfg(any(feature = "spellbook", feature = "zet", feature = "hunspell"))]
 mod quirks;
+
+#[cfg(any(feature = "spellbook", feature = "zet", feature = "hunspell"))]
+struct SuggestionContext<'a, 's> {
+    plain: &'a crate::documentation::PlainOverlay<'s>,
+    chunk: &'s CheckableChunk,
+    origin: &'a ContentOrigin,
+    allow_concatenated: bool,
+    allow_dashed: bool,
+    allow_emojis: bool,
+}
 
 /// Implementation for a checker
 pub trait Checker {
@@ -43,7 +71,11 @@ pub trait Checker {
 /// Only configured checkers are used.
 pub struct Checkers {
     hunspell: Option<HunspellChecker>,
-    nlprule: Option<NlpRulesChecker>,
+    #[cfg(feature = "zet")]
+    zet: Option<ZetChecker>,
+    #[cfg(feature = "spellbook")]
+    spellbook: Option<SpellbookChecker>,
+    nlprules: Option<NlpRulesChecker>,
 }
 
 impl Checkers {
@@ -51,20 +83,17 @@ impl Checkers {
         macro_rules! create_checker {
             ($feature:literal, $checker:ty, $config:expr, $checker_config:expr) => {
                 if !cfg!(feature = $feature) {
-                    debug!("Feature {} is disabled by compilation.", $feature);
+                    log::debug!("Feature {} is disabled by compilation.", $feature);
                     None
                 } else {
-                    #[cfg(feature = $feature)]
-                    {
-                        let config = $config;
-                        let detector = <$checker>::detector();
-                        if config.is_enabled(detector) {
-                            debug!("Enabling {} checks.", detector);
-                            Some(<$checker>::new($checker_config.unwrap())?)
-                        } else {
-                            debug!("Checker {} is disabled by configuration.", detector);
-                            None
-                        }
+                    let config = $config;
+                    let detector = <$checker>::detector();
+                    if config.is_enabled(detector) {
+                        log::debug!("Enabling {} checks.", detector);
+                        Some(<$checker>::new($checker_config.unwrap())?)
+                    } else {
+                        log::debug!("Checker {detector} is disabled by configuration.");
+                        None
                     }
                 }
             };
@@ -76,13 +105,29 @@ impl Checkers {
             &config,
             config.hunspell.as_ref()
         );
-        let nlprule = create_checker!(
+        #[cfg(feature = "zet")]
+        let zet = create_checker!("zet", ZetChecker, &config, config.zet.as_ref());
+        #[cfg(feature = "spellbook")]
+        let spellbook = create_checker!(
+            "spellbook",
+            SpellbookChecker,
+            &config,
+            config.spellbook.as_ref()
+        );
+        let nlprules = create_checker!(
             "nlprules",
             NlpRulesChecker,
             &config,
             config.nlprules.as_ref()
         );
-        Ok(Self { hunspell, nlprule })
+        Ok(Self {
+            hunspell,
+            #[cfg(feature = "zet")]
+            zet,
+            #[cfg(feature = "spellbook")]
+            spellbook,
+            nlprules,
+        })
     }
 }
 
@@ -101,17 +146,40 @@ impl Checker for Checkers {
     where
         'a: 's,
     {
-        let mut collective = Vec::<Suggestion<'s>>::with_capacity(chunks.len());
+        let mut collective = HashSet::<Suggestion<'s>>::new();
         if let Some(ref hunspell) = self.hunspell {
             collective.extend(hunspell.check(origin, chunks)?);
         }
-        if let Some(ref nlprule) = self.nlprule {
+        #[cfg(feature = "zet")]
+        if let Some(ref zet) = self.zet {
+            collective.extend(zet.check(origin, chunks)?);
+        }
+        #[cfg(feature = "spellbook")]
+        if let Some(ref spellbook) = self.spellbook {
+            collective.extend(spellbook.check(origin, chunks)?);
+        }
+        if let Some(ref nlprule) = self.nlprules {
             collective.extend(nlprule.check(origin, chunks)?);
         }
 
-        collective.sort();
+        let mut suggestions: Vec<Suggestion<'s>> = Vec::from_iter(collective);
+        suggestions.sort();
+        if suggestions.is_empty() {
+            return Ok(suggestions);
+        }
 
-        Ok(collective)
+        // Iterate through suggestions and identify overlapping ones.
+        let suggestions = Vec::from_iter(suggestions.clone().into_iter().enumerate().filter_map(
+            |(idx, cur)| {
+                if idx == 0 || !cur.is_overlapped(&suggestions[idx - 1]) {
+                    Some(cur)
+                } else {
+                    None
+                }
+            },
+        ));
+
+        Ok(suggestions)
     }
 }
 
@@ -122,11 +190,11 @@ pub mod dummy;
 pub mod tests {
     use super::*;
     use crate::load_span_from;
-    use crate::span::Span;
     use crate::ContentOrigin;
     use crate::Documentation;
     use crate::LineColumn;
     use crate::Range;
+    use crate::Span;
     use std::path::PathBuf;
 
     use crate::fluff_up;
@@ -158,9 +226,14 @@ pub mod tests {
             .filter(None, log::LevelFilter::Trace)
             .is_test(true)
             .try_init();
+        let doc_comments = true;
         let dev_comments = false;
-        let docs =
-            Documentation::load_from_str(ContentOrigin::TestEntityRust, content, dev_comments);
+        let docs = Documentation::load_from_str(
+            ContentOrigin::TestEntityRust,
+            content,
+            doc_comments,
+            dev_comments,
+        );
         let (origin, chunks) = docs.into_iter().next().expect("Contains exactly one file");
         let suggestions = dummy::DummyChecker
             .check(&origin, &chunks[..])
@@ -174,7 +247,7 @@ pub mod tests {
         {
             assert_eq!(
                 suggestion.replacements,
-                vec![format!("replacement_{}", index)],
+                vec![format!("replacement_{index}")],
                 "found vs expected replacement"
             );
             let extracts = load_span_from(&mut content.as_bytes(), suggestion.span).unwrap();
@@ -258,5 +331,52 @@ pub mod tests {
             },
         ];
         extraction_test_body(dbg!(SIMPLE), EXPECTED_SPANS);
+    }
+
+    #[test]
+    fn checker_discrepancies() {
+        let _ = env_logger::Builder::new()
+            .default_format()
+            .filter_level(log::LevelFilter::Debug)
+            .filter(Some("dicaff"), log::LevelFilter::Trace)
+            .is_test(true)
+            .try_init();
+
+        let x = r###"
+/// With all patches applied.
+///
+/// No line in need of a reflow.
+///
+/// `Patch`s foo.
+///
+/// I am a TODO where TODO is in the extra dictionary.
+struct X;
+"###;
+
+        let mut doc = Documentation::new();
+        doc.add_rust(ContentOrigin::TestEntityRust, x, true, false)
+            .unwrap();
+
+        let config = Config::default();
+        assert!(config.is_enabled(Detector::Hunspell));
+        assert!(config.is_enabled(Detector::Spellbook));
+        assert!(config.is_enabled(Detector::ZSpell));
+        let cs = Checkers::new(config).unwrap();
+
+        let (origin, ccs) = doc.iter().next().unwrap();
+        dbg!(&ccs);
+        let assert_cmp = |a: &[Suggestion<'_>], b: &[Suggestion<'_>]| {
+            assert_eq!(a.len(), b.len());
+            for (a, b) in a.iter().zip(b.iter()) {
+                assert_eq!(a.range, b.range);
+                assert_eq!(a.chunk, b.chunk);
+            }
+        };
+
+        let hun = dbg!(cs.hunspell.unwrap().check(origin, ccs)).unwrap();
+        let book = dbg!(cs.spellbook.unwrap().check(origin, ccs)).unwrap();
+        let z = dbg!(cs.zet.unwrap().check(origin, ccs)).unwrap();
+        assert_cmp(&hun, &z);
+        assert_cmp(&z, &book);
     }
 }

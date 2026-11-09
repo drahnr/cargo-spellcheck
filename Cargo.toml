@@ -1,8 +1,9 @@
 [package]
 name = "cargo-spellcheck"
-version = "0.11.2"
+version = "0.15.7"
 authors = ["Bernhard Schuster <bernhard@ahoi.io>"]
 edition = "2021"
+rust-version = "1.85.0"
 repository = "https://github.com/drahnr/cargo-spellcheck.git"
 homepage = "https://github.com/drahnr/cargo-spellcheck"
 license = "MIT OR Apache-2.0"
@@ -11,62 +12,84 @@ description = "Checks all doc comments for spelling mistakes"
 readme = "README.md"
 build = "build.rs"
 include = [
-    "nlprule-data/**/*.bin.xz",
-    "hunspell-data/*",
-    "src/**/*.rs",
-    "Cargo.toml",
-    "build.rs",
-    "/LICENSE-*",
-    "/README.md",
-    "tests/**/*.rs",
-    "CHANGELOG.md"
+  "nlprule-data/**/*.bin.xz",
+  "hunspell-data/*",
+  "src/**/*.rs",
+  "Cargo.toml",
+  "build.rs",
+  "/LICENSE-*",
+  "/README.md",
+  "tests/**/*.rs",
+  "CHANGELOG.md",
 ]
 
+[workspace]
+members = ["./doc-chunks"]
+
+[workspace.lints.clippy]
+# asserting against a bool literal
+# is a lot easier to read compared
+# to the prefix !
+bool_assert_comparison = "allow"
+# for clarity, we sometimes do
+# add 0_usize and is not consdiered
+# a code smell in this context
+identity_op = "allow"
+# asserts with length checks with zero
+# are more expressive
+len_zero = "allow"
+
+[lints]
+workspace = true
+
+
 [build-dependencies]
-nlprule-build = { version = "=0.6.4",  optional = true }
+nlprule-build = { version = "=0.6.4", optional = true }
 # compress the nlprule artifacts to be under the 10 MB limit
 # that cargo enforces
 xz2 = "0.1"
 
 [dependencies]
+
+doc-chunks = { version = "0.2.2", path = "./doc-chunks" }
+
 color-eyre = "0.6"
-cargo_toml = "^0.11.4"
+cargo_toml = "0.21"
 console = "0.15"
-crossterm = "0.22.1"
+crossterm = "0.27"
 # for the config file
-directories = "4.0.1"
+directories = "5"
 
-clap = { version = "3.1", features = ["derive", "env"] }
-clap-verbosity-flag = "1.0.0"
-clap_complete = "3.1"
+clap = { version = "4.1.8", features = ["derive", "env"] }
+clap_complete = "4.1.4"
+clap-verbosity-flag = "2.0"
 
-env_logger = "0.9"
-fancy-regex = "0.8"
-fs-err = "2"
-indexmap = { version = "1", features=["rayon", "serde"] }
-itertools = "0.10"
+env_logger = "0.11"
+fancy-regex = "0.13"
+fs-err = { version = "2", features = ["io_safety"] }
+indexmap = { version = "2", features = ["rayon", "serde"] }
+itertools = "0.12"
 lazy_static = "1"
 memchr = "2"
 log = "0.4"
 num_cpus = "1.13"
 proc-macro2 = { version = "1", features = ["span-locations"] }
-pulldown-cmark = "0.9.1"
-ra_ap_syntax = "0.0.102"
+pulldown-cmark = "0.10"
 rayon = "1.5"
 regex = "1.5"
 serde = { version = "1", features = ["derive"] }
 signal-hook = "0.3"
-syn = { version = "1", features = ["full"] }
+syn = { version = "2", features = ["full"] }
 thiserror = "1"
 # for parsing and extracting elements from Cargo.toml
-toml = "0.5"
+toml = "0.8"
 glob = "0.3"
 # for the config file
-walkdir = "2"
+ignore = "0.4.18"
 tokio = { version = "1", features = ["full", "rt-multi-thread"] }
 futures = "0.3"
 
-uuid = { version = "0.8.2", features = ["v4"] }
+uuid = { version = "1.0.0", features = ["v4"] }
 
 # config parsing, must be independent of features
 
@@ -77,11 +100,21 @@ isolang = { version = "2", features = ["serde"] }
 url = { version = "2", features = ["serde"] }
 
 # dictionary lookup with affixes
-hunspell-rs = { version = "0.3", optional = true }
-fd-lock = { version = "3", optional = true }
+hunspell-rs = { version = "0.4.0", optional = true }
+fd-lock = { version = "4", optional = true }
+encoding_rs = { version = "0.8.31", optional = true, features = [] }
+zspell = { version = "0.5.5", optional = true }
+spellbook = { version = "0.1", optional = true }
 
 # full grammar check, but also tokenization and disambiguation
 nlprule = { version = "=0.6.4", optional = true }
+
+# cache some expensive expansions
+xz2 = "0.1"
+sha2 = "0.10"
+bincode = "1"
+hex = "0.4"
+thousands = "0.2"
 
 [dev-dependencies]
 # for stripping ansi color codes
@@ -89,22 +122,35 @@ console = "0.15"
 assert_matches = "1"
 maplit = "1"
 serde_plain = "1"
-nix = "0.23"
+nix = "0.26.2"
 
 [features]
-default = ["hunspell", "nlprules"]
+default = ["all"]
 
 # hunspell uses the segmenter provided by nlprules
-hunspell = ["hunspell-rs/bundled", "fd-lock", "nlprules"]
-nlprules = ["nlprule/regex-fancy", "nlprule-build"]
+hunspell = [
+  "dep:hunspell-rs",
+  "hunspell-rs?/bundled",
+  "dep:fd-lock",
+  "nlprules",
+  "dep:encoding_rs",
+]
+zet = ["dep:zspell"]
+spellbook = ["dep:spellbook"]
+nlprules = ["dep:nlprule", "nlprule?/regex-fancy", "dep:nlprule-build"]
 
-all = ["hunspell", "nlprules"]
+all = ["hunspell", "zet", "spellbook", "nlprules"]
 
 [profile.dev]
 build-override = { opt-level = 2 }
 
-[profile.dev.package.backtrace]
-opt-level = 3
+[profile.dev.package]
+backtrace = { opt-level = 3 }
+bincode = { opt-level = 3 }
+xz2 = { opt-level = 3 }
+sha2 = { opt-level = 3 }
+hunspell-rs = { opt-level = 3 }
+nlprule = { opt-level = 3 }
 
 [profile.release]
 debug = true

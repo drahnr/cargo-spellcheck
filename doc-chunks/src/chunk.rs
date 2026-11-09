@@ -9,8 +9,11 @@ use std::convert::TryFrom;
 use std::fmt;
 use std::path::Path;
 
-use crate::documentation::PlainOverlay;
-use crate::{util::sub_chars, Range, Span};
+use crate::{
+    util::{sub_char_range, sub_chars},
+    Range, Span,
+};
+use crate::{Ignores, PlainOverlay};
 
 /// Definition of the source of a checkable chunk
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
@@ -24,10 +27,8 @@ pub enum ContentOrigin {
     /// Full rust source file.
     RustSourceFile(PathBuf),
     /// A test entity for a rust file, with no meaning outside of test.
-    #[cfg(test)]
     TestEntityRust,
     /// A test entity for a cmark file, with no meaning outside of test.
-    #[cfg(test)]
     TestEntityCommonMark,
 }
 
@@ -44,14 +45,12 @@ impl ContentOrigin {
             Self::CommonMarkFile(path) => path.as_path(),
             Self::RustDocTest(path, _) => path.as_path(),
             Self::RustSourceFile(path) => path.as_path(),
-            #[cfg(test)]
             Self::TestEntityCommonMark => {
                 lazy_static::lazy_static! {
                     static ref TEST_ENTITY_CMARK: PathBuf = PathBuf::from("/tmp/test/entity.md");
                 };
                 TEST_ENTITY_CMARK.as_path()
             }
-            #[cfg(test)]
             Self::TestEntityRust => {
                 lazy_static::lazy_static! {
                     static ref TEST_ENTITY_RUST: PathBuf = PathBuf::from("/tmp/test/entity.rs");
@@ -136,11 +135,8 @@ impl CheckableChunk {
     ///           (13,17) => (4,0)->(4,3),
     /// ]
     /// ```
-    pub(crate) fn find_spans(&self, range: Range) -> IndexMap<Range, Span> {
-        trace!(target: "find_spans",
-            "Chunk find_span {:?}",
-            &range
-        );
+    pub fn find_spans(&self, range: Range) -> IndexMap<Range, Span> {
+        log::trace!(target: "find_spans", "Chunk find_span {range:?}");
 
         let Range { start, end } = range;
         self.source_mapping
@@ -148,7 +144,7 @@ impl CheckableChunk {
             .skip_while(|(fragment_range, _span)| fragment_range.end <= start)
             .take_while(|(fragment_range, _span)| fragment_range.start < end)
             .inspect(|x| {
-                trace!(target: "find_spans", ">>> item {:?} ∈ {:?}", &range, x.0);
+                log::trace!(target: "find_spans", ">>> item {:?} ∈ {:?}", range, x.0);
             })
             .filter(|(fragment_range, _)| {
                 // could possibly happen on empty documentation lines with `///`
@@ -161,31 +157,23 @@ impl CheckableChunk {
                 (fragment_span, fragment_range, sub_fragment_range)
             })
             .inspect(|(fragment_span, fragment_range, sub_fragment_range)| {
-                let (fragment_span, fragment_range, sub_fragment_range) = (
-                    fragment_span.clone(),
-                    fragment_range.clone(),
-                    sub_fragment_range.clone(),
-                );
+                let (fragment_span, fragment_range, sub_fragment_range) =
+                    (fragment_span, fragment_range, sub_fragment_range.clone());
                 log::trace!(target: "find_spans",
-                    ">> fragment: span: {:?} => range: {:?} | sub: {:?} -> sub_fragment: {:?}",
-                    &fragment_span,
-                    &fragment_range,
-                    range,
-                    &sub_fragment_range,
+                    ">> fragment: span: {fragment_span:?} => range: {fragment_range:?} | sub: {range:?} -> sub_fragment: {sub_fragment_range:?}",
                 );
 
                 log::trace!(target: "find_spans",
                     "[f]display;\n>{}<",
-                    ChunkDisplay::try_from((self, fragment_range.clone()))
-                        .expect("must be convertable")
+                    ChunkDisplay::from((self, *fragment_range))
                 );
                 log::trace!(target: "find_spans",
                     "[f]content;\n>{}<",
-                    sub_chars(self.as_str(), fragment_range.clone())
+                    sub_chars(self.as_str(), (*fragment_range).clone())
                 );
             })
             .filter_map(|(fragment_span, fragment_range, sub_fragment_range)| {
-                if sub_fragment_range.len() == 0 {
+                if sub_fragment_range.is_empty() {
                     log::trace!(target: "find_spans","sub fragment is zero, dropping!");
                     return None;
                 }
@@ -194,14 +182,14 @@ impl CheckableChunk {
                 }
                 Some((fragment_span, fragment_range, sub_fragment_range))
             })
-            .filter_map(|(fragment_span, fragment_range, sub_fragment_range)| {
+            .map(|(fragment_span, fragment_range, sub_fragment_range)| {
                 // take the full fragment string, we need to count newlines before and after
                 let s = sub_char_range(self.as_str(), fragment_range.clone());
 
                 // relative to the range given / offset
                 let shift = sub_fragment_range.start - fragment_range.start;
                 // state
-                let mut sub_fragment_span = fragment_span.clone();
+                let mut sub_fragment_span = *fragment_span;
                 let mut cursor: LineColumn = fragment_span.start;
                 let mut iter = s.chars().enumerate().peekable();
                 let mut started = true;
@@ -231,13 +219,11 @@ impl CheckableChunk {
                     debug_assert_eq!(sub_fragment_span_len, sub_fragment_range.len());
                 }
                 log::trace!(
-                    ">> sub_fragment range={:?} span={:?} => {}",
-                    &sub_fragment_range,
-                    &sub_fragment_span,
+                    ">> sub_fragment range={sub_fragment_range:?} span={sub_fragment_span:?} => {}",
                     self.display(sub_fragment_range.clone()),
                 );
 
-                Some((sub_fragment_range, sub_fragment_span))
+                (sub_fragment_range, sub_fragment_span)
             })
             .collect::<IndexMap<_, _>>()
     }
@@ -270,7 +256,7 @@ impl CheckableChunk {
     ///             |--- range ---|
     /// ```
     ///
-    pub fn find_covered_spans<'a>(&'a self, range: Range) -> impl Iterator<Item = &'a Span> {
+    pub fn find_covered_spans(&self, range: Range) -> impl Iterator<Item = &'_ Span> {
         let Range { start, end } = range;
         self.source_mapping
             .iter()
@@ -279,7 +265,7 @@ impl CheckableChunk {
             .filter_map(|(fragment_range, fragment_span)| {
                 // could possibly happen on empty documentation lines with `///`
                 // TODO: is_empty() throws disambiguity error
-                if fragment_range.len() == 0 {
+                if fragment_range.is_empty() {
                     None
                 } else {
                     Some(fragment_span)
@@ -288,7 +274,7 @@ impl CheckableChunk {
     }
 
     /// Yields a set of ranges covering all spanned lines (the full line).
-    pub fn find_covered_lines<'i>(&'i self, range: Range) -> Vec<Range> {
+    pub fn find_covered_lines(&self, range: Range) -> Vec<Range> {
         // assumes the _mistake_ is within one line
         // if not we chop it down to the first line
         let mut acc = Vec::with_capacity(32);
@@ -343,7 +329,10 @@ impl CheckableChunk {
                     acc.push(span.start.column + line_range.len());
                     Ok(acc)
                 } else {
-                    bail!("BUG: Found a range {}..{} which that does not exist in its own source mapping: {:?}", line_range.start, line_range.end, &self.source_mapping)
+                    Err(Error::InvalidLineRange {
+                        line_range: line_range.clone(),
+                        source_mapping: self.source_mapping.clone(),
+                    })
                 }
             })?;
 
@@ -356,12 +345,12 @@ impl CheckableChunk {
     }
 
     /// Get the display wrapper type to be used with i.e. `format!(..)`.
-    pub fn display(&self, range: Range) -> ChunkDisplay {
+    pub fn display(&self, range: Range) -> ChunkDisplay<'_> {
         ChunkDisplay::from((self, range))
     }
 
     /// Iterate over all ranges and the associated span.
-    pub fn iter(&self) -> indexmap::map::Iter<Range, Span> {
+    pub fn iter(&self) -> indexmap::map::Iter<'_, Range, Span> {
         self.source_mapping.iter()
     }
 
@@ -374,8 +363,8 @@ impl CheckableChunk {
 
     /// Obtain an accessor object containing mapping and string representation,
     /// removing the markdown annotations.
-    pub fn erase_cmark(&self) -> PlainOverlay {
-        PlainOverlay::erase_cmark(self)
+    pub fn erase_cmark(&self, ignores: &Ignores) -> PlainOverlay<'_> {
+        PlainOverlay::erase_cmark(self, ignores)
     }
 
     /// Obtain the length in characters.
@@ -396,7 +385,7 @@ impl From<Clusters> for Vec<CheckableChunk> {
         clusters
             .set
             .into_iter()
-            .map(|literal_set| CheckableChunk::from_literalset(literal_set))
+            .map(CheckableChunk::from_literalset)
             .collect::<Vec<_>>()
     }
 }
@@ -443,9 +432,9 @@ where
     }
 }
 
-impl<'a> Into<(&'a CheckableChunk, Range)> for ChunkDisplay<'a> {
-    fn into(self) -> (&'a CheckableChunk, Range) {
-        (self.0, self.1)
+impl<'a> From<ChunkDisplay<'a>> for (&'a CheckableChunk, Range) {
+    fn from(val: ChunkDisplay<'a>) -> Self {
+        (val.0, val.1)
     }
 }
 
@@ -495,6 +484,6 @@ impl<'a> fmt::Display for ChunkDisplay<'a> {
             oob.apply_to("!!!")
         };
 
-        write!(formatter, "{}{}{}", ctx1, highlight, ctx2)
+        write!(formatter, "{ctx1}{highlight}{ctx2}")
     }
 }

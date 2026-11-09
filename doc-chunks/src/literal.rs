@@ -89,7 +89,7 @@ impl CommentVariant {
                     0 => "\"".to_owned(),
                     x => format!("r{}\"", "#".repeat(x.saturating_sub(1))),
                 };
-                format!(r#"{}{}"#, d, raw)
+                format!(r#"{d}{raw}"#)
             }
             CommentVariant::CommonMark => "".to_string(),
             CommentVariant::DoubleSlash => "//".to_string(),
@@ -98,10 +98,9 @@ impl CommentVariant {
             CommentVariant::SlashAsteriskEM => "/*!".to_string(),
             CommentVariant::SlashAsteriskAsterisk => "/**".to_string(),
             CommentVariant::TomlEntry => "".to_owned(),
-            unhandled => unreachable!(
-                "String representation for comment variant {:?} exists. qed",
-                unhandled
-            ),
+            unhandled => {
+                unreachable!("String representation for comment variant {unhandled:?} exists. qed")
+            }
         }
     }
     /// Return length (in bytes) of comment prefix for each variant.
@@ -282,14 +281,14 @@ fn detect_comment_variant(
         let post = variant.suffix_len();
 
         #[cfg(debug_assertions)]
-        let orig = span.clone();
+        let orig = span;
 
         trim_span(rendered, &mut span, pre, post);
 
         #[cfg(debug_assertions)]
         {
             let raw = util::load_span_from(&mut content.as_bytes(), orig)?;
-            let adjusted = util::load_span_from(&mut content.as_bytes(), span.clone())?;
+            let adjusted = util::load_span_from(&mut content.as_bytes(), span)?;
 
             // we know pre and post only consist of single byte characters
             // so `.len()` is way faster here yet correct.
@@ -317,13 +316,17 @@ fn detect_comment_variant(
                     log::trace!("raw str pre: >{}<", prefix.as_str());
                     prefix.as_str().len()
                 } else {
-                    bail!("Should have a raw str pre match with a capture group");
+                    return Err(Error::Span(
+                        "Should have a raw str pre match with a capture group".to_string(),
+                    ));
                 };
                 let post = if let Some(suffix) = captures.get(captures.len() - 1) {
                     log::trace!("raw str post: >{}<", suffix.as_str());
                     suffix.as_str().len()
                 } else {
-                    bail!("Should have a raw str post match with a capture group");
+                    return Err(Error::Span(
+                        "Should have a raw str post match with a capture group".to_string(),
+                    ));
                 };
 
                 // r####" must match "####
@@ -338,7 +341,7 @@ fn detect_comment_variant(
                 debug_assert_eq!('"', rendered.as_bytes()[rendered.len() - 1_usize] as char);
                 (pre, post)
             } else {
-                bail!("Regex should match >{}<", rendered);
+                return Err(Error::Span(format!("Regex should match >{rendered}<")));
             };
 
         span.start.column += pre;
@@ -364,7 +367,7 @@ impl TrimmedLiteral {
         variant: CommentVariant,
     ) -> Self {
         Self {
-            /// Track what kind of comment the literal is
+            // Track what kind of comment the literal is
             variant,
             span,
             // .
@@ -394,7 +397,7 @@ impl TrimmedLiteral {
         // If the line ending has more than one character, we have to account
         // for that. Otherwise cut of the last character of the ending such that
         // we can't properly detect them anymore.
-        if crate::reflow::extract_delimiter(content)
+        if crate::util::extract_delimiter(content)
             .unwrap_or("\n")
             .len()
             > 1
@@ -403,7 +406,7 @@ impl TrimmedLiteral {
             span.end.column += 1;
         }
 
-        let rendered = util::load_span_from(content.as_bytes(), span.clone())?;
+        let rendered = util::load_span_from(content.as_bytes(), span)?;
 
         // TODO cache the offsets for faster processing and avoiding repeated O(n) ops
         // let byteoffset2char = rendered.char_indices().enumerate().collect::<indexmap::IndexMap<_usize, (_usize, char)>>();
@@ -411,7 +414,7 @@ impl TrimmedLiteral {
 
         let rendered_len = rendered.chars().count();
 
-        log::trace!("extracted from source: >{}< @ {:?}", rendered, span);
+        log::trace!("extracted from source: >{rendered}< @ {span:?}");
         let (variant, span, pre, post) = detect_comment_variant(content, &rendered, span)?;
 
         let len_in_chars = rendered_len.saturating_sub(post + pre);
@@ -420,7 +423,7 @@ impl TrimmedLiteral {
             if log::log_enabled!(log::Level::Trace) {
                 let extracted =
                     sub_chars(rendered.as_str(), pre..rendered_len.saturating_sub(post));
-                log::trace!(target: "quirks", "{:?} {}||{} for \n extracted: >{}<\n rendered:  >{}<", span, pre, post, &extracted, rendered);
+                log::trace!(target: "quirks", "{span:?} {pre}||{post} for \n extracted: >{extracted}<\n rendered:  >{rendered}<");
                 assert_eq!(len_in_chars, span_len);
             }
         }
@@ -451,13 +454,10 @@ impl TrimmedLiteral {
         post: usize,
         line: usize,
         column: usize,
-    ) -> Result<TrimmedLiteral, String> {
+    ) -> std::result::Result<TrimmedLiteral, String> {
         let content_chars_len = content.chars().count();
         let mut span = Span {
-            start: LineColumn {
-                line,
-                column: column,
-            },
+            start: LineColumn { line, column },
             end: LineColumn {
                 line,
                 column: column + content_chars_len,
@@ -498,7 +498,7 @@ impl TrimmedLiteral {
 
     /// Full representation including `prefix` and `postfix` characters.
     pub fn as_untrimmed_str(&self) -> &str {
-        &self.rendered.as_str()
+        self.rendered.as_str()
     }
 
     /// Length in characters, excluding `pre` and `post`.
@@ -509,6 +509,11 @@ impl TrimmedLiteral {
     /// Length in bytes, excluding `pre` and `post`.
     pub fn len(&self) -> usize {
         self.len_in_bytes
+    }
+
+    /// Whether the content is empty, excluding `pre` and `post`.
+    pub fn is_empty(&self) -> bool {
+        self.len_in_bytes == 0
     }
 
     /// Obtain the number of characters in `pre()`.
@@ -531,11 +536,11 @@ impl TrimmedLiteral {
     ///
     /// Covers only the content, no marker or helper characters.
     pub fn span(&self) -> Span {
-        self.span.clone()
+        self.span
     }
 
     /// Access the characters via an iterator.
-    pub fn chars<'a>(&'a self) -> impl Iterator<Item = char> + 'a {
+    pub fn chars(&self) -> impl Iterator<Item = char> + '_ {
         self.as_str().chars()
     }
 
@@ -547,7 +552,7 @@ impl TrimmedLiteral {
 
     /// Display helper, mostly used for debug investigations
     #[allow(unused)]
-    pub(crate) fn display(&self, highlight: Range) -> TrimmedLiteralDisplay {
+    pub(crate) fn display(&self, highlight: Range) -> TrimmedLiteralDisplay<'_> {
         TrimmedLiteralDisplay::from((self, highlight))
     }
 }
@@ -588,9 +593,9 @@ where
     }
 }
 
-impl<'a> Into<(&'a TrimmedLiteral, Range)> for TrimmedLiteralDisplay<'a> {
-    fn into(self) -> (&'a TrimmedLiteral, Range) {
-        (self.0, self.1)
+impl<'a> From<TrimmedLiteralDisplay<'a>> for (&'a TrimmedLiteral, Range) {
+    fn from(val: TrimmedLiteralDisplay<'a>) -> Self {
+        (val.0, val.1)
     }
 }
 
@@ -661,15 +666,28 @@ impl<'a> fmt::Display for TrimmedLiteralDisplay<'a> {
             (String::new(), oob.apply_to("!!!").to_string())
         };
 
-        write!(formatter, "{}{}{}{}{}", pre, ctx1, highlight, ctx2, post)
+        write!(formatter, "{pre}{ctx1}{highlight}{ctx2}{post}")
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::documentation::tests::annotated_literals_raw;
+    use crate::testcase::annotated_literals_raw;
     use assert_matches::assert_matches;
+
+    #[test]
+    fn trimmed_content_is_empty() {
+        for (content, pre, post, expected_empty) in [("/**/", 2, 2, true), ("/*🌡*/", 2, 2, false)]
+        {
+            let literal =
+                TrimmedLiteral::from(CommentVariant::SlashAsterisk, content, pre, post, 1, 0)
+                    .unwrap();
+            assert_eq!(literal.is_empty(), expected_empty);
+            assert_eq!(literal.is_empty(), literal.as_str().is_empty());
+            assert_eq!(literal.len(), literal.as_str().len());
+        }
+    }
 
     #[test]
     fn variant_detect() {

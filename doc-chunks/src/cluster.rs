@@ -5,8 +5,9 @@ use syn::LitStr;
 use syn::Macro;
 use syn::Token;
 
-use super::{trace, LiteralSet, TokenTree, TrimmedLiteral};
-use crate::documentation::developer::extract_developer_comments;
+use super::{LiteralSet, TokenTree, TrimmedLiteral};
+use crate::developer::extract_developer_comments;
+
 use crate::errors::*;
 use crate::Span;
 
@@ -57,7 +58,7 @@ impl syn::parse::Parse for DocComment {
 /// Cluster comments together, such they appear as continuous text blocks.
 #[derive(Debug)]
 pub struct Clusters {
-    pub(super) set: Vec<LiteralSet>,
+    pub(crate) set: Vec<LiteralSet>,
 }
 
 impl Clusters {
@@ -73,14 +74,12 @@ impl Clusters {
         };
         if let Some(cls) = self.set.last_mut() {
             if let Err(trimmed_literal) = cls.add_adjacent(trimmed_literal) {
-                trace!(target: "documentation",
-                    "appending, but failed to append: {:?} to set {:?}",
-                    &trimmed_literal,
-                    &cls
+                log::trace!(target: "documentation",
+                    "appending, but failed to append: {trimmed_literal:?} to set {cls:?}",
                 );
                 self.set.push(LiteralSet::from(trimmed_literal))
             } else {
-                trace!("successfully appended to existing: {:?} to set", &cls);
+                log::trace!("successfully appended to existing: {cls:?} to set");
             }
         } else {
             self.set.push(LiteralSet::from(trimmed_literal));
@@ -89,24 +88,22 @@ impl Clusters {
     }
 
     /// Helper function to parse a stream and associate the found literals.
-    fn parse_token_tree(&mut self, source: &str, stream: proc_macro2::TokenStream) -> Result<()> {
-        let mut iter = stream.into_iter();
-        while let Some(tree) = iter.next() {
-            match tree {
-                TokenTree::Group(group) => {
-                    if let Ok(comment) = syn::parse2::<DocComment>(group.stream()) {
-                        if let Err(e) = self.process_literal(source, comment) {
-                            log::error!(
-                                "BUG: Failed to guarantee literal content/span integrity: {}",
-                                e
-                            );
-                            continue;
-                        }
-                    } else {
-                        self.parse_token_tree(source, group.stream())?;
+    pub fn parse_token_tree(
+        &mut self,
+        source: &str,
+        stream: proc_macro2::TokenStream,
+    ) -> Result<()> {
+        let iter = stream.into_iter();
+        for tree in iter {
+            if let TokenTree::Group(group) = tree {
+                if let Ok(comment) = syn::parse2::<DocComment>(group.stream()) {
+                    if let Err(e) = self.process_literal(source, comment) {
+                        log::error!("BUG: Failed to guarantee literal content/span integrity: {e}");
+                        continue;
                     }
+                } else {
+                    self.parse_token_tree(source, group.stream())?;
                 }
-                _ => {}
             };
         }
         Ok(())
@@ -123,18 +120,20 @@ impl Clusters {
     /// ensure that the comments higher up in the source file appear first to
     /// the user
     fn ensure_sorted(&mut self) {
-        self.set.sort_by(|ls1, ls2| ls1.coverage.cmp(&ls2.coverage));
+        self.set.sort_by_key(|ls| ls.coverage);
     }
 
     /// Load clusters from a `&str`. Optionally loads developer comments as
     /// well.
-    pub(crate) fn load_from_str(source: &str, dev_comments: bool) -> Result<Self> {
+    pub fn load_from_str(source: &str, doc_comments: bool, dev_comments: bool) -> Result<Self> {
         let mut chunk = Self {
             set: Vec::with_capacity(64),
         };
-        let stream = syn::parse_str::<proc_macro2::TokenStream>(source)
-            .wrap_err_with(|| eyre!("Failed to parse content to stream"))?;
-        chunk.parse_token_tree(source, stream)?;
+        if doc_comments {
+            let stream =
+                syn::parse_str::<proc_macro2::TokenStream>(source).map_err(Error::ParserFailure)?;
+            chunk.parse_token_tree(source, stream)?;
+        }
         if dev_comments {
             chunk.parse_developer_comments(source);
         }
@@ -170,7 +169,7 @@ struct X;
 
 }
 "#####;
-        let clusters = Clusters::load_from_str(CONTENT, false).unwrap();
+        let clusters = Clusters::load_from_str(CONTENT, true, true).unwrap();
         assert_eq!(clusters.set.len(), 1);
         dbg!(&clusters.set[0]);
     }
@@ -185,7 +184,20 @@ struct X;
 // ```
 struct DefinitelyNotZ;
 "#####;
-        let clusters = Clusters::load_from_str(CONTENT, true).unwrap();
+        let clusters = Clusters::load_from_str(CONTENT, true, true).unwrap();
+        assert_eq!(clusters.set.len(), 1);
+        dbg!(&clusters.set[0]);
+    }
+
+    #[test]
+    fn polite() {
+        static CONTENT: &str = r#####"
+// Hello Sir
+//
+// How are you doing today?
+struct VeryWellThanks;
+"#####;
+        let clusters = Clusters::load_from_str(CONTENT, true, true).unwrap();
         assert_eq!(clusters.set.len(), 1);
         dbg!(&clusters.set[0]);
     }

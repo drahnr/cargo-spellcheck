@@ -8,11 +8,18 @@ follows:
 _Explicit_ specification:
 
 1. Command line flags `--cfg=...`.
-1. `Cargo.toml` metadata
+1. `Cargo.toml` package metadata
 
     ```toml
     [package.metadata.spellcheck]
     config = "somewhere/cfg.toml"
+    ```
+
+1. `Cargo.toml` workspace metadata
+
+    ```toml
+    [workspace.metadata.spellcheck]
+    config = "somewhere/else/cfg.toml"
     ```
 
 which will fail if specified and not existent on the filesystem.
@@ -90,6 +97,14 @@ allow_concatenation = true
 # And the counterpart, which accepts words with dashes, when the suggestion has
 # recommendations without the dashes. This is less common.
 allow_dashed = false
+# Check the expressions in the footnote references. By default this is turned on
+# to remain backwards compatible but disabling it could be particularly useful
+# when one uses abbreviations instead of numbers as footnote references.  For
+# instance by default the fragment `hello[^xyz]` would be spellchecked as
+# `helloxyz` which is obviously a misspelled word, but by turning this check
+# off, it will skip validating the reference altogether and will only check the
+# word `hello`.
+check_footnote_references = false
 
 [NlpRules]
 # Allows the user to override the default included
@@ -105,4 +120,3 @@ max_line_length = 80
 ```
 
 To increase verbosity add `-v` (multiple) to increase verbosity.
-

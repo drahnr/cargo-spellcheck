@@ -26,7 +26,10 @@ pub struct Lang5 {
 
 impl PartialEq<str> for Lang5 {
     fn eq(&self, other: &str) -> bool {
-        self.to_string().as_str() == other
+        use std::fmt::Write as _;
+        let mut s = String::with_capacity(5);
+        let _ = write!(s, "{self}");
+        s == other
     }
 }
 
@@ -35,20 +38,25 @@ where
     X: AsRef<str>,
 {
     fn eq(&self, other: &X) -> bool {
-        self.to_string().as_str() == other.as_ref()
+        use std::fmt::Write as _;
+        let mut s = String::with_capacity(5);
+        let _ = write!(s, "{self}");
+        s == other.as_ref()
     }
 }
 
-impl<'a> PartialEq<Lang5> for &'a str {
+impl PartialEq<Lang5> for &str {
     fn eq(&self, other: &Lang5) -> bool {
-        let other = other.to_string();
-        *self == other.as_str()
+        use std::fmt::Write as _;
+        let mut s = String::with_capacity(5);
+        let _ = write!(s, "{other}");
+        *self == s.as_str()
     }
 }
 
 impl PartialEq<Lang5> for String {
     fn eq(&self, other: &Lang5) -> bool {
-        *self == other.to_string()
+        other.eq(self)
     }
 }
 
@@ -68,9 +76,9 @@ impl Lang5 {
 
 impl fmt::Display for Lang5 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.lang.to_639_1().unwrap_or("??"))?;
-        f.write_str("_")?;
-        write!(f, "{}", self.country)?;
+        let language = self.lang.to_639_1().unwrap_or("??");
+        let country = self.country;
+        write!(f, "{language}_{country}")?;
         Ok(())
     }
 }
@@ -92,19 +100,33 @@ impl<'de> de::Visitor<'de> for Lang5Visitor {
         )
     }
 
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        self.visit_borrowed_str::<E>(v)
+    }
+
+    fn visit_string<E>(self, s: String) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        self.visit_borrowed_str::<E>(s.as_str())
+    }
+
     fn visit_borrowed_str<E>(self, s: &'de str) -> Result<Self::Value, E>
     where
         E: serde::de::Error,
     {
         if s.len() != 5 {
-            return Err(Lang5SpacerError('l')).map_err(serde::de::Error::custom);
+            return Err(serde::de::Error::custom(Lang5SpacerError('l')));
         }
         let lang = Language::from_639_1(&s[0..2])
-            .ok_or_else(|| Lang5SpacerError('2'))
+            .ok_or(Lang5SpacerError('2'))
             .map_err(serde::de::Error::custom)?;
         let c = s.chars().nth(2).unwrap();
         if c != '_' {
-            return Err(Lang5SpacerError(c)).map_err(serde::de::Error::custom)?;
+            Err(serde::de::Error::custom(Lang5SpacerError(c)))?;
         }
         let country = Country::from_str(&s[3..5]).map_err(serde::de::Error::custom)?;
         Ok(Lang5 { lang, country })
@@ -148,6 +170,8 @@ mod tests {
     }
 
     #[test]
+    // Exercise the comparison implementations for owned and borrowed operands.
+    #[allow(clippy::op_ref, clippy::cmp_owned)]
     fn cmp_variants() {
         assert!(EXPECTED == S);
         assert!(EXPECTED == &S);

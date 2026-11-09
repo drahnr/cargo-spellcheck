@@ -3,8 +3,6 @@ use crate::Documentation;
 
 use fs_err as fs;
 
-use log::{trace, warn};
-
 use std::path::{Path, PathBuf};
 
 /// An iterator traversing module hierarchies yielding paths
@@ -37,14 +35,16 @@ impl TraverseModulesIter {
         if meta.is_file() {
             self.queue.push_front((path, level));
         } else if meta.is_dir() {
-            walkdir::WalkDir::new(path)
-                .max_depth(1)
+            ignore::WalkBuilder::new(path)
+                .git_ignore(true)
+                .max_depth(1.into())
                 .same_file_system(true)
-                .into_iter()
+                .skip_stdout(true)
+                .build()
                 .filter_map(|entry| {
                     entry
                         .ok()
-                        .filter(|entry| entry.file_type().is_file())
+                        .filter(|entry| entry.file_type().map(|ft| ft.is_file()).unwrap_or(false))
                         .map(|x| x.path().to_owned())
                 })
                 .filter(|path: &PathBuf| {
@@ -54,7 +54,7 @@ impl TraverseModulesIter {
                         .is_some()
                 })
                 .try_for_each::<_, Result<()>>(|path| {
-                    trace!("🌱 using path {} as seed recursion dir", path.display());
+                    log::trace!("🌱 using path {} as seed recursion dir", path.display());
                     self.queue.push_front((path, level));
                     Ok(())
                 })?;
@@ -93,14 +93,14 @@ impl TraverseModulesIter {
 
     pub fn collect_modules(&mut self, path: &Path, level: usize) -> Result<()> {
         if path.is_file() {
-            trace!("🥞 collecting mods declared in file {}", path.display());
+            log::trace!("🥞 collecting mods declared in file {}", path.display());
             self.queue.extend(
                 extract_modules_from_file(path)?
                     .into_iter()
                     .map(|item| (item, level)),
             );
         } else {
-            warn!("🥞 Only dealing with files, dropping {}", path.display());
+            log::warn!("🥞 Only dealing with files, dropping {}", path.display());
         }
         Ok(())
     }
@@ -128,9 +128,10 @@ impl Iterator for TraverseModulesIter {
 // TODO should not have knowledge of `dev_comments`.
 pub(crate) fn traverse(
     path: &Path,
+    doc_comments: bool,
     dev_comments: bool,
 ) -> Result<impl Iterator<Item = Documentation>> {
-    traverse_with_depth_limit(path, usize::MAX, dev_comments)
+    traverse_with_depth_limit(path, usize::MAX, doc_comments, dev_comments)
 }
 
 /// traverse path with a depth limit, if the path is a directory all its
@@ -138,6 +139,7 @@ pub(crate) fn traverse(
 pub(crate) fn traverse_with_depth_limit(
     path: &Path,
     max_depth: usize,
+    doc_comments: bool,
     dev_comments: bool,
 ) -> Result<impl Iterator<Item = Documentation>> {
     let it = TraverseModulesIter::with_depth_limit(path, max_depth)?
@@ -146,6 +148,7 @@ pub(crate) fn traverse_with_depth_limit(
                 Documentation::load_from_str(
                     ContentOrigin::RustSourceFile(path),
                     content.as_str(),
+                    doc_comments,
                     dev_comments,
                 )
             })
@@ -188,7 +191,6 @@ mod tests {
 
         let found = TraverseModulesIter::new(manifest_path.as_path())
             .expect("Must succeed to traverse file tree.")
-            .into_iter()
             .collect::<Vec<PathBuf>>();
 
         let unexpected_files: Vec<_> = dbg!(&found)

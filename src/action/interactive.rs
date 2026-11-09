@@ -127,7 +127,7 @@ impl<'s, 't> From<&'s Suggestion<'t>> for State<'s, 't> {
                 sub_chars(suggestion.chunk.as_str(), suggestion.range.clone())
             ),
             // start at a suggestion, not the custom field or ticked suggestion
-            pick_idx: 1_usize + (!suggestion.replacements.is_empty()) as usize,
+            pick_idx: 1_usize + usize::from(!suggestion.replacements.is_empty()),
             // all items provided by the checkers plus the user provided
             n_items: suggestion.replacements.len() + 2,
         }
@@ -197,10 +197,10 @@ impl UserPicked {
 
     /// Are there any user picks?
     pub fn is_empty(&self) -> bool {
-        self.bandaids
+        !self
+            .bandaids
             .iter()
-            .find(|(_origin, bandaids)| !bandaids.is_empty())
-            .is_none()
+            .any(|(_origin, bandaids)| !bandaids.is_empty())
     }
 
     /// Apply a single `BandAid`
@@ -225,7 +225,7 @@ impl UserPicked {
 
     /// Join two `UserPick`s.
     pub fn extend(&mut self, other: Self) {
-        self.bandaids.extend(other.bandaids.into_iter());
+        self.bandaids.extend(other.bandaids);
     }
 
     /// Provide a replacement that was not provided by the backend
@@ -234,7 +234,9 @@ impl UserPicked {
         state: &mut State,
         event: KeyEvent,
     ) -> Result<UserSelection> {
-        let KeyEvent { code, modifiers } = event;
+        let KeyEvent {
+            code, modifiers, ..
+        } = event;
 
         let length = state.custom_replacement.len() as u16;
         match code {
@@ -330,10 +332,7 @@ impl UserPicked {
             )
             .enumerate()
             .map(|(idx, (style, content))| {
-                (
-                    idx,
-                    PrintStyledContent(StyledContent::new(style.clone(), content)),
-                )
+                (idx, PrintStyledContent(StyledContent::new(*style, content)))
             })
             .try_fold(&mut stdout, |cmd, (idx, mut item)| {
                 let cmd = cmd
@@ -387,6 +386,7 @@ impl UserPicked {
             // TODO deal with error conversion
 
             // erase this many lines of the regular print
+            #[allow(clippy::items_after_statements)]
             const ERASE: u16 = 4;
             // lines used by the question
             const QUESTION: u16 = 3;
@@ -427,14 +427,14 @@ impl UserPicked {
                     continue;
                 }
                 sth => {
-                    trace!("read() something other than a key: {:?}", sth);
+                    log::trace!("read() something other than a key: {sth:?}");
                     break;
                 }
             };
 
             if state.is_custom_entry() {
                 drop(_guard);
-                info!("Custom entry mode");
+                log::info!("Custom entry mode");
                 _guard = ScopedRaw::new();
 
                 let pick = self.enter_custom_replacement(state, event)?;
@@ -451,9 +451,11 @@ impl UserPicked {
 
             drop(_guard);
             // print normally again
-            trace!("registered event: {:?}", &event);
+            log::trace!("registered event: {event:?}");
 
-            let KeyEvent { code, modifiers } = event;
+            let KeyEvent {
+                code, modifiers, ..
+            } = event;
 
             match code {
                 KeyCode::Up => state.select_next(),
@@ -476,16 +478,16 @@ impl UserPicked {
                 }
                 KeyCode::Char('?') => return Ok(UserSelection::Help),
                 x => {
-                    trace!("Unexpected input {:?}", x);
+                    log::trace!("Unexpected input {x:?}");
                 }
             }
         }
         unreachable!("Unexpected return when dealing with user input")
     }
 
-    pub(super) fn select_interactive<'s>(
+    pub(super) fn select_interactive(
         origin: ContentOrigin,
-        suggestions: Vec<Suggestion<'s>>,
+        suggestions: Vec<Suggestion<'_>>,
     ) -> Result<(Self, UserSelection)> {
         let count = suggestions.len();
         let mut picked = UserPicked::default();
@@ -502,43 +504,43 @@ impl UserPicked {
                 Direction::Backward => suggestions_it.next_back(),
             };
 
-            trace!("next() ---> {:?}", &opt_next);
+            log::trace!("next() ---> {opt_next:?}");
 
             let (idx, suggestion) = match opt_next {
                 Some(x) => x,
                 None => match direction {
                     Direction::Forward => {
-                        trace!("completed file, continue to next");
+                        log::trace!("completed file, continue to next");
                         break; // we completed this file, move on to the next
                     }
                     Direction::Backward => {
-                        trace!("went back, now back at the beginning");
+                        log::trace!("went back, now back at the beginning");
                         suggestions_it = start.clone();
                         continue;
                     } // go to the start
                 },
             };
             if suggestion.replacements.is_empty() {
-                trace!("BUG: Suggestion did not contain a replacement, skip");
+                log::trace!("BUG: Suggestion did not contain a replacement, skip");
                 continue;
             }
-            println!("{}", suggestion);
+            println!("{suggestion}");
 
             let mut state = State::from(suggestion);
 
             'inner: loop {
                 match picked.user_input(&mut state, idx, count)? {
-                    usel @ UserSelection::Abort | usel @ UserSelection::Quit => {
+                    usel @ (UserSelection::Abort | UserSelection::Quit) => {
                         let _ = ScopedRaw::restore_terminal();
                         return Ok((picked, usel));
                     }
                     UserSelection::SkipFile => break 'outer,
                     UserSelection::Previous => {
-                        warn!("Requires a iterator which works bidrectionally");
+                        log::warn!("Requires a iterator which works bidrectionally");
                         continue 'inner;
                     }
                     UserSelection::Help => {
-                        println!("{}", HELP);
+                        println!("{HELP}");
                         continue 'inner;
                     }
                     UserSelection::Replacement(bandaid) => {

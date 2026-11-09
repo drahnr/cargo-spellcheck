@@ -30,15 +30,25 @@ pub struct Quirks {
     /// Treats sequences of emojis as OK.
     #[serde(default = "yes")]
     pub allow_emojis: bool,
+    /// Check the expressions in the footnote references. By default this is
+    /// turned on to remain backwards compatible but disabling it could be
+    /// particularly useful when one uses abbreviations instead of numbers as
+    /// footnote references.  For instance by default the fragment `hello[^xyz]`
+    /// would be spellchecked as `helloxyz` which is obviously a misspelled
+    /// word, but by turning this check off, it will skip validating the
+    /// reference altogether and will only check the word `hello`.
+    #[serde(default = "yes")]
+    pub check_footnote_references: bool,
 }
 
 impl Default for Quirks {
     fn default() -> Self {
         Self {
-            transform_regex: vec![],
+            transform_regex: Vec::new(),
             allow_concatenation: false,
             allow_dashes: false,
             allow_emojis: true,
+            check_footnote_references: true,
         }
     }
 }
@@ -59,11 +69,18 @@ impl Quirks {
     pub(crate) fn transform_regex(&self) -> &[WrappedRegex] {
         &self.transform_regex
     }
+
+    pub(crate) fn check_footnote_references(&self) -> bool {
+        self.check_footnote_references
+    }
 }
 
 fn default_tokenization_splitchars() -> String {
     "\",;:.!?#(){}[]|/_-‒'`&@§¶…".to_owned()
 }
+
+pub type ZetConfig = HunspellConfig;
+pub type SpellbookConfig = HunspellConfig;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
@@ -132,19 +149,18 @@ impl HunspellConfig {
             .iter(!self.skip_os_lookups)
             .filter_map(|search_dir| {
                 let abspath = if !search_dir.is_absolute() {
-                    base.join(&search_dir)
+                    base.join(search_dir)
                 } else {
                     search_dir.to_owned()
                 };
 
-                abspath.canonicalize().ok().map(|abspath| {
+                abspath.canonicalize().ok().inspect(|abspath| {
                     log::trace!(
                         "Sanitized ({} + {}) -> {}",
                         base.display(),
                         search_dir.display(),
                         abspath.display()
                     );
-                    abspath
                 })
             })
             .collect::<Vec<PathBuf>>()
@@ -158,7 +174,7 @@ impl HunspellConfig {
                     .iter(!self.skip_os_lookups)
                     .filter_map(|search_dir| {
                         if !extra_dic.is_absolute() {
-                            base.join(&search_dir).canonicalize().ok()
+                            base.join(search_dir).canonicalize().ok()
                         } else {
                             Some(search_dir.to_owned())
                         }

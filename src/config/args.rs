@@ -11,8 +11,6 @@ use crate::Action;
 
 use super::Config;
 
-use log::{debug, warn};
-
 use clap_complete::Shell;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize)]
@@ -29,6 +27,8 @@ pub struct ManifestMetadataSpellcheck {
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Deserialize)]
 pub enum CheckerType {
     Hunspell,
+    ZSpell,
+    Spellbook,
     NlpRules,
     Reflow,
 }
@@ -39,6 +39,8 @@ impl FromStr for CheckerType {
         let s = s.to_lowercase();
         Ok(match s.as_str() {
             "nlprules" => Self::NlpRules,
+            "zet" | "zspell" => Self::ZSpell,
+            "spellbook" | "book" => Self::Spellbook,
             "hunspell" => Self::Hunspell,
             "reflow" => Self::Reflow,
             _other => return Err(UnknownCheckerTypeVariant(s)),
@@ -75,10 +77,9 @@ impl FromStr for MultipleCheckerTypes {
     type Err = UnknownCheckerTypeVariant;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         s.split(',')
-            .into_iter()
-            .map(|segment| <CheckerType as FromStr>::from_str(segment))
+            .map(<CheckerType as FromStr>::from_str)
             .collect::<Result<Vec<_>, _>>()
-            .map(|vct| MultipleCheckerTypes(vct))
+            .map(MultipleCheckerTypes)
     }
 }
 
@@ -139,7 +140,7 @@ pub struct Common {
     pub jobs: Option<usize>,
 
     #[clap(short = 'm', long, default_value_t = 0_u8)]
-    /// Return code of the application iff spelling mistakes were found.
+    /// Return code of the application if spelling mistakes were found.
     pub code: u8,
 
     /// A list of files and directories to check. See `--recursive`.
@@ -206,7 +207,7 @@ pub enum Sub {
 
     /// Print completions.
     Completions {
-        #[clap(long, env="SHELL", parse(try_from_str = load_shell_name))]
+        #[clap(long, env="SHELL", value_parser = load_shell_name)]
         /// Provide the `shell` for which to generate the completion script.
         shell: Shell,
     },
@@ -225,7 +226,7 @@ enum ShellErr {
 fn load_shell_name(shell: &str) -> Result<Shell, ShellErr> {
     shell
         .split('/')
-        .last()
+        .next_back()
         .map(|shell| {
             Shell::from_str(shell).map_err(|unknown_shell| ShellErr::UnknownShell {
                 shell: unknown_shell,
@@ -245,22 +246,22 @@ pub fn generate_completions<G: clap_complete::Generator, W: std::io::Write>(
 
 impl Args {
     pub fn common(&self) -> Option<&Common> {
-        match self.command {
-            Some(Sub::Check { ref common, .. })
-            | Some(Sub::Fix { ref common, .. })
-            | Some(Sub::Reflow { ref common, .. }) => Some(common),
-            _ => None,
+        match &self.command {
+            Some(
+                Sub::Check { common, .. } | Sub::Fix { common, .. } | Sub::Reflow { common, .. },
+            ) => Some(common),
+            None => Some(&self.common),
+            Some(Sub::Completions { .. } | Sub::ListFiles { .. } | Sub::Config { .. }) => None,
         }
     }
 
     pub fn checkers(&self) -> Option<Vec<CheckerType>> {
         self.common()
-            .map(|common| common.checkers.as_ref().map(|checkers| checkers.0.clone()))
-            .flatten()
+            .and_then(|common| common.checkers.as_ref().map(|checkers| checkers.0.clone()))
     }
 
     pub fn job_count(&self) -> usize {
-        derive_job_count(self.common().map(|common| common.jobs).flatten())
+        derive_job_count(self.common().and_then(|common| common.jobs))
     }
 
     /// Extract the verbosity level
@@ -271,15 +272,21 @@ impl Args {
     /// Extract the required action.
     pub fn action(&self) -> Action {
         // extract operation mode
-        let action = match self.command {
-            None | Some(Sub::Check { .. }) => Action::Check,
-            Some(Sub::Fix { .. }) => Action::Fix,
-            Some(Sub::Reflow { .. }) => Action::Reflow,
-            Some(Sub::Config { .. }) => unreachable!(),
-            Some(Sub::ListFiles { .. }) => Action::ListFiles,
-            Some(Sub::Completions { .. }) => unreachable!(),
+        let action = if let Some(sub) = &self.command {
+            match sub {
+                Sub::Check { .. } => Action::Check,
+                Sub::Fix { .. } => Action::Fix,
+                Sub::Reflow { .. } => Action::Reflow,
+                Sub::ListFiles { .. } => Action::ListFiles,
+                Sub::Config { .. } => unreachable!(),
+                Sub::Completions { .. } => unreachable!(),
+            }
+        } else if self.fix {
+            Action::Fix
+        } else {
+            Action::Check
         };
-        log::trace!("Derived action {:?} from flags/args/cmds", action);
+        log::trace!("Derived action {action:?} from flags/args/cmds");
         action
     }
 
@@ -292,11 +299,7 @@ impl Args {
             // if ends with file name `cargo-spellcheck`
             let mut argv_iter = argv_iter.into_iter();
             if let Some(arg0) = argv_iter.next() {
-                match PathBuf::from(&arg0)
-                    .file_name()
-                    .map(|x| x.to_str())
-                    .flatten()
-                {
+                match PathBuf::from(&arg0).file_name().and_then(|x| x.to_str()) {
                     Some(file_name) => {
                         // allow all variants to be parsed
                         // cargo spellcheck ...
@@ -345,29 +348,25 @@ impl Args {
         config: &mut Config,
     ) -> Result<()> {
         // overwrite checkers
-        if let Some(ref checkers) = filter_set {
+        if let Some(checkers) = filter_set {
             #[cfg(feature = "hunspell")]
-            if !checkers.contains(&CheckerType::Hunspell) {
-                if !config.hunspell.take().is_some() {
-                    warn!("Hunspell was never configured.")
-                }
+            if !checkers.contains(&CheckerType::Hunspell) && config.hunspell.take().is_none() {
+                log::warn!("Hunspell was never configured.")
             }
-            #[cfg(feature = "nlprule")]
-            if !checkers.contains(&CheckerType::NlpRules) {
-                if !config.nlprules.take().is_some() {
-                    warn!("Nlprules checker was never configured.")
-                }
+            #[cfg(feature = "nlprules")]
+            if !checkers.contains(&CheckerType::NlpRules) && config.nlprules.take().is_none() {
+                log::warn!("Nlprules checker was never configured.")
             }
 
             if !checkers.contains(&CheckerType::Reflow) {
-                warn!("Reflow is a separate sub command.")
+                log::warn!("Reflow is a separate sub command.")
             }
 
             const EXPECTED_COUNT: usize =
-                1_usize + cfg!(feature = "nlprule") as usize + cfg!(feature = "hunspell") as usize;
+                1_usize + cfg!(feature = "nlprules") as usize + cfg!(feature = "hunspell") as usize;
 
             if checkers.iter().unique().count() == EXPECTED_COUNT {
-                bail!("Argument override for checkers disabled all checkers")
+                bail!("Argument override for checkers disabled all checkers");
             }
         }
         Ok(())
@@ -388,52 +387,48 @@ impl Args {
     ///
     // TODO split the IO operations and lookup dirs.
     fn load_config_inner(&self) -> Result<(Config, Option<PathBuf>)> {
-        debug!("Attempting to load configuration by priority.");
+        log::debug!("Attempting to load configuration by priority.");
         let cwd = crate::traverse::cwd()?;
         // 1. explicitly specified
         let explicit_cfg = self.cfg.as_ref().map(|config_path| {
-            let config_path = if config_path.is_absolute() {
+            if config_path.is_absolute() {
                 config_path.to_owned()
             } else {
                 // TODO make sure this is sane behavior
                 // to use `cwd`.
                 cwd.join(config_path)
-            };
-            config_path
+            }
         });
 
         if let Some(config_path) = explicit_cfg {
-            debug!(
+            log::debug!(
                 "Using configuration file provided by flag (1) {}",
                 config_path.display()
             );
             let config =
                 Config::load_from(&config_path)?.ok_or_else(|| eyre!("File does not exist."))?;
             return Ok((config, Some(config_path)));
-        } else {
-            debug!("No cfg flag present");
         }
 
+        log::debug!("No cfg flag present");
+
         // (prep) determine if there should be an attempt to read a cargo manifest from the target dir
-        let single_target_path = self
-            .common()
-            .map(|common| {
-                common
-                    .paths
-                    .first()
-                    .filter(|_x| common.paths.len() == 1)
-                    .cloned()
-            })
-            .flatten();
+        let single_target_path = self.common().and_then(|common| {
+            common
+                .paths
+                .first()
+                .filter(|_x| common.paths.len() == 1)
+                .cloned()
+        });
 
         // 2. manifest meta in target dir
         let manifest_path_in_target_dir = if let Some(ref base) = single_target_path {
-            look_for_cargo_manifest(&base)?
+            look_for_cargo_manifest(base)?
         } else {
             None
         };
         if let Some(manifest_path) = &manifest_path_in_target_dir {
-            if let Some((config, config_path)) = load_from_manifest_metadata(&manifest_path)? {
+            if let Some((config, config_path)) = load_from_manifest_metadata(manifest_path)? {
                 return Ok((config, Some(config_path)));
             }
         };
@@ -448,23 +443,22 @@ impl Args {
         // 4. load from `.config/spellcheck.toml` from the current working directory.
         let config_path = cwd.join(".config").join("spellcheck.toml");
         if let Some(cfg) = Config::load_from(&config_path)? {
-            debug!("Using configuration file (4) {}", config_path.display());
+            log::debug!("Using configuration file (4) {}", config_path.display());
             return Ok((cfg, Some(config_path)));
         }
 
         let default_config_path = Config::default_path()?;
         if let Some(cfg) = Config::load_from(&default_config_path)? {
-            debug!(
+            log::debug!(
                 "Using configuration file (5) {}",
                 default_config_path.display()
             );
             return Ok((cfg, Some(default_config_path)));
-        } else {
-            debug!("No user config present {}", default_config_path.display());
         }
 
-        debug!("Using configuration default, builtin configuration (5)");
-        Ok((Default::default(), None))
+        log::debug!("No user config present {}", default_config_path.display());
+        log::debug!("Using configuration default, builtin configuration (5)");
+        Ok((Config::default(), None))
     }
 
     fn load_config(&self) -> Result<(Config, Option<PathBuf>)> {
@@ -486,6 +480,20 @@ impl Args {
                 }
             } else {
                 config.hunspell = None;
+            }
+            if filter_set.contains(&CheckerType::ZSpell) {
+                if config.zet.is_none() {
+                    config.zet = Some(crate::config::ZetConfig::default());
+                }
+            } else {
+                config.zet = None;
+            }
+            if filter_set.contains(&CheckerType::Spellbook) {
+                if config.spellbook.is_none() {
+                    config.spellbook = Some(crate::config::SpellbookConfig::default());
+                }
+            } else {
+                config.spellbook = None;
             }
             if filter_set.contains(&CheckerType::NlpRules) {
                 if config.nlprules.is_none() {
@@ -518,7 +526,9 @@ impl Args {
                         overwrite,
                         path: Config::default_path()?,
                     },
-                    _ => bail!("Neither --user or --stdout are given, invalid flags passed."),
+                    _ => {
+                        bail!("Neither --user or --stdout are given, invalid flags passed.");
+                    }
                 };
                 UnifiedArgs::Config {
                     dest_config,
@@ -550,9 +560,11 @@ impl Args {
                     exit_code_override: common.code,
                 }
             }
-            Some(Sub::Reflow { ref common, .. })
-            | Some(Sub::Fix { ref common, .. })
-            | Some(Sub::Check { ref common, .. }) => UnifiedArgs::Operate {
+            Some(
+                Sub::Reflow { ref common, .. }
+                | Sub::Fix { ref common, .. }
+                | Sub::Check { ref common, .. },
+            ) => UnifiedArgs::Operate {
                 action: self.action(),
                 config_path,
                 dev_comments: common.dev_comments || config.dev_comments,
@@ -612,28 +624,51 @@ fn look_for_cargo_manifest(base: &Path) -> Result<Option<PathBuf>> {
         let base = base.join("Cargo.toml");
         if base.is_file() {
             let base = base.canonicalize()?;
-            debug!("Using {} manifest as anchor file", base.display());
+            log::debug!("Using {} manifest as anchor file", base.display());
             Some(base)
         } else {
-            debug!("Cargo manifest files does not exist: {}", base.display());
+            log::debug!("Cargo manifest files does not exist: {}", base.display());
             None
         }
     } else if let Some(file_name) = base.file_name() {
         if file_name == "Cargo.toml" && base.is_file() {
             let base = base.canonicalize()?;
-            debug!("Using {} manifest as anchor file", base.display());
+            log::debug!("Using {} manifest as anchor file", base.display());
             Some(base)
         } else {
-            debug!("Cargo manifest files does not exist: {}", base.display());
+            log::debug!("Cargo manifest files does not exist: {}", base.display());
             None
         }
     } else {
-        debug!(
+        log::debug!(
             "Provided parse target is neither file or dir: {}",
             base.display()
         );
         None
     })
+}
+
+fn extract_config_path_from_metadata(
+    manifest_path: &Path,
+    metadata: ManifestMetadata,
+    ident: &str,
+) -> Result<Option<(Config, PathBuf)>> {
+    if let Some(spellcheck) = metadata.spellcheck {
+        let config_path = &spellcheck.config;
+        let config_path = if config_path.is_absolute() {
+            config_path.to_owned()
+        } else {
+            let manifest_dir = manifest_path.parent().expect("File resides in a dir. qed");
+            manifest_dir.join(config_path)
+        };
+        log::debug!(
+            "Using configuration ({}) file {}",
+            ident,
+            config_path.display()
+        );
+        return Ok(Config::load_from(&config_path)?.map(|config| (config, config_path)));
+    }
+    Ok(None)
 }
 
 fn load_from_manifest_metadata(manifest_path: &Path) -> Result<Option<(Config, PathBuf)>> {
@@ -645,16 +680,13 @@ fn load_from_manifest_metadata(manifest_path: &Path) -> Result<Option<(Config, P
                 manifest_path.display()
             ))?;
     if let Some(metadata) = manifest.package.and_then(|package| package.metadata) {
-        if let Some(spellcheck) = metadata.spellcheck {
-            let config_path = &spellcheck.config;
-            let config_path = if config_path.is_absolute() {
-                config_path.to_owned()
-            } else {
-                let manifest_dir = manifest_path.parent().expect("File resides in a dir. qed");
-                manifest_dir.join(config_path)
-            };
-            debug!("Using configuration file {}", config_path.display());
-            return Ok(Config::load_from(&config_path)?.map(|config| (config, config_path)));
+        if let Some(x) = extract_config_path_from_metadata(manifest_path, metadata, "package")? {
+            return Ok(Some(x));
+        }
+    }
+    if let Some(metadata) = manifest.workspace.and_then(|workspace| workspace.metadata) {
+        if let Some(x) = extract_config_path_from_metadata(manifest_path, metadata, "workspace")? {
+            return Ok(Some(x));
         }
     }
     Ok(None)
@@ -673,27 +705,23 @@ pub fn derive_job_count(jobs: impl Into<Option<usize>>) -> usize {
         }
         Some(jobs) if jobs == 0 => {
             log::warn!(
-                "Cannot have less than one worker thread ({}). Retaining one worker thread.",
-                jobs
+                "Cannot have less than one worker thread ({jobs}). Retaining one worker thread."
             );
             1
         }
         Some(jobs) if jobs > 128 => {
-            log::warn!(
-                "Setting threads beyond 128 ({}) is insane. Capping at 128",
-                jobs
-            );
+            log::warn!("Setting threads beyond 128 ({jobs}) is insane. Capping at 128");
             128
         }
         Some(jobs) => {
-            log::info!("Explicitly set threads to {}", jobs);
+            log::info!("Explicitly set threads to {jobs}");
             jobs
         }
         None => {
             // commonly we are not the only process
             // on the machine, so use the physical cores.
             let jobs = num_cpus::get_physical();
-            log::debug!("Using the default physical thread count of {}", jobs);
+            log::debug!("Using the default physical thread count of {jobs}");
             jobs
         }
     }
@@ -705,7 +733,7 @@ mod tests {
     use assert_matches::assert_matches;
 
     fn commandline_to_iter(s: &'static str) -> impl Iterator<Item = String> {
-        s.split(' ').map(|s| s.to_owned()).into_iter()
+        s.split(' ').map(|s| s.to_owned())
     }
 
     lazy_static::lazy_static!(
@@ -761,9 +789,17 @@ mod tests {
     }
 
     #[test]
+    fn alt_fix_works() {
+        let args_sub = Args::parse(commandline_to_iter("cargo spellcheck fix")).unwrap();
+        let args_alt = Args::parse(commandline_to_iter("cargo spellcheck --fix")).unwrap();
+        assert_eq!(args_sub.common(), args_alt.common());
+        assert_eq!(args_sub.action(), args_alt.action());
+    }
+
+    #[test]
     fn unify_ops_check() {
         let args = Args::parse(
-            &mut [
+            [
                 "cargo",
                 "spellcheck",
                 "-vvvvv",
@@ -802,7 +838,7 @@ mod tests {
     #[test]
     fn unify_config() {
         let args = Args::parse(
-            &mut [
+            [
                 "cargo-spellcheck",
                 "--cfg=.config/spellcheck.toml",
                 "config",

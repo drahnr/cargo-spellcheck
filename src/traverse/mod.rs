@@ -7,7 +7,6 @@ use super::*;
 use crate::Documentation;
 
 use crate::errors::*;
-use log::{debug, trace, warn};
 
 use fs_err as fs;
 use std::collections::HashSet;
@@ -38,7 +37,7 @@ fn extract_modules_recurse_collect<P: AsRef<Path>>(
 ) -> Result<()> {
     let path = path.as_ref();
     let base = if let Some(base) = path.parent() {
-        trace!("Parent path of {} is {}", path.display(), base.display());
+        log::trace!("Parent path of {} is {}", path.display(), base.display());
         base.to_owned()
     } else {
         return Err(eyre!(
@@ -46,8 +45,8 @@ fn extract_modules_recurse_collect<P: AsRef<Path>>(
             path.display()
         ));
     };
-    let path1 = base.join(&mod_name).join("mod.rs");
-    let path2 = base.join(&mod_name).with_extension("rs");
+    let path1 = base.join(mod_name).join("mod.rs");
+    let path2 = base.join(mod_name).with_extension("rs");
     let path3 = base
         .join(path.file_stem().expect("If parent exists, should work™"))
         .join(mod_name)
@@ -74,7 +73,7 @@ fn extract_modules_recurse_collect<P: AsRef<Path>>(
                 path3.display()
             ))
         }
-        _ => trace!(
+        _ => log::trace!(
             "Neither file nor dir with mod.rs {} / {} / {}",
             path1.display(),
             path2.display(),
@@ -104,49 +103,46 @@ fn extract_modules_recurse<P: AsRef<Path>>(
     let mut acc = HashSet::with_capacity(16);
 
     #[derive(Debug, Clone)]
+    #[allow(clippy::enum_variant_names)]
     enum SeekingFor {
-        ModulKeyword,
-        ModulName,
-        ModulFin(String),
+        Keyword,
+        Name,
+        End(String),
     }
 
-    let mut state = SeekingFor::ModulKeyword;
+    let mut state = SeekingFor::Keyword;
     for tt in stream {
         match tt {
             TokenTree::Ident(ident) => match state {
-                SeekingFor::ModulKeyword => {
+                SeekingFor::Keyword => {
                     if ident == "mod" {
-                        state = SeekingFor::ModulName;
+                        state = SeekingFor::Name;
                     }
                 }
-                SeekingFor::ModulName => {
-                    state = SeekingFor::ModulFin(ident.to_string());
+                SeekingFor::Name => {
+                    state = SeekingFor::End(ident.to_string());
                 }
                 _x => {
-                    state = SeekingFor::ModulKeyword;
+                    state = SeekingFor::Keyword;
                 }
             },
             TokenTree::Punct(punct) => {
-                if let SeekingFor::ModulFin(ref mod_name) = state {
-                    trace!("✨ Found a module: {}", mod_name);
+                if let SeekingFor::End(ref mod_name) = state {
+                    log::trace!("✨ Found a module: {mod_name}");
                     if punct.as_char() == ';' && punct.spacing() == Spacing::Alone {
-                        extract_modules_recurse_collect(path, &mut acc, &mod_name)?;
+                        extract_modules_recurse_collect(path, &mut acc, mod_name)?;
                     } else {
-                        trace!(
-                            "🍂 Either not alone or not a semi colon {:?} - incomplete mod {}",
-                            punct,
-                            mod_name
-                        );
+                        log::trace!("🍂 Either not alone or not a semi colon {punct:?} - incomplete mod {mod_name}");
                     }
                 }
-                state = SeekingFor::ModulKeyword;
+                state = SeekingFor::Keyword;
             }
             TokenTree::Group(grp) => {
-                state = SeekingFor::ModulKeyword;
-                acc.extend(extract_modules_recurse(path, grp.stream())?.into_iter());
+                state = SeekingFor::Keyword;
+                acc.extend(extract_modules_recurse(path, grp.stream())?);
             }
             _y => {
-                state = SeekingFor::ModulKeyword;
+                state = SeekingFor::Keyword;
             }
         };
     }
@@ -159,8 +155,8 @@ pub(crate) fn extract_modules_from_file<P: AsRef<Path>>(path: P) -> Result<HashS
     if let Some(path_str) = path.to_str() {
         let s = fs::read_to_string(path_str)?;
         let stream = syn::parse_str::<proc_macro2::TokenStream>(s.as_str())
-            .wrap_err_with(|| eyre!("File {} has syntax errors", path_str))?;
-        let acc = extract_modules_recurse(path.to_owned(), stream)?;
+            .wrap_err_with(|| eyre!("File {path_str} has syntax errors"))?;
+        let acc = extract_modules_recurse(path, stream)?;
         log::debug!(
             "🥞 Recursed into {} modules from {}",
             acc.len(),
@@ -215,7 +211,7 @@ fn load_manifest<P: AsRef<Path>>(manifest_dir: P) -> Result<(cargo_toml::Manifes
     if manifest.complete_from_path(&manifest_file).is_err()
         && manifest.complete_from_path(manifest_dir).is_err()
     {
-        debug!(
+        log::debug!(
             "Complete from filesystem did not yield new information for manifest {}",
             manifest_file.display()
         );
@@ -244,7 +240,7 @@ fn to_manifest_dir<P: AsRef<Path>>(manifest_dir: P) -> Result<PathBuf> {
     } else {
         manifest_dir
     };
-    fs::canonicalize(&manifest_dir)
+    fs::canonicalize(manifest_dir)
         .wrap_err_with(|| eyre!("Failed to canonicalize path {}", manifest_dir.display()))
 }
 
@@ -253,16 +249,12 @@ fn extract_products(
     manifest: &cargo_toml::Manifest,
     manifest_dir: &Path,
 ) -> Result<HashSet<CheckEntity>> {
-    let iter = manifest
-        .bin
-        .clone()
-        .into_iter()
-        .chain(manifest.lib.clone().into_iter());
+    let iter = manifest.bin.clone().into_iter().chain(manifest.lib.clone());
 
     let items = iter
         .filter_map(|product| {
             if product.path.is_none() {
-                warn!(
+                log::warn!(
                     "Missing path for product {:?}, should have been filled earlier.",
                     product.name
                 )
@@ -274,14 +266,14 @@ fn extract_products(
             let p = manifest_dir.join(PathBuf::from(path_str));
             let is_file = p.is_file();
             if !is_file {
-                debug!("File listed by cargo-toml does not exist: {}", p.display());
+                log::debug!("File listed by cargo-toml does not exist: {}", p.display());
             }
             is_file
         })
         .map(|path_str| CheckEntity::Source(manifest_dir.join(path_str), true))
         .collect::<HashSet<CheckEntity>>();
 
-    trace!("📜 explicit manifest products {:?}", &items);
+    log::trace!("📜 explicit manifest products {items:?}");
     Ok(items)
 }
 
@@ -292,13 +284,13 @@ fn extract_readme(
     Ok(manifest
         .package
         .as_ref()
-        .and_then(|package| package.readme.as_ref())
+        .and_then(|package| package.readme.get().ok().and_then(|x| x.as_path()))
         .and_then(|readme| {
             let readme = PathBuf::from(readme);
             if readme.is_file() {
                 Some(CheckEntity::Markdown(manifest_dir.join(readme)))
             } else {
-                warn!(
+                log::warn!(
                     "📜 read-me file declared in Cargo.toml {} is not a file",
                     readme.display()
                 );
@@ -316,11 +308,11 @@ fn extract_description(
         .package
         .as_ref()
         .and_then(|package| package.description.as_ref())
-        .and_then(|_description| {
-            Some(CheckEntity::ManifestDescription(
+        .map(|_description| {
+            CheckEntity::ManifestDescription(
                 manifest_dir.join("Cargo.toml"),
                 manifest_content.to_owned(),
-            ))
+            )
         }))
 }
 
@@ -329,7 +321,7 @@ fn handle_manifest<P: AsRef<Path>>(
     skip_readme: bool,
 ) -> Result<HashSet<CheckEntity>> {
     let manifest_dir = to_manifest_dir(manifest_dir)?;
-    trace!("📜 Handle manifest in dir: {}", manifest_dir.display());
+    log::trace!("📜 Handle manifest in dir: {}", manifest_dir.display());
 
     let manifest_dir = manifest_dir.as_path();
     let (manifest, manifest_content) = load_manifest(manifest_dir).wrap_err_with(|| {
@@ -339,7 +331,7 @@ fn handle_manifest<P: AsRef<Path>>(
         )
     })?;
 
-    let mut acc = extract_products(&manifest, &manifest_dir).wrap_err_with(|| {
+    let mut acc = extract_products(&manifest, manifest_dir).wrap_err_with(|| {
         eyre!(
             "Failed to extract products from manifest {}",
             manifest_dir.display()
@@ -347,7 +339,7 @@ fn handle_manifest<P: AsRef<Path>>(
     })?;
 
     if !skip_readme {
-        let v = extract_readme(&manifest, &manifest_dir).wrap_err_with(|| {
+        let v = extract_readme(&manifest, manifest_dir).wrap_err_with(|| {
             eyre!(
                 "Failed to extract description from manifest {}",
                 manifest_dir.display()
@@ -358,7 +350,7 @@ fn handle_manifest<P: AsRef<Path>>(
 
     // TODO not quite ready for prime time
     if false {
-        let v = extract_description(&manifest, &manifest_dir, &manifest_content).wrap_err_with(
+        let v = extract_description(&manifest, manifest_dir, &manifest_content).wrap_err_with(
             || {
                 eyre!(
                     "Failed to extract description from manifest {}",
@@ -370,7 +362,7 @@ fn handle_manifest<P: AsRef<Path>>(
     }
 
     if let Some(workspace) = manifest.workspace {
-        trace!("🪆 Handling manifest workspace");
+        log::trace!("🪆 Handling manifest workspace");
         workspace
             .members
             .into_iter()
@@ -384,10 +376,10 @@ fn handle_manifest<P: AsRef<Path>>(
                     )
                 })?;
                 let member_dirs = glob::glob(back_to_glob)?;
-                debug!("🪆 Handing manifest member: {}", &member_entry_glob);
+                log::debug!("🪆 Handing manifest member: {member_entry_glob}");
                 for member_dir in member_dirs {
                     let member_dir = member_dir?;
-                    trace!(
+                    log::trace!(
                         "🪆 Handling manifest member glob resolved: {}",
                         member_dir.display()
                     );
@@ -400,7 +392,7 @@ fn handle_manifest<P: AsRef<Path>>(
                         })
                     {
                         if let Ok(member) = extract_products(&member_manifest, &member_dir) {
-                            acc.extend(member.into_iter());
+                            acc.extend(member);
                         } else {
                             bail!(
                                 "Workspace member {} product extraction failed",
@@ -408,7 +400,7 @@ fn handle_manifest<P: AsRef<Path>>(
                             );
                         }
                     } else {
-                        warn!(
+                        log::warn!(
                             "🪆 Opening manifest from member failed {}",
                             member_dir.display()
                         );
@@ -435,7 +427,7 @@ pub(crate) fn extract(
         recurse = true;
     }
 
-    debug!("Running on inputs {:?} / recursive={}", &paths, recurse);
+    log::debug!("Running on inputs {paths:?} / recursive={recurse}");
 
     #[derive(Debug, Clone)]
     enum Extraction {
@@ -453,23 +445,30 @@ pub(crate) fn extract(
         } else {
             cwd.join(&path_in)
         };
-        debug!("Processing {} -> {}", path_in.display(), path.display());
+        log::debug!("Processing {} -> {}", path_in.display(), path.display());
         path.canonicalize().ok()
     }));
 
-    debug!("Running on absolute dirs {:?} ", &flow);
+    log::debug!("Running on absolute dirs {flow:?}");
 
     // stage 2 - check for manifest, .rs , .md files and directories
     let mut files_to_check = Vec::with_capacity(64);
     while let Some(path) = flow.pop_front() {
         let x = if let Ok(meta) = path.metadata() {
             if meta.is_file() {
-                match path.file_name().map(|x| x.to_str()).flatten() {
-                    Some(file_name) if file_name == "Cargo.toml" => Extraction::Manifest(path),
+                match path.file_name().and_then(|x| x.to_str()) {
+                    Some("Cargo.toml") => Extraction::Manifest(path),
                     Some(file_name) if file_name.ends_with(".md") => Extraction::Markdown(path),
                     Some(file_name) if file_name.ends_with(".rs") => Extraction::Source(path),
                     _ => {
-                        warn!("Unexpected item made it into the items {}", path.display());
+                        // This branch is commonly entered when ran on a non-cargo
+                        // path.
+                        // Potentially become mdbook aware
+                        // <https://github.com/drahnr/cargo-spellcheck/issues/273>
+                        log::debug!(
+                            "Unknown file type encountered, skipping path: {}",
+                            path.display()
+                        );
                         continue;
                     }
                 }
@@ -482,7 +481,7 @@ pub(crate) fn extract(
                     // if recursing is wanted
                     // and if it doesn't contain a manifest file
                     match fs::read_dir(path) {
-                        Err(err) => warn!("Listing directory contents {} failed", err),
+                        Err(err) => log::warn!("Listing directory contents {err} failed"),
                         Ok(entries) => {
                             for entry in entries.flatten() {
                                 let path = entry.path();
@@ -494,7 +493,7 @@ pub(crate) fn extract(
                     continue;
                 } else {
                     match fs::read_dir(path) {
-                        Err(err) => warn!("Listing directory contents {} failed", err),
+                        Err(err) => log::warn!("Listing directory contents {err} failed"),
                         Ok(entries) => {
                             for entry in entries.flatten() {
                                 let path = entry.path();
@@ -517,7 +516,7 @@ pub(crate) fn extract(
         files_to_check.push(x);
     }
 
-    debug!("Found a total of {} files to check ", files_to_check.len());
+    log::debug!("Found a total of {} files to check ", files_to_check.len());
 
     // stage 3 - resolve the manifest products and workspaces, warn about missing
     let files_to_check = files_to_check
@@ -528,7 +527,7 @@ pub(crate) fn extract(
                     let manifest_list = handle_manifest(cargo_toml_path, skip_readme)?;
                     acc.extend(manifest_list);
                 }
-                Extraction::Missing(ref missing_path) => warn!(
+                Extraction::Missing(ref missing_path) => log::warn!(
                     "File passed as argument or listed in Cargo.toml manifest does not exist: {}",
                     missing_path.display()
                 ),
@@ -539,58 +538,60 @@ pub(crate) fn extract(
         })?;
 
     // stage 4 - expand from the passed source files, if recursive, recurse down the module train
-    let docs =
-        files_to_check
-            .into_iter()
-            .try_fold(Documentation::new(), |mut docs, check_entity| {
-                match check_entity {
-                    CheckEntity::Source(path, recurse) => {
-                        let content: String = fs::read_to_string(&path)?;
-                        docs.add_rust(
-                            ContentOrigin::RustSourceFile(path.clone()),
-                            content.as_str(),
-                            dev_comments,
-                        )?;
+    let docs = files_to_check.into_iter().try_fold(
+        Documentation::new(),
+        |mut docs, check_entity| -> Result<_> {
+            match check_entity {
+                CheckEntity::Source(path, recurse) => {
+                    let content: String = fs::read_to_string(&path)?;
+                    docs.add_rust(
+                        ContentOrigin::RustSourceFile(path.clone()),
+                        content.as_str(),
+                        true,
+                        dev_comments,
+                    )?;
 
-                        if recurse {
-                            let iter = traverse(path.as_path(), dev_comments)?
-                                .map(|documentation| {
+                    if recurse {
+                        let iter =
+                            Vec::from_iter(traverse(path.as_path(), true, dev_comments)?.flat_map(
+                                |documentation| {
                                     // Filter out duplicate _chunks_
                                     // that `extend` would happily duplicate.
                                     documentation
                                         .into_iter()
                                         .filter(|(origin, _chunks)| !docs.contains_key(origin))
-                                })
-                                .flatten()
-                                .collect::<Vec<_>>();
-                            docs.extend(iter);
-                        }
-                    }
-                    CheckEntity::Markdown(path) => {
-                        let content = fs::read_to_string(&path).wrap_err_with(|| {
-                            eyre!("Common mark / markdown file does not exist")
-                        })?;
-                        if content.is_empty() {
-                            bail!("Common mark / markdown file is empty")
-                        }
-                        docs.add_commonmark(ContentOrigin::CommonMarkFile(path), content.as_str())?;
-                    }
-                    CheckEntity::ManifestDescription(path, content) => {
-                        if content.is_empty() {
-                            bail!("Cargo.toml manifest description field is empty")
-                        }
-                        docs.add_cargo_manifest_description(path, content.as_str())?;
+                                },
+                            ));
+                        docs.extend(iter);
                     }
                 }
-                Ok(docs)
-            })?;
+                CheckEntity::Markdown(path) => {
+                    let content = fs::read_to_string(&path)
+                        .wrap_err_with(|| eyre!("Common mark / markdown file does not exist"))?;
+                    if content.is_empty() {
+                        bail!("Common mark / markdown file is empty");
+                    }
+                    docs.add_commonmark(ContentOrigin::CommonMarkFile(path), content.as_str())?;
+                }
+                CheckEntity::ManifestDescription(path, content) => {
+                    if content.is_empty() {
+                        bail!("Cargo.toml manifest description field is empty");
+                    }
+                    docs.add_cargo_manifest_description(path, content.as_str())?;
+                }
+            }
+            Result::Ok(docs)
+        },
+    )?;
 
-    Ok(docs)
+    Result::Ok(docs)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use itertools::Itertools;
 
     const TEST_FILE_FRAGMENTS: &str = "src/nested/fragments.rs";
     const TEST_FILE_SIMPLE: &str = "src/nested/fragments/simple.rs";
@@ -697,7 +698,10 @@ mod tests {
             if !gamma.is_empty() {
                 eprintln!("Right does not contain {:?}", &gamma[..]);
             }
-            assert_eq!(left, right);
+            assert_eq!(
+                Vec::from_iter(left.iter().sorted()),
+                Vec::from_iter(right.iter().sorted())
+            );
         };
     }
 
@@ -735,7 +739,7 @@ mod tests {
                     docs.into_iter()
                         .map(|x| {
                             let path = x.0.as_path();
-                            trace!("prefix: {}  --- item: {}", demo_dir().display(), path.display());
+                            log::trace!("prefix: {}  --- item: {}", demo_dir().display(), path.display());
                             path.strip_prefix(demo_dir()).expect("Must have common prefix").to_owned()
                         })
                     ),
