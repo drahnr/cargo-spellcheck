@@ -170,3 +170,6 @@ pub fn run(args: Args) -> Result<ExitCode> {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod cfg_attr_tests;

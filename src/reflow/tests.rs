@@ -30,7 +30,8 @@ macro_rules! verify_reflow_inner {
             &unbreakables,
             &indentation,
             $n,
-            &chunk.variant()
+            &chunk.variant(),
+            chunk.preferred_line_delimiter(),
         );
 
         if let Ok(Some(repl)) = replacement {
@@ -276,6 +277,145 @@ pub fn a() {}
 "#);
 }
 
+fn apply_rust_reflow(source: &str, max_line_length: usize) -> (String, usize) {
+    let origin = ContentOrigin::TestEntityRust;
+    let docs = Documentation::load_from_str(origin.clone(), source, true, false);
+    let chunks = docs
+        .get(&origin)
+        .expect("Rust documentation must be extracted");
+    assert_eq!(chunks.len(), 1);
+    assert!(chunks[0].is_reflow_safe());
+    let checker = Reflow::new(ReflowConfig { max_line_length }).unwrap();
+    let suggestions = checker.check(&origin, chunks).unwrap();
+    (
+        apply_reflow_patches(source, &suggestions),
+        suggestions.len(),
+    )
+}
+
+fn apply_reflow_patches(source: &str, suggestions: &[Suggestion<'_>]) -> String {
+    let patches = suggestions.iter().map(|suggestion| {
+        crate::Patch::from(crate::BandAid::from((
+            suggestion.replacements[0].clone(),
+            &suggestion.span,
+        )))
+    });
+    let mut output = Vec::new();
+    crate::action::apply_patches(patches, source, &mut output).unwrap();
+    String::from_utf8(output).unwrap()
+}
+
+fn rust_doc_words(source: &str) -> Vec<String> {
+    let file = syn::parse_file(source).expect("documentation must remain valid Rust");
+    let syn::Item::Struct(item) = &file.items[0] else {
+        panic!("expected a documented struct");
+    };
+    item.attrs
+        .iter()
+        .filter(|attr| attr.path().is_ident("doc"))
+        .flat_map(|attr| {
+            let syn::Meta::NameValue(meta) = &attr.meta else {
+                panic!("expected a doc attribute value");
+            };
+            let syn::Expr::Lit(expr) = &meta.value else {
+                panic!("expected a doc literal");
+            };
+            let syn::Lit::Str(literal) = &expr.lit else {
+                panic!("expected a doc string");
+            };
+            literal
+                .value()
+                .split_whitespace()
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+fn assert_later_rust_lines_reflow(
+    source: &str,
+    max_line_length: usize,
+    expected_first_line: &str,
+) -> String {
+    let before = rust_doc_words(source);
+    let (wrapped, count) = apply_rust_reflow(source, max_line_length);
+    assert_eq!(count, 1, "later lines must produce a suggestion: {source}");
+    assert_ne!(wrapped, source);
+    assert_eq!(wrapped.lines().next(), Some(expected_first_line));
+    assert!(
+        wrapped
+            .lines()
+            .all(|line| line.chars().count() <= max_line_length),
+        "wrapped source exceeds width {max_line_length}:\n{wrapped}"
+    );
+    assert_eq!(rust_doc_words(&wrapped), before, "prose must be preserved");
+    let (again, count) = apply_rust_reflow(&wrapped, max_line_length);
+    assert_eq!(
+        count, 0,
+        "reflow must be idempotent:\n{wrapped}\nsecond pass:\n{again}"
+    );
+    assert_eq!(again, wrapped);
+    wrapped
+}
+
+#[test]
+fn reflow_unchanged_first_doc_attribute() {
+    // "Documentation" cannot fit after the introduction, so only later lines change.
+    for (open, close) in [
+        ("\"", "\""),
+        ("r\"", "\""),
+        ("r#\"", "\"#"),
+        ("r###\"", "\"###"),
+    ] {
+        let source = format!(
+            "#[doc={open}A short introduction.{close}]\n\
+             #[doc={open}Documentation continues with enough ordinary words to require wrapping across several lines.{close}]\n\
+             struct Example;\n"
+        );
+        assert_later_rust_lines_reflow(&source, 40, source.lines().next().unwrap());
+    }
+}
+
+#[test]
+fn reflow_unchanged_first_multiline_doc_string() {
+    for (open, close) in [
+        ("\"", "\""),
+        ("r\"", "\""),
+        ("r#\"", "\"#"),
+        ("r###\"", "\"###"),
+    ] {
+        let source = format!(
+            "#[doc={open}A short introduction.\n\
+             Documentation continues with enough ordinary words to require wrapping across several lines.{close}]\n\
+             struct Example;\n"
+        );
+        let first_line = format!("#[doc={open}A short introduction.{close}]");
+        assert_later_rust_lines_reflow(&source, 40, &first_line);
+    }
+}
+
+#[test]
+fn reflow_unchanged_first_line_with_later_indentation_only() {
+    let source = "/// A short introduction.\n///    Documentation stays.\nstruct Example;\n";
+    assert_eq!(
+        assert_later_rust_lines_reflow(source, 30, source.lines().next().unwrap()),
+        "/// A short introduction.\n/// Documentation stays.\nstruct Example;\n"
+    );
+
+    for (open, close) in [("\"", "\""), ("r#\"", "\"#")] {
+        let source = format!(
+            "#[doc={open}A short introduction.{close}]\n\
+             #[doc={open}   Documentation stays.{close}]\n\
+             struct Example;\n"
+        );
+        let expected = source.replace("   Documentation", "Documentation");
+        assert_eq!(
+            assert_later_rust_lines_reflow(&source, 40, source.lines().next().unwrap()),
+            expected
+        );
+    }
+}
+
 #[test]
 fn reflow_multiple_lines() {
     reflow_fluff!(43 break ["This module contains documentation that is broken",
@@ -337,8 +477,8 @@ fn reflow_doc_indentations() {
     struct Fluffy {};"##;
 
     const EXPECTED: &str = r##"A comment with indentation"#]
-    #[doc = r#"that spans over two lines and"#]
-    #[doc = r#"should be rewrapped."##;
+    #[doc = r#"that spans over two lines"#]
+    #[doc = r#"and should be rewrapped."##;
 
     let docs = Documentation::load_from_str(ContentOrigin::TestEntityRust, CONTENT, true, false);
     assert_eq!(dbg!(&docs).entry_count(), 1);
@@ -446,8 +586,8 @@ With a second part that is fine"#
     println!("{chyrped}");
 
     let expected = vec![
-        r##"A long comment that spans over two"#]
-#[doc=r#"lines."##,
+        r##"A long comment that spans over"#]
+#[doc=r#"two lines."##,
         r#"With a second part that is fine"#,
     ];
 
@@ -480,7 +620,7 @@ fn reflow_doc_short() {
 
 #[test]
 fn reflow_doc_indent_middle() {
-    reflow_chyrp!(28 break ["First line", "     Second line", "         third line"]
+    reflow_chyrp!(29 break ["First line", "     Second line", "         third line"]
         => r##"First line Second"#]
 #[doc=r#"line third line"##);
 }
@@ -762,6 +902,140 @@ Ref [^footnote]
 [footnote]: Down in the abyss.
 "###
     );
+}
+
+fn assert_only_line_delimiter(source: &str, delimiter: &str) {
+    assert!(
+        source.contains(delimiter),
+        "expected newlines in {source:?}"
+    );
+    let without_delimiters = source.replace(delimiter, "");
+    assert!(
+        !without_delimiters.contains(['\r', '\n']),
+        "mixed delimiters: {source:?}"
+    );
+}
+
+fn assert_rust_reflow_preserves_prose(source: &str) -> String {
+    let before = rust_doc_words(source);
+    let (wrapped, count) = apply_rust_reflow(source, 40);
+    assert_eq!(count, 1);
+    assert_ne!(wrapped, source);
+    assert!(wrapped.lines().all(|line| line.chars().count() <= 40));
+    assert_eq!(rust_doc_words(&wrapped), before);
+    assert_eq!(apply_rust_reflow(&wrapped, 40), (wrapped.clone(), 0));
+    wrapped
+}
+
+#[test]
+fn reflow_source_line_delimiter_single_line_docs() {
+    for (prefix, suffix) in [("/// ", ""), ("#[doc=\"", "\"]"), ("#[doc=r#\"", "\"#]")] {
+        let source = format!(
+            "{prefix}Documentation contains enough ordinary words to require wrapping across several lines.{suffix}\r\nstruct Example;\r\n"
+        );
+        let wrapped = assert_rust_reflow_preserves_prose(&source);
+        assert_only_line_delimiter(&wrapped, "\r\n");
+        assert!(wrapped.ends_with("\r\nstruct Example;\r\n"));
+    }
+}
+
+#[test]
+fn reflow_source_line_delimiter_first_selected_literal_wins() {
+    for (first, later) in [("\r\n", "\n"), ("\n", "\r\n")] {
+        for (prefix, suffix) in [("/// ", ""), ("#[doc=\"", "\"]")] {
+            let unrelated = format!("// Unrelated.{later}");
+            let tail = format!("{later}struct Example;{later}");
+            let source = format!(
+                "{unrelated}{prefix}A short introduction.{suffix}{first}\
+                 {prefix}Documentation continues with enough ordinary words to require wrapping.{suffix}{later}\
+                 {prefix}More ordinary words also require wrapping across several lines.{suffix}{tail}"
+            );
+            let wrapped = assert_rust_reflow_preserves_prose(&source);
+            let selected = wrapped
+                .strip_prefix(&unrelated)
+                .expect("unselected leading line must be untouched")
+                .strip_suffix(&tail)
+                .expect("unselected trailing lines must be untouched");
+            assert_only_line_delimiter(selected, first);
+        }
+    }
+}
+
+#[test]
+fn reflow_source_line_delimiter_conditional_skip_preserves_source() {
+    for (first, later) in [("\r\n", "\r\n"), ("\r\n", "\n"), ("\n", "\r\n")] {
+        let source = format!(
+            "/// Shared introduction.{first}\
+             #[cfg_attr(feature = \"one\", doc = \"Documentation contains enough ordinary words to require wrapping across several lines.\")]{later}\
+             struct Example;{later}"
+        );
+        syn::parse_file(&source).unwrap();
+        let origin = ContentOrigin::TestEntityRust;
+        let docs = Documentation::load_from_str(origin.clone(), &source, true, false);
+        let chunks = docs.get(&origin).unwrap();
+        assert!(!chunks.is_empty());
+        assert!(chunks.iter().all(|chunk| !chunk.is_reflow_safe()));
+        let checker = Reflow::new(ReflowConfig {
+            max_line_length: 40,
+        })
+        .unwrap();
+        let suggestions = checker.check(&origin, chunks).unwrap();
+        assert!(suggestions.is_empty());
+        assert_eq!(apply_reflow_patches(&source, &suggestions), source);
+    }
+}
+
+#[test]
+fn reflow_source_line_delimiter_commonmark_uses_original_content() {
+    for delimiter in ["", "\n", "\r\n"] {
+        let source = if delimiter.is_empty() {
+            "Documentation contains enough ordinary words to require wrapping across several lines."
+                .to_owned()
+        } else {
+            format!(
+                "Documentation contains enough ordinary words{delimiter}to require wrapping across several lines.{delimiter}"
+            )
+        };
+        let origin = ContentOrigin::TestEntityCommonMark;
+        let docs = Documentation::load_from_str(origin.clone(), &source, true, false);
+        let chunks = docs.get(&origin).unwrap();
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks[0].as_str(), source);
+        assert_eq!(
+            chunks[0].preferred_line_delimiter(),
+            if delimiter.is_empty() {
+                None
+            } else {
+                Some(delimiter)
+            }
+        );
+        let checker = Reflow::new(ReflowConfig {
+            max_line_length: 40,
+        })
+        .unwrap();
+        let suggestions = checker.check(&origin, chunks).unwrap();
+        assert_eq!(suggestions.len(), 1);
+        let wrapped = apply_reflow_patches(&source, &suggestions);
+        assert_only_line_delimiter(
+            &wrapped,
+            if delimiter.is_empty() {
+                "\n"
+            } else {
+                delimiter
+            },
+        );
+        assert!(wrapped.lines().all(|line| line.chars().count() <= 40));
+        assert_eq!(
+            wrapped.split_whitespace().collect::<Vec<_>>(),
+            source.split_whitespace().collect::<Vec<_>>()
+        );
+        assert_eq!(wrapped.ends_with('\n'), !delimiter.is_empty());
+        let docs = Documentation::load_from_str(origin.clone(), &wrapped, true, false);
+        assert!(checker
+            .check(&origin, docs.get(&origin).unwrap())
+            .unwrap()
+            .is_empty());
+    }
 }
 
 #[test]

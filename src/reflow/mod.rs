@@ -79,14 +79,16 @@ fn reflow_inner<'s>(
     indentations: &[Indentation<'s>],
     max_line_width: usize,
     variant: &CommentVariant,
+    preferred_line_delimiter: Option<&str>,
 ) -> Result<Option<String>> {
-    // Get type of newline from current chunk, either plain \n or \r\n
-    let line_delimiter = extract_delimiter(s).unwrap_or_else(|| {
-        // TODO if ther is no newline in `s`, we assume `\n`
-        // TODO make this depend on the file
-        log::warn!("Could not determine a line delimiter, falling back to \\n");
-        "\n"
-    });
+    // Source style takes precedence over normalized/synthetic chunk newlines.
+    // Direct chunks retain content-based detection and the existing LF fallback.
+    let line_delimiter = preferred_line_delimiter
+        .or_else(|| extract_delimiter(s))
+        .unwrap_or_else(|| {
+            log::warn!("Could not determine a line delimiter, falling back to \\n");
+            "\n"
+        });
 
     // extract the relevant part from the entire `chunk`, that will be our working set.
     let s_absolute = sub_char_range(s, range.clone());
@@ -102,7 +104,10 @@ fn reflow_inner<'s>(
         .iter()
         .map(|r| (r.start.saturating_sub(range.start))..(r.end.saturating_sub(range.start)));
 
-    let mut gluon = Gluon::new(s_absolute, max_line_width, indentations);
+    // Indentation already includes the opening comment/attribute syntax.
+    // Reserve space for the closing delimiter, which is appended after wrapping.
+    let content_width = max_line_width.saturating_sub(variant.suffix_len());
+    let mut gluon = Gluon::new(s_absolute, content_width, indentations);
     gluon.add_unbreakables(unbreakables);
 
     let mut reflow_applied = false;
@@ -130,7 +135,16 @@ fn reflow_inner<'s>(
 
     // construct replacement string from prefix and Gluon iterations
     let content = gluon.fold(acc, |mut acc, (_lineno, content, _range)| {
-        if lines.next() != Some(&content) {
+        // Unlike the first line, later chunk lines retain the separator after
+        // `///` or `//!`. It is regenerated with the prefix, not part of the prose.
+        // Remove only that one space so extra indentation still counts as a change.
+        let original = lines.next().map(|line| match variant {
+            CommentVariant::TripleSlash | CommentVariant::DoubleSlashEM => {
+                line.strip_prefix(' ').unwrap_or(line)
+            }
+            _ => line,
+        });
+        if original != Some(&content) {
             reflow_applied = true;
         }
 
@@ -359,6 +373,7 @@ fn store_suggestion<'s>(
             &indentations,
             max_line_width,
             &chunk.variant(),
+            chunk.preferred_line_delimiter(),
         )?
         .map(|replacement| Suggestion {
             chunk,
@@ -532,3 +547,41 @@ fn reflow<'s>(
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod safety_tests {
+    use super::*;
+    use crate::LineColumn;
+
+    #[test]
+    fn skips_unsafe_chunks_but_still_reflows_safe_chunks() {
+        let content =
+            "This paragraph contains enough words to require wrapping onto several shorter lines.";
+        let len = content.chars().count();
+        let safe = CheckableChunk::from_str(
+            content,
+            indexmap::indexmap! {
+                0..len => Span {
+                    start: LineColumn { line: 1, column: 0 },
+                    end: LineColumn { line: 1, column: len - 1 },
+                }
+            },
+            CommentVariant::CommonMark,
+        );
+        let mut unsafe_chunk = safe.clone();
+        unsafe_chunk.disable_reflow();
+        let chunks = [unsafe_chunk, safe];
+        let checker = Reflow::new(ReflowConfig {
+            max_line_length: 20,
+        })
+        .unwrap();
+        let origin = ContentOrigin::TestEntityCommonMark;
+
+        assert!(checker.check(&origin, &chunks[..1]).unwrap().is_empty());
+        let suggestions = checker.check(&origin, &chunks).unwrap();
+        assert!(!suggestions.is_empty());
+        assert!(suggestions
+            .iter()
+            .all(|suggestion| std::ptr::eq(suggestion.chunk, &chunks[1])));
+    }
+}

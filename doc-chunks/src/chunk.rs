@@ -80,6 +80,10 @@ pub struct CheckableChunk {
     source_mapping: IndexMap<Range, Span>,
     /// Track what kind of comment the chunk is.
     variant: CommentVariant,
+    /// Conditional or structurally gapped documentation cannot be rewritten as one span.
+    non_reflowable: bool,
+    /// Source newline style, which may differ from synthetic fragment separators.
+    preferred_line_delimiter: Option<&'static str>,
 }
 
 impl std::hash::Hash for CheckableChunk {
@@ -90,6 +94,8 @@ impl std::hash::Hash for CheckableChunk {
             t.hash(hasher);
         });
         self.variant.hash(hasher);
+        self.non_reflowable.hash(hasher);
+        self.preferred_line_delimiter.hash(hasher);
     }
 }
 
@@ -115,10 +121,13 @@ impl CheckableChunk {
         source_mapping: IndexMap<Range, Span>,
         variant: CommentVariant,
     ) -> Self {
+        let preferred_line_delimiter = crate::util::extract_delimiter(&content);
         Self {
             content,
             source_mapping,
             variant,
+            non_reflowable: false,
+            preferred_line_delimiter,
         }
     }
 
@@ -344,6 +353,22 @@ impl CheckableChunk {
         self.content.as_str()
     }
 
+    /// Preferred line delimiter for rewriting, independent of normalized content.
+    ///
+    /// Extracted Rust documentation uses the first selected literal's known source
+    /// style: its starting line's LF/CRLF terminator, or the nearest preceding
+    /// terminator at an unterminated EOF. Mixed-ending runs therefore prefer their
+    /// first selected literal, not the majority style or synthetic separators.
+    /// Direct string constructors detect the delimiter from their original content.
+    /// Returns `None` if no source delimiter is known; callers choose a fallback.
+    pub fn preferred_line_delimiter(&self) -> Option<&'static str> {
+        self.preferred_line_delimiter
+    }
+
+    pub(crate) fn set_preferred_line_delimiter(&mut self, delimiter: Option<&'static str>) {
+        self.preferred_line_delimiter = delimiter;
+    }
+
     /// Get the display wrapper type to be used with i.e. `format!(..)`.
     pub fn display(&self, range: Range) -> ChunkDisplay<'_> {
         ChunkDisplay::from((self, range))
@@ -370,6 +395,16 @@ impl CheckableChunk {
     /// Obtain the length in characters.
     pub fn len_in_chars(&self) -> usize {
         self.content.chars().count()
+    }
+
+    /// Prevent reflow from rewriting conditional or structurally gapped documentation.
+    pub fn disable_reflow(&mut self) {
+        self.non_reflowable = true;
+    }
+
+    /// Whether the chunk can be safely rewritten as a single documentation block.
+    pub fn is_reflow_safe(&self) -> bool {
+        !self.non_reflowable
     }
 
     /// The variant type of comment.
@@ -485,5 +520,63 @@ impl<'a> fmt::Display for ChunkDisplay<'a> {
         };
 
         write!(formatter, "{ctx1}{highlight}{ctx2}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    #[test]
+    fn direct_constructors_preserve_original_content_delimiters() {
+        for (content, expected) in [
+            ("Words", None),
+            ("Words\n", Some("\n")),
+            ("Words\r\n", Some("\r\n")),
+        ] {
+            let chunk =
+                CheckableChunk::from_str(content, IndexMap::new(), CommentVariant::CommonMark);
+            assert_eq!(chunk.as_str(), content);
+            assert_eq!(chunk.preferred_line_delimiter(), expected);
+            assert_eq!(chunk.clone().preferred_line_delimiter(), expected);
+        }
+    }
+
+    #[test]
+    fn source_delimiter_metadata_participates_in_equality_and_hashing() {
+        let lf = CheckableChunk::from_str("Words\n", IndexMap::new(), CommentVariant::TripleSlash);
+        let mut crlf = lf.clone();
+        crlf.set_preferred_line_delimiter(Some("\r\n"));
+        assert_ne!(lf, crlf);
+        assert_eq!(lf.as_str(), crlf.as_str());
+        let mut lf_hash = DefaultHasher::new();
+        lf.hash(&mut lf_hash);
+        let mut crlf_hash = DefaultHasher::new();
+        crlf.hash(&mut crlf_hash);
+        assert_ne!(lf_hash.finish(), crlf_hash.finish());
+    }
+
+    #[test]
+    fn reflow_safety_defaults_to_safe_and_survives_cloning() {
+        let safe =
+            CheckableChunk::from_str("Shared prose", IndexMap::new(), CommentVariant::TripleSlash);
+        assert!(safe.is_reflow_safe());
+
+        let mut unsafe_chunk = safe.clone();
+        unsafe_chunk.disable_reflow();
+        unsafe_chunk.disable_reflow();
+        assert!(!unsafe_chunk.is_reflow_safe());
+        assert!(!unsafe_chunk.clone().is_reflow_safe());
+        assert!(safe.is_reflow_safe());
+        assert_ne!(safe, unsafe_chunk);
+        assert_eq!(safe.as_str(), unsafe_chunk.as_str());
+
+        let mut safe_hash = DefaultHasher::new();
+        safe.hash(&mut safe_hash);
+        let mut unsafe_hash = DefaultHasher::new();
+        unsafe_chunk.hash(&mut unsafe_hash);
+        assert_ne!(safe_hash.finish(), unsafe_hash.finish());
     }
 }
