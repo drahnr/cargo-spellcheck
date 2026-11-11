@@ -3,7 +3,7 @@ name = "doc-chunks"
 version = "0.2.2"
 authors = ["Bernhard Schuster <bernhard@ahoi.io>"]
 edition = "2021"
-rust-version = "1.57.0"
+rust-version = "1.88.0"
 repository = "https://github.com/drahnr/cargo-spellcheck.git"
 homepage = "https://github.com/drahnr/cargo-spellcheck"
 license = "MIT OR Apache-2.0"
@@ -15,6 +15,7 @@ readme = "README.md"
 workspace = true
 
 [dependencies]
+biodivine-lib-bdd = "0.6"
 console = "0.15"
 fs-err = "2"
 indexmap = { version = "2", features = ["rayon", "serde"] }

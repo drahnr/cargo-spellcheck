@@ -515,6 +515,14 @@ impl<'s> fmt::Display for Suggestion<'s> {
         if let Some(ref description) = self.description {
             writeln!(formatter, "   {description}")?;
         }
+        if let Some(example) = self.chunk.cfg_example() {
+            if self.description.is_some() {
+                context_marker
+                    .apply_to(format!("{:>width$}", "|", width = indent))
+                    .fmt(formatter)?;
+            }
+            writeln!(formatter, "   example cfg (symbolic): {example}")?;
+        }
         Ok(())
     }
 }
@@ -718,7 +726,7 @@ impl<'s> IntoIterator for &'s SuggestionSet<'s> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{CommentVariant, LineColumn};
+    use crate::{documentation::Documentation, CommentVariant, LineColumn};
 
     use std::fmt;
 
@@ -734,6 +742,114 @@ mod tests {
         let reality = display.to_string();
         let reality = console::strip_ansi_codes(reality.as_str());
         assert_eq!(reality, expected);
+    }
+
+    #[test]
+    fn fmt_cfg_examples_are_shown_for_guarded_docs() {
+        for (source, expected_example, typo, correction) in [
+            (
+                r#"#[cfg(feature = "serde")]
+/// Supports serialzation to JSON.
+struct SerializableRecord;"#,
+                r#"feature = "serde""#,
+                "serialzation",
+                "serialization",
+            ),
+            (
+                r#"#[cfg(not(target_arch = "wasm32"))]
+/// Observes files for chagnes.
+struct NativeFileWatcher;"#,
+                r#"not(target_arch = "wasm32")"#,
+                "chagnes",
+                "changes",
+            ),
+            (
+                r#"#[cfg(all(feature = "simd", target_arch = "x86_64"))]
+/// Performs accelarated searches.
+struct VectorizedSearch;"#,
+                r#"all(feature = "simd", target_arch = "x86_64")"#,
+                "accelarated",
+                "accelerated",
+            ),
+            (
+                r#"#[cfg_attr(docsrs, doc = "See the API referance.")]
+struct HostedDocumentation;"#,
+                "docsrs",
+                "referance",
+                "reference",
+            ),
+            (
+                r#"#[cfg(all())]
+/// Always availble to readers.
+struct AlwaysDocumented;"#,
+                "all()",
+                "availble",
+                "available",
+            ),
+        ] {
+            let docs =
+                Documentation::load_from_str(ContentOrigin::TestEntityRust, source, true, false);
+            let chunks = docs.get(&ContentOrigin::TestEntityRust).unwrap();
+            let chunk = chunks
+                .iter()
+                .find(|chunk| chunk.as_str().contains(typo))
+                .expect("conditional documentation must be extracted");
+            assert_eq!(chunk.cfg_example(), Some(expected_example));
+            let start = chunk.as_str().find(typo).unwrap();
+            let range = start..start + typo.len();
+            let mappings = chunk.find_spans(range.clone());
+            assert_eq!(mappings.len(), 1);
+            let (mapped_range, span) = mappings.first().unwrap();
+            assert_eq!(mapped_range, &range);
+
+            let (line, text) = source
+                .lines()
+                .enumerate()
+                .find(|(_, text)| text.contains(typo))
+                .unwrap();
+            let column = text.find(typo).unwrap();
+            assert_eq!(
+                *span,
+                Span {
+                    start: LineColumn {
+                        line: line + 1,
+                        column,
+                    },
+                    end: LineColumn {
+                        line: line + 1,
+                        column: column + typo.len() - 1,
+                    },
+                }
+            );
+
+            for description in [None, Some("Possible spelling mistake found.".to_owned())] {
+                for replacements in [vec![], vec![correction.to_owned()]] {
+                    let suggestion = Suggestion {
+                        detector: Detector::Dummy,
+                        origin: ContentOrigin::TestEntityRust,
+                        chunk,
+                        range: range.clone(),
+                        span: *span,
+                        replacements,
+                        description: description.clone(),
+                    };
+                    let rendered = suggestion.to_string();
+                    let rendered = console::strip_ansi_codes(&rendered);
+                    let note = format!("example cfg (symbolic): {expected_example}");
+                    assert!(rendered.contains(&note), "{rendered}");
+                    assert!(
+                        rendered.contains(&format!("/tmp/test/entity.rs:{}", line + 1)),
+                        "{rendered}"
+                    );
+                    if let Some(description) = &description {
+                        assert!(
+                            rendered.find(description).unwrap() < rendered.find(&note).unwrap(),
+                            "{rendered}"
+                        );
+                    }
+                }
+            }
+        }
     }
 
     #[test]

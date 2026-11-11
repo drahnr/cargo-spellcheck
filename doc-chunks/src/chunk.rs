@@ -84,6 +84,8 @@ pub struct CheckableChunk {
     non_reflowable: bool,
     /// Source newline style, which may differ from synthetic fragment separators.
     preferred_line_delimiter: Option<&'static str>,
+    /// One satisfying Boolean assignment, not necessarily a realizable Rust target.
+    cfg_example: Option<String>,
 }
 
 impl std::hash::Hash for CheckableChunk {
@@ -96,6 +98,7 @@ impl std::hash::Hash for CheckableChunk {
         self.variant.hash(hasher);
         self.non_reflowable.hash(hasher);
         self.preferred_line_delimiter.hash(hasher);
+        self.cfg_example.hash(hasher);
     }
 }
 
@@ -128,6 +131,7 @@ impl CheckableChunk {
             variant,
             non_reflowable: false,
             preferred_line_delimiter,
+            cfg_example: None,
         }
     }
 
@@ -405,6 +409,18 @@ impl CheckableChunk {
     /// Whether the chunk can be safely rewritten as a single documentation block.
     pub fn is_reflow_safe(&self) -> bool {
         !self.non_reflowable
+    }
+
+    /// A symbolic cfg example selecting this documentation projection, if conditional.
+    ///
+    /// It satisfies the directly attached predicates, but does not validate target
+    /// relationships or include guards inherited from enclosing items/modules.
+    pub fn cfg_example(&self) -> Option<&str> {
+        self.cfg_example.as_deref()
+    }
+
+    pub(crate) fn set_cfg_example(&mut self, example: Option<String>) {
+        self.cfg_example = example;
     }
 
     /// The variant type of comment.

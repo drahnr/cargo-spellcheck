@@ -17,6 +17,7 @@ pub struct LiteralSet {
     variant: CommentVariant,
     /// Attribute syntax or conditional projections prevent whole-block edits.
     non_reflowable: bool,
+    cfg_example: Option<String>,
 }
 
 impl LiteralSet {
@@ -35,7 +36,12 @@ impl LiteralSet {
             variant: first.variant(),
             literals,
             non_reflowable,
+            cfg_example: None,
         }
+    }
+
+    pub(crate) fn set_cfg_example(&mut self, example: String) {
+        self.cfg_example = Some(example);
     }
 
     /// Add a literal to a literal set, if the previous lines literal already
@@ -116,6 +122,7 @@ impl LiteralSet {
         let mut chunk = CheckableChunk::from_string(content, source_mapping, self.variant);
         // Synthetic separators must not override the selected literals' source style.
         chunk.set_preferred_line_delimiter(preferred_line_delimiter);
+        chunk.set_cfg_example(self.cfg_example);
         if self.non_reflowable {
             chunk.disable_reflow();
         }

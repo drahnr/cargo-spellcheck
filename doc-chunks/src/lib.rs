@@ -41,6 +41,7 @@ pub fn apply_offset(range: &mut Range, offset: usize) {
 }
 
 mod cfg;
+pub use cfg::CfgBudget;
 pub mod chunk;
 pub mod cluster;
 mod developer;
@@ -138,7 +139,35 @@ impl Documentation {
         doc_comments: bool,
         dev_comments: bool,
     ) -> Result<()> {
-        let cluster = Clusters::load_from_str(content, doc_comments, dev_comments)?;
+        self.add_rust_with_budget(
+            origin,
+            content,
+            doc_comments,
+            dev_comments,
+            CfgBudget::default(),
+        )
+    }
+
+    /// Add Rust documentation with explicit per-run cfg reasoning and sampling limits.
+    pub fn add_rust_with_budget(
+        &mut self,
+        origin: ContentOrigin,
+        content: &str,
+        doc_comments: bool,
+        dev_comments: bool,
+        budget: CfgBudget,
+    ) -> Result<()> {
+        let cluster =
+            Clusters::load_from_str_with_budget(content, doc_comments, dev_comments, budget)?;
+        for warning in cluster.warnings() {
+            log::warn!(
+                "{}:{}:{}: {}",
+                origin,
+                warning.span.start.line,
+                warning.span.start.column + 1,
+                warning.message,
+            );
+        }
 
         let chunks = Vec::<CheckableChunk>::from(cluster);
         self.add_inner(origin, chunks);
