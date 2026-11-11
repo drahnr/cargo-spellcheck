@@ -3,7 +3,7 @@ name = "cargo-spellcheck"
 version = "0.15.7"
 authors = ["Bernhard Schuster <bernhard@ahoi.io>"]
 edition = "2021"
-rust-version = "1.85.0"
+rust-version = "1.89.0"
 repository = "https://github.com/drahnr/cargo-spellcheck.git"
 homepage = "https://github.com/drahnr/cargo-spellcheck"
 license = "MIT OR Apache-2.0"
@@ -101,7 +101,6 @@ url = { version = "2", features = ["serde"] }
 
 # dictionary lookup with affixes
 hunspell-rs = { version = "0.4.0", optional = true }
-fd-lock = { version = "4", optional = true }
 encoding_rs = { version = "0.8.31", optional = true, features = [] }
 zspell = { version = "0.5.5", optional = true }
 spellbook = { version = "0.1", optional = true }
@@ -131,7 +130,6 @@ default = ["all"]
 hunspell = [
   "dep:hunspell-rs",
   "hunspell-rs?/bundled",
-  "dep:fd-lock",
   "nlprules",
   "dep:encoding_rs",
 ]
