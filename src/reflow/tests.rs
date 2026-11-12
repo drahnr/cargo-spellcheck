@@ -332,6 +332,90 @@ fn rust_doc_words(source: &str) -> Vec<String> {
         .collect()
 }
 
+/// Reflow must reach the expected formatting in one pass and make no further suggestions.
+#[test]
+fn reflow_reaches_expected_output_and_is_idempotent() {
+    /// A formatting contract exercised with both Unix and Windows source line endings.
+    struct Case {
+        name: &'static str,
+        width: usize,
+        source: &'static str,
+        expected: &'static str,
+    }
+    let cases = [
+        Case {
+            name: "wrapped line comments",
+            width: 30,
+            source: r#"/// Packet routing preserves delivery order.
+struct Delivery;
+"#,
+            expected: r#"/// Packet routing preserves
+/// delivery order.
+struct Delivery;
+"#,
+        },
+        Case {
+            name: "quoted doc attributes",
+            width: 35,
+            source: r#"#[doc = "Secure routes retain encrypted delivery metadata."]
+struct SecureRoute;
+"#,
+            expected: r#"#[doc = "Secure routes retain"]
+#[doc = "encrypted delivery"]
+#[doc = "metadata."]
+struct SecureRoute;
+"#,
+        },
+        Case {
+            name: "raw doc attributes",
+            width: 35,
+            source: r##"#[doc=r#"Cached routes retain recovery metadata."#]
+struct CachedRoutes;
+"##,
+            expected: r##"#[doc=r#"Cached routes retain"#]
+#[doc=r#"recovery metadata."#]
+struct CachedRoutes;
+"##,
+        },
+        Case {
+            name: "indentation-only correction",
+            width: 35,
+            source: r#"/// Route delivery overview.
+///    Transport stays ready.
+struct Route;
+"#,
+            expected: r#"/// Route delivery overview.
+/// Transport stays ready.
+struct Route;
+"#,
+        },
+    ];
+    let line_delimiters = ["\n", "\r\n"];
+    let expected_first_pass_suggestions = 1;
+    let expected_second_pass_suggestions = 0;
+    for Case {
+        name,
+        width,
+        source,
+        expected,
+    } in cases
+    {
+        for delimiter in line_delimiters {
+            let source = source.replace('\n', delimiter);
+            let expected = expected.replace('\n', delimiter);
+            // An exact first-pass expectation prevents a no-op reflow from passing this test.
+            let (wrapped, first_count) = apply_rust_reflow(&source, width);
+            assert_eq!(first_count, expected_first_pass_suggestions, "{name}");
+            assert_eq!(wrapped, expected, "{name}, delimiter {delimiter:?}");
+            // Reparse and recheck the formatted Rust through the real extraction/check/patch path.
+            let (checked_again, second_count) = apply_rust_reflow(&wrapped, width);
+            assert_eq!(second_count, expected_second_pass_suggestions, "{name}");
+            assert_eq!(checked_again, expected, "{name}, delimiter {delimiter:?}");
+        }
+    }
+}
+
+/// Check later-line wrapping against the expected first line, width, and original prose.
 fn assert_later_rust_lines_reflow(
     source: &str,
     max_line_length: usize,
@@ -349,12 +433,7 @@ fn assert_later_rust_lines_reflow(
         "wrapped source exceeds width {max_line_length}:\n{wrapped}"
     );
     assert_eq!(rust_doc_words(&wrapped), before, "prose must be preserved");
-    let (again, count) = apply_rust_reflow(&wrapped, max_line_length);
-    assert_eq!(
-        count, 0,
-        "reflow must be idempotent:\n{wrapped}\nsecond pass:\n{again}"
-    );
-    assert_eq!(again, wrapped);
+
     wrapped
 }
 

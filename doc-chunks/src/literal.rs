@@ -6,7 +6,7 @@ use proc_macro2::LineColumn;
 
 use std::fmt;
 
-/// Determine if a `CommentVariant` is a documentation comment or not.
+/// Broad source category used when grouping comment literals.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommentVariantCategory {
     /// Comment variant will end up in documentation.
@@ -19,7 +19,7 @@ pub enum CommentVariantCategory {
     Unmergable,
 }
 
-/// Track what kind of comment the literal is
+/// Source syntax and rendering delimiters for a comment literal.
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CommentVariant {
@@ -36,8 +36,8 @@ pub enum CommentVariant {
     /// `#[doc=` with actual prefix like `#[doc=` and the total length of `r###`
     /// etc. including `r` but without `"`
     MacroDocEqStr(String, usize),
-    /// `#[doc= foo!(..)]`, content will be ignored, but allows clusters to not
-    /// continue.
+    /// Legacy marker for `#[doc = macro!(...)]`, retained for compatibility.
+    /// Extraction now tracks unexpanded macros as fragments and rejects selections containing them.
     MacroDocEqMacro,
     /// Commonmark File
     CommonMark,
@@ -82,8 +82,7 @@ impl CommentVariant {
             CommentVariant::MacroDocEqMacro => "".into(),
             CommentVariant::MacroDocEqStr(d, p) => {
                 let raw = match p {
-                    // TODO: make configureable if each line will start with #[doc ="
-                    // TODO: but not here!
+                    // TODO: make repeated doc-attribute prefixes configurable at the reflow layer.
                     0 => "\"".to_owned(),
                     x => format!("r{}\"", "#".repeat(x.saturating_sub(1))),
                 };
@@ -158,18 +157,19 @@ impl LineDelimiter {
     }
 }
 
-/// A literal with meta info where the first and list whitespace may be found.
+/// Concrete comment text with syntax delimiters and a source span for its trimmed content.
+/// Trimming removes delimiters, not prose whitespace; this type does not expand macros.
 #[derive(Clone)]
 pub struct TrimmedLiteral {
-    /// Track what kind of comment the literal is
+    /// Source syntax used to render this literal.
     variant: CommentVariant,
-    /// The span of rendered content, minus pre and post already applied.
+    /// Original source span of the content, excluding prefix and suffix delimiters.
     span: Span,
-    /// the complete rendered string including post and pre.
+    /// Original literal text, including prefix and suffix delimiters.
     rendered: String,
-    /// Literal prefix length.
+    /// ASCII prefix length in bytes and characters.
     pre: usize,
-    /// Literal postfix length.
+    /// ASCII suffix length in bytes and characters.
     post: usize,
     /// Length of rendered **minus** `pre` and `post` in UTF-8 characters.
     len_in_chars: usize,
@@ -294,11 +294,8 @@ fn detect_comment_variant(
 
         // must always be a single line
         assert_eq!(span.start.line, span.end.line);
-        // if the line includes quotes, the rustc converts them internally
-        // to `#[doc="content"]`, where - if `content` contains `"` will substitute
-        // them as `\"` which will inflate the number columns.
-        // Since we can not distinguish between orignally escaped, we simply
-        // use the content read from source.
+        // Desugared doc attributes escape quotes that were literal comment text.
+        // Reading the original source preserves both spelling and column offsets.
 
         let variant = if rendered.starts_with("///") {
             CommentVariant::TripleSlash
@@ -341,8 +338,7 @@ fn detect_comment_variant(
 
         (variant, span, pre, post)
     } else {
-        // pre and post are for the rendered content
-        // not necessarily for the span
+        // Delimiter lengths apply to the original literal text; adjust its content span below.
 
         // The parser has already validated the literal. Determine its ASCII
         // delimiters without interpreting escapes or changing source offsets.
@@ -394,33 +390,9 @@ fn detect_comment_variant(
 }
 
 impl TrimmedLiteral {
-    /// Create an empty comment.
-    ///
-    /// Prime use case is for `#[doc = foo!()]` cases.
-    pub(crate) fn new_empty(content: impl AsRef<str>, span: Span, variant: CommentVariant) -> Self {
-        Self {
-            // Track what kind of comment the literal is
-            variant,
-            span,
-            // .
-            rendered: String::new(),
-            pre: 0,
-            post: 0,
-            len_in_chars: 0,
-
-            preferred_line_delimiter: source_line_with_delimiter(content.as_ref(), span.start.line)
-                .and_then(|(_, delimiter)| delimiter),
-        }
-    }
-
     pub(crate) fn load_from(content: &str, mut span: Span) -> Result<Self> {
-        // let rendered = literal.to_string();
-        // produces pretty unusable garabage, since it modifies the content of `///`
-        // comments which could contain " which will be escaped
-        // and therefor cause the `span()` to yield something that does
-        // not align with the rendered literal at all and there are too
-        // many pitfalls to sanitize all cases, so reading given span
-        // from the file again, and then determining its type is way safer.
+        // Token rendering can escape comment text and break its source mapping.
+        // Read the source span directly, then identify and trim its syntax delimiters.
 
         // proc_macro2 ends are exclusive; our source spans are inclusive.
         span.end.column = span.end.column.saturating_sub(1);
@@ -441,9 +413,7 @@ impl TrimmedLiteral {
             };
         }
 
-        // TODO cache the offsets for faster processing and avoiding repeated O(n) ops
-        // let byteoffset2char = rendered.char_indices().enumerate().collect::<indexmap::IndexMap<_usize, (_usize, char)>>();
-        // let rendered_len = byteoffset2char.len();
+        // TODO: cache character offsets to avoid repeated linear scans.
 
         let rendered_len = rendered.chars().count();
 
@@ -476,10 +446,8 @@ impl TrimmedLiteral {
 }
 
 impl TrimmedLiteral {
-    /// Creates a new (single line) literal from the variant, the content, the
-    /// size of the pre & post and the line/column on which it starts. Fails if
-    /// provided with multiline content (i.e. if the content contains a
-    /// line-break).
+    /// Construct a literal from single-line source text, syntax, delimiter lengths, and position.
+    /// The caller supplies a one-based line, a zero-based character column, and ASCII delimiters.
     pub fn from(
         variant: CommentVariant,
         content: &str,
@@ -565,7 +533,7 @@ impl TrimmedLiteral {
 
     /// Obtain the number of characters in `post()`.
     ///
-    /// Since all pre characters are ASCII, this is equivalent to the number of
+    /// Since all suffix characters are ASCII, this is equivalent to the number of
     /// bytes in `post()`.
     pub fn post(&self) -> usize {
         self.post

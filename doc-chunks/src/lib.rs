@@ -2,16 +2,19 @@
 //!
 //! `Documentation` is a representation of one or multiple documents.
 //!
-//! A `literal` is a token provided by `proc_macro2` or `ra_ap_syntax` crate, which is then converted by
-//! means of `TrimmedLiteral` using `Cluster`ing into a `CheckableChunk` (mostly
-//! named just `chunk`).
+//! `TrimmedLiteral` holds concrete comment text and its source span. Documentation
+//! extraction first groups known literals and unexpanded macro fragments by owner,
+//! then selects cfg alternatives and skips any whose text is not fully known.
+//! `Clusters` holds the resulting concrete `LiteralSet`s, along with developer
+//! comments grouped by source adjacency. Each set becomes a `CheckableChunk`
+//! (mostly named just `chunk`).
 //!
-//! `CheckableChunk`s can consist of multiple fragments, where each fragment can
-//! span multiple lines, yet each fragment is covering a consecutive `Span` in
-//! the origin content. Each fragment also has a direct mapping to the
-//! `CheckableChunk` internal string representation.
+//! A `CheckableChunk` maps concrete text ranges to contiguous spans in the original
+//! source. Neighboring mappings may have source gaps, and synthetic separators have
+//! no mapping. These mapped ranges are distinct from the parsed documentation
+//! fragments that may still contain unexpanded macros during extraction.
 //!
-//! And `Documentation` holds one or many `CheckableChunks` per file path.
+//! `Documentation` stores checkable chunks by content origin and retains extraction warnings.
 
 #![deny(unused_crate_dependencies)]
 
@@ -57,11 +60,41 @@ pub use literal::*;
 pub use literalset::*;
 pub use markdown::*;
 
-/// Collection of all the documentation entries across the project
+/// An extraction warning paired with its origin and original-source coordinates.
+#[derive(Debug, Clone)]
+pub struct DocumentationWarning {
+    /// File or excerpt whose documentation could not be fully checked.
+    pub origin: ContentOrigin,
+    /// Extraction limitation with a span in the original source rather than its excerpt.
+    pub warning: ExtractionWarning,
+}
+
+impl DocumentationWarning {
+    fn from_extraction(origin: &ContentOrigin, warning: &ExtractionWarning) -> Self {
+        let mut warning = warning.clone();
+        // Excerpt-relative diagnostics must be translated before logging or exposing them.
+        if let ContentOrigin::RustDocTest(_, scope) = origin {
+            for position in [&mut warning.span.start, &mut warning.span.end] {
+                if position.line == 1 {
+                    position.column += scope.start.column;
+                }
+                position.line += scope.start.line.saturating_sub(1);
+            }
+        }
+        Self {
+            origin: origin.clone(),
+            warning,
+        }
+    }
+}
+
+/// Checkable chunks and extraction warnings collected across content origins.
 #[derive(Debug, Clone)]
 pub struct Documentation {
-    /// Mapping of a path to documentation literals
+    /// Concrete chunks indexed by file or excerpt origin.
     index: IndexMap<ContentOrigin, Vec<CheckableChunk>>,
+    /// Extraction diagnostics retained even when their source produces no chunks.
+    warnings: Vec<DocumentationWarning>,
 }
 
 impl Default for Documentation {
@@ -71,11 +104,17 @@ impl Default for Documentation {
 }
 
 impl Documentation {
-    /// Create a new and empty doc.
+    /// Create an empty collection of chunks and extraction warnings.
     pub fn new() -> Self {
         Self {
             index: IndexMap::with_capacity(64),
+            warnings: Vec::new(),
         }
+    }
+
+    /// Inspect extraction limitations, including sources that produced no checkable chunks.
+    pub fn warnings(&self) -> &[DocumentationWarning] {
+        &self.warnings
     }
 
     /// Check if a particular key is contained.
@@ -131,7 +170,7 @@ impl Documentation {
         // Ok(()) TODO make this failable
     }
 
-    /// Adds a rust content str to the documentation.
+    /// Extract the requested comment kinds from Rust source using default cfg limits.
     pub fn add_rust(
         &mut self,
         origin: ContentOrigin,
@@ -148,7 +187,8 @@ impl Documentation {
         )
     }
 
-    /// Add Rust documentation with explicit per-run cfg reasoning and sampling limits.
+    /// Extract Rust comments with explicit per-owner cfg limits and retain extraction warnings.
+    /// Developer comments are grouped by source adjacency without cfg evaluation.
     pub fn add_rust_with_budget(
         &mut self,
         origin: ContentOrigin,
@@ -160,13 +200,15 @@ impl Documentation {
         let cluster =
             Clusters::load_from_str_with_budget(content, doc_comments, dev_comments, budget)?;
         for warning in cluster.warnings() {
+            let located = DocumentationWarning::from_extraction(&origin, warning);
             log::warn!(
                 "{}:{}:{}: {}",
-                origin,
-                warning.span.start.line,
-                warning.span.start.column + 1,
-                warning.message,
+                located.origin,
+                located.warning.span.start.line,
+                located.warning.span.start.column + 1,
+                located.warning.message,
             );
+            self.warnings.push(located);
         }
 
         let chunks = Vec::<CheckableChunk>::from(cluster);
@@ -357,5 +399,44 @@ impl IntoIterator for Documentation {
 
     fn into_iter(self) -> Self::IntoIter {
         self.index.into_iter()
+    }
+}
+
+#[cfg(test)]
+mod extraction_warning_tests {
+    use super::*;
+
+    #[test]
+    fn excerpt_warnings_survive_empty_output_and_use_original_source_coordinates() {
+        let source = r#"// Transport examples.
+fn fixture() {
+    #[cfg(not())]
+    /// Socket documentation.
+    struct Socket;
+}
+"#;
+        let excerpt = Span {
+            start: LineColumn { line: 3, column: 4 },
+            end: LineColumn {
+                line: 5,
+                column: 17,
+            },
+        };
+        let origin = ContentOrigin::RustDocTest(PathBuf::from("transport.rs"), excerpt);
+        let expected_count = 1;
+        let expected_chunk_count = 0;
+        let expected_kind = ExtractionWarningKind::UnsupportedAttribute;
+        let expected_start = LineColumn { line: 3, column: 5 };
+        let expected_payload = "[cfg(not())]";
+        let docs = Documentation::load_from_str(origin.clone(), source, true, false);
+        // Losing all chunks must not lose the diagnostic or its original file location.
+        assert_eq!(docs.get(&origin).unwrap_or(&[]).len(), expected_chunk_count);
+        assert_eq!(docs.warnings().len(), expected_count);
+        let located = &docs.warnings()[0];
+        assert_eq!(located.origin, origin);
+        assert_eq!(located.warning.kind, expected_kind);
+        assert_eq!(located.warning.span.start, expected_start);
+        let actual_payload = util::load_span_from(source.as_bytes(), located.warning.span).unwrap();
+        assert_eq!(actual_payload, expected_payload);
     }
 }

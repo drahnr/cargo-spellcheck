@@ -31,6 +31,7 @@ regex = "1"
 serde = { version = "1", features = ["derive"] }
 syn = { version = "2", features = ["full"] }
 thiserror = "1"
+unicode-normalization = "0.1"
 toml = "0.8.2"
 
 [dev-dependencies]

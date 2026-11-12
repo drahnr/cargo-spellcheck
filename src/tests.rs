@@ -226,21 +226,27 @@ struct X;
 
     #[test]
     fn issue_234() {
-        // The test
-        end2end!(
-            r####"
+        let source = r####"
 /// ```
 /// use Z;
 #[doc = foo!(xyz)]
 /// struct X;
 /// ```
 struct X;
-"####,
-            ContentOrigin::TestEntityRust,
-            0,
-            DummyChecker,
-            Default::default()
-        );
+"####;
+        let origin = ContentOrigin::TestEntityRust;
+        let expected_chunks = 0;
+        let expected_warnings = 1;
+        let expected_kind = crate::documentation::ExtractionWarningKind::OpaqueDocumentation;
+        let expected_macro = "foo!(xyz)";
+        let docs = Documentation::load_from_str(origin.clone(), source, true, false);
+        // Unknown expansion may close the fence, so report it rather than assuming empty content.
+        assert_eq!(docs.get(&origin).unwrap_or(&[]).len(), expected_chunks);
+        assert_eq!(docs.warnings().len(), expected_warnings);
+        let warning = &docs.warnings()[0].warning;
+        assert_eq!(warning.kind, expected_kind);
+        let actual_macro = load_span_from(source.as_bytes(), warning.span).unwrap();
+        assert_eq!(actual_macro, expected_macro);
     }
 
     #[test]

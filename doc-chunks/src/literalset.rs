@@ -4,16 +4,19 @@ use crate::{CheckableChunk, CommentVariant};
 
 use std::fmt;
 
-/// A set of consecutive literals.
+/// An ordered set of concrete, source-mapped comment literals.
 ///
-/// Provides means to render them as a code block
+/// Documentation literals form one owner's selected documentation variant and may
+/// have gaps in source lines. Developer-comment literals are grouped by adjacency.
+/// Extraction rejects selections containing unexpanded macros before constructing a set.
+/// The literals can be joined into a source-mapped chunk or displayed as text.
 #[derive(Clone, Default, Debug, Hash, PartialEq, Eq)]
 pub struct LiteralSet {
-    /// consecutive set of literals mapped by line number
+    /// Concrete literals in document order, each retaining its source span.
     literals: Vec<TrimmedLiteral>,
-    /// lines spanned (start, end) inclusive
+    /// Inclusive source-line coverage `(start, end)`, which may include unselected gaps.
     pub coverage: (usize, usize),
-    /// Track what kind of comment the literals are
+    /// Syntax of the first literal, used as the set's rendering style.
     variant: CommentVariant,
     /// Attribute syntax or conditional projections prevent whole-block edits.
     non_reflowable: bool,
@@ -21,15 +24,17 @@ pub struct LiteralSet {
 }
 
 impl LiteralSet {
-    /// Initiate a new set based on the first literal
+    /// Create a set containing one concrete literal.
     pub fn from(literal: TrimmedLiteral) -> Self {
-        Self::from_docs(vec![literal], false)
+        Self::from_doc_literals(vec![literal], false)
     }
 
-    /// Build a structurally contiguous documentation run. Selected literals
-    /// need not be on adjacent source lines (inactive attributes leave gaps).
-    pub(crate) fn from_docs(literals: Vec<TrimmedLiteral>, non_reflowable: bool) -> Self {
-        let first = literals.first().expect("a documentation run is nonempty");
+    /// Build a complete documentation variant from known literals in document order.
+    /// Selected literals need not be on adjacent source lines (inactive attributes leave gaps).
+    pub(crate) fn from_doc_literals(literals: Vec<TrimmedLiteral>, non_reflowable: bool) -> Self {
+        let first = literals
+            .first()
+            .expect("a documentation variant is nonempty");
         let last = literals.last().unwrap();
         Self {
             coverage: (first.span().start.line, last.span().end.line),
@@ -44,10 +49,10 @@ impl LiteralSet {
         self.cfg_example = Some(example);
     }
 
-    /// Add a literal to a literal set, if the previous lines literal already
-    /// exists.
+    /// Add a source-adjacent literal from the same comment category.
     ///
-    /// Returns literal within the Err variant if not adjacent
+    /// Returns the original literal in `Err` if its category or line position does not match.
+    /// Documentation cfg selections use `from_doc_literals` instead because source gaps are allowed.
     pub fn add_adjacent(&mut self, literal: TrimmedLiteral) -> Result<(), TrimmedLiteral> {
         if literal.variant().category() != self.variant.category() {
             log::debug!(
@@ -74,7 +79,7 @@ impl LiteralSet {
         Err(literal)
     }
 
-    /// The set of trimmed literals that is covered.
+    /// Borrow the selected literals in document order.
     pub fn literals(&self) -> Vec<&TrimmedLiteral> {
         self.literals.iter().by_ref().collect()
     }
@@ -89,9 +94,9 @@ impl LiteralSet {
         self.literals.is_empty()
     }
 
-    /// Convert to a checkable chunk.
+    /// Join literal text with synthetic newlines and map each literal back to its source span.
     ///
-    /// Creates the map from content ranges to source spans.
+    /// Source gaps are not copied, and inserted separators have no source mapping.
     pub fn into_chunk(self) -> crate::CheckableChunk {
         let preferred_line_delimiter = self
             .literals
@@ -109,7 +114,8 @@ impl LiteralSet {
             }
             let range = cursor..cursor + literal.len_in_chars();
             let span = literal.span();
-            // Opaque macros have a source span but no expanded text.
+            // Preserve compatibility with manually constructed legacy macro markers.
+            // Documentation extraction rejects unexpanded macros before reaching this layer.
             if literal.variant() != CommentVariant::MacroDocEqMacro {
                 if let Some(span_len) = span.one_line_len() {
                     assert_eq!(range.len(), span_len);

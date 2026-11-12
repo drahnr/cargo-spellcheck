@@ -1,6 +1,9 @@
-//! Chunk definition for what is going to be processed by the checkers
+//! Concrete text and source mappings passed to the checkers.
 //!
-//! A chunk consists of multiple consecutive literals joined by newlines.
+//! Rust comment chunks join selected literals with synthetic newlines. Their source
+//! spans need not be adjacent: inactive attributes may leave gaps in documentation.
+//! Unexpanded documentation macros are rejected before chunks are constructed.
+//! Other inputs, such as Markdown files, can supply chunk text directly.
 
 use super::*;
 
@@ -70,13 +73,11 @@ impl fmt::Display for ContentOrigin {
 /// A chunk of documentation that is supposed to be checked.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct CheckableChunk {
-    /// Rendered contents of a literal set or just content of a markdown file,
-    /// e.g. a comment of two lines is represented as ' First Line\n second
-    /// line' in `rendered` where the whitespaces are preserved.
+    /// Concrete text from selected comment literals or a direct input such as a Markdown file.
+    /// Literal contents retain their whitespace and are joined with synthetic newlines.
     content: String,
-    /// Mapping from range within `content` and `Span` referencing the location
-    /// within the source file. For a markdown file i.e. this would become a
-    /// single entry spanning from start to end.
+    /// Character ranges in `content` mapped to contiguous spans in the original source.
+    /// Synthetic separators have no mapping; a whole Markdown file can use one entry.
     source_mapping: IndexMap<Range, Span>,
     /// Track what kind of comment the chunk is.
     variant: CommentVariant,
@@ -103,8 +104,7 @@ impl std::hash::Hash for CheckableChunk {
 }
 
 impl CheckableChunk {
-    /// Specific to rust source code, either as part of doc test comments or
-    /// file scope.
+    /// Join a concrete comment-literal set while retaining its source mappings and cfg witness.
     pub fn from_literalset(set: LiteralSet) -> Self {
         set.into_chunk()
     }
@@ -135,9 +135,8 @@ impl CheckableChunk {
         }
     }
 
-    /// Find which part of the range maps to which span. Note that Range can
-    /// very well be split into multiple fragments where each of them can be
-    /// mapped to a potentially non-continuous span.
+    /// Map a content range to its source spans, splitting it at literal boundaries.
+    /// Each source span is contiguous, but neighboring mappings may have source gaps.
     ///
     /// Example:
     ///
@@ -359,10 +358,10 @@ impl CheckableChunk {
 
     /// Preferred line delimiter for rewriting, independent of normalized content.
     ///
-    /// Extracted Rust documentation uses the first selected literal's known source
+    /// Extracted Rust documentation uses the first selected literal with a known source
     /// style: its starting line's LF/CRLF terminator, or the nearest preceding
-    /// terminator at an unterminated EOF. Mixed-ending runs therefore prefer their
-    /// first selected literal, not the majority style or synthetic separators.
+    /// terminator at an unterminated EOF. Mixed-ending literal sets therefore prefer
+    /// their first known source delimiter, not the majority style or synthetic separators.
     /// Direct string constructors detect the delimiter from their original content.
     /// Returns `None` if no source delimiter is known; callers choose a fallback.
     pub fn preferred_line_delimiter(&self) -> Option<&'static str> {
@@ -385,7 +384,8 @@ impl CheckableChunk {
 
     /// Number of fragments.
     ///
-    /// A fragment is a continuous sub-string which is not split up any further.
+    /// Each fragment is one source-mapped content range, not a parsed documentation fragment.
+    /// Synthetic separators do not count as fragments.
     pub fn fragment_count(&self) -> usize {
         self.source_mapping.len()
     }
@@ -413,8 +413,9 @@ impl CheckableChunk {
 
     /// A symbolic cfg example selecting this documentation projection, if conditional.
     ///
-    /// It satisfies the directly attached predicates, but does not validate target
-    /// relationships or include guards inherited from enclosing items/modules.
+    /// It satisfies selected fragment guards and owner constraints, including inherited cfg
+    /// constraints from enclosing items or modules. It does not validate Rust target
+    /// relationships or imply that this configuration was compiled.
     pub fn cfg_example(&self) -> Option<&str> {
         self.cfg_example.as_deref()
     }
@@ -429,8 +430,7 @@ impl CheckableChunk {
     }
 }
 
-/// Convert the clusters of one file into a source description as well as well
-/// as vector of checkable chunks.
+/// Convert a source's extracted literal sets into concrete checkable chunks.
 impl From<Clusters> for Vec<CheckableChunk> {
     fn from(clusters: Clusters) -> Vec<CheckableChunk> {
         clusters
@@ -441,12 +441,9 @@ impl From<Clusters> for Vec<CheckableChunk> {
     }
 }
 
-/// A display style wrapper for a trimmed literal.
+/// A display wrapper highlighting a character range within a checkable chunk.
 ///
-/// Allows better display of coverage results without code duplication.
-///
-/// Consists of literal reference and a relative range to the start of the
-/// literal.
+/// Holds a chunk reference and a range relative to the start of its content.
 #[derive(Debug, Clone)]
 pub struct ChunkDisplay<'a>(pub &'a CheckableChunk, pub Range);
 
