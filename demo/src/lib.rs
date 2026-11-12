@@ -34,3 +34,14 @@ pub fn take_the_money_and_leave() {
 pub fn exploding_complexity() {
 
 }
+
+/// # Examples
+///
+#[cfg_attr(unix, doc = "```no_run")]
+#[cfg_attr(not(unix), doc = "```ignore")]
+/// use std::path::Path;
+/// assert!(Path::new("./is_a_directory/").is_dir());
+/// ```
+///
+/// More explanation after the example.
+pub struct Directory;

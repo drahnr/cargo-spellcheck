@@ -191,10 +191,7 @@ where
                 acc.push((char_range.start + 1)..(char_range.end));
                 continue;
             }
-            let belongs_to_genitive_s = match s {
-                "(" | ")" | r#"""# => false,
-                _ => true,
-            };
+            let belongs_to_genitive_s = !matches!(s, "(" | ")" | r#"""#);
             stage = if belongs_to_genitive_s {
                 match stage {
                     Stage::Empty if s != "'" && !space => {
@@ -355,7 +352,7 @@ mod tests {
         let ranges = apply_tokenizer(&tok, r#"foo"#);
 
         ranges
-            .zip([0_usize..3].iter().cloned())
+            .zip(std::iter::once(0_usize..3))
             .for_each(|(is, expect)| {
                 assert_eq!(is, expect);
             });

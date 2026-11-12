@@ -1,9 +1,9 @@
 [package]
 name = "doc-chunks"
-version = "0.2.1"
+version = "0.2.2"
 authors = ["Bernhard Schuster <bernhard@ahoi.io>"]
 edition = "2021"
-rust-version = "1.57.0"
+rust-version = "1.88.0"
 repository = "https://github.com/drahnr/cargo-spellcheck.git"
 homepage = "https://github.com/drahnr/cargo-spellcheck"
 license = "MIT OR Apache-2.0"
@@ -11,7 +11,11 @@ keywords = ["documentation", "chunks", "cluster"]
 description = "Clusters of doc comments and dev comments as coherent view."
 readme = "README.md"
 
+[lints]
+workspace = true
+
 [dependencies]
+biodivine-lib-bdd = "0.6"
 console = "0.15"
 fs-err = "2"
 indexmap = { version = "2", features = ["rayon", "serde"] }
@@ -23,11 +27,11 @@ proc-macro2 = { version = "1", features = ["span-locations"] }
 pulldown-cmark = "0.11"
 ra_ap_syntax = "0.0.269"
 rayon = "1.5"
-fancy-regex = "0.13"
 regex = "1"
 serde = { version = "1", features = ["derive"] }
 syn = { version = "2", features = ["full"] }
 thiserror = "1"
+unicode-normalization = "0.1"
 toml = "0.8.2"
 
 [dev-dependencies]

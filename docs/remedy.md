@@ -1,6 +1,6 @@
 # Fixing spelling mistakes
 
-While cargo-spellcheck is good at _pointing out_ existing spellchecks,
+While cargo-spellcheck is good at _pointing out_ existing spelling mistakes,
 it's sometimes not obvious how to resolve them or what the correct way is
 to resolve them.
 
@@ -11,7 +11,7 @@ complaints and how to resolve them:
 
 Make sure your runs are idempotent if you run on two different systems,
 which is easiest achieved by using the builtin affix and dictionaries
-besides the topic specifc lingo dictionary that should come with your project.
+besides the topic specific lingo dictionary that should come with your project.
 
 ```toml
 # .config/spellcheck.toml
@@ -34,7 +34,7 @@ since `nlprule` tends to have a few false positives.
 
 Sometimes some word forms belong into topic specific lingo and as such should be added to
 the topic specific dictionary. Make use of suffix patterns such as `/S` for plural `s` and `/M` for `'s`. This will keep your dictionary to a minimum. Please check the [affix file included here](./hunspell-data/en_US.aff) or your OS'  provided affix file.
-[It is required to understand the slightly arkane format of `.aff` and `.dic` files.](https://www.systutorials.com/docs/linux/man/4-hunspell/#lbAE) which is also available via `man 4 hunspell`.
+[It is required to understand the slightly arcane format of `.aff` and `.dic` files.](https://www.systutorials.com/docs/linux/man/4-hunspell/#lbAE) which is also available via `man 4 hunspell`.
 
 ### Types in doc comments
 
@@ -53,7 +53,7 @@ can be resolved by using
 
 with additional ticks.
 
-This is a general pattern for _types_ that make an appearence in the doc comments.
+This is a general pattern for _types_ that make an appearance in the doc comments.
 
 ### Patterns
 

@@ -57,7 +57,7 @@ fn parse_and_construct() {
 
     let z: indexmap::IndexMap<Range, Span> = plain.find_spans(expected_plain_range);
     // FIXME the expected result would be
-    let (_range, _span) = z.first().unwrap().clone();
+    let (_range, _span) = z.first().unwrap();
 
     let chunk = &chunks[0];
     log::trace!("full: {}", chunk.display(expected_raw_range.clone()));
@@ -74,9 +74,9 @@ macro_rules! end2end {
     ($test:expr, $n:expr) => {{
         end2end!(
             $test,
-            crate::ContentOrigin::TestEntityRust,
+            $crate::ContentOrigin::TestEntityRust,
             $n,
-            crate::tests::e2e::DummyChecker
+            $crate::tests::e2e::DummyChecker
         );
     }};
 
@@ -91,9 +91,9 @@ macro_rules! end2end {
             .filter_level(::log::LevelFilter::Trace)
             .try_init();
 
-        let origin: crate::ContentOrigin = $origin;
+        let origin: $crate::ContentOrigin = $origin;
         let docs =
-            crate::documentation::Documentation::load_from_str(origin.clone(), $test, true, true);
+            $crate::documentation::Documentation::load_from_str(origin.clone(), $test, true, true);
         assert_eq!(docs.len(), 1);
         let chunks = docs.get(&origin).expect("Must contain dummy path");
         assert_eq!(dbg!(chunks).len(), 1);
@@ -104,8 +104,15 @@ macro_rules! end2end {
         let checker = <$checker>::new(&cfg).expect("Checker construction works");
         let suggestions = checker
             .check(&origin, &chunks[..])
-            .expect("Must not fail to extract suggestions");
-        assert_eq!(suggestions.len(), $n);
+            .expect("Must not fail to extract suggestions. qed");
+        assert_eq!(
+            suggestions.len(),
+            $n,
+            "Expected {} suggestions, but found {}\n{:?}",
+            $n,
+            suggestions.len(),
+            &suggestions
+        );
     }};
 }
 
@@ -219,21 +226,27 @@ struct X;
 
     #[test]
     fn issue_234() {
-        // The test
-        end2end!(
-            r####"
+        let source = r####"
 /// ```
 /// use Z;
 #[doc = foo!(xyz)]
 /// struct X;
 /// ```
 struct X;
-"####,
-            ContentOrigin::TestEntityRust,
-            0,
-            DummyChecker,
-            Default::default()
-        );
+"####;
+        let origin = ContentOrigin::TestEntityRust;
+        let expected_chunks = 0;
+        let expected_warnings = 1;
+        let expected_kind = crate::documentation::ExtractionWarningKind::OpaqueDocumentation;
+        let expected_macro = "foo!(xyz)";
+        let docs = Documentation::load_from_str(origin.clone(), source, true, false);
+        // Unknown expansion may close the fence, so report it rather than assuming empty content.
+        assert_eq!(docs.get(&origin).unwrap_or(&[]).len(), expected_chunks);
+        assert_eq!(docs.warnings().len(), expected_warnings);
+        let warning = &docs.warnings()[0].warning;
+        assert_eq!(warning.kind, expected_kind);
+        let actual_macro = load_span_from(source.as_bytes(), warning.span).unwrap();
+        assert_eq!(actual_macro, expected_macro);
     }
 
     #[test]
@@ -302,6 +315,37 @@ struct Foo;
             HunspellChecker,
             Default::default()
         );
+    }
+
+    #[test]
+    fn issue_263() {
+        // excerpt from rust
+        const RAW: &str = r####"
+/// # Examples
+///
+#[cfg_attr(unix, doc = "```no_run")]
+#[cfg_attr(not(unix), doc = "```ignore")]
+/// assert_eq!(Path::new("./is_a_directory/").is_dir(), true);
+/// ```
+///
+"####;
+        let mut docs = Documentation::new();
+        docs.add_rust(ContentOrigin::TestEntityRust, RAW, true, false)
+            .unwrap();
+        let chunks = docs.get(&ContentOrigin::TestEntityRust).unwrap();
+        assert_eq!(chunks.len(), 2);
+        for chunk in chunks {
+            // The heading remains checkable; only the example code disappears.
+            assert_eq!(
+                chunk.erase_cmark(&Ignores::default()).as_str().trim(),
+                "Examples"
+            );
+            assert_eq!(
+                chunk.as_str().matches("```no_run").count()
+                    + chunk.as_str().matches("```ignore").count(),
+                1
+            );
+        }
     }
 
     #[test]
@@ -772,7 +816,7 @@ fn find_spans_multiline() {
             },
         },
     ];
-    const EXPECTED_STR: &[&'static str] = &[
+    const EXPECTED_STR: &[&str] = &[
         "xyz",
         "third",
         "Converts a span to a range, where `self` is converted to a range reltive to the",
@@ -810,7 +854,7 @@ fn find_spans_chyrp() {
     let set = gen_literal_set(SOURCE);
     let chunk = dbg!(CheckableChunk::from_literalset(set));
 
-    const CHUNK_RANGES: &[Range] = &[0..(5 + 1 + 16 + 1 + 8)];
+    const CHUNK_RANGES: &[Range] = std::slice::from_ref(&(0..(5 + 1 + 16 + 1 + 8)));
     const EXPECTED_SPANS: &[Span] = &[Span {
         start: LineColumn {
             line: 1,
@@ -826,7 +870,7 @@ fn find_spans_chyrp() {
         dbg!(&CHUNK_RANGES[0])
     );
 
-    const EXPECTED_STR: &[&'static str] = &[r#"Amsel
+    const EXPECTED_STR: &[&str] = &[r#"Amsel
 Wacholderdrossel
 Buchfink"#];
 
@@ -931,10 +975,10 @@ fn find_spans_and_coverage_integrity() -> Result<()> {
     for (coverage_span, (find_range, find_span), expected) in
         itertools::cons_tuples(coverage.zip(mapping.iter()).zip(EXPECTED_SPANS))
     {
-        let cs = load_span_from(SOURCE.as_bytes(), coverage_span.clone())?;
-        let fs = load_span_from(SOURCE.as_bytes(), find_span.clone())?;
+        let cs = load_span_from(SOURCE.as_bytes(), *coverage_span)?;
+        let fs = load_span_from(SOURCE.as_bytes(), *find_span)?;
         let fr = sub_char_range(chunk.as_str(), find_range.clone());
-        let x = load_span_from(SOURCE.as_bytes(), expected.clone())?;
+        let x = load_span_from(SOURCE.as_bytes(), *expected)?;
         log::trace!("[find]chunk[range]: {fr:?}");
         log::trace!("[find]excerpt(true): {fs:?}");
         log::trace!("[cove]excerpt(true): {cs:?}");
@@ -1217,11 +1261,33 @@ fn cmark_reduction_test(input: &'static str, expected: &'static str, expected_ma
         match markdown_range {
             SourceRange::Direct(cmark_range) => assert_eq!(
                 dbg!(sub_chars(&plain, reduced_range.clone())),
-                dbg!(sub_chars(&input, cmark_range))
+                dbg!(sub_chars(input, cmark_range))
             ),
             SourceRange::Alias(_cmark_range, _alias) => {}
         }
     }
+}
+
+fn cmark_reduction_file_test(
+    input: &'static str,
+    expected: &'static str,
+    expected_mapping_len: usize,
+) {
+    let path = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string() + ".md");
+    fs_err::write(&path, input).unwrap();
+    let path = path.canonicalize().unwrap();
+    let docs =
+        crate::traverse::extract(vec![path.clone()], false, false, false, &Default::default())
+            .expect("Must extract commonmark file");
+    let chunks = docs
+        .get(&ContentOrigin::CommonMarkFile(path.clone()))
+        .expect("Must contain commonmark chunk");
+    assert_eq!(chunks.len(), 1);
+    let (plain, mapping) =
+        PlainOverlay::extract_plain_with_mapping(chunks[0].as_str(), &Default::default());
+    assert_eq!(plain.as_str(), expected);
+    assert_eq!(mapping.len(), expected_mapping_len);
+    fs_err::remove_file(&path).unwrap();
 }
 
 #[test]
@@ -1342,6 +1408,15 @@ fn reduce_w_link_shortcut_ref() {
         1,
     );
 }
+
+#[test]
+fn reduce_w_inline_html_basic_tags() {
+    cmark_reduction_test(
+        r#"A <b>bold</b> and <i>italic</i> word."#,
+        r#"A bold and italic word."#,
+        5,
+    );
+}
 // Nested links as well as nested code blocks are
 // impossible according to the common mark spec.
 
@@ -1385,6 +1460,50 @@ ff
 
 ff"#,
         2,
+    );
+}
+
+#[test]
+fn reduce_w_html_block_prefix() {
+    cmark_reduction_file_test(
+        r#"
+<div>
+ignored
+</div>
+
+keep
+"#,
+        r#"keep"#,
+        1,
+    );
+}
+
+#[test]
+fn reduce_w_html_block_alternating_sections() {
+    cmark_reduction_file_test(
+        r#"
+<div>
+ignored
+</div>
+
+first
+
+<p>skip</p>
+
+second
+
+<div>
+skip
+</div>
+
+third
+"#,
+        r#"first
+
+second
+
+third"#,
+        3,
     );
 }
 
@@ -1486,18 +1605,18 @@ struct Two;
                     column: 0_usize + 10 - GAENSEFUESSCHEN,
                 },
                 end: LineColumn {
-                    line: 2__usize,
-                    column: 6__usize + 10 + GAENSEFUESSCHEN,
+                    line: 2_usize,
+                    column: 6_usize + 10 + GAENSEFUESSCHEN,
                 },
             },
             trimmed_span: Span {
                 start: LineColumn {
-                    line: 2__usize,
-                    column: 0__usize + 9,
+                    line: 2_usize,
+                    column: 0_usize + 9,
                 },
                 end: LineColumn {
-                    line: 2__usize,
-                    column: 6__usize + 9,
+                    line: 2_usize,
+                    column: 6_usize + 9,
                 },
             },
             variant: CommentVariant::MacroDocEqStr("#[doc = ".to_string(), 0),
@@ -1513,21 +1632,21 @@ struct Three;
             extracted_span: Span {
                 start: LineColumn {
                     line: 2_usize,
-                    column: 4__usize + 11,
+                    column: 4_usize + 11,
                 },
                 end: LineColumn {
-                    line: 2__usize,
-                    column: 13__usize + 11,
+                    line: 2_usize,
+                    column: 13_usize + 11,
                 },
             },
             trimmed_span: Span {
                 start: LineColumn {
-                    line: 2__usize,
-                    column: 0__usize + 13,
+                    line: 2_usize,
+                    column: 0_usize + 13,
                 },
                 end: LineColumn {
-                    line: 2__usize,
-                    column: 13__usize + 8,
+                    line: 2_usize,
+                    column: 13_usize + 8,
                 },
             },
             variant: CommentVariant::MacroDocEqStr("#[doc=".to_string(), 2),
@@ -1554,22 +1673,22 @@ lines
 "#,
             extracted_span: Span {
                 start: LineColumn {
-                    line: 2__usize,
-                    column: 12__usize - 4,
+                    line: 2_usize,
+                    column: 12_usize - 4,
                 },
                 end: LineColumn {
-                    line: 6__usize,
-                    column: 0__usize + 3,
+                    line: 6_usize,
+                    column: 0_usize + 3,
                 },
             },
             trimmed_span: Span {
                 start: LineColumn {
-                    line: 2__usize,
-                    column: 12__usize,
+                    line: 2_usize,
+                    column: 12_usize,
                 },
                 end: LineColumn {
-                    line: 6__usize,
-                    column: 0__usize,
+                    line: 5_usize,
+                    column: 5_usize,
                 },
             },
             variant: CommentVariant::MacroDocEqStr("#[doc = ".to_string(), 3),
@@ -1584,17 +1703,17 @@ struct Five;
             trimmed: r#"XYZ"#,
             extracted_span: Span {
                 start: LineColumn {
-                    line: 2__usize,
-                    column: 15__usize - GAENSEFUESSCHEN,
+                    line: 2_usize,
+                    column: 15_usize - GAENSEFUESSCHEN,
                 },
                 end: LineColumn {
-                    line: 2__usize,
-                    column: 15__usize + 2 + GAENSEFUESSCHEN,
+                    line: 2_usize,
+                    column: 15_usize + 2 + GAENSEFUESSCHEN,
                 },
             },
             trimmed_span: Span {
                 start: LineColumn {
-                    line: 2__usize,
+                    line: 2_usize,
                     column: 15_usize,
                 },
                 end: LineColumn {

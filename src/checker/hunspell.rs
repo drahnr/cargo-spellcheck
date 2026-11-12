@@ -4,11 +4,11 @@
 //! the individual tokens against the dictionary using the defined affixes. Can
 //! handle multiple dictionaries.
 
-use super::{apply_tokenizer, Checker, Detector, Suggestion};
+use super::{apply_tokenizer, Checker, Detector, Suggestion, SuggestionContext};
 
 use crate::checker::dictaffix::is_valid_hunspell_dic_path;
 use crate::config::{Lang5, WrappedRegex};
-use crate::documentation::{CheckableChunk, ContentOrigin, PlainOverlay};
+use crate::documentation::{CheckableChunk, ContentOrigin};
 use crate::util::sub_chars;
 use crate::Range;
 
@@ -110,10 +110,10 @@ pub fn consists_of_vulgar_fractions_or_emojis(word: &str) -> bool {
 }
 
 #[derive(Clone)]
+#[allow(clippy::arc_with_non_send_sync)]
 struct HunspellSafe(Arc<Hunspell>);
 
 unsafe impl Send for HunspellSafe {}
-// We only use it in RO so it's ok.
 unsafe impl Sync for HunspellSafe {}
 
 impl std::ops::Deref for HunspellSafe {
@@ -124,6 +124,7 @@ impl std::ops::Deref for HunspellSafe {
 }
 
 impl From<Hunspell> for HunspellSafe {
+    #[allow(clippy::arc_with_non_send_sync)]
     fn from(hunspell: Hunspell) -> Self {
         Self(Arc::new(hunspell))
     }
@@ -245,18 +246,18 @@ impl HunspellCheckerInner {
         for extra_dic in config.extra_dictionaries() {
             log::debug!("Adding extra dictionary {}", extra_dic.display());
             if !extra_dic.is_file() {
-                bail!("Extra dictionary {} is not a file", extra_dic.display())
+                bail!("Extra dictionary {} is not a file", extra_dic.display());
             }
             is_valid_hunspell_dic_path(extra_dic)?;
             if let Some(extra_dic) = extra_dic.to_str() {
                 if !hunspell.add_dictionary(extra_dic) {
-                    bail!("Failed to add extra dictionary path to context {extra_dic}")
+                    bail!("Failed to add extra dictionary path to context {extra_dic}");
                 }
             } else {
                 bail!(
                     "Failed to convert extra dictionary path to str {}",
                     extra_dic.display()
-                )
+                );
             }
         }
         log::debug!("Dictionary setup completed successfully.");
@@ -315,6 +316,14 @@ impl Checker for HunspellChecker {
             log::trace!("{plain:?}");
             let txt = plain.as_str();
             let hunspell = &*self.hunspell.0;
+            let context = SuggestionContext {
+                plain: &plain,
+                chunk,
+                origin,
+                allow_concatenated: self.allow_concatenated,
+                allow_dashed: self.allow_dashed,
+                allow_emojis: self.allow_emojis,
+            };
 
             'tokenization: for range in apply_tokenizer(&self.1, txt) {
                 let word = sub_chars(txt, range.clone());
@@ -328,47 +337,26 @@ impl Checker for HunspellChecker {
                     continue 'tokenization;
                 }
                 if self.transform_regex.is_empty() {
-                    obtain_suggestions(
-                        &plain,
-                        chunk,
-                        hunspell,
-                        origin,
-                        word,
-                        range,
-                        self.allow_concatenated,
-                        self.allow_dashed,
-                        self.allow_emojis,
-                        &mut acc,
-                    )
+                    obtain_suggestions(&context, hunspell, word, range, &mut acc)
                 } else {
                     match transform(&self.transform_regex[..], word.as_str(), range.clone()) {
                         Transformed::Fragments(word_fragments) => {
                             for (range, word_fragment) in word_fragments {
                                 obtain_suggestions(
-                                    &plain,
-                                    chunk,
+                                    &context,
                                     hunspell,
-                                    origin,
                                     word_fragment.to_owned(),
                                     range,
-                                    self.allow_concatenated,
-                                    self.allow_dashed,
-                                    self.allow_emojis,
                                     &mut acc,
                                 );
                             }
                         }
                         Transformed::Atomic((range, word)) => {
                             obtain_suggestions(
-                                &plain,
-                                chunk,
+                                &context,
                                 hunspell,
-                                origin,
                                 word.to_owned(),
                                 range,
-                                self.allow_concatenated,
-                                self.allow_dashed,
-                                self.allow_emojis,
                                 &mut acc,
                             );
                         }
@@ -381,18 +369,22 @@ impl Checker for HunspellChecker {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn obtain_suggestions<'s>(
-    plain: &PlainOverlay,
-    chunk: &'s CheckableChunk,
+    context: &SuggestionContext<'_, 's>,
     hunspell: &Hunspell,
-    origin: &ContentOrigin,
     word: String,
     range: Range,
-    allow_concatenated: bool,
-    allow_dashed: bool,
-    allow_emojis: bool,
     acc: &mut Vec<Suggestion<'s>>,
 ) {
+    let SuggestionContext {
+        plain,
+        chunk,
+        origin,
+        allow_concatenated,
+        allow_dashed,
+        allow_emojis,
+    } = *context;
     log::trace!("Checking {word} in {range:?}..");
 
     match hunspell.check(&word) {

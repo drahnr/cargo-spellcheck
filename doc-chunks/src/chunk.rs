@@ -1,6 +1,9 @@
-//! Chunk definition for what is going to be processed by the checkers
+//! Concrete text and source mappings passed to the checkers.
 //!
-//! A chunk consists of multiple consecutive literals joined by newlines.
+//! Rust comment chunks join selected literals with synthetic newlines. Their source
+//! spans need not be adjacent: inactive attributes may leave gaps in documentation.
+//! Unexpanded documentation macros are rejected before chunks are constructed.
+//! Other inputs, such as Markdown files, can supply chunk text directly.
 
 use super::*;
 
@@ -70,16 +73,20 @@ impl fmt::Display for ContentOrigin {
 /// A chunk of documentation that is supposed to be checked.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct CheckableChunk {
-    /// Rendered contents of a literal set or just content of a markdown file,
-    /// e.g. a comment of two lines is represented as ' First Line\n second
-    /// line' in `rendered` where the whitespaces are preserved.
+    /// Concrete text from selected comment literals or a direct input such as a Markdown file.
+    /// Literal contents retain their whitespace and are joined with synthetic newlines.
     content: String,
-    /// Mapping from range within `content` and `Span` referencing the location
-    /// within the source file. For a markdown file i.e. this would become a
-    /// single entry spanning from start to end.
+    /// Character ranges in `content` mapped to contiguous spans in the original source.
+    /// Synthetic separators have no mapping; a whole Markdown file can use one entry.
     source_mapping: IndexMap<Range, Span>,
     /// Track what kind of comment the chunk is.
     variant: CommentVariant,
+    /// Conditional or structurally gapped documentation cannot be rewritten as one span.
+    non_reflowable: bool,
+    /// Source newline style, which may differ from synthetic fragment separators.
+    preferred_line_delimiter: Option<&'static str>,
+    /// One satisfying Boolean assignment, not necessarily a realizable Rust target.
+    cfg_example: Option<String>,
 }
 
 impl std::hash::Hash for CheckableChunk {
@@ -90,12 +97,14 @@ impl std::hash::Hash for CheckableChunk {
             t.hash(hasher);
         });
         self.variant.hash(hasher);
+        self.non_reflowable.hash(hasher);
+        self.preferred_line_delimiter.hash(hasher);
+        self.cfg_example.hash(hasher);
     }
 }
 
 impl CheckableChunk {
-    /// Specific to rust source code, either as part of doc test comments or
-    /// file scope.
+    /// Join a concrete comment-literal set while retaining its source mappings and cfg witness.
     pub fn from_literalset(set: LiteralSet) -> Self {
         set.into_chunk()
     }
@@ -115,16 +124,19 @@ impl CheckableChunk {
         source_mapping: IndexMap<Range, Span>,
         variant: CommentVariant,
     ) -> Self {
+        let preferred_line_delimiter = crate::util::extract_delimiter(&content);
         Self {
             content,
             source_mapping,
             variant,
+            non_reflowable: false,
+            preferred_line_delimiter,
+            cfg_example: None,
         }
     }
 
-    /// Find which part of the range maps to which span. Note that Range can
-    /// very well be split into multiple fragments where each of them can be
-    /// mapped to a potentially non-continuous span.
+    /// Map a content range to its source spans, splitting it at literal boundaries.
+    /// Each source span is contiguous, but neighboring mappings may have source gaps.
     ///
     /// Example:
     ///
@@ -182,7 +194,7 @@ impl CheckableChunk {
                 }
                 Some((fragment_span, fragment_range, sub_fragment_range))
             })
-            .filter_map(|(fragment_span, fragment_range, sub_fragment_range)| {
+            .map(|(fragment_span, fragment_range, sub_fragment_range)| {
                 // take the full fragment string, we need to count newlines before and after
                 let s = sub_char_range(self.as_str(), fragment_range.clone());
 
@@ -223,7 +235,7 @@ impl CheckableChunk {
                     self.display(sub_fragment_range.clone()),
                 );
 
-                Some((sub_fragment_range, sub_fragment_span))
+                (sub_fragment_range, sub_fragment_span)
             })
             .collect::<IndexMap<_, _>>()
     }
@@ -344,26 +356,43 @@ impl CheckableChunk {
         self.content.as_str()
     }
 
+    /// Preferred line delimiter for rewriting, independent of normalized content.
+    ///
+    /// Extracted Rust documentation uses the first selected literal with a known source
+    /// style: its starting line's LF/CRLF terminator, or the nearest preceding
+    /// terminator at an unterminated EOF. Mixed-ending literal sets therefore prefer
+    /// their first known source delimiter, not the majority style or synthetic separators.
+    /// Direct string constructors detect the delimiter from their original content.
+    /// Returns `None` if no source delimiter is known; callers choose a fallback.
+    pub fn preferred_line_delimiter(&self) -> Option<&'static str> {
+        self.preferred_line_delimiter
+    }
+
+    pub(crate) fn set_preferred_line_delimiter(&mut self, delimiter: Option<&'static str>) {
+        self.preferred_line_delimiter = delimiter;
+    }
+
     /// Get the display wrapper type to be used with i.e. `format!(..)`.
-    pub fn display(&self, range: Range) -> ChunkDisplay {
+    pub fn display(&self, range: Range) -> ChunkDisplay<'_> {
         ChunkDisplay::from((self, range))
     }
 
     /// Iterate over all ranges and the associated span.
-    pub fn iter(&self) -> indexmap::map::Iter<Range, Span> {
+    pub fn iter(&self) -> indexmap::map::Iter<'_, Range, Span> {
         self.source_mapping.iter()
     }
 
     /// Number of fragments.
     ///
-    /// A fragment is a continuous sub-string which is not split up any further.
+    /// Each fragment is one source-mapped content range, not a parsed documentation fragment.
+    /// Synthetic separators do not count as fragments.
     pub fn fragment_count(&self) -> usize {
         self.source_mapping.len()
     }
 
     /// Obtain an accessor object containing mapping and string representation,
     /// removing the markdown annotations.
-    pub fn erase_cmark(&self, ignores: &Ignores) -> PlainOverlay {
+    pub fn erase_cmark(&self, ignores: &Ignores) -> PlainOverlay<'_> {
         PlainOverlay::erase_cmark(self, ignores)
     }
 
@@ -372,14 +401,36 @@ impl CheckableChunk {
         self.content.chars().count()
     }
 
+    /// Prevent reflow from rewriting conditional or structurally gapped documentation.
+    pub fn disable_reflow(&mut self) {
+        self.non_reflowable = true;
+    }
+
+    /// Whether the chunk can be safely rewritten as a single documentation block.
+    pub fn is_reflow_safe(&self) -> bool {
+        !self.non_reflowable
+    }
+
+    /// A symbolic cfg example selecting this documentation projection, if conditional.
+    ///
+    /// It satisfies selected fragment guards and owner constraints, including inherited cfg
+    /// constraints from enclosing items or modules. It does not validate Rust target
+    /// relationships or imply that this configuration was compiled.
+    pub fn cfg_example(&self) -> Option<&str> {
+        self.cfg_example.as_deref()
+    }
+
+    pub(crate) fn set_cfg_example(&mut self, example: Option<String>) {
+        self.cfg_example = example;
+    }
+
     /// The variant type of comment.
     pub fn variant(&self) -> CommentVariant {
         self.variant.clone()
     }
 }
 
-/// Convert the clusters of one file into a source description as well as well
-/// as vector of checkable chunks.
+/// Convert a source's extracted literal sets into concrete checkable chunks.
 impl From<Clusters> for Vec<CheckableChunk> {
     fn from(clusters: Clusters) -> Vec<CheckableChunk> {
         clusters
@@ -390,12 +441,9 @@ impl From<Clusters> for Vec<CheckableChunk> {
     }
 }
 
-/// A display style wrapper for a trimmed literal.
+/// A display wrapper highlighting a character range within a checkable chunk.
 ///
-/// Allows better display of coverage results without code duplication.
-///
-/// Consists of literal reference and a relative range to the start of the
-/// literal.
+/// Holds a chunk reference and a range relative to the start of its content.
 #[derive(Debug, Clone)]
 pub struct ChunkDisplay<'a>(pub &'a CheckableChunk, pub Range);
 
@@ -485,5 +533,63 @@ impl<'a> fmt::Display for ChunkDisplay<'a> {
         };
 
         write!(formatter, "{ctx1}{highlight}{ctx2}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    #[test]
+    fn direct_constructors_preserve_original_content_delimiters() {
+        for (content, expected) in [
+            ("Words", None),
+            ("Words\n", Some("\n")),
+            ("Words\r\n", Some("\r\n")),
+        ] {
+            let chunk =
+                CheckableChunk::from_str(content, IndexMap::new(), CommentVariant::CommonMark);
+            assert_eq!(chunk.as_str(), content);
+            assert_eq!(chunk.preferred_line_delimiter(), expected);
+            assert_eq!(chunk.clone().preferred_line_delimiter(), expected);
+        }
+    }
+
+    #[test]
+    fn source_delimiter_metadata_participates_in_equality_and_hashing() {
+        let lf = CheckableChunk::from_str("Words\n", IndexMap::new(), CommentVariant::TripleSlash);
+        let mut crlf = lf.clone();
+        crlf.set_preferred_line_delimiter(Some("\r\n"));
+        assert_ne!(lf, crlf);
+        assert_eq!(lf.as_str(), crlf.as_str());
+        let mut lf_hash = DefaultHasher::new();
+        lf.hash(&mut lf_hash);
+        let mut crlf_hash = DefaultHasher::new();
+        crlf.hash(&mut crlf_hash);
+        assert_ne!(lf_hash.finish(), crlf_hash.finish());
+    }
+
+    #[test]
+    fn reflow_safety_defaults_to_safe_and_survives_cloning() {
+        let safe =
+            CheckableChunk::from_str("Shared prose", IndexMap::new(), CommentVariant::TripleSlash);
+        assert!(safe.is_reflow_safe());
+
+        let mut unsafe_chunk = safe.clone();
+        unsafe_chunk.disable_reflow();
+        unsafe_chunk.disable_reflow();
+        assert!(!unsafe_chunk.is_reflow_safe());
+        assert!(!unsafe_chunk.clone().is_reflow_safe());
+        assert!(safe.is_reflow_safe());
+        assert_ne!(safe, unsafe_chunk);
+        assert_eq!(safe.as_str(), unsafe_chunk.as_str());
+
+        let mut safe_hash = DefaultHasher::new();
+        safe.hash(&mut safe_hash);
+        let mut unsafe_hash = DefaultHasher::new();
+        unsafe_chunk.hash(&mut unsafe_hash);
+        assert_ne!(safe_hash.finish(), unsafe_hash.finish());
     }
 }

@@ -107,7 +107,9 @@ impl Config {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 return Ok(None);
             }
-            Err(e) => bail!(e),
+            Err(e) => {
+                bail!(e);
+            }
             Ok(contents) => contents,
         };
         Self::parse(&contents)
@@ -142,7 +144,7 @@ impl Config {
                     .join("config.toml"),
             )
         } else {
-            bail!("No idea where your config directory is located. XDG compliance would be nice.")
+            bail!("No idea where your config directory is located. XDG compliance would be nice.");
         }
     }
 
@@ -193,7 +195,7 @@ impl Config {
         {
             Ok(base.config_dir().join("config.toml"))
         } else {
-            bail!("No idea where your config directory is located. `$HOME` must be set.")
+            bail!("No idea where your config directory is located. `$HOME` must be set.");
         }
     }
 
@@ -213,7 +215,7 @@ impl Config {
             bail!(
                 "Local project dir config {} does not exist or is not a file.",
                 path.display()
-            )
+            );
         }
     }
 

@@ -14,7 +14,7 @@ pub(crate) fn replacements_contain_dashless<T: AsRef<str>>(word: &str, replaceme
     replacements
         .iter()
         .map(|s| s.as_ref())
-        .any(|x| x == &dashless)
+        .any(|x| x == dashless)
 }
 
 /// Returns `true` iff the replacements contains a variant of `word` with
@@ -144,7 +144,6 @@ fn transform_inner<'i, R: AsRef<Regex>>(
 mod tests {
     use super::*;
     use crate::config::WrappedRegex;
-    use env_logger;
 
     #[test]
     fn dashed() {
@@ -153,7 +152,7 @@ mod tests {
             .filter(None, log::LevelFilter::Trace)
             .try_init();
 
-        const REPLACEMENTS: &'static [&'static str] = &["fffff", "qqq", "z", "zeta-ray"];
+        const REPLACEMENTS: &[&str] = &["fffff", "qqq", "z", "zeta-ray"];
         const WORD: &str = "zetaray";
         assert!(replacements_contain_dashed(WORD, REPLACEMENTS));
     }
@@ -166,7 +165,7 @@ mod tests {
             .try_init();
 
         const WORD: &str = "zeta-ray";
-        const REPLACEMENTS: &'static [&'static str] = &["fffff", "qqq", "z", "zetaray"];
+        const REPLACEMENTS: &[&str] = &["fffff", "qqq", "z", "zetaray"];
         assert!(replacements_contain_dashless(WORD, REPLACEMENTS));
     }
 

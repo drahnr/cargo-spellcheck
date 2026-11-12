@@ -1,0 +1,15 @@
+name: Install build prerequisites
+description: Reusable action to set up build prerequisites
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install build prerequisites
+      shell: bash
+      run: apk add clang oniguruma-dev
+
+    - name: Force rust-onig static linking
+      shell: bash
+      run: |
+        # ensure we statically link against libonig
+        echo "RUSTONIG_STATIC_LIBONIG=1" >> "${GITHUB_ENV}"

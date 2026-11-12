@@ -1,36 +1,58 @@
 pub use super::{TrimmedLiteral, TrimmedLiteralDisplay};
 
-use crate::{CheckableChunk, CommentVariant, Range};
+use crate::{CheckableChunk, CommentVariant};
 
 use std::fmt;
 
-/// A set of consecutive literals.
+/// An ordered set of concrete, source-mapped comment literals.
 ///
-/// Provides means to render them as a code block
+/// Documentation literals form one owner's selected documentation variant and may
+/// have gaps in source lines. Developer-comment literals are grouped by adjacency.
+/// Extraction rejects selections containing unexpanded macros before constructing a set.
+/// The literals can be joined into a source-mapped chunk or displayed as text.
 #[derive(Clone, Default, Debug, Hash, PartialEq, Eq)]
 pub struct LiteralSet {
-    /// consecutive set of literals mapped by line number
+    /// Concrete literals in document order, each retaining its source span.
     literals: Vec<TrimmedLiteral>,
-    /// lines spanned (start, end) inclusive
+    /// Inclusive source-line coverage `(start, end)`, which may include unselected gaps.
     pub coverage: (usize, usize),
-    /// Track what kind of comment the literals are
+    /// Syntax of the first literal, used as the set's rendering style.
     variant: CommentVariant,
+    /// Attribute syntax or conditional projections prevent whole-block edits.
+    non_reflowable: bool,
+    cfg_example: Option<String>,
 }
 
 impl LiteralSet {
-    /// Initiate a new set based on the first literal
+    /// Create a set containing one concrete literal.
     pub fn from(literal: TrimmedLiteral) -> Self {
+        Self::from_doc_literals(vec![literal], false)
+    }
+
+    /// Build a complete documentation variant from known literals in document order.
+    /// Selected literals need not be on adjacent source lines (inactive attributes leave gaps).
+    pub(crate) fn from_doc_literals(literals: Vec<TrimmedLiteral>, non_reflowable: bool) -> Self {
+        let first = literals
+            .first()
+            .expect("a documentation variant is nonempty");
+        let last = literals.last().unwrap();
         Self {
-            coverage: (literal.span().start.line, literal.span().end.line),
-            variant: literal.variant(),
-            literals: vec![literal],
+            coverage: (first.span().start.line, last.span().end.line),
+            variant: first.variant(),
+            literals,
+            non_reflowable,
+            cfg_example: None,
         }
     }
 
-    /// Add a literal to a literal set, if the previous lines literal already
-    /// exists.
+    pub(crate) fn set_cfg_example(&mut self, example: String) {
+        self.cfg_example = Some(example);
+    }
+
+    /// Add a source-adjacent literal from the same comment category.
     ///
-    /// Returns literal within the Err variant if not adjacent
+    /// Returns the original literal in `Err` if its category or line position does not match.
+    /// Documentation cfg selections use `from_doc_literals` instead because source gaps are allowed.
     pub fn add_adjacent(&mut self, literal: TrimmedLiteral) -> Result<(), TrimmedLiteral> {
         if literal.variant().category() != self.variant.category() {
             log::debug!(
@@ -57,7 +79,7 @@ impl LiteralSet {
         Err(literal)
     }
 
-    /// The set of trimmed literals that is covered.
+    /// Borrow the selected literals in document order.
     pub fn literals(&self) -> Vec<&TrimmedLiteral> {
         self.literals.iter().by_ref().collect()
     }
@@ -67,60 +89,54 @@ impl LiteralSet {
         self.literals.len()
     }
 
-    /// Convert to a checkable chunk.
+    /// Whether this set contains no literals.
+    pub fn is_empty(&self) -> bool {
+        self.literals.is_empty()
+    }
+
+    /// Join literal text with synthetic newlines and map each literal back to its source span.
     ///
-    /// Creates the map from content ranges to source spans.
+    /// Source gaps are not copied, and inserted separators have no source mapping.
     pub fn into_chunk(self) -> crate::CheckableChunk {
-        let n = self.len();
-        let mut source_mapping = indexmap::IndexMap::with_capacity(n);
-        let mut content = String::with_capacity(n * 120);
-        if n > 0 {
-            // cursor operates on characters
-            let mut cursor = 0usize;
-            // for use with `Range`
-            let mut start; // inclusive
-            let mut end; // exclusive
-            let mut it = self.literals.iter();
-            let mut next = it.next();
-            while let Some(literal) = next {
-                start = cursor;
-                cursor += literal.len_in_chars();
-                end = cursor;
-
-                let span = literal.span();
-                let range = Range { start, end };
-
-                // TODO this does not hold anymore for `#[doc=foo!(..)]`.
-                // TODO where the span is covering `foo!()`, but the
-                // TODO rendered length is 0.
-                if literal.variant() != CommentVariant::MacroDocEqMacro {
-                    if let Some(span_len) = span.one_line_len() {
-                        assert_eq!(range.len(), span_len);
-                    }
-                }
-                // keep zero length values too, to guarantee continuity
-                source_mapping.insert(range, span);
-                content.push_str(literal.as_str());
-                // the newline is _not_ covered by a span, after all it's inserted by us!
-                next = it.next();
-                if next.is_some() {
-                    // for the last, skip the newline
-                    content.push('\n');
-                    cursor += 1;
+        let preferred_line_delimiter = self
+            .literals
+            .iter()
+            .find_map(TrimmedLiteral::preferred_line_delimiter);
+        let mut source_mapping = indexmap::IndexMap::with_capacity(self.len());
+        let mut content = String::with_capacity(self.len() * 120);
+        let mut cursor = 0;
+        for (index, literal) in self.literals.iter().enumerate() {
+            // Inserted separators have no source span. Test the index rather
+            // than content.is_empty(): an empty literal still needs a separator.
+            if index > 0 {
+                content.push('\n');
+                cursor += 1;
+            }
+            let range = cursor..cursor + literal.len_in_chars();
+            let span = literal.span();
+            // Preserve compatibility with manually constructed legacy macro markers.
+            // Documentation extraction rejects unexpanded macros before reaching this layer.
+            if literal.variant() != CommentVariant::MacroDocEqMacro {
+                if let Some(span_len) = span.one_line_len() {
+                    assert_eq!(range.len(), span_len);
                 }
             }
+            cursor = range.end;
+            source_mapping.insert(range, span);
+            content.push_str(literal.as_str());
         }
-        // all literals in a set have the same variant, so lets take the first one
-        let variant = if let Some(literal) = self.literals.first() {
-            literal.variant()
-        } else {
-            crate::CommentVariant::Unknown
-        };
-        CheckableChunk::from_string(content, source_mapping, variant)
+        let mut chunk = CheckableChunk::from_string(content, source_mapping, self.variant);
+        // Synthetic separators must not override the selected literals' source style.
+        chunk.set_preferred_line_delimiter(preferred_line_delimiter);
+        chunk.set_cfg_example(self.cfg_example);
+        if self.non_reflowable {
+            chunk.disable_reflow();
+        }
+        chunk
     }
 }
 
-impl<'s> fmt::Display for LiteralSet {
+impl fmt::Display for LiteralSet {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let n = self.len();
         if n > 0 {
@@ -221,6 +237,21 @@ mod tests {
     use super::testhelper::gen_literal_set;
     use crate::util::load_span_from;
     use crate::util::sub_chars;
+    use crate::Range;
+
+    #[test]
+    fn set_is_empty() {
+        let empty_set = LiteralSet::default();
+        assert!(empty_set.is_empty());
+        assert_eq!(empty_set.len(), 0);
+
+        let empty_literal =
+            TrimmedLiteral::from(CommentVariant::DoubleSlash, "//", 2, 0, 1, 0).unwrap();
+        assert!(empty_literal.is_empty());
+        let set = LiteralSet::from(empty_literal);
+        assert!(!set.is_empty());
+        assert_eq!(set.len(), 1);
+    }
 
     #[test]
     fn fluff_one() {
@@ -238,6 +269,29 @@ struct Fluff;"#;
 /// c
 struct Fluff;"#;
         assert_eq!(RAW, EXPECT);
+    }
+
+    #[test]
+    fn empty_set_renders_an_empty_chunk() {
+        let chunk = LiteralSet::default().into_chunk();
+        assert_eq!(chunk.as_str(), "");
+        assert_eq!(chunk.variant(), CommentVariant::Unknown);
+        assert_eq!(chunk.iter().len(), 0);
+        assert!(chunk.is_reflow_safe());
+        assert_eq!(chunk.preferred_line_delimiter(), None);
+    }
+
+    #[test]
+    fn synthetic_separators_do_not_supply_source_newline_metadata() {
+        let first =
+            TrimmedLiteral::from(CommentVariant::TripleSlash, "/// One", 3, 0, 1, 0).unwrap();
+        let second =
+            TrimmedLiteral::from(CommentVariant::TripleSlash, "/// Two", 3, 0, 2, 0).unwrap();
+        let mut set = LiteralSet::from(first);
+        set.add_adjacent(second).unwrap();
+        let chunk = set.into_chunk();
+        assert_eq!(chunk.as_str(), " One\n Two");
+        assert_eq!(chunk.preferred_line_delimiter(), None);
     }
 
     // range within the literalset content string
@@ -358,11 +412,11 @@ struct Vikings;
         let it = literal_set.literals();
 
         for (range, span, s) in itertools::cons_tuples(chunk.iter().zip(it)) {
-            if range.len() == 0 {
+            if range.is_empty() {
                 continue;
             }
             assert_eq!(
-                load_span_from(RAW.as_bytes(), span.clone()).expect("Span extraction must work"),
+                load_span_from(RAW.as_bytes(), *span).expect("Span extraction must work"),
                 sub_chars(chunk.as_str(), range.clone())
             );
 

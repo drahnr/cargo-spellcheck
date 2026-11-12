@@ -2,13 +2,11 @@ use crate::errors::*;
 use crate::util::{self, sub_chars};
 use crate::{Range, Span};
 
-use fancy_regex::Regex;
-use lazy_static::lazy_static;
 use proc_macro2::LineColumn;
 
 use std::fmt;
 
-/// Determine if a `CommentVariant` is a documentation comment or not.
+/// Broad source category used when grouping comment literals.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommentVariantCategory {
     /// Comment variant will end up in documentation.
@@ -21,7 +19,7 @@ pub enum CommentVariantCategory {
     Unmergable,
 }
 
-/// Track what kind of comment the literal is
+/// Source syntax and rendering delimiters for a comment literal.
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CommentVariant {
@@ -38,8 +36,8 @@ pub enum CommentVariant {
     /// `#[doc=` with actual prefix like `#[doc=` and the total length of `r###`
     /// etc. including `r` but without `"`
     MacroDocEqStr(String, usize),
-    /// `#[doc= foo!(..)]`, content will be ignored, but allows clusters to not
-    /// continue.
+    /// Legacy marker for `#[doc = macro!(...)]`, retained for compatibility.
+    /// Extraction now tracks unexpanded macros as fragments and rejects selections containing them.
     MacroDocEqMacro,
     /// Commonmark File
     CommonMark,
@@ -84,8 +82,7 @@ impl CommentVariant {
             CommentVariant::MacroDocEqMacro => "".into(),
             CommentVariant::MacroDocEqStr(d, p) => {
                 let raw = match p {
-                    // TODO: make configureable if each line will start with #[doc ="
-                    // TODO: but not here!
+                    // TODO: make repeated doc-attribute prefixes configurable at the reflow layer.
                     0 => "\"".to_owned(),
                     x => format!("r{}\"", "#".repeat(x.saturating_sub(1))),
                 };
@@ -145,22 +142,40 @@ impl CommentVariant {
     }
 }
 
-/// A literal with meta info where the first and list whitespace may be found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum LineDelimiter {
+    Lf,
+    CrLf,
+}
+
+impl LineDelimiter {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Lf => "\n",
+            Self::CrLf => "\r\n",
+        }
+    }
+}
+
+/// Concrete comment text with syntax delimiters and a source span for its trimmed content.
+/// Trimming removes delimiters, not prose whitespace; this type does not expand macros.
 #[derive(Clone)]
 pub struct TrimmedLiteral {
-    /// Track what kind of comment the literal is
+    /// Source syntax used to render this literal.
     variant: CommentVariant,
-    /// The span of rendered content, minus pre and post already applied.
+    /// Original source span of the content, excluding prefix and suffix delimiters.
     span: Span,
-    /// the complete rendered string including post and pre.
+    /// Original literal text, including prefix and suffix delimiters.
     rendered: String,
-    /// Literal prefix length.
+    /// ASCII prefix length in bytes and characters.
     pre: usize,
-    /// Literal postfix length.
+    /// ASCII suffix length in bytes and characters.
     post: usize,
     /// Length of rendered **minus** `pre` and `post` in UTF-8 characters.
     len_in_chars: usize,
-    len_in_bytes: usize,
+
+    /// Source newline style, independent of trimmed or synthesized content.
+    preferred_line_delimiter: Option<LineDelimiter>,
 }
 
 impl std::cmp::PartialEq for TrimmedLiteral {
@@ -183,6 +198,9 @@ impl std::cmp::PartialEq for TrimmedLiteral {
         if self.variant != other.variant {
             return false;
         }
+        if self.preferred_line_delimiter != other.preferred_line_delimiter {
+            return false;
+        }
 
         true
     }
@@ -197,9 +215,30 @@ impl std::hash::Hash for TrimmedLiteral {
         self.span.hash(hasher);
         self.pre.hash(hasher);
         self.post.hash(hasher);
-        self.len_in_bytes.hash(hasher);
+
         self.len_in_chars.hash(hasher);
+        self.preferred_line_delimiter.hash(hasher);
     }
+}
+
+/// Return a source line without its terminator and its preferred newline style.
+/// An unterminated final line inherits the nearest preceding physical terminator.
+fn source_line_with_delimiter(content: &str, line: usize) -> Option<(&str, Option<LineDelimiter>)> {
+    let mut previous_delimiter = None;
+    for (index, source_line) in content.split_inclusive('\n').enumerate() {
+        let (text, delimiter) = if let Some(text) = source_line.strip_suffix("\r\n") {
+            (text, Some(LineDelimiter::CrLf))
+        } else if let Some(text) = source_line.strip_suffix('\n') {
+            (text, Some(LineDelimiter::Lf))
+        } else {
+            (source_line, None)
+        };
+        if index + 1 == line {
+            return Some((text, delimiter.or(previous_delimiter)));
+        }
+        previous_delimiter = delimiter.or(previous_delimiter);
+    }
+    None
 }
 
 /// Adjust the provided span by a number of `pre` and `post` characters.
@@ -255,11 +294,8 @@ fn detect_comment_variant(
 
         // must always be a single line
         assert_eq!(span.start.line, span.end.line);
-        // if the line includes quotes, the rustc converts them internally
-        // to `#[doc="content"]`, where - if `content` contains `"` will substitute
-        // them as `\"` which will inflate the number columns.
-        // Since we can not distinguish between orignally escaped, we simply
-        // use the content read from source.
+        // Desugared doc attributes escape quotes that were literal comment text.
+        // Reading the original source preserves both spelling and column offsets.
 
         let variant = if rendered.starts_with("///") {
             CommentVariant::TripleSlash
@@ -288,64 +324,60 @@ fn detect_comment_variant(
         #[cfg(debug_assertions)]
         {
             let raw = util::load_span_from(&mut content.as_bytes(), orig)?;
-            let adjusted = util::load_span_from(&mut content.as_bytes(), span)?;
+            // Empty content has a reversed inclusive span, which cannot be read.
+            let adjusted_len = if rendered.len() == pre + post {
+                0
+            } else {
+                util::load_span_from(&mut content.as_bytes(), span)?.len()
+            };
 
             // we know pre and post only consist of single byte characters
             // so `.len()` is way faster here yet correct.
-            assert_eq!(adjusted.len() + pre + post, raw.len());
+            assert_eq!(adjusted_len + pre + post, raw.len());
         }
 
         (variant, span, pre, post)
     } else {
-        // pre and post are for the rendered content
-        // not necessarily for the span
+        // Delimiter lengths apply to the original literal text; adjust its content span below.
 
-        //^r(#+?)"(?:.*\s*)+(?=(?:"\1))("\1)$
-        lazy_static! {
-            static ref BOUNDED_RAW_STR: Regex =
-                Regex::new(r##"^(r(#*)")(?:.*\s*)+?(?=(?:"\2))("\2)\s*\]?\s*$"##)
-                    .expect("BOUNEDED_RAW_STR regex compiles");
-            static ref BOUNDED_STR: Regex = Regex::new(r##"^"(?:.(?!"\\"))*?"*\s*\]?\s*"$"##)
-                .expect("BOUNEDED_STR regex compiles");
+        // The parser has already validated the literal. Determine its ASCII
+        // delimiters without interpreting escapes or changing source offsets.
+        let (pre, post) = if rendered.starts_with('"') && rendered.ends_with('"') {
+            (1, 1)
+        } else if let Some(raw) = rendered.strip_prefix('r') {
+            let hashes = raw.bytes().take_while(|byte| *byte == b'#').count();
+            let pre = hashes + 2;
+            let post = hashes + 1;
+            if rendered.as_bytes().get(pre - 1) != Some(&b'"')
+                || !rendered.ends_with(&format!("\"{}", "#".repeat(hashes)))
+            {
+                return Err(Error::Span(format!(
+                    "Invalid raw documentation string: {}",
+                    rendered
+                )));
+            }
+            (pre, post)
+        } else {
+            return Err(Error::Span(format!(
+                "Expected a documentation string: {}",
+                rendered
+            )));
         };
 
-        let (pre, post) =
-            if let Some(captures) = BOUNDED_RAW_STR.captures(rendered.as_str()).ok().flatten() {
-                log::trace!("raw str: >{}<", rendered.as_str());
-                let pre = if let Some(prefix) = captures.get(1) {
-                    log::trace!("raw str pre: >{}<", prefix.as_str());
-                    prefix.as_str().len()
-                } else {
-                    return Err(Error::Span(
-                        "Should have a raw str pre match with a capture group".to_string(),
-                    ));
-                };
-                let post = if let Some(suffix) = captures.get(captures.len() - 1) {
-                    log::trace!("raw str post: >{}<", suffix.as_str());
-                    suffix.as_str().len()
-                } else {
-                    return Err(Error::Span(
-                        "Should have a raw str post match with a capture group".to_string(),
-                    ));
-                };
-
-                // r####" must match "####
-                debug_assert_eq!(pre, post + 1);
-
-                (pre, post)
-            } else if let Some(_captures) = BOUNDED_STR.captures(rendered.as_str()).ok().flatten() {
-                // r####" must match "####
-                let pre = 1;
-                let post = 1;
-                debug_assert_eq!('"', rendered.as_bytes()[0_usize] as char);
-                debug_assert_eq!('"', rendered.as_bytes()[rendered.len() - 1_usize] as char);
-                (pre, post)
-            } else {
-                return Err(Error::Span(format!("Regex should match >{rendered}<")));
-            };
-
-        span.start.column += pre;
-        span.end.column = span.end.column.saturating_sub(post);
+        let length = rendered.chars().count().saturating_sub(pre + post);
+        let mut positions = util::iter_with_line_column_from(rendered, span.start)
+            .skip(pre)
+            .take(length)
+            .map(|(_, _, _, cursor)| cursor);
+        if let Some(start) = positions.next() {
+            span.start = start;
+            // The last content character may be a newline on the preceding
+            // line, not column zero of the closing delimiter's line.
+            span.end = positions.last().unwrap_or(start);
+        } else {
+            span.start.column += pre;
+            span.end.column = span.start.column - 1;
+        }
 
         (
             CommentVariant::MacroDocEqStr(prefix, pre.saturating_sub(1)),
@@ -358,59 +390,30 @@ fn detect_comment_variant(
 }
 
 impl TrimmedLiteral {
-    /// Create an empty comment.
-    ///
-    /// Prime use case is for `#[doc = foo!()]` cases.
-    pub(crate) fn new_empty(
-        _content: impl AsRef<str>,
-        span: Span,
-        variant: CommentVariant,
-    ) -> Self {
-        Self {
-            // Track what kind of comment the literal is
-            variant,
-            span,
-            // .
-            rendered: String::new(),
-            pre: 0,
-            post: 0,
-            len_in_chars: 0,
-            len_in_bytes: 0,
-        }
-    }
-
     pub(crate) fn load_from(content: &str, mut span: Span) -> Result<Self> {
-        // let rendered = literal.to_string();
-        // produces pretty unusable garabage, since it modifies the content of `///`
-        // comments which could contain " which will be escaped
-        // and therefor cause the `span()` to yield something that does
-        // not align with the rendered literal at all and there are too
-        // many pitfalls to sanitize all cases, so reading given span
-        // from the file again, and then determining its type is way safer.
+        // Token rendering can escape comment text and break its source mapping.
+        // Read the source span directly, then identify and trim its syntax delimiters.
 
-        // It's unclear why the trailing `]` character is part of the given span, it shout not be part
-        // of it, but the span we obtain from literal seems to be wrong, adding one trailing char.
-
-        // Either cut off `]` or `\n` - we don't need either.
+        // proc_macro2 ends are exclusive; our source spans are inclusive.
         span.end.column = span.end.column.saturating_sub(1);
 
-        // If the line ending has more than one character, we have to account
-        // for that. Otherwise cut of the last character of the ending such that
-        // we can't properly detect them anymore.
-        if crate::util::extract_delimiter(content)
-            .unwrap_or("\n")
-            .len()
-            > 1
-        {
-            log::trace!(target: "documentation", "Found two character line ending like CRLF");
-            span.end.column += 1;
+        let mut rendered = util::load_span_from(content.as_bytes(), span)?;
+        let source_line = source_line_with_delimiter(content, span.start.line);
+        let preferred_line_delimiter = source_line.and_then(|(_, delimiter)| delimiter);
+        if rendered.starts_with("///") || rendered.starts_with("//!") {
+            // Synthetic comment spans can include a CR. Read the local line
+            // without its LF/CRLF terminator, including at an unterminated EOF.
+            let (line, _) = source_line.ok_or_else(|| {
+                Error::Span("Documentation comment starts outside the source".to_owned())
+            })?;
+            rendered = line.chars().skip(span.start.column).collect();
+            span.end = LineColumn {
+                line: span.start.line,
+                column: span.start.column + rendered.chars().count() - 1,
+            };
         }
 
-        let rendered = util::load_span_from(content.as_bytes(), span)?;
-
-        // TODO cache the offsets for faster processing and avoiding repeated O(n) ops
-        // let byteoffset2char = rendered.char_indices().enumerate().collect::<indexmap::IndexMap<_usize, (_usize, char)>>();
-        // let rendered_len = byteoffset2char.len();
+        // TODO: cache character offsets to avoid repeated linear scans.
 
         let rendered_len = rendered.chars().count();
 
@@ -428,25 +431,23 @@ impl TrimmedLiteral {
             }
         }
 
-        let len_in_bytes = rendered.len().saturating_sub(post + pre);
         let trimmed_literal = Self {
             variant,
             len_in_chars,
-            len_in_bytes,
+
             rendered,
             span,
             pre,
             post,
+            preferred_line_delimiter,
         };
         Ok(trimmed_literal)
     }
 }
 
 impl TrimmedLiteral {
-    /// Creates a new (single line) literal from the variant, the content, the
-    /// size of the pre & post and the line/column on which it starts. Fails if
-    /// provided with multiline content (i.e. if the content contains a
-    /// line-break).
+    /// Construct a literal from single-line source text, syntax, delimiter lengths, and position.
+    /// The caller supplies a one-based line, a zero-based character column, and ASCII delimiters.
     pub fn from(
         variant: CommentVariant,
         content: &str,
@@ -473,17 +474,23 @@ impl TrimmedLiteral {
             pre,
             post,
             len_in_chars: content_chars_len - pre - post,
-            len_in_bytes: content.len() - pre - post,
+
+            preferred_line_delimiter: source_line_with_delimiter(content, 1)
+                .and_then(|(_, delimiter)| delimiter),
         })
     }
 }
 
 impl TrimmedLiteral {
+    pub(crate) fn preferred_line_delimiter(&self) -> Option<&'static str> {
+        self.preferred_line_delimiter.map(LineDelimiter::as_str)
+    }
+
     /// Represent the rendered content as `str`.
     ///
     /// Does not contain `pre` and `post` characters.
     pub fn as_str(&self) -> &str {
-        &self.rendered.as_str()[self.pre..(self.pre + self.len_in_bytes)]
+        &self.rendered.as_str()[self.pre..(self.pre + self.len())]
     }
 
     /// The prefix characters.
@@ -493,7 +500,7 @@ impl TrimmedLiteral {
 
     /// The suffix characters.
     pub fn suffix(&self) -> &str {
-        &self.rendered.as_str()[(self.pre + self.len_in_bytes)..]
+        &self.rendered.as_str()[(self.pre + self.len())..]
     }
 
     /// Full representation including `prefix` and `postfix` characters.
@@ -508,7 +515,12 @@ impl TrimmedLiteral {
 
     /// Length in bytes, excluding `pre` and `post`.
     pub fn len(&self) -> usize {
-        self.len_in_bytes
+        self.rendered.len().saturating_sub(self.pre + self.post)
+    }
+
+    /// Whether the content is empty, excluding `pre` and `post`.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     /// Obtain the number of characters in `pre()`.
@@ -521,7 +533,7 @@ impl TrimmedLiteral {
 
     /// Obtain the number of characters in `post()`.
     ///
-    /// Since all pre characters are ASCII, this is equivalent to the number of
+    /// Since all suffix characters are ASCII, this is equivalent to the number of
     /// bytes in `post()`.
     pub fn post(&self) -> usize {
         self.post
@@ -547,7 +559,7 @@ impl TrimmedLiteral {
 
     /// Display helper, mostly used for debug investigations
     #[allow(unused)]
-    pub(crate) fn display(&self, highlight: Range) -> TrimmedLiteralDisplay {
+    pub(crate) fn display(&self, highlight: Range) -> TrimmedLiteralDisplay<'_> {
         TrimmedLiteralDisplay::from((self, highlight))
     }
 }
@@ -670,6 +682,242 @@ mod tests {
     use super::*;
     use crate::testcase::annotated_literals_raw;
     use assert_matches::assert_matches;
+
+    #[test]
+    fn trimmed_content_is_empty() {
+        for (content, pre, post, expected_empty) in [("/**/", 2, 2, true), ("/*🌡*/", 2, 2, false)]
+        {
+            let literal =
+                TrimmedLiteral::from(CommentVariant::SlashAsterisk, content, pre, post, 1, 0)
+                    .unwrap();
+            assert_eq!(literal.is_empty(), expected_empty);
+            assert_eq!(literal.is_empty(), literal.as_str().is_empty());
+            assert_eq!(literal.len(), literal.as_str().len());
+        }
+    }
+
+    fn assert_chunk(
+        source: &str,
+        chunk: &crate::CheckableChunk,
+        expected: &str,
+        fragments: &[(crate::Range, Span)],
+    ) {
+        assert_eq!(chunk.as_str(), expected, "source: {source:?}");
+        let actual: Vec<_> = chunk
+            .iter()
+            .map(|(range, span)| (range.clone(), *span))
+            .collect();
+        assert_eq!(actual, fragments, "source: {source:?}");
+        for (range, span) in fragments {
+            // Empty fragments use a reversed inclusive span, not source text.
+            if range.is_empty() {
+                continue;
+            }
+            assert_eq!(
+                util::load_span_from(source.as_bytes(), *span).unwrap(),
+                sub_chars(chunk.as_str(), range.clone()),
+            );
+            assert_eq!(
+                chunk
+                    .find_spans(range.clone())
+                    .into_iter()
+                    .collect::<Vec<_>>(),
+                vec![(range.clone(), *span)],
+            );
+        }
+    }
+
+    fn line_span(line: usize, start: usize, end: usize) -> Span {
+        Span {
+            start: LineColumn {
+                line,
+                column: start,
+            },
+            end: LineColumn { line, column: end },
+        }
+    }
+
+    fn doc_chunks(source: &str) -> Vec<crate::CheckableChunk> {
+        crate::Clusters::load_from_str(source, true, false)
+            .unwrap()
+            .into()
+    }
+
+    #[test]
+    fn line_comment_endings_preserve_exact_content_and_spans() {
+        for prefix in ["///", "//!"] {
+            for first_ending in ["\n", "\r\n"] {
+                for second_ending in ["\n", "\r\n"] {
+                    for eof_ending in ["", "\n", "\r\n"] {
+                        let source = format!(
+                            "{prefix} Préface 🦀.{first_ending}{prefix}{second_ending}{prefix} Last.  {eof_ending}"
+                        );
+                        let chunks = doc_chunks(&source);
+                        assert_eq!(chunks.len(), 1);
+                        assert_eq!(chunks[0].preferred_line_delimiter(), Some(first_ending));
+                        assert_chunk(
+                            &source,
+                            &chunks[0],
+                            " Préface 🦀.\n\n Last.  ",
+                            &[
+                                (0..11, line_span(1, 3, 13)),
+                                (12..12, line_span(2, 3, 2)),
+                                (13..21, line_span(3, 3, 10)),
+                            ],
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn eof_line_comment_after_code_has_no_physical_terminator() {
+        for ending in ["\n", "\r\n"] {
+            for eof_ending in ["", "\n", "\r\n"] {
+                let source = format!("struct X;{ending}/// last{eof_ending}");
+                let chunks = doc_chunks(&source);
+                assert_eq!(chunks.len(), 1);
+                let preferred = if eof_ending.is_empty() {
+                    ending
+                } else {
+                    eof_ending
+                };
+                assert_eq!(chunks[0].preferred_line_delimiter(), Some(preferred));
+                assert_chunk(&source, &chunks[0], " last", &[(0..5, line_span(2, 3, 7))]);
+            }
+        }
+    }
+
+    #[test]
+    fn empty_inner_block_comment_does_not_discard_valid_documentation() {
+        for ending in ["\n", "\r\n"] {
+            let source = format!("/*!*/{ending}//! Module.{ending}/// Item.{ending}struct X;");
+            let chunks = doc_chunks(&source);
+            assert_eq!(chunks.len(), 2);
+            for chunk in &chunks {
+                assert_eq!(chunk.preferred_line_delimiter(), Some(ending));
+            }
+            assert_chunk(
+                &source,
+                &chunks[0],
+                "\n Module.",
+                &[(0..0, line_span(1, 3, 2)), (1..9, line_span(2, 3, 10))],
+            );
+            assert_chunk(&source, &chunks[1], " Item.", &[(0..6, line_span(3, 3, 8))]);
+        }
+        for ending in ["", "\n", "\r\n"] {
+            let source = format!("/*!*/{ending}");
+            let chunks = doc_chunks(&source);
+            assert_eq!(chunks.len(), 1);
+            assert_chunk(&source, &chunks[0], "", &[(0..0, line_span(1, 3, 2))]);
+            assert_eq!(
+                chunks[0].preferred_line_delimiter(),
+                if ending.is_empty() {
+                    None
+                } else {
+                    Some(ending)
+                },
+            );
+        }
+    }
+
+    #[test]
+    fn crlf_string_literals_keep_escapes_and_multiline_source_spans() {
+        let source = "#[doc = \"one\\ntwo\"]\r\nstruct X;\r\n";
+        let chunks = doc_chunks(source);
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks[0].preferred_line_delimiter(), Some("\r\n"));
+        assert_chunk(
+            source,
+            &chunks[0],
+            "one\\ntwo",
+            &[(0..8, line_span(1, 9, 16))],
+        );
+
+        let source = "#[doc = r#\"Café\r\n🦀\"#]\r\nstruct X;\r\n";
+        let chunks = doc_chunks(source);
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks[0].preferred_line_delimiter(), Some("\r\n"));
+        assert_chunk(
+            source,
+            &chunks[0],
+            "Café\r\n🦀",
+            &[(
+                0..7,
+                Span {
+                    start: LineColumn {
+                        line: 1,
+                        column: 11,
+                    },
+                    end: LineColumn { line: 2, column: 0 },
+                },
+            )],
+        );
+    }
+
+    #[test]
+    fn single_line_comments_keep_newline_metadata_without_content_newlines() {
+        let mut literals = Vec::new();
+        for ending in ["", "\n", "\r\n"] {
+            let source = format!("/// Words that need wrapping.{ending}");
+            let literal = annotated_literals_raw(&source).next().unwrap();
+            let literal = TrimmedLiteral::load_from(&source, Span::from(literal.span())).unwrap();
+            let preferred = if ending.is_empty() {
+                None
+            } else {
+                Some(ending)
+            };
+            assert_eq!(literal.preferred_line_delimiter(), preferred);
+            assert_eq!(literal.clone().preferred_line_delimiter(), preferred);
+            let chunk = crate::LiteralSet::from(literal.clone()).into_chunk();
+            assert_eq!(chunk.preferred_line_delimiter(), preferred);
+            assert_eq!(chunk.clone().preferred_line_delimiter(), preferred);
+            assert_chunk(
+                &source,
+                &chunk,
+                " Words that need wrapping.",
+                &[(0..26, line_span(1, 3, 28))],
+            );
+            literals.push(literal);
+        }
+        assert_ne!(literals[0], literals[1]);
+        assert_ne!(literals[1], literals[2]);
+    }
+
+    #[test]
+    fn eof_comment_inherits_nearest_not_majority_source_delimiter() {
+        let source = "struct A;\r\nstruct B;\r\nstruct C;\n/// Last.";
+        let chunks = doc_chunks(source);
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks[0].preferred_line_delimiter(), Some("\n"));
+        assert_chunk(source, &chunks[0], " Last.", &[(0..6, line_span(4, 3, 8))]);
+    }
+
+    #[test]
+    fn conditional_chunks_prefer_the_first_selected_literals_source_style() {
+        let source = "#[cfg_attr(flag, doc = \"Conditional.\")]\r\n/// Shared.\nstruct X;";
+        let chunks = doc_chunks(source);
+        assert_eq!(chunks.len(), 2);
+        for chunk in chunks {
+            match chunk.as_str() {
+                " Shared." => {
+                    assert_eq!(chunk.preferred_line_delimiter(), Some("\n"));
+                    assert_chunk(source, &chunk, " Shared.", &[(0..8, line_span(2, 3, 10))]);
+                }
+                "Conditional.\n Shared." => {
+                    assert_eq!(chunk.preferred_line_delimiter(), Some("\r\n"));
+                    assert_chunk(
+                        source,
+                        &chunk,
+                        "Conditional.\n Shared.",
+                        &[(0..12, line_span(1, 24, 35)), (13..21, line_span(2, 3, 10))],
+                    );
+                }
+                other => panic!("unexpected projection: {other:?}"),
+            }
+        }
+    }
 
     #[test]
     fn variant_detect() {

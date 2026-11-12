@@ -41,6 +41,16 @@ mod dictaffix;
 #[cfg(any(feature = "spellbook", feature = "zet", feature = "hunspell"))]
 mod quirks;
 
+#[cfg(any(feature = "spellbook", feature = "zet", feature = "hunspell"))]
+struct SuggestionContext<'a, 's> {
+    plain: &'a crate::documentation::PlainOverlay<'s>,
+    chunk: &'s CheckableChunk,
+    origin: &'a ContentOrigin,
+    allow_concatenated: bool,
+    allow_dashed: bool,
+    allow_emojis: bool,
+}
+
 /// Implementation for a checker
 pub trait Checker {
     type Config;
@@ -154,6 +164,7 @@ impl Checker for Checkers {
 
         let mut suggestions: Vec<Suggestion<'s>> = Vec::from_iter(collective);
         suggestions.sort();
+        deduplicate_by_source(&mut suggestions);
         if suggestions.is_empty() {
             return Ok(suggestions);
         }
@@ -173,6 +184,20 @@ impl Checker for Checkers {
     }
 }
 
+/// Alternative chunks can report the same source text at different local ranges.
+fn deduplicate_by_source(suggestions: &mut Vec<Suggestion<'_>>) {
+    let mut seen = HashSet::new();
+    suggestions.retain(|suggestion| {
+        seen.insert((
+            suggestion.origin.clone(),
+            suggestion.detector,
+            suggestion.span,
+            suggestion.replacements.clone(),
+            suggestion.description.clone(),
+        ))
+    });
+}
+
 #[cfg(test)]
 pub mod dummy;
 
@@ -188,6 +213,99 @@ pub mod tests {
     use std::path::PathBuf;
 
     use crate::fluff_up;
+
+    fn alternate_chunk(prefix: &str, source_line: usize) -> CheckableChunk {
+        let start = prefix.chars().count() + 1;
+        CheckableChunk::from_string(
+            format!("{}\ntypoo", prefix),
+            indexmap::indexmap! {
+                start..start + 5 => Span {
+                    start: LineColumn { line: source_line, column: 4 },
+                    end: LineColumn { line: source_line, column: 8 },
+                }
+            },
+            crate::CommentVariant::TripleSlash,
+        )
+    }
+
+    fn shared_prose_suggestion(chunk: &CheckableChunk) -> Suggestion<'_> {
+        let end = chunk.len_in_chars();
+        let range = end - 5..end;
+        let span = *chunk.find_spans(range.clone()).first().unwrap().1;
+        Suggestion {
+            detector: Detector::Hunspell,
+            origin: ContentOrigin::TestEntityRust,
+            chunk,
+            span,
+            range,
+            replacements: vec!["typo".to_owned()],
+            description: Some("Possible spelling mistake found.".to_owned()),
+        }
+    }
+
+    #[test]
+    fn deduplicates_shared_prose_across_alternative_chunks() {
+        let first = alternate_chunk("Unix", 10);
+        let alternate = alternate_chunk("Other platform", 10);
+        let original = shared_prose_suggestion(&first);
+        let duplicate = shared_prose_suggestion(&alternate);
+        assert_ne!(original.range, duplicate.range);
+        let mut other_diagnostic = original.clone();
+        other_diagnostic.detector = Detector::NlpRules;
+        let mut suggestions = vec![original, other_diagnostic, duplicate];
+        suggestions.sort();
+
+        deduplicate_by_source(&mut suggestions);
+
+        assert_eq!(suggestions.len(), 2);
+        assert!(std::ptr::eq(suggestions[0].chunk, &first));
+        assert_eq!(suggestions[0].detector, Detector::Hunspell);
+        assert_eq!(suggestions[1].detector, Detector::NlpRules);
+    }
+
+    #[test]
+    fn preserves_identical_prose_at_distinct_source_spans() {
+        let first = alternate_chunk("Unix", 10);
+        let second = alternate_chunk("Unix", 11);
+        let mut suggestions = vec![
+            shared_prose_suggestion(&second),
+            shared_prose_suggestion(&first),
+        ];
+        suggestions.sort();
+
+        deduplicate_by_source(&mut suggestions);
+
+        assert_eq!(suggestions.len(), 2);
+        assert_eq!(suggestions[0].span.start.line, 10);
+        assert_eq!(suggestions[1].span.start.line, 11);
+    }
+
+    #[test]
+    fn preserves_different_diagnostics_at_the_same_span() {
+        let chunk = alternate_chunk("Unix", 10);
+        let original = shared_prose_suggestion(&chunk);
+        let mut other_origin = original.clone();
+        other_origin.origin = ContentOrigin::TestEntityCommonMark;
+        let mut other_detector = original.clone();
+        other_detector.detector = Detector::NlpRules;
+        let mut other_replacement = original.clone();
+        other_replacement.replacements = vec!["type".to_owned()];
+        let mut other_description = original.clone();
+        other_description.description = Some("A different diagnostic.".to_owned());
+        let mut suggestions = vec![
+            original,
+            other_origin,
+            other_detector,
+            other_replacement,
+            other_description,
+        ];
+        suggestions.sort();
+        let expected = suggestions.clone();
+
+        deduplicate_by_source(&mut suggestions);
+
+        assert!(suggestions == expected);
+    }
 
     const TEXT: &str = "With markdown removed, for sure.";
     lazy_static::lazy_static! {

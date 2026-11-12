@@ -101,7 +101,8 @@ impl Span {
                 log::trace!(
                     "extracting sub from {self:?} ::: {fragment_range:?} -> {fragment_span:?}",
                 );
-                fragment_span.start.line <= self.start.line
+                !fragment_range.is_empty()
+                    && fragment_span.start.line <= self.start.line
                     && self.end.line <= fragment_span.end.line
             })
         {
@@ -224,6 +225,14 @@ fn extract_sub_range_from_span(
     range: Range,
     sub_span: Span,
 ) -> Result<Range> {
+    if (sub_span.start.line, sub_span.start.column) < (span.start.line, span.start.column)
+        || (sub_span.end.line, sub_span.end.column) > (span.end.line, span.end.column)
+    {
+        return Err(Error::Span(format!(
+            "sub span {sub_span:?} is not contained in {span:?}",
+        )));
+    }
+
     if let Some(span_len) = span.one_line_len() {
         debug_assert_eq!(range.len(), span_len);
     }
@@ -296,6 +305,49 @@ mod tests {
     use crate::{chyrp_dbg, chyrp_up, fluff_up};
     use crate::{LineColumn, Range, Span};
 
+    fn assert_source_fragment_ranges(source: &str, expected_content: &str) {
+        let clusters = crate::Clusters::load_from_str(source, true, false).unwrap();
+        let chunks = Vec::<CheckableChunk>::from(clusters);
+        assert_eq!(chunks.len(), 1, "{source}");
+        let chunk = &chunks[0];
+        assert_eq!(chunk.as_str(), expected_content);
+        assert_eq!(chunk.fragment_count(), 2);
+
+        for (range, span) in chunk.iter().filter(|(range, _)| !range.is_empty()) {
+            assert_eq!(
+                span.to_content_range(chunk).unwrap(),
+                *range,
+                "{source}: {span:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn span_to_range_same_line_docs() {
+        assert_source_fragment_ranges(
+            r#"#[doc="First"] #[doc="Second"] struct X;"#,
+            "First\nSecond",
+        );
+    }
+
+    #[test]
+    fn span_to_range_same_line_one_char_docs() {
+        assert_source_fragment_ranges(r#"#[doc="a"] #[doc="b"] struct X;"#, "a\nb");
+    }
+
+    #[test]
+    fn span_to_range_same_line_empty_doc_first() {
+        assert_source_fragment_ranges(r#"#[doc=""] #[doc="Word"] struct X;"#, "\nWord");
+    }
+
+    #[test]
+    fn span_to_range_same_line_empty_cfg_attr_doc_first() {
+        assert_source_fragment_ranges(
+            r#"#[cfg_attr(all(), doc="", doc="Word")] struct X;"#,
+            "\nWord",
+        );
+    }
+
     #[test]
     fn span_to_range_singleline() {
         let _ = env_logger::builder()
@@ -341,7 +393,7 @@ mod tests {
 
         // note that this may only be single lines, since `///` implies separate literals
         // and as such multiple spans
-        const FRAGMENT_STR: &[&'static str] = &["you!!", "Game-Over"];
+        const FRAGMENT_STR: &[&str] = &["you!!", "Game-Over"];
 
         for (input, expected, fragment) in itertools::cons_tuples(
             INPUTS
@@ -419,7 +471,7 @@ mod tests {
 
         const EXPECTED_RANGE: &[Range] = &[0..(26 + 1 + 0 + 1 + 10 + 1), 3..8, 28..33];
 
-        const FRAGMENT_STR: &[&'static str] = &[
+        const FRAGMENT_STR: &[&str] = &[
             r#"Xy fff?? Not.., you again!
 
 AlphaOmega

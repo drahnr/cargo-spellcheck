@@ -97,10 +97,6 @@ Commonly it's use like this from your shell's `.rc*` file:
 
 `source <(cargo spellcheck completions)`
 
-Note: There is a [relevant clap issue
-(#3508)](https://github.com/clap-rs/clap/issues/3508) that makes this fail in
-some cases.
-
 ## 🎈 Contribute!
 
 Contributions are very welcome!
@@ -109,8 +105,7 @@ Generally the preferred way of doing so, is to comment in an issue that you
 would like to tackle the implementation/fix.
 
 This is usually followed by an initial PR where the implementation is then
-discussed and iteratively refined. No need to get it all correct
-the first time!
+discussed and iteratively refined. No need to get it all correct the first time!
 
 ## Documentation
 

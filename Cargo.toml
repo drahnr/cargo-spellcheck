@@ -1,9 +1,9 @@
 [package]
 name = "cargo-spellcheck"
-version = "0.15.5"
+version = "0.15.7"
 authors = ["Bernhard Schuster <bernhard@ahoi.io>"]
 edition = "2021"
-rust-version = "1.85.0"
+rust-version = "1.88.0"
 repository = "https://github.com/drahnr/cargo-spellcheck.git"
 homepage = "https://github.com/drahnr/cargo-spellcheck"
 license = "MIT OR Apache-2.0"
@@ -19,12 +19,29 @@ include = [
   "build.rs",
   "/LICENSE-*",
   "/README.md",
+  "docs/conditional-documentation.md",
   "tests/**/*.rs",
   "CHANGELOG.md",
 ]
 
 [workspace]
 members = ["./doc-chunks"]
+
+[workspace.lints.clippy]
+# asserting against a bool literal
+# is a lot easier to read compared
+# to the prefix !
+bool_assert_comparison = "allow"
+# for clarity, we sometimes do
+# add 0_usize and is not consdiered
+# a code smell in this context
+identity_op = "allow"
+# asserts with length checks with zero
+# are more expressive
+len_zero = "allow"
+
+[lints]
+workspace = true
 
 
 [build-dependencies]
@@ -35,7 +52,7 @@ xz2 = "0.1"
 
 [dependencies]
 
-doc-chunks = { version = "0.2.1", path = "./doc-chunks" }
+doc-chunks = { version = "0.2.2", path = "./doc-chunks" }
 
 color-eyre = "0.6"
 cargo_toml = "0.21"
