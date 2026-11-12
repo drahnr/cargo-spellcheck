@@ -1,6 +1,8 @@
 //! Cluster `proc_macro2::Literal`s into `LiteralSets`
 
-use proc_macro2::Delimiter;
+use std::collections::VecDeque;
+
+use proc_macro2::{Delimiter, Group, TokenStream};
 use syn::ext::IdentExt;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
@@ -49,13 +51,16 @@ impl syn::parse::Parse for DocComment {
 /// Other payloads are opaque, even if they contain tokens resembling `doc = ...`.
 enum DocAttribute {
     Doc(DocComment),
-    Conditional(Predicate, Span, Vec<DocAttribute>),
-    Cfg(Predicate, Span),
+    Conditional {
+        condition: SpannedPredicate,
+        attributes: Vec<DocAttribute>,
+    },
+    Cfg(SpannedPredicate),
     Other,
 }
 
 /// Parse a predicate while retaining its complete source span, including groups.
-fn parse_spanned_predicate(input: syn::parse::ParseStream<'_>) -> syn::Result<(Predicate, Span)> {
+fn parse_spanned_predicate(input: syn::parse::ParseStream<'_>) -> syn::Result<SpannedPredicate> {
     let mut cursor = input.cursor();
     let predicate = input.parse::<Predicate>()?;
     let end = input.cursor();
@@ -70,7 +75,7 @@ fn parse_spanned_predicate(input: syn::parse::ParseStream<'_>) -> syn::Result<(P
     let mut span = Span::from(span);
     // proc_macro2's end is exclusive; source extraction uses inclusive columns.
     span.end.column = span.end.column.saturating_sub(1);
-    Ok((predicate, span))
+    Ok(SpannedPredicate { predicate, span })
 }
 
 impl syn::parse::Parse for DocAttribute {
@@ -87,24 +92,24 @@ impl syn::parse::Parse for DocAttribute {
             input.parse::<Ident>()?;
             let content;
             parenthesized!(content in input);
-            let (predicate, span) = parse_spanned_predicate(&content)?;
+            let condition = parse_spanned_predicate(&content)?;
+            content.parse::<Option<Token![,]>>()?;
             if !content.is_empty() {
                 return Err(content.error("expected a single cfg predicate"));
             }
-            return Ok(Self::Cfg(predicate, span));
+            return Ok(Self::Cfg(condition));
         }
         if name.as_deref() == Some("cfg_attr") && input.peek2(syn::token::Paren) {
             input.parse::<Ident>()?;
             let content;
             parenthesized!(content in input);
-            let (predicate, span) = parse_spanned_predicate(&content)?;
+            let condition = parse_spanned_predicate(&content)?;
             content.parse::<Token![,]>()?;
             let attributes = Punctuated::<DocAttribute, Token![,]>::parse_terminated(&content)?;
-            return Ok(Self::Conditional(
-                predicate,
-                span,
-                attributes.into_iter().collect(),
-            ));
+            return Ok(Self::Conditional {
+                condition,
+                attributes: Vec::from_iter(attributes),
+            });
         }
         // A token group is consumed whole, so commas inside an unrelated
         // attribute's arguments cannot be mistaken for cfg_attr separators.
@@ -116,9 +121,115 @@ impl syn::parse::Parse for DocAttribute {
 }
 
 /// A symbolic predicate and the source location responsible for its coverage cost.
+#[derive(Clone)]
 struct SpannedPredicate {
     predicate: Predicate,
     span: Span,
+}
+
+/// Nested attribute guards retain the source range of their combined condition.
+#[derive(Clone, Default)]
+struct GuardContext {
+    condition: Option<SpannedPredicate>,
+}
+
+impl GuardContext {
+    fn predicate(&self) -> Predicate {
+        self.condition
+            .as_ref()
+            .map_or_else(Predicate::always, |condition| condition.predicate.clone())
+    }
+
+    fn covering_span(&self, span: Span) -> Span {
+        self.condition.as_ref().map_or(span, |parent| Span {
+            start: parent.span.start,
+            end: span.end,
+        })
+    }
+
+    fn nested(&self, condition: SpannedPredicate) -> Self {
+        let span = self.covering_span(condition.span);
+        Self {
+            condition: Some(SpannedPredicate {
+                predicate: Predicate::All(vec![self.predicate(), condition.predicate]),
+                span,
+            }),
+        }
+    }
+
+    fn for_literal(&self, span: Span) -> SpannedPredicate {
+        self.condition.clone().unwrap_or_else(|| SpannedPredicate {
+            predicate: Predicate::always(),
+            span,
+        })
+    }
+
+    fn constrain(&self, condition: SpannedPredicate) -> SpannedPredicate {
+        let span = self.covering_span(condition.span);
+        // A generated cfg constrains its owner only when the parent guard applies.
+        SpannedPredicate {
+            predicate: Predicate::Any(vec![
+                Predicate::Not(Box::new(self.predicate())),
+                condition.predicate,
+            ]),
+            span,
+        }
+    }
+}
+
+/// Inner attributes document the enclosing owner; outer attributes document its next item.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum AttributeStyle {
+    Inner,
+    Outer,
+}
+
+/// Inspect an attribute prefix without consuming unrelated token groups.
+fn attribute_prefix(tokens: &VecDeque<TokenTree>) -> Option<(AttributeStyle, usize)> {
+    if !matches!(tokens.front(), Some(TokenTree::Punct(punct)) if punct.as_char() == '#') {
+        return None;
+    }
+    let (style, group_index) = match tokens.get(1) {
+        Some(TokenTree::Punct(punct)) if punct.as_char() == '!' => (AttributeStyle::Inner, 2),
+        _ => (AttributeStyle::Outer, 1),
+    };
+    match tokens.get(group_index) {
+        Some(TokenTree::Group(group)) if group.delimiter() == Delimiter::Bracket => {
+            Some((style, group_index))
+        }
+        _ => None,
+    }
+}
+
+fn take_attribute(tokens: &mut VecDeque<TokenTree>) -> Option<(AttributeStyle, Group)> {
+    let (style, group_index) = attribute_prefix(tokens)?;
+    let Some(TokenTree::Group(group)) = tokens.get(group_index) else {
+        unreachable!("an attribute prefix ends in a bracket group");
+    };
+    let group = group.clone();
+    tokens.drain(..=group_index);
+    Some((style, group))
+}
+
+/// Recognize an item's body without requiring its contents or the file to parse as Rust.
+fn has_item_body(header: &TokenStream) -> bool {
+    let mut candidate = header.clone();
+    candidate.extend([TokenTree::Group(Group::new(
+        Delimiter::Brace,
+        TokenStream::new(),
+    ))]);
+    matches!(
+        syn::parse2::<syn::Item>(candidate),
+        Ok(syn::Item::Fn(_)
+            | syn::Item::Mod(_)
+            | syn::Item::Impl(_)
+            | syn::Item::Trait(_)
+            | syn::Item::Enum(_)
+            | syn::Item::Struct(_)
+            | syn::Item::Union(_)
+            | syn::Item::ForeignMod(_)
+            | syn::Item::Macro(_))
+    )
 }
 
 #[derive(Default)]
@@ -132,12 +243,34 @@ struct DocRun {
 }
 
 impl DocRun {
+    fn with_constraints(constraints: &[SpannedPredicate]) -> Self {
+        Self {
+            constraints: constraints.to_vec(),
+            has_cfg: !constraints.is_empty(),
+            ..Self::default()
+        }
+    }
+
+    fn append_tokens(&mut self, source: &str, group: Group) -> Result<()> {
+        match syn::parse2::<DocAttribute>(group.stream()) {
+            Ok(attribute) => self.append(source, attribute, &GuardContext::default())?,
+            Err(error) => {
+                // An omitted fragment could be a fence; never descend into its payload.
+                log::warn!(
+                    "Skipping documentation block with an unsupported attribute: {}",
+                    error
+                );
+                self.incomplete = true;
+            }
+        }
+        Ok(())
+    }
+
     fn append(
         &mut self,
         source: &str,
         attribute: DocAttribute,
-        guard: Predicate,
-        guard_span: Option<Span>,
+        guard: &GuardContext,
     ) -> Result<()> {
         match attribute {
             DocAttribute::Doc(comment) => {
@@ -152,48 +285,31 @@ impl DocRun {
                 if let crate::CommentVariant::MacroDocEqStr(prefix, _) = literal.variant() {
                     // Reflow repeats this prefix. It must not contain another
                     // item or be a fragment of a multiline attribute wrapper.
-                    let prefix: String = prefix.chars().filter(|c| !c.is_whitespace()).collect();
+                    let prefix = String::from_iter(prefix.chars().filter(|c| !c.is_whitespace()));
                     self.non_reflowable |= !matches!(
                         prefix.as_str(),
                         "#[doc=" | "#![doc=" | "#[r#doc=" | "#![r#doc="
                     );
                 }
                 self.intervening_attribute = false;
-                let span = guard_span.unwrap_or_else(|| literal.span());
-                self.docs.push((
-                    SpannedPredicate {
-                        predicate: guard,
-                        span,
-                    },
-                    literal,
-                ));
+                self.docs.push((guard.for_literal(literal.span()), literal));
             }
-            DocAttribute::Conditional(predicate, span, attributes) => {
-                let span = guard_span.map_or(span, |parent| Span {
-                    start: parent.start,
-                    end: span.end,
-                });
+            DocAttribute::Conditional {
+                condition,
+                attributes,
+            } => {
                 self.has_cfg = true;
                 let previous_len = self.docs.len();
-                let guard = Predicate::All(vec![guard, predicate]);
+                let guard = guard.nested(condition);
                 for attribute in attributes {
-                    self.append(source, attribute, guard.clone(), Some(span))?;
+                    self.append(source, attribute, &guard)?;
                 }
                 self.non_reflowable |= self.docs.len() != previous_len;
                 self.intervening_attribute = true;
             }
-            DocAttribute::Cfg(predicate, span) => {
-                let span = guard_span.map_or(span, |parent| Span {
-                    start: parent.start,
-                    end: span.end,
-                });
-                // TODO: propagate enclosing item/module guards and model the
-                // order-dependent semantics of crate-level inner cfg attributes.
+            DocAttribute::Cfg(condition) => {
                 self.has_cfg = true;
-                // A cfg introduced by cfg_attr only constrains the item when
-                // that attribute's parent guard applies: guard => predicate.
-                let predicate = Predicate::Any(vec![Predicate::Not(Box::new(guard)), predicate]);
-                self.constraints.push(SpannedPredicate { predicate, span });
+                self.constraints.push(guard.constrain(condition));
                 self.intervening_attribute = true;
             }
             DocAttribute::Other => self.intervening_attribute = true,
@@ -213,7 +329,7 @@ impl DocRun {
         }
         // Unconditional documentation needs no symbolic projection.
         if !self.has_cfg {
-            let literals = self.docs.into_iter().map(|(_, literal)| literal).collect();
+            let literals = Vec::from_iter(self.docs.into_iter().map(|(_, literal)| literal));
             sets.push(LiteralSet::from_docs(literals, self.non_reflowable));
             return;
         }
@@ -244,11 +360,12 @@ impl DocRun {
         }
         // Assemble whole selected fragments with their source mappings and cfg witness.
         for projection in report.projections {
-            let literals = projection
-                .selected
-                .into_iter()
-                .map(|index| self.docs[index].1.clone())
-                .collect();
+            let literals = Vec::from_iter(
+                projection
+                    .selected
+                    .into_iter()
+                    .map(|index| self.docs[index].1.clone()),
+            );
             let mut set = LiteralSet::from_docs(literals, self.non_reflowable);
             log::debug!(
                 "Documentation at line {}: example cfg (symbolic): {}",
@@ -284,49 +401,61 @@ impl Clusters {
         &self.warnings
     }
 
-    /// Read actual attributes, keeping each item's documentation together even
-    /// across inactive or unrelated attributes. Ordinary tokens and scope or
-    /// inner/outer attribute boundaries terminate the current documentation run.
-    pub fn parse_token_tree(
-        &mut self,
-        source: &str,
-        stream: proc_macro2::TokenStream,
-    ) -> Result<()> {
-        let mut iter = stream.into_iter().peekable();
-        let mut run = DocRun::default();
-        let mut inner_style = None;
-        while let Some(tree) = iter.next() {
-            if matches!(&tree, TokenTree::Punct(punct) if punct.as_char() == '#') {
-                let inner = iter
-                    .next_if(
-                        |tree| matches!(tree, TokenTree::Punct(punct) if punct.as_char() == '!'),
-                    )
-                    .is_some();
-                if let Some(TokenTree::Group(group)) = iter.next_if(
-                    |tree| matches!(tree, TokenTree::Group(group) if group.delimiter() == Delimiter::Bracket),
-                ) {
-                    if inner_style.is_some() && inner_style != Some(inner) {
-                        std::mem::take(&mut run).finish(&mut self.set, &mut self.warnings, self.budget);
-                    }
-                    inner_style = Some(inner);
-                    match syn::parse2::<DocAttribute>(group.stream()) {
-                        Ok(attribute) => run.append(source, attribute, Predicate::always(), None)?,
-                        Err(error) => {
-                            // Do not descend into an invalid/unsupported attribute
-                            // and accidentally interpret its payload as docs.
-                            log::warn!("Skipping documentation block with an unsupported attribute: {}", error);
-                            // An omitted fragment could be a code fence. Do not
-                            // spellcheck an incomplete Markdown projection.
-                            run.incomplete = true;
-                        }
-                    }
-                    continue;
+    /// Read attributes by ownership, combining an item's outer docs with its body's
+    /// leading inner docs while keeping crate docs and child items independent.
+    pub fn parse_token_tree(&mut self, source: &str, stream: TokenStream) -> Result<()> {
+        self.parse_scope(source, stream, DocRun::default())
+    }
+
+    fn parse_scope(&mut self, source: &str, stream: TokenStream, mut owner: DocRun) -> Result<()> {
+        let mut tokens = VecDeque::from_iter(stream);
+        // Merge leading inner attributes before projecting the owner's complete Markdown.
+        while matches!(attribute_prefix(&tokens), Some((AttributeStyle::Inner, _))) {
+            let (_, group) = take_attribute(&mut tokens).unwrap();
+            owner.append_tokens(source, group)?;
+        }
+        let enclosing = owner.constraints.clone();
+        owner.finish(&mut self.set, &mut self.warnings, self.budget);
+
+        // Start each sibling with only the enclosing owner's constraints.
+        let mut run = DocRun::with_constraints(&enclosing);
+        let mut header = TokenStream::new();
+        let mut attribute_style = None;
+        while !tokens.is_empty() {
+            if let Some((style, group)) = take_attribute(&mut tokens) {
+                if !header.is_empty() || attribute_style.is_some_and(|previous| previous != style) {
+                    run.finish(&mut self.set, &mut self.warnings, self.budget);
+                    run = DocRun::with_constraints(&enclosing);
+                    header = TokenStream::new();
                 }
+                attribute_style = Some(style);
+                run.append_tokens(source, group)?;
+                continue;
             }
-            std::mem::take(&mut run).finish(&mut self.set, &mut self.warnings, self.budget);
-            inner_style = None;
-            if let TokenTree::Group(group) = tree {
-                self.parse_token_tree(source, group.stream())?;
+            let tree = tokens.pop_front().unwrap();
+            match tree {
+                TokenTree::Group(group)
+                    if group.delimiter() == Delimiter::Brace && has_item_body(&header) =>
+                {
+                    // Body inner attributes constrain both the owner and its descendants.
+                    self.parse_scope(source, group.stream(), run)?;
+                    run = DocRun::with_constraints(&enclosing);
+                    header = TokenStream::new();
+                    attribute_style = None;
+                }
+                TokenTree::Group(group) => {
+                    // Retain token-level traversal for expressions and malformed Rust samples.
+                    let context = DocRun::with_constraints(&run.constraints);
+                    self.parse_scope(source, group.stream(), context)?;
+                    header.extend([TokenTree::Group(group)]);
+                }
+                TokenTree::Punct(punct) if punct.as_char() == ';' => {
+                    run.finish(&mut self.set, &mut self.warnings, self.budget);
+                    run = DocRun::with_constraints(&enclosing);
+                    header = TokenStream::new();
+                    attribute_style = None;
+                }
+                tree => header.extend([tree]),
             }
         }
         run.finish(&mut self.set, &mut self.warnings, self.budget);
