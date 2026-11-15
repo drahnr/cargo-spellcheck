@@ -21,10 +21,9 @@ use doc_chunks::Ignores;
 
 use crate::errors::*;
 
-use super::quirks::{
-    compound_ranges, consists_of_vulgar_fractions_or_emojis, replacements_contain_dashed,
-    replacements_contain_dashless, transform, Transformed,
-};
+#[cfg(test)]
+use super::quirks::consists_of_vulgar_fractions_or_emojis;
+use super::quirks::{compound_ranges, transform, Transformed};
 
 #[cfg(test)]
 mod tests;
@@ -110,8 +109,14 @@ impl ZetChecker {
         Ok(ZetChecker(hunspell, tokenizer))
     }
 
-    pub(super) fn contains_word(&self, word: &str) -> bool {
-        self.zspell.check_word(word)
+    pub(super) fn contains_word(
+        &self,
+        word: &str,
+    ) -> anyhow::Result<super::SpellcheckResult<Detector>> {
+        Ok(super::SpellcheckResult::from_membership(
+            self.zspell.check_word(word),
+            Self::detector(),
+        ))
     }
 }
 
@@ -193,7 +198,6 @@ impl Checker for ZetChecker {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn obtain_suggestions<'s>(
     context: &SuggestionContext<'_, 's>,
     zspell: &zspell::Dictionary,
@@ -201,14 +205,6 @@ fn obtain_suggestions<'s>(
     range: Range,
     acc: &mut Vec<Suggestion<'s>>,
 ) {
-    let SuggestionContext {
-        plain,
-        chunk,
-        origin,
-        allow_concatenated,
-        allow_dashed,
-        allow_emojis,
-    } = *context;
     log::trace!("Checking {word} in {range:?}..");
 
     match zspell.check_word(&word) {
@@ -220,32 +216,7 @@ fn obtain_suggestions<'s>(
 
             log::debug!(target: "zspell", "{word} --{{suggest}}--> {replacements:?}");
 
-            // strings made of vulgar fraction or emoji
-            if allow_emojis && consists_of_vulgar_fractions_or_emojis(&word) {
-                log::trace!(target: "quirks", "Found emoji or vulgar fraction character, treating {word} as ok");
-                return;
-            }
-
-            if allow_concatenated && replacements_contain_dashless(&word, replacements.as_slice()) {
-                log::trace!(target: "quirks", "Found dashless word in replacement suggestions, treating {word} as ok");
-                return;
-            }
-            if allow_dashed && replacements_contain_dashed(&word, replacements.as_slice()) {
-                log::trace!(target: "quirks", "Found dashed word in replacement suggestions, treating {word} as ok");
-                return;
-            }
-            for (range, span) in plain.find_spans(range.clone()) {
-                acc.push(Suggestion {
-                    detector: Detector::ZSpell,
-                    checked_word: Some(word.clone()),
-                    range,
-                    span,
-                    origin: origin.clone(),
-                    replacements: replacements.clone(),
-                    chunk,
-                    description: Some("Possible spelling mistake found.".to_owned()),
-                })
-            }
+            context.append_spelling_suggestions(Detector::ZSpell, word, range, replacements, acc);
         }
         true => {
             log::trace!("Found a match for word (plain range: {range:?}): >{word}<",);

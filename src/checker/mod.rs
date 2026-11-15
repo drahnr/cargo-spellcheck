@@ -61,6 +61,48 @@ struct SuggestionContext<'a, 's> {
     allow_emojis: bool,
 }
 
+#[cfg(any(feature = "spellbook", feature = "zet", feature = "hunspell"))]
+impl<'s> SuggestionContext<'_, 's> {
+    fn append_spelling_suggestions(
+        &self,
+        detector: Detector,
+        word: String,
+        range: crate::Range,
+        replacements: Vec<String>,
+        acc: &mut Vec<Suggestion<'s>>,
+    ) {
+        use quirks::{
+            consists_of_vulgar_fractions_or_emojis, replacements_contain_dashed,
+            replacements_contain_dashless,
+        };
+
+        if self.allow_emojis && consists_of_vulgar_fractions_or_emojis(&word) {
+            log::trace!(target: "quirks", "Found emoji or vulgar fraction character, treating {word} as ok");
+            return;
+        }
+        if self.allow_concatenated && replacements_contain_dashless(&word, &replacements) {
+            log::trace!(target: "quirks", "Found dashless word in replacement suggestions, treating {word} as ok");
+            return;
+        }
+        if self.allow_dashed && replacements_contain_dashed(&word, &replacements) {
+            log::trace!(target: "quirks", "Found dashed word in replacement suggestions, treating {word} as ok");
+            return;
+        }
+        for (range, span) in self.plain.find_spans(range) {
+            acc.push(Suggestion {
+                detector,
+                checked_word: Some(word.clone()),
+                range,
+                span,
+                origin: self.origin.clone(),
+                replacements: replacements.clone(),
+                chunk: self.chunk,
+                description: Some("Possible spelling mistake found.".to_owned()),
+            });
+        }
+    }
+}
+
 /// Implementation for a checker
 pub trait Checker {
     type Config;
@@ -74,6 +116,41 @@ pub trait Checker {
     ) -> Result<Vec<Suggestion<'s>>>
     where
         'a: 's;
+}
+
+/// A normal spelling outcome, distinct from an operational/backend error.
+///
+/// Membership uses the rejecting detector as its payload. `Unchecked` means no
+/// spelling engine is active; grammar-only checks never recognize vocabulary.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum SpellcheckResult<T> {
+    Recognized,
+    Unrecognized(T),
+    Unchecked,
+}
+
+#[cfg(any(feature = "hunspell", feature = "zet", feature = "spellbook"))]
+impl<T> SpellcheckResult<T> {
+    fn from_membership(recognized: bool, rejection: T) -> Self {
+        if recognized {
+            Self::Recognized
+        } else {
+            Self::Unrecognized(rejection)
+        }
+    }
+}
+
+// Keep construction concrete while sharing configuration gating between initial
+// setup and prepare-before-install dictionary reloads.
+macro_rules! create_checker {
+    ($checker:ty, $config:expr, $field:ident) => {
+        if $config.is_enabled(<$checker>::detector()) {
+            log::debug!("Enabling {} checks.", <$checker>::detector());
+            Some(<$checker>::new($config.$field.as_ref().unwrap())?)
+        } else {
+            None
+        }
+    };
 }
 
 /// Check a full document for violations using the tools we have.
@@ -94,57 +171,55 @@ pub struct Checkers {
 impl Checkers {
     /// Test a literal word without Markdown/tokenization quirks. All active
     /// spelling backends must recognize it before learning can be skipped.
-    pub(crate) fn contains_word(&self, word: &str) -> bool {
-        let spelling_enabled = self.config.has_spelling_backends();
-        spelling_enabled
-            && self
-                .verify_words(&std::collections::BTreeSet::from([word.to_owned()]))
-                .is_ok()
+    /// Backend failures are errors, not ordinary unrecognized vocabulary.
+    pub(crate) fn word_membership(
+        &self,
+        _word: &str,
+    ) -> anyhow::Result<SpellcheckResult<Detector>> {
+        let outcomes = std::iter::empty::<anyhow::Result<SpellcheckResult<Detector>>>();
+        #[cfg(feature = "hunspell")]
+        let outcomes = outcomes.chain(
+            self.hunspell
+                .iter()
+                .map(|engine| engine.contains_word(_word)),
+        );
+        #[cfg(feature = "zet")]
+        let outcomes = outcomes.chain(self.zet.iter().map(|engine| engine.contains_word(_word)));
+        #[cfg(feature = "spellbook")]
+        let outcomes = outcomes.chain(
+            self.spellbook
+                .iter()
+                .map(|engine| engine.contains_word(_word)),
+        );
+
+        let mut recognized = false;
+        for result in outcomes {
+            let rejecting_detector = match result? {
+                SpellcheckResult::Unrecognized(detector) => detector,
+                SpellcheckResult::Recognized => {
+                    recognized = true;
+                    continue;
+                }
+                SpellcheckResult::Unchecked => continue,
+            };
+            return Ok(SpellcheckResult::Unrecognized(rejecting_detector));
+        }
+        Ok(if recognized {
+            SpellcheckResult::Recognized
+        } else {
+            SpellcheckResult::Unchecked
+        })
     }
 
     pub fn new(config: Config) -> Result<Self> {
-        macro_rules! create_checker {
-            ($feature:literal, $checker:ty, $config:expr, $checker_config:expr) => {
-                if !cfg!(feature = $feature) {
-                    log::debug!("Feature {} is disabled by compilation.", $feature);
-                    None
-                } else {
-                    let config = $config;
-                    let detector = <$checker>::detector();
-                    if config.is_enabled(detector) {
-                        log::debug!("Enabling {} checks.", detector);
-                        Some(<$checker>::new($checker_config.unwrap())?)
-                    } else {
-                        log::debug!("Checker {detector} is disabled by configuration.");
-                        None
-                    }
-                }
-            };
-        }
-
         #[cfg(feature = "hunspell")]
-        let hunspell = create_checker!(
-            "hunspell",
-            HunspellChecker,
-            &config,
-            config.hunspell.as_ref()
-        );
+        let hunspell = create_checker!(HunspellChecker, config, hunspell);
         #[cfg(feature = "zet")]
-        let zet = create_checker!("zet", ZetChecker, &config, config.zet.as_ref());
+        let zet = create_checker!(ZetChecker, config, zet);
         #[cfg(feature = "spellbook")]
-        let spellbook = create_checker!(
-            "spellbook",
-            SpellbookChecker,
-            &config,
-            config.spellbook.as_ref()
-        );
+        let spellbook = create_checker!(SpellbookChecker, config, spellbook);
         #[cfg(feature = "nlprules")]
-        let nlprules = create_checker!(
-            "nlprules",
-            NlpRulesChecker,
-            &config,
-            config.nlprules.as_ref()
-        );
+        let nlprules = create_checker!(NlpRulesChecker, config, nlprules);
         Ok(Self {
             config,
             #[cfg(feature = "hunspell")]
@@ -166,42 +241,39 @@ impl DictionaryReload for Checkers {
     }
 
     fn reload_dictionaries(&mut self) -> Result<()> {
-        // Reconstruct all active engines (including NLP for now) using the original config.
-        // Do not replace any live engine unless every replacement initialized successfully.
-        let replacement = Self::new(self.config.clone())?;
-        *self = replacement;
+        // Finish every fallible preparation before installing any replacement.
+        // Learned vocabulary never changes grammar rules or their tokenizer.
+        #[cfg(feature = "hunspell")]
+        let hunspell = create_checker!(HunspellChecker, self.config, hunspell);
+        #[cfg(feature = "zet")]
+        let zet = create_checker!(ZetChecker, self.config, zet);
+        #[cfg(feature = "spellbook")]
+        let spellbook = create_checker!(SpellbookChecker, self.config, spellbook);
+
+        #[cfg(feature = "hunspell")]
+        {
+            self.hunspell = hunspell;
+        }
+        #[cfg(feature = "zet")]
+        {
+            self.zet = zet;
+        }
+        #[cfg(feature = "spellbook")]
+        {
+            self.spellbook = spellbook;
+        }
         Ok(())
     }
 
-    fn verify_words(&self, _words: &std::collections::BTreeSet<String>) -> Result<()> {
-        #[cfg(any(feature = "hunspell", feature = "spellbook", feature = "zet"))]
-        for word in _words {
-            #[cfg(feature = "hunspell")]
-            if let Some(engine) = &self.hunspell {
-                if !engine.contains_word(word)? {
-                    bail!(
-                        "{} dictionary rejects accepted word {word:?} as a standalone word",
-                        HunspellChecker::detector()
-                    );
-                }
-            }
-            #[cfg(feature = "zet")]
-            if let Some(engine) = &self.zet {
-                if !engine.contains_word(word) {
-                    bail!(
-                        "{} dictionary rejects accepted word {word:?} as a standalone word",
-                        ZetChecker::detector()
-                    );
-                }
-            }
-            #[cfg(feature = "spellbook")]
-            if let Some(engine) = &self.spellbook {
-                if !engine.contains_word(word) {
-                    bail!(
-                        "{} dictionary rejects accepted word {word:?} as a standalone word",
-                        SpellbookChecker::detector()
-                    );
-                }
+    fn verify_words(&self, words: &std::collections::BTreeSet<String>) -> Result<()> {
+        for word in words {
+            // Preserve the operational error and its sources across the existing
+            // eyre-based persistence boundary shared with the learning coordinator.
+            let outcome = self
+                .word_membership(word)
+                .map_err(|error| eyre!(error.into_boxed_dyn_error()))?;
+            if let SpellcheckResult::Unrecognized(detector) = outcome {
+                bail!("{detector} dictionary rejects accepted word {word:?} as a standalone word");
             }
         }
         Ok(())

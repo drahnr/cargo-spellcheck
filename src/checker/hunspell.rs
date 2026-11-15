@@ -32,10 +32,7 @@ mod tests;
 
 use crate::errors::*;
 
-use super::quirks::{
-    compound_ranges, consists_of_vulgar_fractions_or_emojis, replacements_contain_dashed,
-    replacements_contain_dashless, transform, Transformed,
-};
+use super::quirks::{compound_ranges, transform, Transformed};
 
 fn catch_hunspell_panic<T>(operation: &str, action: impl FnOnce() -> Result<T>) -> Result<T> {
     catch_unwind(AssertUnwindSafe(action)).unwrap_or_else(|payload| {
@@ -345,8 +342,18 @@ impl HunspellChecker {
         Ok(HunspellChecker(hunspell, tokenizer))
     }
 
-    pub(super) fn contains_word(&self, word: &str) -> Result<bool> {
-        Ok(self.hunspell.check(word)? == CheckResult::FoundInDictionary)
+    pub(super) fn contains_word(
+        &self,
+        word: &str,
+    ) -> anyhow::Result<super::SpellcheckResult<Detector>> {
+        let result = self
+            .hunspell
+            .check(word)
+            .map_err(|error| anyhow::Error::from_boxed(error.into()))?;
+        Ok(super::SpellcheckResult::from_membership(
+            result == CheckResult::FoundInDictionary,
+            Self::detector(),
+        ))
     }
 }
 
@@ -429,7 +436,6 @@ impl Checker for HunspellChecker {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn obtain_suggestions<'s>(
     context: &SuggestionContext<'_, 's>,
     hunspell: &HunspellSafe,
@@ -437,14 +443,6 @@ fn obtain_suggestions<'s>(
     range: Range,
     acc: &mut Vec<Suggestion<'s>>,
 ) -> Result<()> {
-    let SuggestionContext {
-        plain,
-        chunk,
-        origin,
-        allow_concatenated,
-        allow_dashed,
-        allow_emojis,
-    } = *context;
     log::trace!("Checking {word} in {range:?}..");
 
     match hunspell.check(&word)? {
@@ -457,32 +455,7 @@ fn obtain_suggestions<'s>(
 
             log::debug!(target: "hunspell", "{word} --{{suggest}}--> {replacements:?}");
 
-            // strings made of vulgar fraction or emoji
-            if allow_emojis && consists_of_vulgar_fractions_or_emojis(&word) {
-                log::trace!(target: "quirks", "Found emoji or vulgar fraction character, treating {word} as ok");
-                return Ok(());
-            }
-
-            if allow_concatenated && replacements_contain_dashless(&word, replacements.as_slice()) {
-                log::trace!(target: "quirks", "Found dashless word in replacement suggestions, treating {word} as ok");
-                return Ok(());
-            }
-            if allow_dashed && replacements_contain_dashed(&word, replacements.as_slice()) {
-                log::trace!(target: "quirks", "Found dashed word in replacement suggestions, treating {word} as ok");
-                return Ok(());
-            }
-            for (range, span) in plain.find_spans(range.clone()) {
-                acc.push(Suggestion {
-                    detector: Detector::Hunspell,
-                    checked_word: Some(word.clone()),
-                    range,
-                    span,
-                    origin: origin.clone(),
-                    replacements: replacements.clone(),
-                    chunk,
-                    description: Some("Possible spelling mistake found.".to_owned()),
-                })
-            }
+            context.append_spelling_suggestions(Detector::Hunspell, word, range, replacements, acc);
         }
         CheckResult::FoundInDictionary => {
             log::trace!("Found a match for word (plain range: {range:?}): >{word}<",);

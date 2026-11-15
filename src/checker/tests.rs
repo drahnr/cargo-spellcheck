@@ -949,19 +949,31 @@ fn normalize_suggestions_prefers_checked_word_before_detector() {
 
 #[test]
 fn normalize_suggestions_compares_last_retained_spans() {
+    let (expected_markdown, cases) = (
+        "abcdefghijklmnopqrstuvwxyz",
+        [
+            // The third overlaps only the discarded second suggestion.
+            (
+                vec![0..5, 3..8, 6..11, 13..16],
+                vec![("abcde", 0..5), ("ghijk", 6..11), ("nop", 13..16)],
+            ),
+            // The third overlaps the retained first, but not its predecessor.
+            (
+                vec![0..20, 2..5, 6..9],
+                vec![("abcdefghijklmnopqrst", 0..20)],
+            ),
+            (
+                vec![0..3, 5..8, 10..13],
+                vec![("abc", 0..3), ("fgh", 5..8), ("klm", 10..13)],
+            ),
+            // Source span endpoints are inclusive, unlike chunk ranges.
+            (vec![0..4, 3..7], vec![("abcd", 0..4)]),
+        ],
+    );
     let chunk = normalization_chunk();
-    for (ranges, expected_ranges) in [
-        // The third overlaps only the discarded second suggestion.
-        (vec![0..5, 3..8, 6..11, 13..16], vec![0..5, 6..11, 13..16]),
-        // The third overlaps the retained first, but not its predecessor.
-        (
-            vec![0..20, 2..5, 6..9],
-            Vec::from_iter(std::iter::once(0..20)),
-        ),
-        (vec![0..3, 5..8, 10..13], vec![0..3, 5..8, 10..13]),
-        // Source span endpoints are inclusive, unlike chunk ranges.
-        (vec![0..4, 3..7], Vec::from_iter(std::iter::once(0..4))),
-    ] {
+    assert_eq!(chunk.as_str(), expected_markdown);
+
+    for (ranges, expected) in cases {
         let input = ranges
             .into_iter()
             .rev()
@@ -969,8 +981,21 @@ fn normalize_suggestions_compares_last_retained_spans() {
             .collect();
         let normalized = normalize_suggestions(input);
         assert_eq!(
+            normalized
+                .iter()
+                .map(|suggestion| crate::sub_chars(
+                    suggestion.chunk.as_str(),
+                    suggestion.range.clone()
+                ))
+                .collect::<Vec<_>>(),
+            expected.iter().map(|(text, _)| *text).collect::<Vec<_>>()
+        );
+        assert_eq!(
             normalized.into_iter().map(|s| s.range).collect::<Vec<_>>(),
-            expected_ranges
+            expected
+                .into_iter()
+                .map(|(_, range)| range)
+                .collect::<Vec<_>>()
         );
     }
 }
@@ -1185,7 +1210,10 @@ mod dictionaries {
             None
         );
         let mut checkers = Checkers::new(config).unwrap();
-        assert!(!checkers.contains_word(WORD));
+        assert!(matches!(
+            checkers.word_membership(WORD).unwrap(),
+            SpellcheckResult::Unrecognized(_)
+        ));
 
         let path = Config::default_learning_dictionary(&dictionary.directory).unwrap();
         assert!(path.is_absolute());
@@ -1196,7 +1224,10 @@ mod dictionaries {
         let reloader: &mut dyn DictionaryReload = &mut checkers;
         reloader.include_learning_dictionary(&path).unwrap();
         reloader.include_learning_dictionary(&path).unwrap();
-        assert!(!checkers.contains_word(WORD));
+        assert!(matches!(
+            checkers.word_membership(WORD).unwrap(),
+            SpellcheckResult::Unrecognized(_)
+        ));
         assert_eq!(fs::read_to_string(&path).unwrap(), contents);
         for config in [
             checkers.config.hunspell.as_ref(),
@@ -1211,12 +1242,19 @@ mod dictionaries {
         }
 
         checkers.reload_dictionaries().unwrap();
-        assert!(checkers.contains_word(WORD));
+        assert_eq!(
+            checkers.word_membership(WORD).unwrap(),
+            SpellcheckResult::Recognized
+        );
         for detector in detectors {
             let mut checker =
                 Checkers::new(spelling_config(&[detector], vec![path.clone()])).unwrap();
             checker.reload_dictionaries().unwrap();
-            assert!(checker.contains_word(WORD), "{detector}");
+            assert_eq!(
+                checker.word_membership(WORD).unwrap(),
+                SpellcheckResult::Recognized,
+                "{detector}"
+            );
         }
     }
 
@@ -1372,8 +1410,12 @@ struct Example;"#,
         let mut checkers = Checkers::new(config).unwrap();
         for (word, recognized) in forms {
             assert_eq!(
-                checkers.contains_word(word),
-                recognized,
+                checkers.word_membership(word).unwrap(),
+                if recognized {
+                    SpellcheckResult::Recognized
+                } else {
+                    SpellcheckResult::Unrecognized(detector)
+                },
                 "{detector}: {word} before learning"
             );
         }
@@ -1399,7 +1441,11 @@ struct Example;"#,
 
         // Learning U must preserve the base-only S flag from terminate/DS.
         fs::write(&dictionary.path, learned).unwrap();
-        assert!(!checkers.contains_word(expected_unknown[0]), "{detector}");
+        assert_eq!(
+            checkers.word_membership(expected_unknown[0]).unwrap(),
+            SpellcheckResult::Unrecognized(detector),
+            "{detector}"
+        );
         assert_eq!(
             checked_tokens(checkers.check(origin, chunks).unwrap()),
             expected_unknown,
@@ -1411,8 +1457,9 @@ struct Example;"#,
             .verify_words(&words)
             .unwrap_or_else(|error| panic!("{detector}: {error}"));
         for word in &words {
-            assert!(
-                checkers.contains_word(word),
+            assert_eq!(
+                checkers.word_membership(word).unwrap(),
+                SpellcheckResult::Recognized,
                 "{detector}: {word} after reload"
             );
         }
@@ -1481,6 +1528,142 @@ terminate/UD
             .verify_words(&learned_forms)
             .unwrap();
         assert_eq!(fs::read_to_string(&dictionary.path).unwrap(), learned);
+    }
+
+    #[test]
+    fn later_preparation_failure_never_installs_earlier_replacements() {
+        let detectors = enabled_spelling_backends();
+        for &failing in &detectors {
+            let dictionary = ExtraDictionary::new();
+            let mut checkers =
+                Checkers::new(spelling_config(&detectors, vec![dictionary.path.clone()])).unwrap();
+            dictionary.add_word();
+            let config = match failing {
+                Detector::Hunspell => checkers.config.hunspell.as_mut(),
+                Detector::ZSpell => checkers.config.zet.as_mut(),
+                Detector::Spellbook => checkers.config.spellbook.as_mut(),
+                _ => unreachable!(),
+            }
+            .unwrap();
+            config
+                .extra_dictionaries
+                .push(dictionary.directory.join("missing.dic"));
+            assert!(checkers.reload_dictionaries().is_err(), "{failing}");
+
+            // Even engines prepared before the failure must retain the old
+            // dictionary. Checking only aggregate membership could hide a
+            // partially installed replacement behind a later rejection.
+            #[cfg(feature = "hunspell")]
+            assert_eq!(
+                checkers
+                    .hunspell
+                    .as_ref()
+                    .unwrap()
+                    .contains_word(WORD)
+                    .unwrap(),
+                SpellcheckResult::Unrecognized(Detector::Hunspell)
+            );
+            #[cfg(feature = "zet")]
+            assert_eq!(
+                checkers.zet.as_ref().unwrap().contains_word(WORD).unwrap(),
+                SpellcheckResult::Unrecognized(Detector::ZSpell)
+            );
+            #[cfg(feature = "spellbook")]
+            assert_eq!(
+                checkers
+                    .spellbook
+                    .as_ref()
+                    .unwrap()
+                    .contains_word(WORD)
+                    .unwrap(),
+                SpellcheckResult::Unrecognized(Detector::Spellbook)
+            );
+        }
+    }
+
+    #[test]
+    fn literal_membership_preserves_case_and_unicode() {
+        let dictionary = ExtraDictionary::new();
+        fs::write(&dictionary.path, "1\nZzyzxqvocabé\n").unwrap();
+        for detector in enabled_spelling_backends() {
+            let checkers =
+                Checkers::new(spelling_config(&[detector], vec![dictionary.path.clone()])).unwrap();
+            assert_eq!(
+                checkers.word_membership("Zzyzxqvocabé").unwrap(),
+                SpellcheckResult::Recognized,
+                "{detector}"
+            );
+            for word in ["zzyzxqvocabé", "Zzyzxqvocabe", "Zzyzxqvocab"] {
+                assert_eq!(
+                    checkers.word_membership(word).unwrap(),
+                    SpellcheckResult::Unrecognized(detector),
+                    "{detector}: {word}"
+                );
+            }
+        }
+    }
+
+    #[cfg(feature = "nlprules")]
+    #[test]
+    fn spelling_reload_leaves_live_grammar_untouched() {
+        let (source, expected_markdown) = (
+            r#"/// This are wrong. Zzyzxqvocab
+struct Example;"#,
+            r#" This are wrong. Zzyzxqvocab"#,
+        );
+        let dictionary = ExtraDictionary::new();
+        let mut config =
+            spelling_config(&enabled_spelling_backends(), vec![dictionary.path.clone()]);
+        config.nlprules = Some(Default::default());
+        let mut checkers = Checkers::new(config).unwrap();
+        let documents =
+            Documentation::load_from_str(ContentOrigin::TestEntityRust, source, true, false);
+        let (origin, chunks) = documents.iter().next().unwrap();
+        assert_eq!(
+            Vec::from_iter(chunks.iter().map(|chunk| chunk.as_str())),
+            [expected_markdown]
+        );
+        let grammar = checkers
+            .nlprules
+            .as_ref()
+            .unwrap()
+            .check(origin, chunks)
+            .unwrap();
+        assert!(!grammar.is_empty());
+
+        // Reconstructing NLP would fail with this uncached, missing resource.
+        checkers
+            .config
+            .nlprules
+            .as_mut()
+            .unwrap()
+            .override_tokenizer = Some(dictionary.directory.join("missing-tokenizer.bin"));
+        dictionary.add_word();
+        checkers.reload_dictionaries().unwrap();
+        assert_eq!(
+            checkers.word_membership(WORD).unwrap(),
+            SpellcheckResult::Recognized
+        );
+        assert_eq!(
+            checkers
+                .nlprules
+                .as_ref()
+                .unwrap()
+                .check(origin, chunks)
+                .unwrap(),
+            grammar
+        );
+        fs::remove_file(&dictionary.path).unwrap();
+        assert!(checkers.reload_dictionaries().is_err());
+        assert_eq!(
+            checkers
+                .nlprules
+                .as_ref()
+                .unwrap()
+                .check(origin, chunks)
+                .unwrap(),
+            grammar
+        );
     }
 
     fn assert_rejection_names_word_and_backend(error: impl std::fmt::Display, detector: Detector) {
@@ -1594,6 +1777,14 @@ terminate/UD
             .unwrap();
             spelling.extra_dictionaries.clear();
             let checkers = Checkers::new(config).unwrap();
+            assert_eq!(
+                checkers.word_membership("Test").unwrap(),
+                SpellcheckResult::Recognized
+            );
+            assert_eq!(
+                checkers.word_membership(WORD).unwrap(),
+                SpellcheckResult::Unrecognized(rejecting)
+            );
             assert_rejection_names_word_and_backend(
                 checkers.verify_words(&words).unwrap_err(),
                 rejecting,
@@ -1608,18 +1799,35 @@ terminate/UD
                 r#"/// Zzyzxqvocab
 struct Example;"#,
                 r#" Zzyzxqvocab"#,
+                WORD,
                 false,
             ),
             (
                 r#"/// Zzyz*xqvocab*
 struct Example;"#,
                 r#" Zzyz*xqvocab*"#,
+                WORD,
                 true,
             ),
             (
                 r#"/// prefixZzyzxqvocab
 struct Example;"#,
                 r#" prefixZzyzxqvocab"#,
+                WORD,
+                false,
+            ),
+            (
+                r#"/// Zzyz*xqvocabé*
+struct Example;"#,
+                r#" Zzyz*xqvocabé*"#,
+                "Zzyzxqvocabé",
+                true,
+            ),
+            (
+                r#"/// prefixzzyzxqvocabé
+struct Example;"#,
+                r#" prefixzzyzxqvocabé"#,
+                "zzyzxqvocabé",
                 false,
             ),
         ];
@@ -1638,7 +1846,7 @@ struct Example;"#,
                 spelling.quirks = quirks.clone();
             }
             let checkers = Checkers::new(config).unwrap();
-            for (source, expected_markdown, split_source) in cases {
+            for (source, expected_markdown, checked_word, split_source) in cases {
                 let documents = Documentation::load_from_str(
                     ContentOrigin::TestEntityRust,
                     source,
@@ -1655,12 +1863,18 @@ struct Example;"#,
                 assert!(!suggestions.is_empty(), "{detector:?}: {source}");
                 for suggestion in &suggestions {
                     assert_eq!(suggestion.detector, detector);
-                    assert_eq!(suggestion.checked_word.as_deref(), Some(WORD), "{source}");
+                    assert_eq!(
+                        suggestion.checked_word.as_deref(),
+                        Some(checked_word),
+                        "{source}"
+                    );
                 }
                 if split_source {
                     assert!(suggestions
                         .iter()
-                        .all(|s| crate::sub_chars(s.chunk.as_str(), s.range.clone()) != WORD));
+                        .all(
+                            |s| crate::sub_chars(s.chunk.as_str(), s.range.clone()) != checked_word
+                        ));
                 }
             }
         }
@@ -1772,4 +1986,24 @@ struct Example;"#,
             );
         }
     }
+}
+
+#[test]
+fn no_active_spelling_engine_does_not_recognize_vocabulary() {
+    let checkers = Checkers::new(Config {
+        hunspell: None,
+        zet: None,
+        spellbook: None,
+        nlprules: None,
+        ..Config::default()
+    })
+    .unwrap();
+    assert_eq!(
+        checkers.word_membership("Test").unwrap(),
+        SpellcheckResult::Unchecked
+    );
+    // Preserve the reload trait's no-op verification for grammar-only use.
+    checkers
+        .verify_words(&std::collections::BTreeSet::from(["Test".to_owned()]))
+        .unwrap();
 }

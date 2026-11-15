@@ -8,8 +8,8 @@ use crate::errors::Result;
 /// learner's shared overlay, not individual engines; checking does not reload files.
 /// A failed reload leaves the existing checker state usable and unchanged.
 ///
-/// `Checkers` currently reconstructs all active engines, including NLP, and only
-/// installs the replacement once construction succeeds.
+/// `Checkers` prepares the active spelling engines and installs them together
+/// only once all replacements are ready. Grammar resources remain unchanged.
 pub(crate) trait DictionaryReload {
     /// Register a persisted dictionary for the next reload without mutating live engines.
     fn include_learning_dictionary(&mut self, _path: &std::path::Path) -> Result<()> {

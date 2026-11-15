@@ -51,6 +51,7 @@ xz2 = "0.1"
 
 [dependencies]
 
+anyhow = "1"
 doc-chunks = { version = "0.2.2", path = "./doc-chunks" }
 
 color-eyre = "0.6"

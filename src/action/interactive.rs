@@ -709,7 +709,12 @@ impl UserPicked {
                                 .validate_learning_word(&replacement.content)
                                 .is_ok()
                             && !resolutions.knows_word(&replacement.content)
-                            && !checkers.contains_word(&replacement.content) =>
+                            && !matches!(
+                                checkers
+                                    .word_membership(&replacement.content)
+                                    .map_err(|e| eyre!(e.into_boxed_dyn_error()))?,
+                                crate::checker::SpellcheckResult::Recognized
+                            ) =>
                     {
                         (replacement.content.as_str(), false)
                     }
