@@ -268,8 +268,6 @@ mod engine {
         aff: String,
         cross_product: bool,
         rules: BTreeSet<Rule>,
-        // Preserve the manual suffix flow's existing boundary/strip search.
-        strips: BTreeSet<String>,
     }
 
     #[derive(Debug)]
@@ -431,7 +429,6 @@ mod engine {
                     aff: format!("{}\n", lines[index - 1]),
                     cross_product: fields[2] == "Y",
                     rules: BTreeSet::new(),
-                    strips: BTreeSet::from([String::new()]),
                 };
                 for line in &lines[index..index + count] {
                     let rule = line.split_whitespace().collect::<Vec<_>>();
@@ -446,7 +443,6 @@ mod engine {
                         bail!("Unsupported {kind} {flag} zero addition: ZSpell 0.5.5 cannot expand it faithfully");
                     }
                     let strip = if rule[2] == "0" { "" } else { rule[2] };
-                    affix.strips.insert(strip.to_owned());
                     affix.rules.insert(Rule {
                         addition: rule[3].to_owned(),
                         strip: strip.to_owned(),
@@ -698,13 +694,16 @@ mod engine {
             flags: &str,
         ) -> Result<Vec<AffixSuggestion>> {
             let (_, suffix) = self.suffix(flags)?;
+            let strips = std::iter::once("")
+                .chain(suffix.rules.iter().map(|rule| rule.strip.as_str()))
+                .collect::<BTreeSet<_>>();
             let mut candidates = BTreeSet::new();
             for boundary in word
                 .char_indices()
                 .map(|(index, _)| index)
                 .chain(std::iter::once(word.len()))
             {
-                for strip in &suffix.strips {
+                for strip in &strips {
                     let stem = format!("{}{strip}", &word[..boundary]);
                     if stem != word && validate_word(&stem).is_ok() {
                         candidates.insert(stem);
