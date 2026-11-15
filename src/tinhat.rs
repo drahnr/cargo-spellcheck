@@ -23,6 +23,11 @@ static WRITE_IN_PROGRESS: AtomicU16 = AtomicU16::new(0);
 /// Delay if the signal handler is currently running.
 static SIGNAL_HANDLER_AT_WORK: AtomicBool = AtomicBool::new(false);
 
+thread_local! {
+    // Only the callback thread may bypass the shutdown gate for its own IO.
+    static IN_SIGNAL_CALLBACK: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
 /// Handle incoming signals.
 ///
 /// Only relevant for *-nix platforms.
@@ -44,6 +49,7 @@ where
                         std::hint::spin_loop();
                         std::thread::yield_now();
                     }
+                    IN_SIGNAL_CALLBACK.with(|callback| callback.set(true));
                     fx();
                     signal_hook::low_level::exit(130);
                 }
@@ -59,9 +65,13 @@ pub struct TinHat;
 impl TinHat {
     /// Put the tin hat on, and only allow signals being processed once it's
     /// dropped.
+    ///
+    /// The signal callback may acquire nested guards for its own IO.
     pub fn on() -> Self {
         // If there is a signal handler in progress, block.
-        while SIGNAL_HANDLER_AT_WORK.load(Ordering::Acquire) {
+        while SIGNAL_HANDLER_AT_WORK.load(Ordering::Acquire)
+            && !IN_SIGNAL_CALLBACK.with(|callback| callback.get())
+        {
             std::hint::spin_loop();
             std::thread::yield_now();
         }
