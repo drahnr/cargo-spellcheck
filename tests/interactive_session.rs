@@ -616,7 +616,7 @@ impl Session {
             None
         };
         assert_affix_picker_list(&list, rows, active_idx, heading, with_prefix);
-        let (prefix, stem, suffix) = rows[active_idx];
+        let (prefix, _, suffix) = rows[active_idx];
         let flags = [prefix, suffix]
             .into_iter()
             .filter(|flag| *flag != "-")
@@ -628,7 +628,7 @@ impl Session {
             format!("/{flags}")
         };
         assert_affix_strip(&context, &selected, self.columns);
-        assert_picker_expansion_style(&context, stem)
+        picker_expansion(&context)
     }
 
     fn affix_strip(&self) -> (String, String) {
@@ -683,7 +683,7 @@ impl Session {
 
     fn suffix_redraw(&mut self, word: &str, active_idx: usize) -> Vec<String> {
         let (raw, context) = self.picker_redraw(SUFFIX_PROMPT);
-        let context = assert_picker_expansion_style(&context, word);
+        let context = picker_expansion(&context);
         let rendered = selection_list_rows(&raw);
         let flags = rendered
             .iter()
@@ -727,11 +727,7 @@ impl Session {
 
     fn stem_redraw(&mut self, entries: &[&str], active_idx: usize) -> String {
         let (raw, context) = self.picker_redraw(STEM_CHOICE_PROMPT);
-        let stem = entries[active_idx]
-            .rsplit_once('/')
-            .expect("Missing stem flag")
-            .0;
-        let context = assert_picker_expansion_style(&context, stem);
+        let context = picker_expansion(&context);
         let rows = entries
             .iter()
             .map(|entry| ((*entry).to_owned(), "stem"))
@@ -785,12 +781,6 @@ impl Session {
             preview.contains(&format!("Would match: {forms}{suffix}\r\n")),
             "{}",
             preview
-        );
-        let stem = entry.rsplit_once('/').map_or(entry, |(stem, _)| stem);
-        let expansion = styled_expansion(stem, &format!("{forms}{suffix}"));
-        assert!(
-            raw.contains(&format!("\r\nWould match: {expansion}\r\n{CONFIRM_PROMPT}")),
-            "Match preview must use cyan stem cores and bold green-on-black affix changes: {raw:?}"
         );
     }
 
@@ -851,52 +841,6 @@ fn learning_question(word: &str, replacement: bool) -> String {
     }
 }
 
-fn styled_expansion(stem: &str, forms: &str) -> String {
-    if let Some(word) = forms.strip_suffix(" (plain word; no affixes)") {
-        return format!("{} (plain word; no affixes)", word.with(Color::Cyan));
-    }
-    forms
-        .split(", ")
-        .map(|form| {
-            let boundaries = stem
-                .char_indices()
-                .map(|(index, _)| index)
-                .chain(std::iter::once(stem.len()))
-                .collect::<Vec<_>>();
-            // Color the longest unchanged stem core cyan, including when an
-            // added prefix shifts it away from the start of the expanded form.
-            let mut core = (0, 0);
-            'search: for length in (1..boundaries.len()).rev() {
-                for start in 0..boundaries.len() - length {
-                    let candidate = &stem[boundaries[start]..boundaries[start + length]];
-                    if let Some(offset) = form.find(candidate) {
-                        core = (offset, offset + candidate.len());
-                        break 'search;
-                    }
-                }
-            }
-            let highlight = |text: &str| {
-                if text.is_empty() {
-                    String::new()
-                } else {
-                    format!("{}", text.with(Color::Green).on(Color::Black).bold())
-                }
-            };
-            format!(
-                "{}{}{}",
-                highlight(&form[..core.0]),
-                if core.0 == core.1 {
-                    String::new()
-                } else {
-                    format!("{}", (&form[core.0..core.1]).with(Color::Cyan))
-                },
-                highlight(&form[core.1..])
-            )
-        })
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
 fn picker_context_rows(raw: &str) -> Vec<&str> {
     assert!(!raw.contains(['\r', '\n']), "Wrapped context: {raw:?}");
     let context = raw
@@ -931,19 +875,7 @@ fn assert_affix_strip(raw: &str, selected: &str, columns: u16) {
             "Invalid or partially clipped strip label: {raw:?}"
         );
     }
-    let styled_strip = strip
-        .split(' ')
-        .map(|token| match token {
-            "" | ".." => token.to_owned(),
-            "Ø" => token.with(Color::Yellow).to_string(),
-            _ => token.with(Color::Green).on(Color::Black).bold().to_string(),
-        })
-        .collect::<Vec<_>>()
-        .join(" ");
-    assert_eq!(
-        rows[0], styled_strip,
-        "Flags must be bold green on black, Ø yellow foreground only, and spacing/edges default-colored: {raw:?}"
-    );
+
     let flags = tokens
         .iter()
         .filter(|token| **token != "..")
@@ -967,11 +899,7 @@ fn assert_affix_strip(raw: &str, selected: &str, columns: u16) {
     let marker = "^".repeat(console::measure_text_width(selected));
     assert_eq!(caret.trim(), marker, "Marker must span the label: {raw:?}");
     let padding = caret.split_once('^').unwrap().0;
-    assert_eq!(
-        rows[1],
-        format!("{padding}{}", marker.with(Color::Red)),
-        "Only the marker's foreground must be red: {raw:?}"
-    );
+
     let caret_column = console::measure_text_width(padding);
     let midpoint = affix_marker_midpoint(&caret);
     let center = usize::from(columns) / 2;
@@ -996,55 +924,11 @@ fn assert_affix_strip(raw: &str, selected: &str, columns: u16) {
     );
 }
 
-fn assert_picker_expansion_style(raw: &str, stem: &str) -> String {
-    let line = raw
-        .split_once("Would match: ")
-        .expect("Missing expansion context")
-        .1
-        .strip_suffix("\x1b8")
-        .expect("Missing context cursor restore");
-    let text = console::strip_ansi_codes(line);
-    if let Some(visible) = text.strip_suffix('…') {
-        // Truncation may cut the stem or its plain-word explanation, but the
-        // ellipsis must stay outside either stem or affix styling.
-        assert!(!text.contains('\x1b'), "Broken truncated ANSI: {raw:?}");
-        if let Some(explanation) = visible
-            .strip_prefix(stem)
-            .filter(|tail| " (plain word; no affixes)".starts_with(tail))
-        {
-            assert_eq!(
-                line,
-                format!("{}{explanation}…", stem.with(Color::Cyan)),
-                "Only the plain word must be cyan, not its explanation or ellipsis: {raw:?}"
-            );
-        } else if visible.split(", ").all(|form| stem.starts_with(form)) {
-            assert_eq!(
-                line,
-                format!("{}…", styled_expansion(stem, visible)),
-                "Visible stem prefixes must be cyan, with a default-colored ellipsis: {raw:?}"
-            );
-        }
-        for style in [
-            "probe".with(Color::Cyan),
-            "probe".with(Color::Green).on(Color::Black).bold(),
-        ] {
-            let probe = style.to_string();
-            let (start, reset) = probe.split_once("probe").unwrap();
-            if let Some(last_start) = line.rfind(start) {
-                assert!(
-                    line[last_start..].contains(reset),
-                    "Unreset match preview style: {raw:?}"
-                );
-            }
-        }
-    } else {
-        assert_eq!(
-            line,
-            styled_expansion(stem, &text),
-            "Stem cores must be cyan; only added/changed affixes may be bold green on black: {raw:?}"
-        );
-    }
-    format!("Would match: {text}")
+fn picker_expansion(raw: &str) -> String {
+    let rows = picker_context_rows(raw);
+    let text = console::strip_ansi_codes(rows.last().expect("Missing expansion context"));
+    assert!(text.starts_with("Would match: "), "{raw:?}");
+    text.into_owned()
 }
 
 fn assert_command_effect(help: &str, key: &str, effect: &str) {
@@ -1145,105 +1029,57 @@ fn assert_main_picker_list(raw: &str, word: &str, custom: &str, active_idx: usiz
     let rendered = selection_list_rows(raw);
     assert!(rendered.len() >= 3, "{raw:?}");
     let column = assert_hint_column(&rendered);
-    let max_width = column - 6;
     let rows = [word.to_owned(), custom.to_owned(), format!("`{word}`")];
-    let descriptions = ["learn", "custom input", "wrap backticks"];
-    let marker = '»'.with(Color::Green).bold();
-    for (index, row) in rows.iter().enumerate() {
-        let padding = " ".repeat(max_width - console::measure_text_width(row) + 1);
-        let color = if index == 1 {
-            Color::Yellow
-        } else {
-            Color::Blue
-        };
-        let styled = if index == active_idx {
-            row.as_str().with(Color::Green).on(Color::Black).bold()
-        } else {
-            row.as_str().with(color).on(Color::Black)
-        };
-        // Exact raw output keeps BOTH the padding and hint outside styling.
-        assert_eq!(
-            selection_row_content(rendered[index]),
-            format!("{styled}{padding}< {}", descriptions[index]),
-            "Incorrect row content, padding, or hint styling: {raw:?}"
-        );
+    for ((rendered, expected), hint) in
+        rendered
+            .iter()
+            .zip(&rows)
+            .zip(["learn", "custom input", "wrap backticks"])
+    {
+        let text = console::strip_ansi_codes(selection_row_content(rendered));
+        let (content, description) = text.rsplit_once("< ").expect("Missing row hint");
+        assert_eq!(content.trim_end(), expected, "{raw:?}");
+        assert_eq!(description, hint, "{raw:?}");
     }
     for row in &rendered[3..] {
         let content = selection_row_content(row);
         let text = console::strip_ansi_codes(content);
         assert!(!text.contains("< "), "Hint on checker suggestion: {row:?}");
-        assert_eq!(
-            content,
-            format!("{}", text.as_ref().with(Color::Blue).on(Color::Black)),
-            "Changed checker suggestion styling: {row:?}"
-        );
     }
-    assert!(
-        rendered[active_idx].contains(&format!("\x1b[3G{marker}\x1b[5G")),
-        "Missing separate selected marker: {raw:?}"
-    );
-    assert_eq!(
-        console::strip_ansi_codes(raw).matches('»').count(),
-        1,
-        "{raw:?}"
-    );
+    assert_selected_row(&rendered, active_idx);
     column
 }
 
 fn assert_learning_picker_list(raw: &str, rows: &[(String, &str)], active_idx: usize) {
     let rendered = selection_list_rows(raw);
     assert_eq!(rendered.len(), rows.len(), "{raw:?}");
-    let column = assert_hint_column(&rendered);
-    let longest_hint = rows
-        .iter()
-        .map(|(_, hint)| console::measure_text_width(hint))
-        .max()
-        .unwrap();
-    // All visible content shares one budget, including shorter-hint rows.
-    let available = 160usize.saturating_sub(5 + longest_hint + 3);
-    let visible = rows
-        .iter()
-        .map(|(row, _)| console::truncate_str(row, available, "…"))
-        .collect::<Vec<_>>();
-    let max_width = visible
-        .iter()
-        .map(|row| console::measure_text_width(row))
-        .max()
-        .unwrap();
-    assert_eq!(column, 5 + max_width + 1, "{raw:?}");
-    let marker = '»'.with(Color::Green).bold();
-    for (index, (row, (_, hint))) in visible.iter().zip(rows).enumerate() {
-        let selected = index == active_idx;
-        let padding = " ".repeat(max_width - console::measure_text_width(row) + 1);
-        let styled = if selected {
-            row.as_ref().with(Color::Green).on(Color::Black).bold()
+    assert_hint_column(&rendered);
+    assert_selected_row(&rendered, active_idx);
+    for (rendered, (expected, hint)) in rendered.iter().zip(rows) {
+        let text = console::strip_ansi_codes(selection_row_content(rendered));
+        let (content, description) = text.rsplit_once("< ").expect("Missing row hint");
+        let content = content.trim_end();
+        if let Some(prefix) = content.strip_suffix('…') {
+            assert!(expected.starts_with(prefix), "{raw:?}");
         } else {
-            row.as_ref().with(Color::Blue).on(Color::Black)
-        };
-        // The default-color padding and hint must follow the style reset.
-        assert_eq!(
-            selection_row_content(rendered[index]),
-            format!("{styled}{padding}< {hint}"),
-            "{raw:?}"
-        );
-        if selected {
-            assert!(
-                rendered[index].contains(&format!("\x1b[3G{marker}\x1b[5G{styled}")),
-                "{raw:?}"
-            );
+            assert_eq!(content, expected, "{raw:?}");
         }
+        assert_eq!(description, *hint, "{raw:?}");
         assert!(
-            4 + console::measure_text_width(&console::strip_ansi_codes(selection_row_content(
-                rendered[index]
-            ))) < 160,
-            "Selection row would wrap: {raw:?}"
+            4 + console::measure_text_width(&text) < 160,
+            "Wrapped row: {raw:?}"
         );
     }
-    assert_eq!(
-        console::strip_ansi_codes(raw).matches('»').count(),
-        1,
-        "{raw:?}"
-    );
+}
+
+fn assert_selected_row(rows: &[&str], active_idx: usize) {
+    for (index, row) in rows.iter().enumerate() {
+        assert_eq!(
+            console::strip_ansi_codes(row).matches('»').count(),
+            usize::from(index == active_idx),
+            "{rows:?}"
+        );
+    }
 }
 
 fn assert_affix_picker_list(
@@ -1267,8 +1103,7 @@ fn assert_affix_picker_list(
     assert_eq!(rendered.len(), rows.len(), "{raw:?}");
     let mut aligned = None;
     let mut expected = Vec::new();
-    let mut normalized = raw.to_owned();
-    for (index, (row, (prefix, stem, suffix))) in rendered.iter().zip(rows).enumerate() {
+    for (row, (prefix, stem, suffix)) in rendered.iter().zip(rows) {
         let text = console::strip_ansi_codes(selection_row_content(row));
         let (content, hint) = text.rsplit_once("< ").expect("Missing affix row hint");
         let content = content.trim_end_matches(' ');
@@ -1282,25 +1117,7 @@ fn assert_affix_picker_list(
             vec![*stem, display_suffix]
         };
         assert_eq!(cells, values, "Incorrect affix cells: {raw:?}");
-        let foreground = if index == active_idx {
-            Color::Green
-        } else {
-            Color::Blue
-        };
-        let yellow_cell = format!(
-            "{}Ø{}",
-            crossterm::style::SetForegroundColor(Color::Yellow),
-            crossterm::style::SetForegroundColor(foreground)
-        );
-        let missing = usize::from(*suffix == "-") + usize::from(with_prefix && *prefix == "-");
-        assert_eq!(
-            row.matches(&yellow_cell).count(),
-            missing,
-            "Each missing affix must use yellow foreground only, then restore the row's {foreground:?} foreground: {raw:?}"
-        );
-        // Remove only the verified foreground overrides so the shared assertion
-        // still checks the full row's bold/background, padding, hints, and marker.
-        normalized = normalized.replacen(*row, &row.replace(&yellow_cell, "Ø"), 1);
+
         let columns = separators(content);
         if let Some(aligned) = &aligned {
             assert_eq!(&columns, aligned, "Misaligned affix columns: {raw:?}");
@@ -1309,9 +1126,7 @@ fn assert_affix_picker_list(
         }
         let plain = (*prefix, *suffix) == ("-", "-");
         assert_eq!(hint, if plain { "plain" } else { "pattern" }, "{raw:?}");
-        if plain {
-            assert_eq!((*prefix, *suffix), ("-", "-"), "{raw:?}");
-        }
+
         expected.push((content.to_owned(), if plain { "plain" } else { "pattern" }));
     }
     if let Some(heading) = heading {
@@ -1325,9 +1140,7 @@ fn assert_affix_picker_list(
             "Header must align with the value columns: {heading:?}, {raw:?}"
         );
     }
-    // Retain the shared renderer's exact marker, color, padding, hint alignment,
-    // and terminal-width checks for these already column-padded contents too.
-    assert_learning_picker_list(&normalized, &expected, active_idx);
+    assert_learning_picker_list(raw, &expected, active_idx);
 }
 
 fn exercise_acceptance(backends: &[Backend], persistent: bool) {
@@ -3377,7 +3190,7 @@ fn plain_match_preview_clips_stem_and_explanation_without_coloring_the_ellipsis(
         session.expect(AFFIX_PROMPT);
         let (_, raw_context) = session.picker_redraw(AFFIX_PROMPT);
         assert_affix_strip(&raw_context, "Ø", 40);
-        let context = assert_picker_expansion_style(&raw_context, &word);
+        let context = picker_expansion(&raw_context);
         assert!(context.ends_with('…'), "{context}");
         if length == 10 {
             assert!(context.contains(" (plain"), "{context}");

@@ -1,6 +1,19 @@
 use super::*;
 use std::convert::TryInto;
 
+impl State<'_, '_> {
+    pub(in crate::action) fn confirmed_plain(&self) -> UserSelection {
+        assert!(self.can_accept);
+        UserSelection::Nop.with_learning(learning::LearningOutcome::Confirmed(
+            super::super::learning::AffixSuggestion {
+                entry: DictionaryEntry::plain(self.suggestion.checked_word.as_deref().unwrap())
+                    .unwrap(),
+                forms: vec![self.suggestion.checked_word.clone().unwrap()],
+            },
+        ))
+    }
+}
+
 fn chunk(text: &str) -> CheckableChunk {
     CheckableChunk::from_str(
         text,
@@ -178,9 +191,9 @@ fn acceptance_suppresses_queued_duplicates_and_later_documents() {
         ContentOrigin::TestEntityRust,
         suggestions,
         &mut session,
-        |_, _, _, _| {
+        |_, state, _, _, _| {
             prompts += 1;
-            Ok(UserSelection::AcceptWord)
+            Ok(state.confirmed_plain())
         },
     )
     .unwrap();
@@ -194,9 +207,77 @@ fn acceptance_suppresses_queued_duplicates_and_later_documents() {
         ContentOrigin::TestEntityRust,
         vec![suggestion(&later_chunk, 0..5, Detector::Hunspell)],
         &mut session,
-        |_, _, _, _| panic!("accepted word prompted again in a later document"),
+        |_, _, _, _, _| panic!("accepted word prompted again in a later document"),
     )
     .unwrap();
+}
+
+#[test]
+fn declined_learning_keeps_only_the_independent_source_choice() {
+    let chunk = chunk("Tokoi");
+    let suggestion = suggestion(&chunk, 0..5, Detector::Hunspell);
+    let replacement = UserSelection::Replacement(BandAid::from(("Tokio".into(), &suggestion.span)));
+    for selection in [UserSelection::Nop, replacement] {
+        assert_eq!(
+            selection
+                .clone()
+                .with_learning(learning::LearningOutcome::Declined),
+            selection
+        );
+        assert_eq!(
+            selection.with_learning(learning::LearningOutcome::Aborted),
+            UserSelection::Abort
+        );
+    }
+}
+
+#[test]
+fn confirmed_entries_only_suppress_their_spelling_forms() {
+    for replace_source in [false, true] {
+        let chunk = chunk("Tokoi Tokio Tokios");
+        let mut session = SessionResolutions::default();
+        let suggestions = vec![
+            suggestion(&chunk, 0..5, Detector::Hunspell),
+            suggestion(&chunk, 0..5, Detector::Hunspell),
+            suggestion(&chunk, 6..11, Detector::Hunspell),
+            suggestion(&chunk, 12..18, Detector::Hunspell),
+            suggestion(&chunk, 6..11, Detector::NlpRules),
+            suggestion(&chunk, 6..11, Detector::Reflow),
+        ];
+        let mut prompted = Vec::new();
+        let (picked, outcome) = UserPicked::select_with(
+            ContentOrigin::TestEntityRust,
+            suggestions,
+            &mut session,
+            |_, state, idx, _, session| {
+                prompted.push(idx);
+                if idx != 0 {
+                    assert_eq!(state.can_accept, idx < 4);
+                    return Ok(UserSelection::Skip);
+                }
+                let selection = if replace_source {
+                    UserSelection::Replacement(BandAid::from((
+                        "Tokio".into(),
+                        &state.suggestion.span,
+                    )))
+                } else {
+                    UserSelection::Nop
+                };
+                Ok(
+                    selection.with_learning(learning::LearningOutcome::Confirmed(
+                        session.preview_entry("Tokio", None)?,
+                    )),
+                )
+            },
+        )
+        .unwrap();
+        assert_eq!(prompted, [0, 1, 3, 4, 5]);
+        assert_eq!(picked.total_count(), usize::from(replace_source));
+        assert_eq!(outcome, DocumentOutcome::Complete);
+        assert!(session.knows_word("Tokio"));
+        assert!(!session.knows_word("Tokoi"));
+        assert!(!session.knows_word("Tokios"));
+    }
 }
 
 #[test]
@@ -211,7 +292,7 @@ fn skipping_a_word_does_not_suppress_its_next_occurrence() {
             suggestion(&chunk, 6..11, Detector::Hunspell),
         ],
         &mut session,
-        |_, _, _, _| {
+        |_, _, _, _, _| {
             prompts += 1;
             Ok(UserSelection::Skip)
         },
@@ -235,7 +316,7 @@ fn replacement_choices_do_not_suppress_or_learn_the_original_word() {
             ContentOrigin::TestEntityRust,
             vec![first, suggestion(&chunk, 6..11, Detector::Hunspell)],
             &mut session,
-            |_, state, _, _| {
+            |_, state, _, _, _| {
                 prompts += 1;
                 Ok(if prompts == 1 {
                     if custom {
@@ -272,7 +353,7 @@ fn skip_file_returns_current_picks_without_prompting_remaining_suggestions() {
             suggestion(&chunk, 12..17, Detector::Hunspell),
         ],
         &mut session,
-        |_, state, _, _| {
+        |_, state, _, _, _| {
             prompts += 1;
             Ok(match prompts {
                 1 => {
@@ -351,7 +432,6 @@ fn every_picker_row_maps_to_learning_or_its_own_replacement() {
                 assert_eq!(state.is_custom_entry(), index == custom);
                 assert_eq!(state.is_ticked_entry(), index == custom + 1);
                 if learning {
-                    assert_eq!(state.to_selection(), UserSelection::LearnWord);
                     continue;
                 }
 
@@ -364,13 +444,7 @@ fn every_picker_row_maps_to_learning_or_its_own_replacement() {
                 };
                 let bandaid = state.to_bandaid();
                 assert_eq!(bandaid.content, expected);
-                assert_eq!(
-                    state.to_selection(),
-                    UserSelection::Replacement(BandAid::from((
-                        expected.to_owned(),
-                        &suggestion.span,
-                    )))
-                );
+                assert_eq!(bandaid.span, suggestion.span);
             }
         }
     }
@@ -487,7 +561,7 @@ fn unknown_words_without_replacements_can_be_accepted() {
         ContentOrigin::TestEntityRust,
         vec![suggestion(&chunk, 0..5, Detector::Hunspell)],
         &mut session,
-        |_, _, _, _| Ok(UserSelection::AcceptWord),
+        |_, state, _, _, _| Ok(state.confirmed_plain()),
     )
     .unwrap();
     assert!(session.accepts(&suggestion(&chunk, 0..5, Detector::Hunspell)));
@@ -502,10 +576,14 @@ fn invalid_acceptance_is_rejected_without_ending_the_session() {
         ContentOrigin::TestEntityRust,
         vec![suggestion(&chunk, 0..9, Detector::Hunspell)],
         &mut session,
-        |_, _, _, _| {
+        |_, _, _, _, _| {
             prompts += 1;
             Ok(if prompts == 1 {
-                UserSelection::AcceptWord
+                UserSelection::RecordEntry {
+                    entry: DictionaryEntry::plain("valid").unwrap(),
+                    forms: vec!["valid".into()],
+                    replacement: None,
+                }
             } else {
                 UserSelection::Skip
             })
