@@ -40,7 +40,7 @@ mod spellbook;
 mod nlprules;
 
 #[cfg(any(feature = "hunspell", feature = "zet", feature = "spellbook"))]
-mod dictaffix;
+pub(crate) mod dictaffix;
 
 #[cfg(any(feature = "spellbook", feature = "zet", feature = "hunspell"))]
 mod quirks;
@@ -92,6 +92,18 @@ pub struct Checkers {
 }
 
 impl Checkers {
+    /// Test a literal word without Markdown/tokenization quirks. All active
+    /// spelling backends must recognize it before learning can be skipped.
+    pub(crate) fn contains_word(&self, word: &str) -> bool {
+        let spelling_enabled = (cfg!(feature = "hunspell") && self.config.hunspell.is_some())
+            || (cfg!(feature = "zet") && self.config.zet.is_some())
+            || (cfg!(feature = "spellbook") && self.config.spellbook.is_some());
+        spelling_enabled
+            && self
+                .verify_words(&std::collections::BTreeSet::from([word.to_owned()]))
+                .is_ok()
+    }
+
     pub fn new(config: Config) -> Result<Self> {
         macro_rules! create_checker {
             ($feature:literal, $checker:ty, $config:expr, $checker_config:expr) => {

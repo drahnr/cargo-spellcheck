@@ -13,13 +13,26 @@ use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use crossterm::style::{Color, Stylize};
 use nix::fcntl::{fcntl, FcntlArg, OFlag};
 use nix::pty::{openpty, Winsize};
 use nix::sys::termios::{tcgetattr, LocalFlags};
 use nix::unistd::setsid;
 
 const DEADLINE: Duration = Duration::from_secs(30);
-const PROMPT: &str = "Apply this suggestion [y,n,q,a=accept word,d,j,e,?]?";
+const PROMPT: &str = "Resolve this issue [y=use resolution,n,q,a=accept as is,d,j,e,?]?";
+const WORD_PROMPT: &str = "Word (plain word only; Enter=preview, Esc=back, ?=help): ";
+const SUFFIX_PROMPT: &str = "Suffix [Up/Down=select, Enter=stems, n/Esc=back, ?=help]: ";
+const STEM_CHOICE_PROMPT: &str = "Stem [Up/Down=select, Enter=edit, n/Esc=back, ?=help]: ";
+const EDIT_STEM_PROMPT: &str = "Stem (plain word only; Enter=preview, Esc=back, ?=help): ";
+const CONFIRM_PROMPT: &str = "Confirm learning [y=yes, Enter/n/Esc=no, e=edit stem, ?=help]: ";
+const MAIN_COMMANDS: &[&str] = &[
+    "Up", "Down", "Home", "End", "y", "Enter", "n", "q", "a", "d", "j", "e", "Esc", "Ctrl-C", "?",
+];
+const PICKER_COMMANDS: &[&str] = &[
+    "Up", "Down", "Home", "End", "Enter", "y", "n", "Esc", "Ctrl-C", "?",
+];
+const EDITOR_COMMANDS: &[&str] = &["Enter", "Esc", "Backspace", "Ctrl-U", "Ctrl-C", "?"];
 const UNKNOWN: &str = "Zzyzxqvocab";
 const MISTAKES: &str = "Zzyzxqvocab Spelchekr Thirdwrng";
 
@@ -103,6 +116,22 @@ impl Fixture {
             assert!(!source.ends_with('\n'));
             fs::write(fixture.root.join(name), source).unwrap();
         }
+        fixture
+    }
+
+    fn with_suffixes(sources: &[(&str, &str)], backends: &[Backend]) -> Self {
+        let mut fixture = Self::with_backends(true, sources, backends);
+        fixture.config = fixture
+            .config
+            .replace("use_builtin = true", "use_builtin = false");
+        fs::write(fixture.root.join("spellcheck.toml"), &fixture.config).unwrap();
+        fs::write(
+            fixture.root.join("en_US.aff"),
+            "SET UTF-8\nSFX S Y 1\nSFX S 0 s .\n",
+        )
+        .unwrap();
+        // Every backend's debug initialization checks this sentinel word.
+        fs::write(fixture.root.join("en_US.dic"), "1\nTest\n").unwrap();
         fixture
     }
 
@@ -293,7 +322,9 @@ impl Session {
     fn expect_custom_cursor(&mut self, offset: usize) {
         // Unlike Show alone (also emitted by guard cleanup), this full sequence
         // is unique to the custom field's final cursor positioning before read().
-        self.expect(&format!("\x1b7\x1b[?25h\x1b[0F\x1b[{}G", 5 + offset));
+        // These spelling findings can be learned, so the custom field sits one
+        // row above the bottom verbatim entry. Grammar findings keep it at bottom.
+        self.expect(&format!("\x1b7\x1b[?25h\x1b[1A\x1b[{}G", 5 + offset));
     }
 
     fn replace_custom(&mut self, replacement: &str) {
@@ -307,6 +338,219 @@ impl Session {
             self.expect_custom_cursor(offset + 1);
         }
         self.send(b"\r");
+    }
+
+    fn main_picker_redraw(&mut self, word: &str, active_idx: usize) -> usize {
+        let start = self.consumed;
+        self.expect("\x1b8");
+        let raw = String::from_utf8_lossy(&self.transcript[start..self.consumed]);
+        assert!(!raw.contains(PROMPT), "Repeated resolution prompt: {raw:?}");
+        assert_main_picker_list(&raw, word, "...", active_idx)
+    }
+
+    fn custom_picker_redraw(&mut self, word: &str, custom: &str, offset: usize) -> usize {
+        let start = self.consumed;
+        // Editing can restore the field cursor before the list starts. Await the
+        // list's save/restore pair, then the field's final cursor positioning.
+        self.expect("\x1b7");
+        self.expect("\x1b8");
+        let raw = String::from_utf8_lossy(&self.transcript[start..self.consumed]);
+        assert!(!raw.contains(PROMPT), "Repeated resolution prompt: {raw:?}");
+        assert!(
+            !console::strip_ansi_codes(&raw).contains('?'),
+            "Help inserted text: {raw:?}"
+        );
+        let column = assert_main_picker_list(&raw, word, custom, 1);
+        self.expect_custom_cursor(offset);
+        column
+    }
+
+    fn command_help(&mut self, required: &[&str], optional: &[&str]) {
+        self.send(b"?");
+        let help = self.expect("? - show commands\r\n");
+        assert_command_help(&help, required, optional);
+    }
+
+    fn help_prompt(&mut self, prompt: &str) {
+        let remount = self.expect(prompt);
+        // Help remounts only the current question, not source context, previews,
+        // persistence notices, or a different stage of the interaction.
+        assert_eq!(
+            remount.trim_start_matches(['\r', '\n']),
+            console::strip_ansi_codes(prompt),
+            "Unexpected output before remounted prompt: {remount:?}"
+        );
+    }
+
+    fn main_help(&mut self, position: &str, word: &str, active_idx: usize) {
+        self.command_help(MAIN_COMMANDS, &[]);
+        self.help_prompt(&format!("({position}) {PROMPT}"));
+        self.main_picker_redraw(word, active_idx);
+    }
+
+    fn learning_prompt(&mut self, word: &str, replacement: bool) {
+        self.expect(&learning_question(word, replacement));
+    }
+
+    fn accept_plain(&mut self, word: &str) {
+        self.send(b"a");
+        self.learning_prompt(word, false);
+        self.send(b"\r");
+        self.select_plain_fallback(word);
+        self.send(b"y");
+    }
+
+    fn edit_learning_word(&mut self, initial: &str, edited: &str) {
+        self.send(b"e");
+        self.expect(&format!("{WORD_PROMPT}{initial}"));
+        if initial != edited {
+            self.send(b"\x15");
+            self.expect(WORD_PROMPT);
+            // Learning retains one raw guard across redraws, so UTF-8 text can
+            // be queued here, unlike the main custom-replacement field.
+            self.send(edited.as_bytes());
+            self.expect(&format!("{WORD_PROMPT}{edited}"));
+        }
+        self.send(b"\r");
+    }
+
+    fn plain_fallback_menu(&mut self, word: &str) -> Vec<String> {
+        let menu = self.expect(SUFFIX_PROMPT);
+        assert!(!menu.contains("Affix suggestions unavailable"), "{menu}");
+        self.suffix_redraw(word, 0)
+    }
+
+    fn picker_redraw(&mut self, prompt: &str) -> (String, String) {
+        let start = self.consumed;
+        // The shared list renderer restores once; the separate expansion context
+        // row saves/restores again. Input is safe only after BOTH restores.
+        self.expect("\x1b8");
+        let raw = String::from_utf8_lossy(&self.transcript[start..self.consumed]);
+        let list_start = raw.find("\x1b7").expect("Missing saved picker cursor");
+        let list = raw[list_start..].to_owned();
+        let start = self.consumed;
+        self.expect("\x1b8");
+        let context = String::from_utf8_lossy(&self.transcript[start..self.consumed]).into_owned();
+        assert!(!list.contains(prompt), "Repeated picker prompt: {list:?}");
+        assert!(context.contains("\x1b7"), "{context:?}");
+        assert!(context.ends_with("\x1b8"), "{context:?}");
+        let text = console::strip_ansi_codes(&context);
+        assert!(text.starts_with("Affix expansion: "), "{context:?}");
+        assert!(!text.contains(['\r', '\n']), "Wrapped context: {context:?}");
+        assert!(console::measure_text_width(&text) < 160, "{context:?}");
+        for color in [Color::Green, Color::Blue, Color::Black] {
+            assert!(
+                !context.contains(&format!("{}", crossterm::style::SetForegroundColor(color))),
+                "Colored expansion context: {context:?}"
+            );
+        }
+        assert!(
+            !context.contains(&format!(
+                "{}",
+                crossterm::style::SetBackgroundColor(Color::Black)
+            )),
+            "Highlighted expansion context: {context:?}"
+        );
+        (list, text.into_owned())
+    }
+
+    fn suffix_redraw(&mut self, word: &str, active_idx: usize) -> Vec<String> {
+        let (raw, context) = self.picker_redraw(SUFFIX_PROMPT);
+        let rendered = selection_list_rows(&raw);
+        let flags = rendered
+            .iter()
+            .skip(1)
+            .map(|row| {
+                let text = console::strip_ansi_codes(selection_row_content(row));
+                let content = text
+                    .strip_suffix("< suffix")
+                    .expect("Expected suffix hint")
+                    .trim_end_matches(' ');
+                let flag = content
+                    .strip_prefix('/')
+                    .expect("Expected /FLAG suffix row");
+                assert!(
+                    !flag.is_empty() && !flag.chars().any(char::is_whitespace),
+                    "Invalid suffix flag: {row:?}"
+                );
+                flag.to_owned()
+            })
+            .collect::<Vec<_>>();
+        assert!(!flags.is_empty(), "Missing real suffix choices: {raw:?}");
+        assert!(flags.windows(2).all(|pair| pair[0] < pair[1]), "{flags:?}");
+        let mut rows = vec![(word.to_owned(), "plain")];
+        rows.extend(flags.iter().map(|flag| (format!("/{flag}"), "suffix")));
+        assert_learning_picker_list(&raw, &rows, active_idx);
+        if active_idx == 0 {
+            assert_eq!(
+                context,
+                format!("Affix expansion: {word} (plain word; no affixes)")
+            );
+        }
+        flags
+    }
+
+    fn stem_menu(&mut self, entries: &[&str]) -> String {
+        self.expect(STEM_CHOICE_PROMPT);
+        self.stem_redraw(entries, 0)
+    }
+
+    fn stem_redraw(&mut self, entries: &[&str], active_idx: usize) -> String {
+        let (raw, context) = self.picker_redraw(STEM_CHOICE_PROMPT);
+        let rows = entries
+            .iter()
+            .map(|entry| ((*entry).to_owned(), "stem"))
+            .collect::<Vec<_>>();
+        assert_learning_picker_list(&raw, &rows, active_idx);
+        context
+    }
+
+    fn stem_editor(&mut self, initial: &str) {
+        self.expect(&format!("{EDIT_STEM_PROMPT}{initial}"));
+    }
+
+    fn edit_stem(&mut self, initial: &str, edited: &str) {
+        self.stem_editor(initial);
+        if initial != edited {
+            self.send(b"\x15");
+            self.expect(EDIT_STEM_PROMPT);
+            self.send(edited.as_bytes());
+            self.expect(&format!("{EDIT_STEM_PROMPT}{edited}"));
+        }
+        self.send(b"\r");
+    }
+
+    fn select_plain_fallback(&mut self, word: &str) {
+        self.plain_fallback_menu(word);
+        self.send(b"\r");
+        self.edit_stem(word, word);
+        self.learning_confirmation(word, word);
+    }
+
+    fn learning_confirmation(&mut self, entry: &str, forms: &str) {
+        let start = self.consumed;
+        let preview = self.expect(CONFIRM_PROMPT);
+        let raw = String::from_utf8_lossy(&self.transcript[start..self.consumed]);
+        let highlighted = entry.with(Color::Green).on(Color::Black).bold();
+        assert!(
+            raw.contains(&format!("New entry: {highlighted}\r\n")),
+            "{raw:?}"
+        );
+        assert!(
+            preview.contains(&format!("New entry: {entry}\r\n")),
+            "{}",
+            preview
+        );
+        let suffix = if entry.contains('/') {
+            ""
+        } else {
+            " (plain word; no affixes)"
+        };
+        assert!(
+            preview.contains(&format!("Affix expansion: {forms}{suffix}\r\n")),
+            "{}",
+            preview
+        );
     }
 
     fn finish(&mut self, expected_code: i32) {
@@ -348,6 +592,204 @@ impl Drop for Session {
     }
 }
 
+fn learning_question(word: &str, replacement: bool) -> String {
+    let highlighted = word.with(Color::Green).on(Color::Black).bold();
+    if replacement {
+        format!("Learn replacement \"{highlighted}\" [Enter/p=affixes, e=edit word, n/Esc=skip learning, Ctrl-C=abort, ?=help]: ")
+    } else {
+        format!("Learn \"{highlighted}\" [Enter/p=affixes, e=edit word, n/Esc=cancel, Ctrl-C=abort, ?=help]: ")
+    }
+}
+
+fn assert_command_help(help: &str, required: &[&str], optional: &[&str]) {
+    assert!(
+        help.starts_with("\r\n"),
+        "Help must start on a new line: {help:?}"
+    );
+    assert!(help.ends_with("? - show commands\r\n"), "{help:?}");
+    let mut commands = Vec::new();
+    for line in help.trim_matches(['\r', '\n']).split("\r\n") {
+        let (keys, description) = line
+            .split_once(" - ")
+            .unwrap_or_else(|| panic!("Expected only key - description lines: {help:?}"));
+        assert!(
+            !description.trim().is_empty()
+                && description.chars().count() <= 100
+                && !description.chars().any(char::is_control),
+            "Expected a brief nonempty side effect: {line:?}"
+        );
+        // Key grouping and spacing are presentation choices, not part of the
+        // contract. Descriptions are deliberately unconstrained except above.
+        for key in keys.split('/').map(str::trim) {
+            assert!(
+                required.contains(&key) || optional.contains(&key),
+                "Unexpected command {key:?} for this context: {help:?}"
+            );
+            assert!(!commands.contains(&key), "Duplicate command: {help:?}");
+            commands.push(key);
+        }
+    }
+    for key in required {
+        assert!(commands.contains(key), "Missing command {key:?}: {help:?}");
+    }
+}
+
+fn selection_list_rows(raw: &str) -> Vec<&str> {
+    let start = raw.find("\x1b7").expect("Missing saved cursor position");
+    let list = raw[start..]
+        .strip_prefix("\x1b7\x1b[2K")
+        .expect("Missing initial row clear")
+        .strip_suffix("\x1b8")
+        .expect("Missing restored cursor position");
+    // ANSI stripping alone concatenates rows. Preserve the existing upward
+    // redraw boundaries so columns are measured from each row's content origin.
+    list.split("\x1b[1A\x1b[2K").collect()
+}
+
+fn selection_row_content(row: &str) -> &str {
+    row.split_once("\x1b[5G").expect("Missing content column").1
+}
+
+fn assert_hint_column(rows: &[&str]) -> usize {
+    let text = rows
+        .iter()
+        .map(|row| console::strip_ansi_codes(selection_row_content(row)))
+        .collect::<Vec<_>>();
+    let max_width = text
+        .iter()
+        .map(|row| {
+            let content = row
+                .rsplit_once("< ")
+                .map_or(row.as_ref(), |(content, _)| content.trim_end_matches(' '));
+            console::measure_text_width(content)
+        })
+        .max()
+        .expect("Missing selection rows");
+    for row in &text {
+        assert!(
+            !row.contains(['\r', '\n']),
+            "Wrapped selection row: {row:?}"
+        );
+        if let Some((before_hint, _)) = row.rsplit_once("< ") {
+            assert_eq!(
+                console::measure_text_width(before_hint),
+                max_width + 1,
+                "Hint not aligned with the widest row (including unhinted suggestions): {rows:?}"
+            );
+        }
+    }
+    // Content starts in terminal column five; the separator is one column past
+    // the widest content. This column is local to this draw, not other menus.
+    5 + max_width + 1
+}
+
+fn assert_main_picker_list(raw: &str, word: &str, custom: &str, active_idx: usize) -> usize {
+    // Backends can suggest different replacements, but these three base rows
+    // must always remain separate and in the same order.
+    let rendered = selection_list_rows(raw);
+    assert!(rendered.len() >= 3, "{raw:?}");
+    let column = assert_hint_column(&rendered);
+    let max_width = column - 6;
+    let rows = [word.to_owned(), custom.to_owned(), format!("`{word}`")];
+    let descriptions = ["learn", "custom input", "wrap backticks"];
+    let marker = '»'.with(Color::Green).bold();
+    for (index, row) in rows.iter().enumerate() {
+        let padding = " ".repeat(max_width - console::measure_text_width(row) + 1);
+        let color = if index == 1 {
+            Color::Yellow
+        } else {
+            Color::Blue
+        };
+        let styled = if index == active_idx {
+            row.as_str().with(Color::Green).on(Color::Black).bold()
+        } else {
+            row.as_str().with(color).on(Color::Black)
+        };
+        // Exact raw output keeps BOTH the padding and hint outside styling.
+        assert_eq!(
+            selection_row_content(rendered[index]),
+            format!("{styled}{padding}< {}", descriptions[index]),
+            "Incorrect row content, padding, or hint styling: {raw:?}"
+        );
+    }
+    for row in &rendered[3..] {
+        let content = selection_row_content(row);
+        let text = console::strip_ansi_codes(content);
+        assert!(!text.contains("< "), "Hint on checker suggestion: {row:?}");
+        assert_eq!(
+            content,
+            format!("{}", text.as_ref().with(Color::Blue).on(Color::Black)),
+            "Changed checker suggestion styling: {row:?}"
+        );
+    }
+    assert!(
+        rendered[active_idx].contains(&format!("\x1b[3G{marker}\x1b[5G")),
+        "Missing separate selected marker: {raw:?}"
+    );
+    assert_eq!(
+        console::strip_ansi_codes(raw).matches('»').count(),
+        1,
+        "{raw:?}"
+    );
+    column
+}
+
+fn assert_learning_picker_list(raw: &str, rows: &[(String, &str)], active_idx: usize) {
+    let rendered = selection_list_rows(raw);
+    assert_eq!(rendered.len(), rows.len(), "{raw:?}");
+    let column = assert_hint_column(&rendered);
+    let longest_hint = rows
+        .iter()
+        .map(|(_, hint)| console::measure_text_width(hint))
+        .max()
+        .unwrap();
+    // All visible content shares one budget, including shorter-hint rows.
+    let available = 160usize.saturating_sub(5 + longest_hint + 3);
+    let visible = rows
+        .iter()
+        .map(|(row, _)| console::truncate_str(row, available, "…"))
+        .collect::<Vec<_>>();
+    let max_width = visible
+        .iter()
+        .map(|row| console::measure_text_width(row))
+        .max()
+        .unwrap();
+    assert_eq!(column, 5 + max_width + 1, "{raw:?}");
+    let marker = '»'.with(Color::Green).bold();
+    for (index, (row, (_, hint))) in visible.iter().zip(rows).enumerate() {
+        let selected = index == active_idx;
+        let padding = " ".repeat(max_width - console::measure_text_width(row) + 1);
+        let styled = if selected {
+            row.as_ref().with(Color::Green).on(Color::Black).bold()
+        } else {
+            row.as_ref().with(Color::Blue).on(Color::Black)
+        };
+        // The default-color padding and hint must follow the style reset.
+        assert_eq!(
+            selection_row_content(rendered[index]),
+            format!("{styled}{padding}< {hint}"),
+            "{raw:?}"
+        );
+        if selected {
+            assert!(
+                rendered[index].contains(&format!("\x1b[3G{marker}\x1b[5G{styled}")),
+                "{raw:?}"
+            );
+        }
+        assert!(
+            4 + console::measure_text_width(&console::strip_ansi_codes(selection_row_content(
+                rendered[index]
+            ))) < 160,
+            "Selection row would wrap: {raw:?}"
+        );
+    }
+    assert_eq!(
+        console::strip_ansi_codes(raw).matches('»').count(),
+        1,
+        "{raw:?}"
+    );
+}
+
 fn exercise_acceptance(backends: &[Backend], persistent: bool) {
     let repeated = "Zzyzxqvocab Zzyzxqvocab";
     let fixture = Fixture::with_backends(
@@ -362,7 +804,7 @@ fn exercise_acceptance(backends: &[Backend], persistent: bool) {
 
     let mut session = fixture.cli("fix", &paths);
     session.prompt("1/2", "first.md");
-    session.send(b"a");
+    session.accept_plain(UNKNOWN);
     // Both the already-queued duplicate and the later document must be skipped
     // without another keystroke; a regression fails on this finite deadline.
     session.finish(0);
@@ -416,7 +858,7 @@ fn quit_commits_accepted_words_and_selected_edits_but_stops_remaining_work() {
     );
     let mut session = fixture.cli("fix", &["first.md", "remaining.md"]);
     session.prompt("1/3", "first.md");
-    session.send(b"a");
+    session.accept_plain(UNKNOWN);
     session.prompt("2/3", "first.md");
     session.replace_custom("spellchecker");
     session.prompt("3/3", "first.md");
@@ -445,7 +887,7 @@ fn ctrl_c_discards_both_accepted_words_and_pending_source_edits() {
     );
     let mut session = fixture.cli("fix", &["first.md", "remaining.md"]);
     session.prompt("1/3", "first.md");
-    session.send(b"a");
+    session.accept_plain(UNKNOWN);
     session.prompt("2/3", "first.md");
     session.replace_custom("spellchecker");
     session.prompt("3/3", "first.md");
@@ -468,7 +910,7 @@ fn acceptance_without_learning_target_is_session_only() {
     let fixture = Fixture::new(false, &[("first.md", repeated)]);
     let mut session = fixture.cli("fix", &["first.md"]);
     session.prompt("1/2", "first.md");
-    session.send(b"a");
+    session.accept_plain(UNKNOWN);
     session.finish(0);
     session.assert_prompt_count(1);
     assert_eq!(fixture.read("first.md"), repeated);
@@ -488,21 +930,957 @@ fn acceptance_without_learning_target_is_session_only() {
 }
 
 #[test]
+fn learn_row_goes_directly_to_suffixes_and_suppresses_duplicates() {
+    for backend in BACKENDS {
+        for persistent in [false, true] {
+            let repeated = format!("{UNKNOWN} {UNKNOWN}");
+            let fixture = Fixture::with_backends(
+                persistent,
+                &[("first.md", &repeated), ("second.md", UNKNOWN)],
+                std::slice::from_ref(backend),
+            );
+            let paths = ["first.md", "second.md"];
+            let mut session = fixture.cli("fix", &paths);
+            session.prompt("1/2", "first.md");
+            session.send(b"\x1b[H");
+            session.main_picker_redraw(UNKNOWN, 0);
+            session.send(b"\r");
+            session.plain_fallback_menu(UNKNOWN);
+            assert!(!session.output().contains("Learn \""));
+            assert!(!session.output().contains("Learn replacement \""));
+            assert!(!session.output().contains(WORD_PROMPT));
+            assert!(!session.output().contains(CONFIRM_PROMPT));
+            assert_eq!(fixture.read("first.md"), repeated);
+            assert_eq!(fixture.read("lingo.dic"), "0\n");
+
+            session.send(b"\r");
+            session.edit_stem(UNKNOWN, UNKNOWN);
+            session.learning_confirmation(UNKNOWN, UNKNOWN);
+            assert_eq!(fixture.read("lingo.dic"), "0\n");
+            session.send(b"y");
+            // No input is supplied for the queued duplicate or the later source.
+            session.finish(0);
+            session.assert_prompt_count(1);
+            assert_eq!(session.output().matches(SUFFIX_PROMPT).count(), 1);
+            assert_eq!(session.output().matches(EDIT_STEM_PROMPT).count(), 1);
+            assert!(!session.output().contains(STEM_CHOICE_PROMPT));
+            assert_eq!(fixture.read("first.md"), repeated);
+            assert_eq!(fixture.read("second.md"), UNKNOWN);
+            assert_eq!(
+                fixture.read("lingo.dic"),
+                if persistent {
+                    "1\nZzyzxqvocab\n"
+                } else {
+                    "0\n"
+                }
+            );
+            fixture.assert_config_unchanged();
+            fixture.check(&paths, if persistent { 0 } else { 17 });
+        }
+    }
+}
+
+#[test]
+fn cancelling_verbatim_entry_returns_to_main_and_backticks_do_not_learn() {
+    for cancel in [b"n".as_slice(), b"\x1b".as_slice()] {
+        let fixture = Fixture::new(true, &[("first.md", UNKNOWN), ("original.md", UNKNOWN)]);
+        let mut session = fixture.cli("fix", &["first.md"]);
+        session.prompt("1/1", "first.md");
+        session.send(b"\x1b[H");
+        session.main_picker_redraw(UNKNOWN, 0);
+        session.send(b"\r");
+        session.plain_fallback_menu(UNKNOWN);
+        session.send(cancel);
+        session.prompt("1/1", "first.md");
+        assert!(!session.output().contains("Learn \""));
+        assert!(!session.output().contains(WORD_PROMPT));
+        assert_eq!(fixture.read("first.md"), UNKNOWN);
+        assert_eq!(fixture.read("lingo.dic"), "0\n");
+
+        // Home selects verbatim; the first Up enters custom editing, where a
+        // second Up must still navigate to the separate backtick-wrapping row.
+        session.send(b"\x1b[H");
+        session.main_picker_redraw(UNKNOWN, 0);
+        session.send(b"\x1b[A");
+        session.main_picker_redraw(UNKNOWN, 1);
+        session.expect_custom_cursor(0);
+        session.send(b"\x1b[A");
+        // Leaving custom input first restores its saved cursor, then redraws.
+        session.expect("\x1b8");
+        session.main_picker_redraw(UNKNOWN, 2);
+        session.send(b"\r");
+        session.finish(17);
+        session.assert_prompt_count(2);
+        assert_eq!(session.output().matches(SUFFIX_PROMPT).count(), 1);
+        assert!(!session.output().contains("Learn replacement \""));
+        assert!(!session.output().contains(CONFIRM_PROMPT));
+        assert_eq!(fixture.read("first.md"), format!("`{UNKNOWN}`"));
+        assert_eq!(fixture.read("lingo.dic"), "0\n");
+        fixture.assert_config_unchanged();
+        fixture.check(&["original.md"], 17);
+    }
+}
+
+#[test]
+fn declining_verbatim_confirmation_returns_to_main_without_learning() {
+    for decline in [b"\r".as_slice(), b"n".as_slice(), b"\x1b".as_slice()] {
+        let fixture = Fixture::new(true, &[("first.md", UNKNOWN)]);
+        let mut session = fixture.cli("fix", &["first.md"]);
+        session.prompt("1/1", "first.md");
+        session.send(b"\x1b[H");
+        session.main_picker_redraw(UNKNOWN, 0);
+        session.send(b"\r");
+        session.select_plain_fallback(UNKNOWN);
+        session.send(decline);
+        session.prompt("1/1", "first.md");
+        assert!(!session.output().contains("Learn \""));
+        assert!(!session.output().contains(WORD_PROMPT));
+        session.send(b"q");
+        session.finish(0);
+        session.assert_prompt_count(2);
+        assert_eq!(fixture.read("first.md"), UNKNOWN);
+        assert_eq!(fixture.read("lingo.dic"), "0\n");
+        fixture.assert_config_unchanged();
+    }
+}
+
+#[test]
 fn custom_replacement_edits_source_without_learning_either_word() {
-    let fixture = Fixture::new(true, &[("first.md", "Spelchekr")]);
+    for skip in [b"n", b"\x1b"] {
+        let fixture = Fixture::new(true, &[("first.md", "Spelchekr")]);
+        let mut session = fixture.cli("fix", &["first.md"]);
+        session.prompt("1/1", "first.md");
+        session.replace_custom(UNKNOWN);
+        session.learning_prompt(UNKNOWN, true);
+        session.send(skip);
+        session.finish(17);
+        session.assert_prompt_count(1);
+        assert_eq!(fixture.read("first.md"), UNKNOWN);
+        assert_eq!(fixture.read("lingo.dic"), "0\n");
+        fixture.assert_config_unchanged();
+        let output = fixture.check(&["first.md"], 17);
+        assert!(output.contains(UNKNOWN), "{}", output);
+        assert!(
+            output.contains("Possible spelling mistake found"),
+            "{}",
+            output
+        );
+    }
+}
+
+#[test]
+fn custom_cursor_stays_on_its_row_while_editing() {
+    for source in [UNKNOWN, "Spelchekr"] {
+        let fixture = Fixture::new(true, &[("first.md", source)]);
+        let mut session = fixture.cli("fix", &["first.md"]);
+        session.prompt("1/1", "first.md");
+        session.send(b"e");
+        session.expect_custom_cursor(0);
+        for (input, offset) in [
+            (b"c".as_slice(), 1),
+            (b"a".as_slice(), 2),
+            (b"t".as_slice(), 3),
+            (b"\x1b[D".as_slice(), 2),
+            (b"\x7f".as_slice(), 1),
+            (b"a".as_slice(), 2),
+            (b"\x1b[C".as_slice(), 3),
+        ] {
+            session.send(input);
+            session.expect_custom_cursor(offset);
+        }
+        session.send(b"\r");
+        session.finish(17);
+        assert_eq!(fixture.read("first.md"), "cat");
+        assert_eq!(fixture.read("lingo.dic"), "0\n");
+    }
+}
+
+#[test]
+fn help_preserves_custom_input_and_every_learning_stage_without_recording_entries() {
+    const WORD: &str = "Zzyzxqroots";
+    const INITIAL: &str = "Zzyzxqrots";
+    const SOURCE: &str = "Zzyzxqtypo Zzyzxqroots";
+    let entries = ["Zzyzxqroot/S", "Zzyzxqroots/S"];
+    let fixture = Fixture::with_suffixes(&[("first.md", SOURCE)], &BACKENDS[..1]);
     let mut session = fixture.cli("fix", &["first.md"]);
-    session.prompt("1/1", "first.md");
-    session.replace_custom(UNKNOWN);
+    session.prompt("1/2", "first.md");
+    session.send(b"\x1b[H");
+    session.main_picker_redraw("Zzyzxqtypo", 0);
+    session.main_help("1/2", "Zzyzxqtypo", 0);
+    assert_eq!(fixture.read("first.md"), SOURCE);
+    assert_eq!(fixture.read("lingo.dic"), "0\n");
+
+    session.send(b"e");
+    session.expect_custom_cursor(0);
+    for (offset, byte) in INITIAL.bytes().enumerate() {
+        session.send(&[byte]);
+        session.expect_custom_cursor(offset + 1);
+    }
+    for offset in [INITIAL.len() - 1, INITIAL.len() - 2] {
+        session.send(b"\x1b[D");
+        session.expect_custom_cursor(offset);
+    }
+    session.command_help(
+        &[
+            "Left",
+            "Right",
+            "Up",
+            "Down",
+            "Backspace",
+            "Enter",
+            "Esc",
+            "Ctrl-C",
+            "?",
+        ],
+        &["text", "characters"],
+    );
+    session.help_prompt(&format!("(1/2) {PROMPT}"));
+    session.custom_picker_redraw("Zzyzxqtypo", INITIAL, INITIAL.len() - 2);
+    // Inserting the missing 'o' in the middle proves the cursor was preserved,
+    // rather than merely restored visually while insertion moved to the end.
+    session.send(b"o");
+    session.expect_custom_cursor(WORD.len() - 2);
+    for offset in [WORD.len() - 1, WORD.len()] {
+        session.send(b"\x1b[C");
+        session.expect_custom_cursor(offset);
+    }
+    session.send(b"\r");
+    session.learning_prompt(WORD, true);
+    session.command_help(&["Enter", "p", "e", "n", "Esc", "Ctrl-C", "?"], &[]);
+    session.help_prompt(&learning_question(WORD, true));
+
+    session.send(b"e");
+    session.expect(&format!("{WORD_PROMPT}{WORD}"));
+    session.command_help(EDITOR_COMMANDS, &["text", "characters"]);
+    session.help_prompt(&format!("{WORD_PROMPT}{WORD}"));
+    session.send(b"\r");
+    assert_eq!(session.plain_fallback_menu(WORD), ["S"]);
+    session.send(b"\x1b[A");
+    session.suffix_redraw(WORD, 1);
+    session.command_help(PICKER_COMMANDS, &[]);
+    session.help_prompt(SUFFIX_PROMPT);
+    assert_eq!(session.suffix_redraw(WORD, 1), ["S"]);
+
+    session.send(b"\r");
+    session.stem_menu(&entries);
+    session.send(b"\x1b[A");
+    let expansion = session.stem_redraw(&entries, 1);
+    session.command_help(PICKER_COMMANDS, &[]);
+    session.help_prompt(STEM_CHOICE_PROMPT);
+    assert_eq!(session.stem_redraw(&entries, 1), expansion);
+    session.send(b"\r");
+    session.stem_editor(WORD);
+    session.command_help(EDITOR_COMMANDS, &["text", "characters"]);
+    session.help_prompt(&format!("{EDIT_STEM_PROMPT}{WORD}"));
+    session.send(b"\r");
+    session.learning_confirmation("Zzyzxqroots/S", "Zzyzxqroots, Zzyzxqrootss");
+    session.command_help(&["y", "Enter", "n", "Esc", "e", "Ctrl-C", "?"], &[]);
+    session.help_prompt(CONFIRM_PROMPT);
+    assert_eq!(fixture.read("first.md"), SOURCE);
+    assert_eq!(fixture.read("lingo.dic"), "0\n");
+    session.send(b"n");
+    // Help must not have learned either the plain word or its flagged entry:
+    // the queued duplicate still needs its own resolution after declining.
+    session.prompt("2/2", "first.md");
+    assert_eq!(fixture.read("first.md"), SOURCE);
+    assert_eq!(fixture.read("lingo.dic"), "0\n");
+    session.send(b"q");
     session.finish(17);
-    session.assert_prompt_count(1);
-    assert_eq!(fixture.read("first.md"), UNKNOWN);
+    session.assert_prompt_count(4);
+    assert_eq!(fixture.read("first.md"), format!("{WORD} {WORD}"));
     assert_eq!(fixture.read("lingo.dic"), "0\n");
     fixture.assert_config_unchanged();
-    let output = fixture.check(&["first.md"], 17);
-    assert!(output.contains(UNKNOWN), "{}", output);
-    assert!(
-        output.contains("Possible spelling mistake found"),
-        "{}",
-        output
+}
+
+#[test]
+fn main_help_does_not_advance_findings_or_documents() {
+    let fixture = Fixture::with_suffixes(
+        &[("first.md", UNKNOWN), ("second.md", "Thirdwrng")],
+        &BACKENDS[..1],
     );
+    let mut session = fixture.cli("fix", &["first.md", "second.md"]);
+    session.prompt("1/1", "first.md");
+    session.send(b"\x1b[H");
+    session.main_picker_redraw(UNKNOWN, 0);
+    session.main_help("1/1", UNKNOWN, 0);
+    assert!(!session.output().contains("second.md"));
+    session.send(b"a");
+    session.learning_prompt(UNKNOWN, false);
+    session.command_help(&["Enter", "p", "e", "n", "Esc", "Ctrl-C", "?"], &[]);
+    session.help_prompt(&learning_question(UNKNOWN, false));
+    session.send(b"n");
+    session.expect(PROMPT);
+    session.expect("\x1b8");
+    session.send(b"n");
+    session.prompt("1/1", "second.md");
+    session.send(b"\x1b[H");
+    session.main_picker_redraw("Thirdwrng", 0);
+    session.main_help("1/1", "Thirdwrng", 0);
+    session.send(b"q");
+    session.finish(0);
+    session.assert_prompt_count(5);
+    assert_eq!(fixture.read("first.md"), UNKNOWN);
+    assert_eq!(fixture.read("second.md"), "Thirdwrng");
+    assert_eq!(fixture.read("lingo.dic"), "0\n");
+    fixture.assert_config_unchanged();
+}
+
+#[test]
+fn known_custom_replacement_has_no_learning_followup() {
+    for backend in BACKENDS {
+        let fixture = Fixture::with_backends(
+            true,
+            &[("first.md", "Spelchekr"), ("known.md", "spellchecker")],
+            std::slice::from_ref(backend),
+        );
+        fixture.check(&["known.md"], 0);
+        let mut session = fixture.cli("fix", &["first.md"]);
+        session.prompt("1/1", "first.md");
+        session.replace_custom("spellchecker");
+        session.finish(17);
+        session.assert_prompt_count(1);
+        assert!(!session.output().contains("Learn replacement "));
+        assert_eq!(fixture.read("first.md"), "spellchecker");
+        assert_eq!(fixture.read("lingo.dic"), "0\n");
+        fixture.assert_config_unchanged();
+    }
+}
+
+#[test]
+fn plain_replacement_learning_is_deferred_and_records_only_the_correction() {
+    for backend in BACKENDS {
+        let source = "Spelchekr Thirdwrng";
+        let fixture = Fixture::with_backends(
+            true,
+            &[("first.md", source), ("remaining.md", "Thirdwrng")],
+            std::slice::from_ref(backend),
+        );
+        let mut session = fixture.cli("fix", &["first.md", "remaining.md"]);
+        session.prompt("1/2", "first.md");
+        session.replace_custom(UNKNOWN);
+        session.learning_prompt(UNKNOWN, true);
+        session.send(b"\r");
+        session.select_plain_fallback(UNKNOWN);
+        assert_eq!(fixture.read("first.md"), source);
+        assert_eq!(fixture.read("lingo.dic"), "0\n");
+        session.send(b"y");
+        session.prompt("2/2", "first.md");
+        assert_eq!(fixture.read("first.md"), source);
+        assert_eq!(fixture.read("lingo.dic"), "0\n");
+        session.send(b"q");
+        session.finish(17);
+        session.assert_prompt_count(2);
+        assert!(!session.output().contains("remaining.md"));
+        assert_eq!(fixture.read("first.md"), "Zzyzxqvocab Thirdwrng");
+        assert_eq!(fixture.read("remaining.md"), "Thirdwrng");
+        assert_eq!(fixture.read("lingo.dic"), "1\nZzyzxqvocab\n");
+        fixture.assert_config_unchanged();
+        // Fresh processes must recognize the correction, but not the typo.
+        fs::write(fixture.root.join("corrected.md"), UNKNOWN).unwrap();
+        fs::write(fixture.root.join("original.md"), "Spelchekr").unwrap();
+        fixture.check(&["corrected.md"], 0);
+        fixture.check(&["original.md"], 17);
+    }
+}
+
+#[test]
+fn plain_fallback_defers_writes_until_quit_or_apply_and_discards_them_on_abort() {
+    for end in [b"q", b"n", b"\x03"] {
+        let fixture = Fixture::new(
+            true,
+            &[
+                ("first.md", MISTAKES),
+                ("stem.md", UNKNOWN),
+                ("plural.md", "Zzyzxqvocabs"),
+            ],
+        );
+        let mut session = fixture.cli("fix", &["first.md"]);
+        session.prompt("1/3", "first.md");
+        session.send(b"a");
+        session.learning_prompt(UNKNOWN, false);
+        session.edit_learning_word(UNKNOWN, UNKNOWN);
+        session.select_plain_fallback(UNKNOWN);
+        assert_eq!(fixture.read("lingo.dic"), "0\n");
+        session.send(b"y");
+        session.prompt("2/3", "first.md");
+        session.replace_custom("spellchecker");
+        session.prompt("3/3", "first.md");
+        assert_eq!(fixture.read("first.md"), MISTAKES);
+        assert_eq!(fixture.read("lingo.dic"), "0\n");
+        session.send(end);
+        let abort = end == b"\x03";
+        session.finish(if abort { 130 } else { 17 });
+        session.assert_prompt_count(3);
+        assert_eq!(
+            fixture.read("first.md"),
+            if abort {
+                MISTAKES
+            } else {
+                "Zzyzxqvocab spellchecker Thirdwrng"
+            }
+        );
+        assert_eq!(
+            fixture.read("lingo.dic"),
+            if abort { "0\n" } else { "1\nZzyzxqvocab\n" }
+        );
+        fixture.assert_config_unchanged();
+        fixture.check(&["stem.md"], if abort { 17 } else { 0 });
+        fixture.check(&["plural.md"], 17);
+    }
+}
+
+#[test]
+fn suffix_menu_navigation_selects_real_rows_and_home_returns_to_plain() {
+    let fixture = Fixture::with_suffixes(
+        &[("first.md", UNKNOWN), ("plural.md", "Zzyzxqvocabs")],
+        &BACKENDS[..1],
+    );
+    let mut session = fixture.cli("fix", &["first.md"]);
+    session.prompt("1/1", "first.md");
+    session.send(b"a");
+    session.learning_prompt(UNKNOWN, false);
+    session.edit_learning_word(UNKNOWN, UNKNOWN);
+    assert_eq!(session.plain_fallback_menu(UNKNOWN), ["S"]);
+    for (key, index) in [
+        (b"\x1b[B", 1),
+        (b"\x1b[A", 0),
+        (b"\x1b[A", 1),
+        (b"\x1b[B", 0),
+        (b"\x1b[F", 1),
+        (b"\x1b[H", 0),
+    ] {
+        session.send(key);
+        session.suffix_redraw(UNKNOWN, index);
+    }
+    assert_eq!(session.output().matches(SUFFIX_PROMPT).count(), 1);
+    session.send(b"\r");
+    session.edit_stem(UNKNOWN, UNKNOWN);
+    session.learning_confirmation(UNKNOWN, UNKNOWN);
+    assert!(!session.output().contains(STEM_CHOICE_PROMPT));
+    assert_eq!(fixture.read("lingo.dic"), "0\n");
+    session.send(b"y");
+    session.finish(0);
+    session.assert_prompt_count(1);
+    assert_eq!(fixture.read("first.md"), UNKNOWN);
+    assert_eq!(fixture.read("lingo.dic"), "1\nZzyzxqvocab\n");
+    fixture.assert_config_unchanged();
+    fixture.check(&["first.md"], 0);
+    fixture.check(&["plural.md"], 17);
+}
+
+#[test]
+fn plain_fallback_replacement_learning_records_only_the_correction_not_flags_or_typo() {
+    let source = "Spelchekr Thirdwrng";
+    let fixture = Fixture::new(
+        true,
+        &[
+            ("first.md", source),
+            ("stem.md", UNKNOWN),
+            ("plural.md", "Zzyzxqvocabs"),
+        ],
+    );
+    let mut session = fixture.cli("fix", &["first.md"]);
+    session.prompt("1/2", "first.md");
+    session.replace_custom(UNKNOWN);
+    session.learning_prompt(UNKNOWN, true);
+    session.edit_learning_word(UNKNOWN, UNKNOWN);
+    session.select_plain_fallback(UNKNOWN);
+    session.send(b"y");
+    session.prompt("2/2", "first.md");
+    assert_eq!(fixture.read("first.md"), source);
+    assert_eq!(fixture.read("lingo.dic"), "0\n");
+    session.send(b"q");
+    session.finish(17);
+    session.assert_prompt_count(2);
+    assert_eq!(fixture.read("first.md"), "Zzyzxqvocab Thirdwrng");
+    assert_eq!(fixture.read("lingo.dic"), "1\nZzyzxqvocab\n");
+    fixture.assert_config_unchanged();
+    fixture.check(&["stem.md"], 0);
+    fixture.check(&["plural.md"], 17);
+    fs::write(fixture.root.join("original.md"), "Spelchekr").unwrap();
+    fixture.check(&["original.md"], 17);
+}
+
+#[test]
+fn real_suffix_learning_suggests_shortened_stem_persists_flags_and_reloads_expansion() {
+    const WORD: &str = "Zzyzxqroots";
+    const STEM: &str = "Zzyzxqroot";
+    let entries = ["Zzyzxqroot/S", "Zzyzxqroots/S"];
+    for backend in BACKENDS {
+        for replacement in [false, true] {
+            let original = if replacement { "Zzyzxqtypo" } else { WORD };
+            let source = format!("{original} {WORD}");
+            let fixture = Fixture::with_suffixes(
+                &[
+                    ("first.md", &source),
+                    ("later.md", WORD),
+                    ("typo.md", "Zzyzxqtypo"),
+                ],
+                std::slice::from_ref(backend),
+            );
+            let paths = ["first.md", "later.md"];
+            let mut session = fixture.cli("fix", &paths);
+            session.prompt("1/2", "first.md");
+            if replacement {
+                session.replace_custom(WORD);
+                session.learning_prompt(WORD, true);
+                session.send(b"\r");
+            } else {
+                session.send(b"\x1b[H");
+                session.main_picker_redraw(WORD, 0);
+                session.send(b"\r");
+            }
+            assert_eq!(session.plain_fallback_menu(WORD), ["S"]);
+            session.send(b"\x1b[A");
+            session.suffix_redraw(WORD, 1);
+            session.send(b"\r");
+            assert_eq!(
+                session.stem_menu(&entries),
+                "Affix expansion: Zzyzxqroot, Zzyzxqroots"
+            );
+            // The shortened root is first; the unchanged surface remains last.
+            session.send(b"\x1b[A");
+            assert_eq!(
+                session.stem_redraw(&entries, 1),
+                "Affix expansion: Zzyzxqroots, Zzyzxqrootss"
+            );
+            session.send(b"\x1b[B");
+            session.stem_redraw(&entries, 0);
+            session.send(b"\r");
+            session.edit_stem(STEM, STEM);
+            session.learning_confirmation("Zzyzxqroot/S", "Zzyzxqroot, Zzyzxqroots");
+            assert_eq!(fixture.read("first.md"), source);
+            assert_eq!(fixture.read("lingo.dic"), "0\n");
+            session.send(b"y");
+            // Full expansions suppress both queued plurals and later sources.
+            session.finish(if replacement { 17 } else { 0 });
+            session.assert_prompt_count(1);
+            assert_eq!(fixture.read("first.md"), format!("{WORD} {WORD}"));
+            assert_eq!(fixture.read("later.md"), WORD);
+            assert_eq!(fixture.read("lingo.dic"), "1\nZzyzxqroot/S\n");
+            fixture.assert_config_unchanged();
+            fixture.check(&paths, 0);
+            fs::write(fixture.root.join("stem.md"), STEM).unwrap();
+            fixture.check(&["stem.md"], 0);
+            fixture.check(&["typo.md"], 17);
+        }
+    }
+}
+
+#[test]
+fn picker_context_is_one_truncated_row_but_confirmation_shows_the_full_expansion() {
+    let stem = format!("Zzyzxq{}", "a".repeat(90));
+    let word = format!("{stem}s");
+    let entry = format!("{stem}/S");
+    let original_entry = format!("{word}/S");
+    let fixture = Fixture::with_suffixes(&[("first.md", &word)], &BACKENDS[..1]);
+    let mut session = fixture.cli("fix", &["first.md"]);
+    session.prompt("1/1", "first.md");
+    session.send(b"\x1b[H");
+    session.main_picker_redraw(&word, 0);
+    session.send(b"\r");
+    session.plain_fallback_menu(&word);
+    session.send(b"\x1b[A");
+    session.suffix_redraw(&word, 1);
+    session.send(b"\r");
+    let context = session.stem_menu(&[&entry, &original_entry]);
+    assert!(context.ends_with('…'), "{context}");
+    session.send(b"\r");
+    session.edit_stem(&stem, &stem);
+    session.learning_confirmation(&entry, &format!("{stem}, {word}"));
+    assert_eq!(fixture.read("lingo.dic"), "0\n");
+    session.send(b"y");
+    session.finish(0);
+    assert_eq!(fixture.read("first.md"), word);
+    assert_eq!(fixture.read("lingo.dic"), format!("1\n{entry}\n"));
+    fixture.assert_config_unchanged();
+    fixture.check(&["first.md"], 0);
+}
+
+#[test]
+fn flagged_stem_can_be_edited_again_and_only_the_confirmed_entry_is_saved() {
+    for replacement in [false, true] {
+        let original = if replacement {
+            "Zzyzxqtypo"
+        } else {
+            "Zzyzxqroots"
+        };
+        let fixture = Fixture::with_suffixes(
+            &[("first.md", original), ("plural.md", "Zzyzxqediteds")],
+            &BACKENDS[..1],
+        );
+        let mut session = fixture.cli("fix", &["first.md"]);
+        session.prompt("1/1", "first.md");
+        if replacement {
+            session.replace_custom("Zzyzxqroots");
+            session.learning_prompt("Zzyzxqroots", true);
+        } else {
+            session.send(b"a");
+            session.learning_prompt(original, false);
+        }
+        session.edit_learning_word("Zzyzxqroots", "Zzyzxqroots");
+        session.plain_fallback_menu("Zzyzxqroots");
+        session.send(b"\x1b[A");
+        session.suffix_redraw("Zzyzxqroots", 1);
+        session.send(b"\r");
+        session.stem_menu(&["Zzyzxqroot/S", "Zzyzxqroots/S"]);
+        session.send(b"\r");
+        session.edit_stem("Zzyzxqroot", "Zzyzxqbase");
+        session.learning_confirmation("Zzyzxqbase/S", "Zzyzxqbase, Zzyzxqbases");
+        // Editing from confirmation retains the selected suffix, not a literal /S
+        // in the plain-word editor, and requires a fresh full-expansion preview.
+        session.send(b"e");
+        session.edit_stem("Zzyzxqbase", "Zzyzxqedited");
+        session.learning_confirmation("Zzyzxqedited/S", "Zzyzxqedited, Zzyzxqediteds");
+        assert_eq!(fixture.read("first.md"), original);
+        assert_eq!(fixture.read("lingo.dic"), "0\n");
+        session.send(b"y");
+        session.finish(if replacement { 17 } else { 0 });
+        assert_eq!(fixture.read("first.md"), "Zzyzxqroots");
+        assert_eq!(fixture.read("lingo.dic"), "1\nZzyzxqedited/S\n");
+        fixture.assert_config_unchanged();
+        fixture.check(&["plural.md"], 0);
+        fixture.check(&["first.md"], 17);
+    }
+}
+
+#[test]
+fn flagged_picker_backtracking_and_suffix_cancellation_preserve_replacement_only() {
+    for cancel in [b"n".as_slice(), b"\x1b".as_slice()] {
+        let fixture = Fixture::with_suffixes(&[("first.md", "Zzyzxqtypo")], &BACKENDS[..1]);
+        let mut session = fixture.cli("fix", &["first.md"]);
+        session.prompt("1/1", "first.md");
+        session.replace_custom("Zzyzxqroots");
+        session.learning_prompt("Zzyzxqroots", true);
+        session.send(b"p");
+        session.plain_fallback_menu("Zzyzxqroots");
+        session.send(b"\x1b[A");
+        session.suffix_redraw("Zzyzxqroots", 1);
+        session.send(b"\r");
+        let entries = ["Zzyzxqroot/S", "Zzyzxqroots/S"];
+        session.stem_menu(&entries);
+        session.send(b"\r");
+        session.stem_editor("Zzyzxqroot");
+        session.send(b"\x1b");
+        session.stem_menu(&entries);
+        session.send(cancel);
+        // Returning from stems may retain the suffix selection. Home must select
+        // plain regardless, and cancelling here skips learning, not the edit.
+        session.expect(SUFFIX_PROMPT);
+        session.picker_redraw(SUFFIX_PROMPT);
+        session.send(b"\x1b[H");
+        session.suffix_redraw("Zzyzxqroots", 0);
+        session.send(cancel);
+        session.finish(17);
+        session.assert_prompt_count(1);
+        assert_eq!(fixture.read("first.md"), "Zzyzxqroots");
+        assert_eq!(fixture.read("lingo.dic"), "0\n");
+        fixture.assert_config_unchanged();
+        fixture.check(&["first.md"], 17);
+    }
+}
+
+#[test]
+fn ctrl_c_in_flagged_pickers_discards_prior_learning_and_source_edits() {
+    for stage in ["stems", "stem-editor", "confirmation"] {
+        let source = "Zzyzxqvocab Zzyzxqtypo";
+        let fixture = Fixture::with_suffixes(&[("first.md", source)], &BACKENDS[..1]);
+        let mut session = fixture.cli("fix", &["first.md"]);
+        session.prompt("1/2", "first.md");
+        session.accept_plain(UNKNOWN);
+        session.prompt("2/2", "first.md");
+        session.replace_custom("Zzyzxqroots");
+        session.learning_prompt("Zzyzxqroots", true);
+        session.send(b"\r");
+        session.plain_fallback_menu("Zzyzxqroots");
+        session.send(b"\x1b[A");
+        session.suffix_redraw("Zzyzxqroots", 1);
+        session.send(b"\r");
+        session.stem_menu(&["Zzyzxqroot/S", "Zzyzxqroots/S"]);
+        if stage != "stems" {
+            session.send(b"\r");
+            if stage == "stem-editor" {
+                session.stem_editor("Zzyzxqroot");
+            } else {
+                session.edit_stem("Zzyzxqroot", "Zzyzxqroot");
+                session.learning_confirmation("Zzyzxqroot/S", "Zzyzxqroot, Zzyzxqroots");
+            }
+        }
+        assert_eq!(fixture.read("first.md"), source);
+        assert_eq!(fixture.read("lingo.dic"), "0\n");
+        session.send(b"\x03");
+        session.finish(130);
+        session.assert_prompt_count(2);
+        assert_eq!(fixture.read("first.md"), source);
+        assert_eq!(fixture.read("lingo.dic"), "0\n");
+        fixture.assert_config_unchanged();
+    }
+}
+
+#[test]
+fn builtin_suffix_options_still_allow_explicit_plain_learning() {
+    for backend in BACKENDS {
+        for persistent in [false, true] {
+            // Plain learning remains an explicit choice alongside real builtin suffixes.
+            let fixture = Fixture::with_backends(
+                persistent,
+                &[("first.md", UNKNOWN), ("plural.md", "Zzyzxqvocabs")],
+                std::slice::from_ref(backend),
+            );
+            let mut session = fixture.cli("fix", &["first.md"]);
+            session.prompt("1/1", "first.md");
+            session.send(b"a");
+            session.learning_prompt(UNKNOWN, false);
+            session.edit_learning_word(UNKNOWN, UNKNOWN);
+            let flags = session.plain_fallback_menu(UNKNOWN);
+            assert!(flags.iter().any(|flag| flag == "S"), "{flags:?}");
+            session.send(b"\r");
+            session.edit_stem(UNKNOWN, UNKNOWN);
+            session.learning_confirmation(UNKNOWN, UNKNOWN);
+            assert_eq!(fixture.read("first.md"), UNKNOWN);
+            assert_eq!(fixture.read("lingo.dic"), "0\n");
+            session.send(b"y");
+            session.finish(0);
+            session.assert_prompt_count(1);
+            assert_eq!(fixture.read("first.md"), UNKNOWN);
+            assert_eq!(
+                fixture.read("lingo.dic"),
+                if persistent {
+                    "1\nZzyzxqvocab\n"
+                } else {
+                    "0\n"
+                }
+            );
+            fixture.assert_config_unchanged();
+            fixture.check(&["first.md"], if persistent { 0 } else { 17 });
+            fixture.check(&["plural.md"], 17);
+        }
+    }
+}
+
+#[test]
+fn replacement_learning_uses_session_overlay_for_plain_words_but_not_unlearned_plurals() {
+    for backend in BACKENDS {
+        for (use_editor, second_replacement) in
+            [(false, UNKNOWN), (true, UNKNOWN), (true, "Zzyzxqvocabs")]
+        {
+            let source = "Spelchekr Thirdwrng";
+            let fixture = Fixture::with_backends(
+                true,
+                &[("first.md", source)],
+                std::slice::from_ref(backend),
+            );
+            let mut session = fixture.cli("fix", &["first.md"]);
+            session.prompt("1/2", "first.md");
+            session.replace_custom(UNKNOWN);
+            session.learning_prompt(UNKNOWN, true);
+            if use_editor {
+                session.edit_learning_word(UNKNOWN, UNKNOWN);
+            } else {
+                session.send(b"p");
+            }
+            session.select_plain_fallback(UNKNOWN);
+            session.send(b"y");
+            session.prompt("2/2", "first.md");
+            // Neither the source nor the dictionary has been applied: only the
+            // session overlay can recognize the learned stem, never its plural.
+            assert_eq!(fixture.read("first.md"), source);
+            assert_eq!(fixture.read("lingo.dic"), "0\n");
+            session.replace_custom(second_replacement);
+            let is_plural = second_replacement != UNKNOWN;
+            if is_plural {
+                // The unlearned plural still needs an optional followup. Skipping
+                // it must not automatically add it to the pending dictionary.
+                session.learning_prompt(second_replacement, true);
+                session.send(b"n");
+            }
+            // A redundant prompt for the stem would block this finite deadline.
+            session.finish(17);
+            session.assert_prompt_count(2);
+            assert_eq!(
+                session.output().matches("Learn replacement ").count(),
+                if is_plural { 2 } else { 1 }
+            );
+            assert_eq!(
+                fixture.read("first.md"),
+                format!("{UNKNOWN} {second_replacement}")
+            );
+            assert_eq!(fixture.read("lingo.dic"), "1\nZzyzxqvocab\n");
+            fixture.assert_config_unchanged();
+            fixture.check(&["first.md"], if is_plural { 17 } else { 0 });
+        }
+    }
+}
+
+#[test]
+fn learning_word_editor_can_preedit_an_arbitrary_plain_stem_without_learning_its_plural() {
+    let stem = "Zzyzxqbase";
+    let fixture = Fixture::new(
+        true,
+        &[
+            ("first.md", UNKNOWN),
+            ("stem.md", stem),
+            ("plural.md", "Zzyzxqbases"),
+        ],
+    );
+    let mut session = fixture.cli("fix", &["first.md"]);
+    session.prompt("1/1", "first.md");
+    session.send(b"a");
+    session.learning_prompt(UNKNOWN, false);
+    session.edit_learning_word(UNKNOWN, stem);
+    session.select_plain_fallback(stem);
+    assert_eq!(fixture.read("first.md"), UNKNOWN);
+    assert_eq!(fixture.read("lingo.dic"), "0\n");
+    session.send(b"y");
+    // No source patch was selected, so fix succeeds even though the unchanged
+    // original remains a spelling mistake on the subsequent check.
+    session.finish(0);
+    session.assert_prompt_count(1);
+    assert_eq!(fixture.read("first.md"), UNKNOWN);
+    assert_eq!(fixture.read("lingo.dic"), "1\nZzyzxqbase\n");
+    fixture.assert_config_unchanged();
+    fixture.check(&["stem.md"], 0);
+    fixture.check(&["plural.md"], 17);
+    fixture.check(&["first.md"], 17);
+}
+
+#[test]
+fn learning_editor_handles_unicode_and_plain_entry_requires_explicit_confirmation() {
+    for confirm in [b"\r", b"n", b"\x1b", b"y"] {
+        let fixture = Fixture::new(true, &[("first.md", UNKNOWN)]);
+        let mut session = fixture.cli("fix", &["first.md"]);
+        session.prompt("1/1", "first.md");
+        session.send(b"a");
+        session.learning_prompt(UNKNOWN, false);
+        session.send(b"e");
+        session.expect(&format!("{WORD_PROMPT}{UNKNOWN}"));
+        session.send("naïve🦀".as_bytes());
+        session.expect(&format!("{WORD_PROMPT}{UNKNOWN}naïve🦀"));
+        session.send(b"\x7f");
+        session.expect(&format!("{WORD_PROMPT}{UNKNOWN}naïve"));
+        session.send(b"\x15");
+        session.expect(WORD_PROMPT);
+        session.send(UNKNOWN.as_bytes());
+        session.expect(&format!("{WORD_PROMPT}{UNKNOWN}"));
+        session.send(b"\r");
+        session.select_plain_fallback(UNKNOWN);
+        assert_eq!(fixture.read("lingo.dic"), "0\n");
+        session.send(confirm);
+        let yes = confirm == b"y";
+        if !yes {
+            session.prompt("1/1", "first.md");
+            session.send(b"q");
+        }
+        session.finish(0);
+        session.assert_prompt_count(if yes { 1 } else { 2 });
+        assert_eq!(fixture.read("first.md"), UNKNOWN);
+        assert_eq!(
+            fixture.read("lingo.dic"),
+            if yes { "1\nZzyzxqvocab\n" } else { "0\n" }
+        );
+        fixture.assert_config_unchanged();
+    }
+}
+
+#[test]
+fn cancelling_acceptance_or_backing_out_of_the_editor_does_not_learn() {
+    for stage in [
+        "followup-n",
+        "followup-esc",
+        "word",
+        "suffix-n",
+        "suffix-esc",
+        "plain-stem",
+    ] {
+        let fixture = Fixture::new(true, &[("first.md", UNKNOWN)]);
+        let mut session = fixture.cli("fix", &["first.md"]);
+        session.prompt("1/1", "first.md");
+        session.send(b"a");
+        session.learning_prompt(UNKNOWN, false);
+        match stage {
+            "followup-n" => session.send(b"n"),
+            "followup-esc" => session.send(b"\x1b"),
+            _ => {
+                if stage == "word" {
+                    session.send(b"e");
+                    session.expect(&format!("{WORD_PROMPT}{UNKNOWN}"));
+                    session.send(b"\x1b");
+                } else {
+                    session.send(b"\r");
+                    session.plain_fallback_menu(UNKNOWN);
+                    if stage == "plain-stem" {
+                        session.send(b"\r");
+                        session.stem_editor(UNKNOWN);
+                        session.send(b"\x1b");
+                        session.plain_fallback_menu(UNKNOWN);
+                    }
+                    session.send(if stage == "suffix-n" { b"n" } else { b"\x1b" });
+                }
+            }
+        }
+        session.prompt("1/1", "first.md");
+        session.send(b"q");
+        session.finish(0);
+        session.assert_prompt_count(2);
+        assert_eq!(fixture.read("first.md"), UNKNOWN);
+        assert_eq!(fixture.read("lingo.dic"), "0\n");
+        fixture.assert_config_unchanged();
+    }
+}
+
+#[test]
+fn ctrl_c_at_each_learning_stage_discards_pending_source_edits_and_plain_entries() {
+    for stage in [
+        "replacement-followup",
+        "followup",
+        "word",
+        "suffix",
+        "stem-editor",
+        "confirmation",
+    ] {
+        let fixture = Fixture::new(true, &[("first.md", MISTAKES)]);
+        let mut session = fixture.cli("fix", &["first.md"]);
+        session.prompt("1/3", "first.md");
+        session.accept_plain(UNKNOWN);
+        session.prompt("2/3", "first.md");
+        session.replace_custom("Zzyzxqcorrection");
+        session.learning_prompt("Zzyzxqcorrection", true);
+        if stage != "replacement-followup" {
+            session.send(b"n");
+            session.prompt("3/3", "first.md");
+            session.send(b"a");
+            session.learning_prompt("Thirdwrng", false);
+            match stage {
+                "word" => {
+                    session.send(b"e");
+                    session.expect(&format!("{WORD_PROMPT}Thirdwrng"));
+                }
+                "suffix" | "stem-editor" | "confirmation" => {
+                    session.edit_learning_word("Thirdwrng", "Thirdwrng");
+                    if stage == "confirmation" {
+                        session.select_plain_fallback("Thirdwrng");
+                    } else {
+                        session.plain_fallback_menu("Thirdwrng");
+                        if stage == "stem-editor" {
+                            session.send(b"\r");
+                            session.stem_editor("Thirdwrng");
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        assert_eq!(fixture.read("first.md"), MISTAKES);
+        assert_eq!(fixture.read("lingo.dic"), "0\n");
+        session.send(b"\x03");
+        session.finish(130);
+        session.assert_prompt_count(if stage == "replacement-followup" {
+            2
+        } else {
+            3
+        });
+        assert_eq!(fixture.read("first.md"), MISTAKES);
+        assert_eq!(fixture.read("lingo.dic"), "0\n");
+        fixture.assert_config_unchanged();
+    }
 }

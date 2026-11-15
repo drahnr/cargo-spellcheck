@@ -1277,6 +1277,165 @@ struct Example;"#,
         assert!(checkers.verify_words(&words).is_err());
     }
 
+    fn reload_learned_affixes_for_existing_root(detector: Detector) {
+        let (base, affixes, empty, learned, source, expected_markdown, forms, expected_unknown) = (
+            r#"2
+Test
+terminate/DS
+"#,
+            r#"SET UTF-8
+PFX U Y 1
+PFX U 0 un .
+SFX D Y 2
+SFX D 0 ed [^e]
+SFX D 0 d e
+SFX S Y 1
+SFX S 0 s .
+"#,
+            r#"0
+"#,
+            r#"1
+terminate/UD
+"#,
+            r#"/// Test terminate terminated terminates unterminate unterminated
+struct Example;"#,
+            r#" Test terminate terminated terminates unterminate unterminated"#,
+            [
+                ("Test", true),
+                ("terminate", true),
+                ("terminated", true),
+                ("terminates", true),
+                ("unterminate", false),
+                ("unterminated", false),
+            ],
+            ["unterminate", "unterminated"],
+        );
+        let dictionary = ExtraDictionary::new();
+        fs::write(dictionary.directory.join("en_US.dic"), base).unwrap();
+        fs::write(dictionary.directory.join("en_US.aff"), affixes).unwrap();
+        fs::write(&dictionary.path, empty).unwrap();
+        let mut config = spelling_config(&[detector], vec![dictionary.path.clone()]);
+        for spelling in [&mut config.hunspell, &mut config.spellbook, &mut config.zet]
+            .into_iter()
+            .flatten()
+        {
+            spelling.search_dirs = vec![dictionary.directory.clone()].into();
+            spelling.use_builtin = false;
+        }
+        let mut checkers = Checkers::new(config).unwrap();
+        for (word, recognized) in forms {
+            assert_eq!(
+                checkers.contains_word(word),
+                recognized,
+                "{detector}: {word} before learning"
+            );
+        }
+        let documents =
+            Documentation::load_from_str(ContentOrigin::TestEntityRust, source, true, false);
+        let (origin, chunks) = documents.iter().next().unwrap();
+        assert_eq!(
+            Vec::from_iter(chunks.iter().map(|chunk| chunk.as_str())),
+            [expected_markdown]
+        );
+        let checked_tokens = |suggestions: Vec<Suggestion<'_>>| {
+            Vec::from_iter(
+                suggestions
+                    .into_iter()
+                    .map(|suggestion| suggestion.checked_word.unwrap()),
+            )
+        };
+        assert_eq!(
+            checked_tokens(checkers.check(origin, chunks).unwrap()),
+            expected_unknown,
+            "{detector}"
+        );
+
+        // Learning U must preserve the base-only S flag from terminate/DS.
+        fs::write(&dictionary.path, learned).unwrap();
+        assert!(!checkers.contains_word(expected_unknown[0]), "{detector}");
+        assert_eq!(
+            checked_tokens(checkers.check(origin, chunks).unwrap()),
+            expected_unknown,
+            "{detector}"
+        );
+        checkers.reload_dictionaries().unwrap();
+        let words = BTreeSet::from(forms.map(|(word, _)| word.to_owned()));
+        checkers
+            .verify_words(&words)
+            .unwrap_or_else(|error| panic!("{detector}: {error}"));
+        for word in &words {
+            assert!(
+                checkers.contains_word(word),
+                "{detector}: {word} after reload"
+            );
+        }
+        assert!(
+            checkers.check(origin, chunks).unwrap().is_empty(),
+            "{detector}"
+        );
+        assert_eq!(fs::read_to_string(&dictionary.path).unwrap(), learned);
+    }
+
+    #[cfg(feature = "hunspell")]
+    #[test]
+    fn hunspell_reloads_learned_affixes_for_existing_root() {
+        reload_learned_affixes_for_existing_root(Detector::Hunspell);
+    }
+
+    #[cfg(feature = "spellbook")]
+    #[test]
+    fn spellbook_reloads_learned_affixes_for_existing_root() {
+        reload_learned_affixes_for_existing_root(Detector::Spellbook);
+    }
+
+    #[cfg(feature = "zet")]
+    #[test]
+    fn zspell_reloads_learned_affixes_for_existing_root() {
+        reload_learned_affixes_for_existing_root(Detector::ZSpell);
+    }
+
+    #[cfg(feature = "hunspell")]
+    #[test]
+    fn hunspell_builtin_dictionary_accepts_learned_unterminate() {
+        let (empty, learned, original_forms, learned_forms) = (
+            r#"0
+"#,
+            r#"1
+terminate/UD
+"#,
+            [
+                "terminate",
+                "terminated",
+                "terminates",
+                "terminating",
+                "termination",
+                "terminations",
+            ],
+            ["unterminate", "unterminated"],
+        );
+        let dictionary = ExtraDictionary::new();
+        fs::write(&dictionary.path, empty).unwrap();
+        let mut config = spelling_config(&[Detector::Hunspell], vec![dictionary.path.clone()]);
+        config.hunspell.as_mut().unwrap().search_dirs = vec![].into();
+        let mut checkers = Checkers::new(config.clone()).unwrap();
+        let original_forms = BTreeSet::from(original_forms.map(str::to_owned));
+        let learned_forms = BTreeSet::from(learned_forms.map(str::to_owned));
+        checkers.verify_words(&original_forms).unwrap();
+        assert!(checkers.verify_words(&learned_forms).is_err());
+
+        // The builtin terminate/DSGNX must not shadow this learned homonym.
+        fs::write(&dictionary.path, learned).unwrap();
+        assert!(checkers.verify_words(&learned_forms).is_err());
+        checkers.reload_dictionaries().unwrap();
+        checkers.verify_words(&learned_forms).unwrap();
+        checkers.verify_words(&original_forms).unwrap();
+        Checkers::new(config)
+            .unwrap()
+            .verify_words(&learned_forms)
+            .unwrap();
+        assert_eq!(fs::read_to_string(&dictionary.path).unwrap(), learned);
+    }
+
     fn assert_rejection_names_word_and_backend(error: impl std::fmt::Display, detector: Detector) {
         let message = error.to_string();
         assert!(message.contains(WORD), "{message}");

@@ -1,5 +1,6 @@
 //! Backend-independent validation and opt-in persistence in Hunspell dictionary format.
 
+use super::entry::DictionaryEntry;
 use super::DictionaryStore;
 use crate::errors::*;
 use std::collections::BTreeSet;
@@ -33,23 +34,33 @@ impl DictionaryStore for DictionaryFile {
     fn update(&self, words: &BTreeSet<String>) -> Result<()> {
         persist_words(&self.path, words)
     }
+
+    fn update_entries(&self, entries: &BTreeSet<DictionaryEntry>) -> Result<()> {
+        if entries.iter().all(|entry| entry.flags().is_none()) {
+            return self.update(
+                &entries
+                    .iter()
+                    .map(|entry| entry.word().to_owned())
+                    .collect(),
+            );
+        }
+        persist_entries(&self.path, entries)
+    }
+
+    fn read_entries(&self) -> Result<BTreeSet<String>> {
+        let contents =
+            fs_err::read_to_string(&self.path).wrap_err("Could not read a UTF-8 dictionary")?;
+        Ok(parse_dictionary(&contents)?
+            .entry_tokens
+            .into_iter()
+            .map(str::to_owned)
+            .collect())
+    }
 }
 
 /// Accept a single literal word, never flags, morphology, or dictionary syntax.
 pub(super) fn validate_word(word: &str) -> Result<()> {
-    if word.is_empty()
-        || word.parse::<i64>().is_ok()
-        || word.starts_with('#')
-        || word.chars().any(|ch| {
-            ch.is_whitespace() || ch.is_control() || matches!(ch, '/' | '\\' | '\u{feff}')
-        })
-    {
-        bail!(
-            "Cannot accept {:?}: expected one nonnumeric plain Hunspell word without whitespace, control characters, flags, escapes, or dictionary syntax",
-            word
-        );
-    }
-    Ok(())
+    super::entry::validate_word(word)
 }
 
 /// Merge accepted words into an existing UTF-8 dictionary without changing TOML.
@@ -59,16 +70,28 @@ pub(super) fn persist_words(path: &Path, words: &BTreeSet<String>) -> Result<()>
     if words.is_empty() {
         return Ok(());
     }
-    for word in words {
-        validate_word(word)?;
-    }
+    let entries = words
+        .iter()
+        .cloned()
+        .map(DictionaryEntry::plain)
+        .collect::<Result<BTreeSet<_>>>()?;
 
-    persistence::persist(path, words)
+    persistence::persist(path, &entries)
         .wrap_err_with(|| format!("Could not persist accepted words to {}", path.display()))
+}
+
+/// Merge confirmed entries, whose flags can only be constructed by the affix catalog.
+pub(super) fn persist_entries(path: &Path, entries: &BTreeSet<DictionaryEntry>) -> Result<()> {
+    if entries.is_empty() {
+        return Ok(());
+    }
+    persistence::persist(path, entries)
+        .wrap_err_with(|| format!("Could not persist accepted entries to {}", path.display()))
 }
 
 struct ParsedDictionary<'a> {
     entries: Vec<&'a str>,
+    entry_tokens: BTreeSet<&'a str>,
     stems: BTreeSet<&'a str>,
     plain_stems: BTreeSet<&'a str>,
 }
@@ -85,6 +108,7 @@ fn parse_dictionary(contents: &str) -> Result<ParsedDictionary<'_>> {
         bail!("Malformed dictionary: expected a numeric entry count on the first line");
     }
     let mut entries = Vec::new();
+    let mut entry_tokens = BTreeSet::new();
     let mut stems = BTreeSet::new();
     let mut plain_stems = BTreeSet::new();
     for (index, entry) in lines.enumerate() {
@@ -95,6 +119,7 @@ fn parse_dictionary(contents: &str) -> Result<ParsedDictionary<'_>> {
         if stem.is_empty() || entry.chars().any(|ch| ch.is_control() && ch != '\t') {
             bail!("Malformed dictionary entry on line {}", index + 2);
         }
+        entry_tokens.insert(entry.split(char::is_whitespace).next().unwrap_or(""));
         stems.insert(stem);
         if !entry[stem.len()..].starts_with('/') {
             plain_stems.insert(stem);
@@ -103,6 +128,7 @@ fn parse_dictionary(contents: &str) -> Result<ParsedDictionary<'_>> {
     }
     Ok(ParsedDictionary {
         entries,
+        entry_tokens,
         stems,
         plain_stems,
     })
@@ -114,7 +140,7 @@ mod persistence {
     use std::ffi::OsString;
     use std::io::Write;
 
-    pub(super) fn persist(path: &Path, words: &BTreeSet<String>) -> Result<()> {
+    pub(super) fn persist(path: &Path, accepted: &BTreeSet<DictionaryEntry>) -> Result<()> {
         let mut lock_path = path.as_os_str().to_os_string();
         lock_path.push(".cargo-spellcheck.lock");
         let lock_file = fs::OpenOptions::new()
@@ -131,18 +157,25 @@ mod persistence {
             .file()
             .lock()
             .wrap_err("Could not lock the learning dictionary")?;
+        // Do not defer shutdown while waiting for another process's file lock.
+        let _hat = crate::TinHat::on();
 
         let contents = fs::read_to_string(path).wrap_err("Could not read a UTF-8 dictionary")?;
         let ParsedDictionary {
             entries,
+            entry_tokens,
             plain_stems,
             ..
         } = parse_dictionary(&contents)?;
-        // Flagged entries may forbid standalone use; explicit acceptance needs
-        // an unflagged entry, with or without morphology, for the same stem.
-        let additions = words
+        // Flagged entries may forbid standalone use; explicit plain acceptance
+        // still needs an unflagged entry, with or without morphology. Confirmed
+        // flags instead deduplicate only against the exact existing entry token.
+        let additions = accepted
             .iter()
-            .filter(|word| !plain_stems.contains(word.as_str()))
+            .filter(|entry| match entry.flags() {
+                None => !plain_stems.contains(entry.word()),
+                Some(_) => !entry_tokens.contains(entry.to_line().as_str()),
+            })
             .collect::<Vec<_>>();
         // Recount entries rather than trusting a stale count in the old header.
         let count = entries.len() + additions.len();
@@ -156,8 +189,8 @@ mod persistence {
             merged.push_str(entry);
             merged.push_str(newline);
         }
-        for word in additions {
-            merged.push_str(word);
+        for entry in additions {
+            merged.push_str(&entry.to_line());
             merged.push_str(newline);
         }
         if merged == contents {
