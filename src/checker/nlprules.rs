@@ -152,6 +152,7 @@ fn check_chunk<'a>(
                     replacements: replacements.to_vec(),
                     chunk,
                     description: Some(message.to_owned()),
+                    checked_word: None,
                 }),
         );
     }

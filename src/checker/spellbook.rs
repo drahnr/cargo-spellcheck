@@ -109,6 +109,10 @@ impl SpellbookChecker {
         let hunspell = Arc::new(inner);
         Ok(SpellbookChecker(hunspell, tokenizer))
     }
+
+    pub(super) fn contains_word(&self, word: &str) -> bool {
+        self.spellbook.check(word)
+    }
 }
 
 impl Checker for SpellbookChecker {
@@ -233,6 +237,7 @@ fn obtain_suggestions<'s>(
             for (range, span) in plain.find_spans(range.clone()) {
                 acc.push(Suggestion {
                     detector: Detector::Spellbook,
+                    checked_word: Some(word.clone()),
                     range,
                     span,
                     origin: origin.clone(),

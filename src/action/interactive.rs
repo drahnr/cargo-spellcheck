@@ -15,9 +15,13 @@ use crossterm::{
 
 use std::io::stdout;
 
+use super::learning::SessionResolutions;
+
 const HELP: &str = r##"y - apply this suggestion
 n - do not apply the suggested correction
-q - quit; do not stage this hunk or any of the remaining ones
+a - accept the original spelling (session-only unless learning_dictionary is configured)
+q - quit and apply choices made so far
+Ctrl-C - abort and discard all choices
 d - do not apply this suggestion and skip the rest of the file
 g - select a suggestion to go to
 j - leave this hunk undecided, see next undecided hunk
@@ -61,14 +65,13 @@ impl Drop for ScopedRaw {
     }
 }
 
-/// In which direction we should progress.
-#[derive(Debug, Clone, Copy)]
-enum Direction {
-    /// In order.
-    Forward,
-    /// Reverse order from the current position.
-    #[allow(unused)]
-    Backward,
+/// The only document-level outcomes exposed to the session orchestrator.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum DocumentOutcome {
+    Complete,
+    SkipFile,
+    Quit,
+    Abort,
 }
 
 /// The user picked something. This is the pick representation.
@@ -76,6 +79,8 @@ enum Direction {
 pub(super) enum UserSelection {
     /// This `BandAid` is going to be applied.
     Replacement(BandAid),
+    /// Accept the original spelling as project vocabulary.
+    AcceptWord,
     /// Skip this suggestion and move on to the next suggestion.
     Skip,
     /// Jump to the previous suggestion.
@@ -94,12 +99,14 @@ pub(super) enum UserSelection {
 
 /// Statefulness for the selection process
 #[derive(Debug)]
-struct State<'s, 't>
+pub(super) struct State<'s, 't>
 where
     't: 's,
 {
     /// Which suggestion is operated upon.
     pub suggestion: &'s Suggestion<'t>,
+    /// Eligibility supplied by the session's vocabulary policy.
+    pub can_accept: bool,
     /// The content the user provided for the suggestion, if any.
     pub custom_replacement: String,
     pub cursor_offset: u16,
@@ -115,6 +122,7 @@ impl<'s, 't> From<&'s Suggestion<'t>> for State<'s, 't> {
     fn from(suggestion: &'s Suggestion<'t>) -> Self {
         Self {
             suggestion,
+            can_accept: false,
             custom_replacement: String::new(),
             cursor_offset: 0,
             // TODO only suggest this if this doesn't have spaces and/or parses with `ap_syntax`
@@ -160,6 +168,16 @@ where
 
     pub fn is_ticked_entry(&self) -> bool {
         self.pick_idx == 1
+    }
+
+    // Display omits two replacement rows when none are available. Reserve them
+    // before the prompt so its cursor movement cannot erase the source context.
+    fn prompt_padding(&self) -> &'static str {
+        if self.suggestion.replacements.is_empty() {
+            "\n\n"
+        } else {
+            ""
+        }
     }
 
     /// Convert the replacement to a `BandAid`
@@ -225,7 +243,9 @@ impl UserPicked {
 
     /// Join two `UserPick`s.
     pub fn extend(&mut self, other: Self) {
-        self.bandaids.extend(other.bandaids);
+        for (origin, bandaids) in other.bandaids {
+            self.add_bandaids(&origin, bandaids);
+        }
     }
 
     /// Provide a replacement that was not provided by the backend
@@ -367,6 +387,7 @@ impl UserPicked {
         running_idx: usize,
         total: usize,
     ) -> Result<UserSelection> {
+        write!(stdout(), "{}", state.prompt_padding())?;
         let skip = {
             let _guard = ScopedRaw::new();
 
@@ -374,10 +395,16 @@ impl UserPicked {
             boring.foreground_color = Some(Color::Blue);
             boring.attributes = Attribute::Bold.into();
 
+            let acceptance = if state.can_accept {
+                ",a=accept word"
+            } else {
+                ""
+            };
             let question = format!(
-                "({nth}/{of_n}) Apply this suggestion [y,n,q,a,d,j,e,?]?",
+                "({nth}/{of_n}) Apply this suggestion [y,n,q{acceptance},d,j,e,?]?",
                 nth = running_idx + 1,
-                of_n = total
+                of_n = total,
+                acceptance = acceptance
             );
 
             // a new suggestion, so prepare for the number of items that are visible
@@ -465,6 +492,9 @@ impl UserPicked {
                     // TODO handle interactive intput for those where there are no suggestions
                     return Ok(UserSelection::Replacement(bandaid));
                 }
+                KeyCode::Char('a') if state.can_accept => {
+                    return Ok(UserSelection::AcceptWord);
+                }
                 KeyCode::Char('n') => return Ok(UserSelection::Skip),
                 KeyCode::Char('j') => return Ok(UserSelection::Previous),
                 KeyCode::Char('q') | KeyCode::Esc => return Ok(UserSelection::Quit),
@@ -485,65 +515,72 @@ impl UserPicked {
         unreachable!("Unexpected return when dealing with user input")
     }
 
-    pub(super) fn select_interactive(
+    pub(super) fn select_interactive<'s>(
         origin: ContentOrigin,
-        suggestions: Vec<Suggestion<'_>>,
+        suggestions: Vec<Suggestion<'s>>,
+        resolutions: &mut SessionResolutions,
         output_paths: &OutputPaths,
-    ) -> Result<(Self, UserSelection)> {
+    ) -> Result<(Self, DocumentOutcome)> {
+        Self::select_with_paths(
+            origin,
+            suggestions,
+            resolutions,
+            output_paths,
+            |picked, state, idx, count| picked.user_input(state, idx, count),
+        )
+    }
+
+    #[cfg(test)]
+    pub(super) fn select_with<'s>(
+        origin: ContentOrigin,
+        suggestions: Vec<Suggestion<'s>>,
+        resolutions: &mut SessionResolutions,
+        input: impl FnMut(&Self, &mut State<'_, 's>, usize, usize) -> Result<UserSelection>,
+    ) -> Result<(Self, DocumentOutcome)> {
+        let output_paths = OutputPaths::new(&[], false)?;
+        Self::select_with_paths(origin, suggestions, resolutions, &output_paths, input)
+    }
+
+    fn select_with_paths<'s>(
+        origin: ContentOrigin,
+        suggestions: Vec<Suggestion<'s>>,
+        resolutions: &mut SessionResolutions,
+        output_paths: &OutputPaths,
+        mut input: impl FnMut(&Self, &mut State<'_, 's>, usize, usize) -> Result<UserSelection>,
+    ) -> Result<(Self, DocumentOutcome)> {
         let count = suggestions.len();
         let mut picked = UserPicked::default();
 
-        let mut suggestions_it = suggestions.iter().enumerate();
-        let start = suggestions_it.clone();
-
-        // TODO make use of it
-        let direction = Direction::Forward;
-        'outer: loop {
-            let opt_next = match direction {
-                Direction::Forward => suggestions_it.next(),
-                // FIXME TODO this is just plain wrong
-                Direction::Backward => suggestions_it.next_back(),
-            };
-
-            log::trace!("next() ---> {opt_next:?}");
-
-            let (idx, suggestion) = match opt_next {
-                Some(x) => x,
-                None => match direction {
-                    Direction::Forward => {
-                        log::trace!("completed file, continue to next");
-                        break; // we completed this file, move on to the next
-                    }
-                    Direction::Backward => {
-                        log::trace!("went back, now back at the beginning");
-                        suggestions_it = start.clone();
-                        continue;
-                    } // go to the start
-                },
-            };
-            if suggestion.replacements.is_empty() {
-                log::trace!("BUG: Suggestion did not contain a replacement, skip");
+        for (idx, suggestion) in suggestions.iter().enumerate() {
+            // Suggestions are generated before interaction; consult session state
+            // here so acceptance also suppresses queued duplicates in this chunk.
+            if resolutions.accepts(suggestion) {
                 continue;
             }
             let path = output_paths.path(suggestion.origin.as_path());
             println!("{}", suggestion.display_with_path(&path));
 
             let mut state = State::from(suggestion);
+            state.can_accept = resolutions.can_accept(suggestion);
 
             'inner: loop {
-                match picked.user_input(&mut state, idx, count)? {
-                    usel @ (UserSelection::Abort | UserSelection::Quit) => {
-                        let _ = ScopedRaw::restore_terminal();
-                        return Ok((picked, usel));
-                    }
-                    UserSelection::SkipFile => break 'outer,
+                match input(&picked, &mut state, idx, count)? {
+                    UserSelection::Abort => return Ok((picked, DocumentOutcome::Abort)),
+                    UserSelection::Quit => return Ok((picked, DocumentOutcome::Quit)),
+                    UserSelection::SkipFile => return Ok((picked, DocumentOutcome::SkipFile)),
                     UserSelection::Previous => {
-                        log::warn!("Requires a iterator which works bidrectionally");
+                        log::warn!("Requires an iterator which works bi-directionally");
                         continue 'inner;
                     }
                     UserSelection::Help => {
                         println!("{HELP}");
                         continue 'inner;
+                    }
+                    UserSelection::AcceptWord => {
+                        if let Err(error) = resolutions.accept(suggestion) {
+                            log::warn!("{}", error);
+                            continue 'inner;
+                        }
                     }
                     UserSelection::Replacement(bandaid) => {
                         picked.add_bandaid(&origin, bandaid);
@@ -553,6 +590,9 @@ impl UserPicked {
                 break 'inner;
             }
         }
-        Ok((picked, UserSelection::Nop))
+        Ok((picked, DocumentOutcome::Complete))
     }
 }
+
+#[cfg(test)]
+mod tests;

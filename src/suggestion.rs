@@ -315,6 +315,9 @@ pub struct Suggestion<'s> {
     pub span: Span,
     /// Range relative to the chunk the current suggestion is located.
     pub range: Range,
+    /// Exact token checked by a spelling backend before mapping to source spans.
+    /// Its presence enables vocabulary acceptance; grammar and reflow use `None`.
+    pub checked_word: Option<String>,
     /// Fix suggestions, might be words or the full sentence together with
     /// leading whitespaces for some `CommentVariant`s.
     pub replacements: Vec<String>,

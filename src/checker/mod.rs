@@ -10,6 +10,9 @@ use crate::errors::*;
 mod cached;
 use self::cached::Cached;
 
+mod dictionary;
+pub(crate) use self::dictionary::DictionaryReload;
+
 use std::collections::HashSet;
 
 mod tokenize;
@@ -77,6 +80,7 @@ pub trait Checker {
 ///
 /// Only configured checkers are used.
 pub struct Checkers {
+    config: Config,
     #[cfg(feature = "hunspell")]
     hunspell: Option<HunspellChecker>,
     #[cfg(feature = "zet")]
@@ -132,6 +136,7 @@ impl Checkers {
             config.nlprules.as_ref()
         );
         Ok(Self {
+            config,
             #[cfg(feature = "hunspell")]
             hunspell,
             #[cfg(feature = "zet")]
@@ -141,6 +146,50 @@ impl Checkers {
             #[cfg(feature = "nlprules")]
             nlprules,
         })
+    }
+}
+
+impl DictionaryReload for Checkers {
+    fn reload_dictionaries(&mut self) -> Result<()> {
+        // Reconstruct all active engines (including NLP for now) using the original config.
+        // Do not replace any live engine unless every replacement initialized successfully.
+        let replacement = Self::new(self.config.clone())?;
+        *self = replacement;
+        Ok(())
+    }
+
+    fn verify_words(&self, _words: &std::collections::BTreeSet<String>) -> Result<()> {
+        #[cfg(any(feature = "hunspell", feature = "spellbook", feature = "zet"))]
+        for word in _words {
+            #[cfg(feature = "hunspell")]
+            if let Some(engine) = &self.hunspell {
+                if !engine.contains_word(word)? {
+                    bail!(
+                        "{} dictionary rejects accepted word {word:?} as a standalone word",
+                        HunspellChecker::detector()
+                    );
+                }
+            }
+            #[cfg(feature = "zet")]
+            if let Some(engine) = &self.zet {
+                if !engine.contains_word(word) {
+                    bail!(
+                        "{} dictionary rejects accepted word {word:?} as a standalone word",
+                        ZetChecker::detector()
+                    );
+                }
+            }
+            #[cfg(feature = "spellbook")]
+            if let Some(engine) = &self.spellbook {
+                if !engine.contains_word(word) {
+                    bail!(
+                        "{} dictionary rejects accepted word {word:?} as a standalone word",
+                        SpellbookChecker::detector()
+                    );
+                }
+            }
+        }
+        Ok(())
     }
 }
 
@@ -177,27 +226,37 @@ impl Checker for Checkers {
             collective.extend(nlprule.check(origin, chunks)?);
         }
 
-        let mut suggestions: Vec<Suggestion<'s>> = Vec::from_iter(collective);
-        suggestions.sort();
-        deduplicate_by_source(&mut suggestions);
-        if suggestions.is_empty() {
-            return Ok(suggestions);
-        }
-
-        // Iterate through suggestions and identify overlapping ones.
-        let mut retained = Vec::<Suggestion<'s>>::with_capacity(suggestions.len());
-        for suggestion in suggestions {
-            if retained
-                .last()
-                .is_some_and(|previous| suggestion.is_overlapped(previous))
-            {
-                continue;
-            }
-            retained.push(suggestion);
-        }
-
-        Ok(retained)
+        Ok(normalize_suggestions(Vec::from_iter(collective)))
     }
+}
+
+fn normalize_suggestions(mut suggestions: Vec<Suggestion<'_>>) -> Vec<Suggestion<'_>> {
+    // For equal spans, prefer checked-word metadata so deduplication retains
+    // a representative that supports interactive acceptance, regardless of backend.
+    suggestions.sort_by(|left, right| {
+        left.cmp(right)
+            .then_with(|| {
+                right
+                    .checked_word
+                    .is_some()
+                    .cmp(&left.checked_word.is_some())
+            })
+            .then_with(|| left.detector.as_str().cmp(right.detector.as_str()))
+    });
+
+    deduplicate_by_source(&mut suggestions);
+
+    let mut retained = Vec::<Suggestion<'_>>::with_capacity(suggestions.len());
+    for suggestion in suggestions {
+        if retained
+            .last()
+            .is_some_and(|previous| suggestion.is_overlapped(previous))
+        {
+            continue;
+        }
+        retained.push(suggestion);
+    }
+    retained
 }
 
 /// Alternative chunks can report the same source text at different local ranges.

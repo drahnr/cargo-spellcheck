@@ -298,6 +298,10 @@ impl HunspellChecker {
         let hunspell = Arc::new(inner);
         Ok(HunspellChecker(hunspell, tokenizer))
     }
+
+    pub(super) fn contains_word(&self, word: &str) -> Result<bool> {
+        Ok(self.hunspell.check(word)? == CheckResult::FoundInDictionary)
+    }
 }
 
 impl Checker for HunspellChecker {
@@ -424,6 +428,7 @@ fn obtain_suggestions<'s>(
             for (range, span) in plain.find_spans(range.clone()) {
                 acc.push(Suggestion {
                     detector: Detector::Hunspell,
+                    checked_word: Some(word.clone()),
                     range,
                     span,
                     origin: origin.clone(),
