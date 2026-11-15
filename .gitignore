@@ -1,2 +1,4 @@
 /target
 .vscode/settings.json
+# Stable advisory locks for source updates and dictionary learning.
+*.cargo-spellcheck.lock
