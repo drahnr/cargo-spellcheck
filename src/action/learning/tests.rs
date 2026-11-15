@@ -495,6 +495,7 @@ fn extension_patterns_validate_policy_before_requiring_configuration() {
 #[cfg(any(feature = "hunspell", feature = "zet", feature = "spellbook"))]
 mod affix_sessions {
     use super::*;
+    use crate::checker::SpellcheckResult;
     use crate::config::HunspellConfig;
     use std::collections::BTreeMap;
     use std::path::PathBuf;
@@ -741,7 +742,10 @@ mod affix_sessions {
                 .unwrap();
             assert_eq!(fs_err::read_to_string(&target).unwrap(), "1\nTokio/S\n");
             assert!(
-                engines.contains_word("Tokios"),
+                matches!(
+                    engines.word_membership("Tokios").unwrap(),
+                    SpellcheckResult::Recognized
+                ),
                 "{backend}"
             );
             fs_err::remove_dir_all(target.parent().unwrap()).unwrap();
@@ -757,7 +761,10 @@ mod affix_sessions {
             let before = fixture.snapshot();
             let mut engines =
                 crate::checker::Checkers::new(session.config.clone().unwrap()).unwrap();
-            assert!(!engines.contains_word("Tokios"));
+            assert!(matches!(
+                engines.word_membership("Tokios").unwrap(),
+                SpellcheckResult::Unrecognized(_)
+            ));
             let stem_chunk = chunk("Tokio");
             session
                 .accept(&suggestion(&stem_chunk, 0..5, Detector::Spellbook))
@@ -840,7 +847,10 @@ mod affix_sessions {
                 "unfoobared".into(),
             ]);
             for word in &forms {
-                assert!(!engines.contains_word(word));
+                assert!(matches!(
+                    engines.word_membership(word).unwrap(),
+                    SpellcheckResult::Unrecognized(_)
+                ));
             }
             for (word, prefix, suffix, line) in [
                 ("unfoobar", Some("U"), None, "foobar/U"),

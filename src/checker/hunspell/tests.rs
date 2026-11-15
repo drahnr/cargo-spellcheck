@@ -179,14 +179,30 @@ fn membership_verification_propagates_native_failures() {
         ..Default::default()
     })
     .unwrap();
+    assert_eq!(
+        checkers.word_membership(known).unwrap(),
+        crate::checker::SpellcheckResult::Recognized
+    );
+    assert_eq!(
+        checkers.word_membership(unknown).unwrap(),
+        crate::checker::SpellcheckResult::Unrecognized(Detector::Hunspell)
+    );
     let checker = checkers.hunspell.as_ref().unwrap();
-    assert!(checker.contains_word(known).unwrap());
-    assert!(!checker.contains_word(unknown).unwrap());
+    assert_eq!(
+        checker.contains_word(known).unwrap(),
+        crate::checker::SpellcheckResult::Recognized
+    );
+    assert_eq!(
+        checker.contains_word(unknown).unwrap(),
+        crate::checker::SpellcheckResult::Unrecognized(Detector::Hunspell)
+    );
 
     let words = std::collections::BTreeSet::from([invalid.to_owned()]);
     let error = crate::checker::DictionaryReload::verify_words(&checkers, &words).unwrap_err();
     assert!(error.to_string().contains(panic_message), "{error}");
     let error = checker.contains_word(known).unwrap_err();
+    assert!(error.to_string().contains(poisoned_message), "{error}");
+    let error = checkers.word_membership(known).unwrap_err();
     assert!(error.to_string().contains(poisoned_message), "{error}");
 }
 
