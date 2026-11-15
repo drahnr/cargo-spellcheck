@@ -81,6 +81,7 @@ impl SessionFixture {
         Action::Fix.run_fix_interactive_with(
             std::mem::replace(&mut self.documents, Documentation::new()),
             self.config.clone(),
+            &self.directory,
             |origin, suggestions, resolutions, _checkers| {
                 UserPicked::select_with(origin, suggestions, resolutions, &mut input)
             },
@@ -144,18 +145,253 @@ fn acceptance_learns_the_complete_checked_word_across_markdown_spans() {
 
 #[cfg(feature = "hunspell")]
 #[test]
-fn unconfigured_acceptance_is_session_only() {
-    let mut fixture = SessionFixture::new("Zzyzxqvocab Zzyzxqvocab", false);
+fn missing_explicit_dictionary_is_created_only_when_acceptances_are_saved() {
+    let mut fixture = SessionFixture::new("Zzyzxqvocab Zzyzxqvocab", true);
+    let toml = "# Preserve this configuration.\n[Hunspell]\nsearch_dirs = ['.']\nextra_dictionaries = ['learned.dic', 'nested/learning.dic']\nlearning_dictionary = 'nested/learning.dic'\nskip_os_lookups = true\nuse_builtin = true\n";
+    let config_path = fixture.directory.join("spellcheck.toml");
+    fs::write(&config_path, toml).unwrap();
+    fixture.config = Config::load_from(&config_path).unwrap().unwrap();
+    fixture.config.nlprules = None;
+    fixture.config.zet = None;
+    fixture.config.spellbook = None;
+    let parent = fixture.directory.join("nested");
+    let target = parent.join("learning.dic");
     let mut prompts = 0;
     fixture
         .run(|_, _, _, _| {
+            assert!(!parent.exists());
             prompts += 1;
             Ok(UserSelection::AcceptWord)
         })
         .unwrap();
     assert_eq!(prompts, 1);
+    assert_eq!(fs::read_to_string(&target).unwrap(), "1\nZzyzxqvocab\n");
+    assert_eq!(fs::read_to_string(&fixture.dictionary).unwrap(), "0\n");
+    assert_eq!(fs::read_to_string(&config_path).unwrap(), toml);
+
+    fixture.documents = Documentation::load_from_str(
+        ContentOrigin::CommonMarkFile(fixture.source.clone()),
+        "Zzyzxqvocab",
+        true,
+        false,
+    );
+    fixture
+        .run(|_, _, _, _| panic!("the next session did not load the explicit dictionary"))
+        .unwrap();
+    assert_eq!(fs::read_to_string(&target).unwrap(), "1\nZzyzxqvocab\n");
+    assert_eq!(fs::read_to_string(&config_path).unwrap(), toml);
+}
+
+#[cfg(feature = "hunspell")]
+#[test]
+fn missing_explicit_dictionary_stays_absent_on_abort_or_without_acceptances() {
+    for abort in [false, true] {
+        let mut fixture = SessionFixture::new("Zzyzxqvocab Spelchekr", true);
+        let parent = fixture.directory.join("nested");
+        let target = parent.join("learning.dic");
+        let spelling = fixture.config.hunspell.as_mut().unwrap();
+        spelling.extra_dictionaries.push(target.clone());
+        spelling.learning_dictionary = Some(target);
+        let mut prompts = 0;
+        let finish = fixture
+            .run(|_, _, _, _| {
+                assert!(!parent.exists());
+                prompts += 1;
+                Ok(match (abort, prompts) {
+                    (true, 1) => UserSelection::AcceptWord,
+                    (true, _) => UserSelection::Abort,
+                    (false, _) => UserSelection::Skip,
+                })
+            })
+            .unwrap();
+        assert_eq!(prompts, 2);
+        assert_eq!(matches!(finish, Finish::Abort), abort);
+        assert!(!parent.exists());
+        assert_eq!(fs::read_to_string(&fixture.dictionary).unwrap(), "0\n");
+        assert_eq!(fs::read_dir(&fixture.directory).unwrap().count(), 2);
+    }
+}
+
+#[cfg(feature = "hunspell")]
+#[tokio::test]
+async fn check_omits_missing_explicit_dictionary_without_creating_it() {
+    let mut fixture = SessionFixture::new("Zzyzxqvocab", true);
+    let parent = fixture.directory.join("nested");
+    let target = parent.join("learning.dic");
+    let spelling = fixture.config.hunspell.as_mut().unwrap();
+    spelling.extra_dictionaries.push(target.clone());
+    spelling.learning_dictionary = Some(target);
+    let documents = std::mem::replace(&mut fixture.documents, Documentation::new());
+    let finish = Action::Check
+        .run_check(
+            documents,
+            fixture.config.clone(),
+            &OutputPaths::new(&[], false).unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(matches!(finish, Finish::MistakeCount(1)));
+    assert!(!parent.exists());
     assert_eq!(fs::read_to_string(&fixture.dictionary).unwrap(), "0\n");
     assert_eq!(fs::read_dir(&fixture.directory).unwrap().count(), 2);
+}
+
+#[cfg(feature = "hunspell")]
+#[test]
+fn existing_default_dictionary_is_not_recreated_if_removed_during_interaction() {
+    let mut fixture = SessionFixture::new("Zzyzxqvocab", false);
+    let target = fixture.directory.join(".config/spellcheck/learnings.dic");
+    fs::create_dir_all(target.parent().unwrap()).unwrap();
+    fs::write(&target, "0\n").unwrap();
+    let error = fixture
+        .run(|_, _, _, _| {
+            fs::remove_file(&target).unwrap();
+            Ok(UserSelection::AcceptWord)
+        })
+        .unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("Could not persist accepted words"));
+    assert!(!target.exists());
+}
+
+#[cfg(all(feature = "hunspell", unix))]
+#[tokio::test]
+async fn readonly_learning_targets_fail_before_interaction_but_checks_can_read_them() {
+    use std::os::unix::fs::PermissionsExt;
+
+    for explicit in [false, true] {
+        let mut fixture = SessionFixture::new("Zzyzxqvocab", explicit);
+        let target = if explicit {
+            fixture.dictionary.clone()
+        } else {
+            fixture.directory.join(".config/spellcheck/learnings.dic")
+        };
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        fs::write(&target, "1\nZzyzxqvocab\n").unwrap();
+        fs::set_permissions(&target, std::fs::Permissions::from_mode(0o444)).unwrap();
+        let documents = fixture.documents.clone();
+        let error = fixture
+            .run(|_, _, _, _| panic!("invalid target reached interaction"))
+            .unwrap_err();
+        assert!(
+            error.to_string().contains("writable regular file"),
+            "{error:?}"
+        );
+        let mut check_config = fixture.config.clone();
+        check_config
+            .include_default_learning_dictionary(&fixture.directory)
+            .unwrap();
+        let finish = Action::Check
+            .run_check(
+                documents,
+                check_config,
+                &OutputPaths::new(&[], false).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(matches!(finish, Finish::Success));
+        assert_eq!(fs::read_to_string(&target).unwrap(), "1\nZzyzxqvocab\n");
+        let mut sidecar = target.as_os_str().to_os_string();
+        sidecar.push(".cargo-spellcheck.lock");
+        assert!(!Path::new(&sidecar).exists());
+    }
+}
+
+#[cfg(feature = "hunspell")]
+#[test]
+fn unconfigured_acceptance_persists_to_the_default_and_preserves_toml() {
+    let text = "Zzyzxqvocab Zzyzxqvocab";
+    let mut fixture = SessionFixture::new(text, false);
+    let toml = "# Keep this repository configuration intact.\n[Hunspell]\nsearch_dirs = ['.']\nextra_dictionaries = ['learned.dic']\nskip_os_lookups = true\nuse_builtin = true\n";
+    let config_path = fixture.directory.join("spellcheck.toml");
+    fs::write(&config_path, toml).unwrap();
+    fixture.config = Config::load_from(&config_path).unwrap().unwrap();
+    fixture.config.nlprules = None;
+    fixture.config.zet = None;
+    fixture.config.spellbook = None;
+    let config_directory = fixture.directory.join(".config");
+    let fallback = config_directory.join("spellcheck/learnings.dic");
+    let mut prompts = 0;
+    let finish = fixture
+        .run(|_, _, _, _| {
+            assert!(!config_directory.exists());
+            prompts += 1;
+            Ok(UserSelection::AcceptWord)
+        })
+        .unwrap();
+    assert!(matches!(finish, Finish::MistakeCount(0)));
+    assert_eq!(prompts, 1);
+    assert_eq!(fs::read_to_string(&fallback).unwrap(), "1\nZzyzxqvocab\n");
+    assert_eq!(fs::read_to_string(&fixture.dictionary).unwrap(), "0\n");
+    assert_eq!(fs::read_to_string(&fixture.source).unwrap(), text);
+    assert_eq!(fs::read_to_string(&config_path).unwrap(), toml);
+    assert!(fixture.config.learning_dictionary().unwrap().is_none());
+
+    fixture.documents = Documentation::load_from_str(
+        ContentOrigin::CommonMarkFile(fixture.source.clone()),
+        text,
+        true,
+        false,
+    );
+    let finish = fixture
+        .run(|_, _, _, _| panic!("the next session did not load the default dictionary"))
+        .unwrap();
+    assert!(matches!(finish, Finish::MistakeCount(0)));
+    assert_eq!(fs::read_to_string(fallback).unwrap(), "1\nZzyzxqvocab\n");
+    assert_eq!(fs::read_to_string(&fixture.dictionary).unwrap(), "0\n");
+    assert_eq!(fs::read_to_string(config_path).unwrap(), toml);
+}
+
+#[cfg(feature = "hunspell")]
+#[test]
+fn unconfigured_abort_does_not_create_the_default_learning_directory() {
+    let original = "Zzyzxqvocab Spelchekr Thirdwrng";
+    let mut fixture = SessionFixture::new(original, false);
+    let config_directory = fixture.directory.join(".config");
+    let mut prompts = 0;
+    let finish = fixture
+        .run(|_, state, _, _| {
+            assert!(!config_directory.exists());
+            prompts += 1;
+            Ok(match prompts {
+                1 => UserSelection::AcceptWord,
+                2 => {
+                    state.select_custom();
+                    state.custom_replacement = "spellchecker".into();
+                    UserSelection::Replacement(state.to_bandaid())
+                }
+                3 => UserSelection::Abort,
+                _ => panic!("continued prompting after abort"),
+            })
+        })
+        .unwrap();
+    assert_eq!(prompts, 3);
+    assert!(matches!(finish, Finish::Abort));
+    assert!(!config_directory.exists());
+    assert_eq!(fs::read_to_string(&fixture.source).unwrap(), original);
+    assert_eq!(fs::read_to_string(&fixture.dictionary).unwrap(), "0\n");
+    assert_eq!(fs::read_dir(&fixture.directory).unwrap().count(), 2);
+}
+
+#[cfg(feature = "hunspell")]
+#[test]
+fn unconfigured_no_acceptances_does_not_create_the_default_learning_directory() {
+    for text in ["Zzyzxqvocab", "hello"] {
+        let mut fixture = SessionFixture::new(text, false);
+        let config_directory = fixture.directory.join(".config");
+        let finish = fixture
+            .run(|_, _, _, _| {
+                assert!(!config_directory.exists());
+                Ok(UserSelection::Skip)
+            })
+            .unwrap();
+        assert!(matches!(finish, Finish::MistakeCount(0)));
+        assert!(!config_directory.exists());
+        assert_eq!(fs::read_to_string(&fixture.source).unwrap(), text);
+        assert_eq!(fs::read_to_string(&fixture.dictionary).unwrap(), "0\n");
+        assert_eq!(fs::read_dir(&fixture.directory).unwrap().count(), 2);
+    }
 }
 
 #[cfg(feature = "hunspell")]

@@ -357,6 +357,102 @@ fn stem_suggestions_validate_policy_before_requiring_configuration() {
     assert!(events.borrow().is_empty());
 }
 
+#[test]
+fn pattern_suggestions_validate_policy_before_requiring_configuration() {
+    let events = Events::default();
+    let session = pending_session(&events, Failure::None);
+    for word in [
+        "",
+        "42",
+        "#comment",
+        "foobar/UD",
+        "two words",
+        "foobar\nInjected",
+    ] {
+        let error = session.pattern_suggestions(word).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            DictionaryEntry::plain(word).unwrap_err().to_string()
+        );
+    }
+    assert!(session
+        .pattern_suggestions("StoreRejected")
+        .unwrap_err()
+        .to_string()
+        .contains("store policy"));
+    assert!(session
+        .pattern_suggestions("unfoobared")
+        .unwrap_err()
+        .to_string()
+        .contains("no spelling configuration"));
+    assert_eq!(session.accepted_words, BTreeSet::from(["Tokio".into()]));
+    assert_eq!(
+        session.accepted_entries,
+        BTreeSet::from([DictionaryEntry::plain("Tokio").unwrap()])
+    );
+    assert!(session.confirmed_affix_forms.is_empty());
+    assert!(events.borrow().is_empty());
+
+    let mut session = SessionResolutions::default();
+    assert!(session.pattern_suggestions("unfoobared").is_err());
+    session
+        .record_entry(DictionaryEntry::plain("unfoobared").unwrap(), &[])
+        .unwrap();
+    assert!(session.knows_word("unfoobared"));
+}
+
+#[test]
+fn extension_patterns_validate_policy_before_requiring_configuration() {
+    let events = Events::default();
+    let session = pending_session(&events, Failure::None);
+    for stem in [
+        "",
+        "42",
+        "#comment",
+        "foobar/UD",
+        "two words",
+        "foobar\nInjected",
+    ] {
+        assert_eq!(
+            session.extension_patterns(stem).unwrap_err().to_string(),
+            DictionaryEntry::plain(stem).unwrap_err().to_string()
+        );
+    }
+    assert!(session
+        .extension_patterns("StoreRejected")
+        .unwrap_err()
+        .to_string()
+        .contains("store policy"));
+    assert!(session
+        .extension_patterns("foobar")
+        .unwrap_err()
+        .to_string()
+        .contains("no spelling configuration"));
+    assert_eq!(session.accepted_words, BTreeSet::from(["Tokio".into()]));
+    assert_eq!(
+        session.accepted_entries,
+        BTreeSet::from([DictionaryEntry::plain("Tokio").unwrap()])
+    );
+    assert!(session.confirmed_affix_forms.is_empty());
+    assert!(events.borrow().is_empty());
+
+    let session = SessionResolutions {
+        config: Some(Config {
+            hunspell: None,
+            spellbook: None,
+            zet: None,
+            ..Config::default()
+        }),
+        ..SessionResolutions::default()
+    };
+    assert!(session
+        .extension_patterns("foobar")
+        .unwrap_err()
+        .to_string()
+        .contains("spelling backend"));
+    assert!(session.preview_entry("foobar", None).is_ok());
+}
+
 #[cfg(any(feature = "hunspell", feature = "zet", feature = "spellbook"))]
 mod affix_sessions {
     use super::*;
@@ -365,6 +461,8 @@ mod affix_sessions {
     use std::path::PathBuf;
 
     const RULES: &str = "SET UTF-8\nSFX S Y 2\nSFX S 0 s .\nSFX S 0 's .\nSFX D Y 2\nSFX D 0 d e\nSFX D 0 ed [^e]\n";
+
+    const PATTERN_RULES: &str = "SET UTF-8\nPFX U Y 1\nPFX U 0 un .\nSFX D Y 1\nSFX D 0 ed .\n";
 
     struct Fixture(PathBuf);
 
@@ -383,7 +481,10 @@ mod affix_sessions {
         }
 
         fn sessions(&self) -> Vec<(&'static str, SessionResolutions)> {
-            let target = fs_err::canonicalize(self.0.join("learning.dic")).unwrap();
+            self.sessions_with_target(self.0.join("learning.dic"))
+        }
+
+        fn sessions_with_target(&self, target: PathBuf) -> Vec<(&'static str, SessionResolutions)> {
             let spelling = HunspellConfig {
                 search_dirs: vec![self.0.clone()].into(),
                 skip_os_lookups: true,
@@ -415,7 +516,7 @@ mod affix_sessions {
                     Detector::Spellbook => config.spellbook = Some(spelling.clone()),
                     _ => unreachable!(),
                 }
-                (name, SessionResolutions::new(&config).unwrap())
+                (name, SessionResolutions::new(&config, &self.0).unwrap())
             })
             .collect()
         }
@@ -582,6 +683,39 @@ mod affix_sessions {
     }
 
     #[test]
+    fn missing_explicit_dictionary_allows_affix_previews_and_deferred_commit() {
+        let fixture = Fixture::new();
+        let target = fixture.0.join("nested/learning.dic");
+        let before = fixture.snapshot();
+        let sessions = fixture.sessions_with_target(target.clone());
+        for (backend, mut session) in sessions {
+            assert_eq!(session.learning_dictionary_path(), Some(target.as_path()));
+            assert!(session.is_persistent());
+            let config = session.config.as_ref().unwrap();
+            for spelling in [&config.hunspell, &config.zet, &config.spellbook]
+                .into_iter()
+                .flatten()
+            {
+                assert!(!spelling.extra_dictionaries.contains(&target), "{backend}");
+                assert_eq!(spelling.learning_dictionary.as_ref(), Some(&target));
+            }
+            let mut engines = crate::checker::Checkers::new(config.clone()).unwrap();
+            let preview = session.preview_entry("Tokio", Some("S")).unwrap();
+            assert!(preview.forms.contains(&"Tokios".to_owned()), "{backend}");
+            session.record_entry(preview.entry, &preview.forms).unwrap();
+            assert_eq!(fixture.snapshot(), before, "{backend}");
+            let events = Events::default();
+            session
+                .commit(UserPicked::default(), &mut sources(&events), &mut engines)
+                .unwrap();
+            assert_eq!(fs_err::read_to_string(&target).unwrap(), "1\nTokio/S\n");
+            assert!(engines.contains_word("Tokios"), "{backend}");
+            fs_err::remove_dir_all(target.parent().unwrap()).unwrap();
+        }
+        assert_eq!(fixture.snapshot(), before);
+    }
+
+    #[test]
     fn flagged_entries_overlay_every_surface_and_commit_only_exact_stem_flags() {
         let fixture = Fixture::new();
         for (_, mut session) in fixture.sessions() {
@@ -653,6 +787,320 @@ mod affix_sessions {
                     before[std::ffi::OsStr::new(path)]
                 );
             }
+        }
+    }
+
+    #[test]
+    fn patterns_overlay_every_surface_and_commit_exact_bundle_flags_with_native_verification() {
+        let fixture = Fixture::new();
+        fs_err::write(fixture.0.join("en_US.aff"), PATTERN_RULES).unwrap();
+        for (_, mut session) in fixture.sessions() {
+            fs_err::write(fixture.0.join("learning.dic"), "1\nExisting\n").unwrap();
+            let before = fixture.snapshot();
+            let mut engines =
+                crate::checker::Checkers::new(session.config.clone().unwrap()).unwrap();
+            let forms: BTreeSet<String> = BTreeSet::from([
+                "foobar".into(),
+                "unfoobar".into(),
+                "foobared".into(),
+                "unfoobared".into(),
+            ]);
+            for word in &forms {
+                assert!(!engines.contains_word(word));
+            }
+            for (word, prefix, suffix, line) in [
+                ("unfoobar", Some("U"), None, "foobar/U"),
+                ("foobared", None, Some("D"), "foobar/D"),
+                ("unfoobared", Some("U"), Some("D"), "foobar/UD"),
+            ] {
+                assert!(session
+                    .pattern_suggestions(word)
+                    .unwrap()
+                    .iter()
+                    .any(|pattern| {
+                        pattern.prefix.as_deref() == prefix
+                            && pattern.suffix.as_deref() == suffix
+                            && pattern.suggestion.entry.to_line() == line
+                            && pattern.suggestion.forms.contains(&word.to_owned())
+                    }));
+            }
+            let pattern = session
+                .pattern_suggestions("unfoobared")
+                .unwrap()
+                .into_iter()
+                .find(|pattern| {
+                    pattern.prefix.as_deref() == Some("U")
+                        && pattern.suffix.as_deref() == Some("D")
+                        && pattern.suggestion.entry.word() == "foobar"
+                })
+                .unwrap();
+            assert_eq!(pattern.suggestion.entry.flags(), Some("UD"));
+            assert_eq!(pattern.suggestion.entry.to_line(), "foobar/UD");
+            let preview = session.preview_entry("foobar", Some("UD")).unwrap();
+            assert_eq!(preview, pattern.suggestion);
+            assert_eq!(
+                preview.forms.iter().cloned().collect::<BTreeSet<_>>(),
+                forms
+            );
+            assert!(session.accepted_words.is_empty());
+            assert!(session.accepted_entries.is_empty());
+            assert!(session.confirmed_affix_forms.is_empty());
+            assert_eq!(fixture.snapshot(), before);
+
+            session
+                .record_entry(DictionaryEntry::plain("foobar").unwrap(), &[])
+                .unwrap();
+            session
+                .record_entry(preview.entry.clone(), &preview.forms)
+                .unwrap();
+            session
+                .record_entry(preview.entry.clone(), &preview.forms)
+                .unwrap();
+            for word in &forms {
+                let chunk = chunk(word);
+                for detector in [Detector::Hunspell, Detector::Spellbook, Detector::ZSpell] {
+                    let suggestion = suggestion(&chunk, 0..word.chars().count(), detector);
+                    assert!(session.accepts(&suggestion));
+                    session.accept(&suggestion).unwrap();
+                }
+                session
+                    .record_entry(DictionaryEntry::plain(word).unwrap(), &[])
+                    .unwrap();
+            }
+            assert_eq!(session.accepted_words, forms);
+            assert_eq!(
+                session.accepted_entries,
+                BTreeSet::from([preview.entry.clone()])
+            );
+            assert_eq!(
+                session.confirmed_affix_forms,
+                BTreeMap::from([(preview.entry, forms.clone())])
+            );
+            for word in ["Foobar", "foobar/UD", "foobars", "ununfoobar"] {
+                assert!(!session.knows_word(word));
+            }
+            assert_eq!(fixture.snapshot(), before);
+            let events = Events::default();
+            session
+                .commit(UserPicked::default(), &mut sources(&events), &mut engines)
+                .unwrap();
+            assert_eq!(*events.borrow(), ["source"]);
+            engines.verify_words(&forms).unwrap();
+            let store = dictionary::DictionaryFile::new(fixture.0.join("learning.dic"));
+            assert_eq!(
+                store.read_entries().unwrap(),
+                BTreeSet::from(["Existing".into(), "foobar/UD".into()])
+            );
+            assert_eq!(
+                fs_err::read_to_string(fixture.0.join("learning.dic")).unwrap(),
+                "2\nExisting\nfoobar/UD\n"
+            );
+            for path in ["en_US.aff", "en_US.dic"] {
+                assert_eq!(
+                    fs_err::read(fixture.0.join(path)).unwrap(),
+                    before[std::ffi::OsStr::new(path)]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn extensions_keep_conditional_flags_for_edited_stems_and_persist_exact_previews() {
+        let fixture = Fixture::new();
+        let rules = "SET UTF-8\nPFX U Y 1\nPFX U 0 un h\nSFX C Y 1\nSFX C e ing e\n";
+        fs_err::write(fixture.0.join("en_US.aff"), rules).unwrap();
+        for (_, mut session) in fixture.sessions() {
+            fs_err::write(fixture.0.join("learning.dic"), "1\nExisting\n").unwrap();
+            let before = fixture.snapshot();
+            assert!(session.pattern_suggestions("widget").unwrap().is_empty());
+            let patterns = session.extension_patterns("widget").unwrap();
+            assert_eq!(patterns.len(), 4);
+            for pattern in &patterns {
+                assert_eq!(pattern.suggestion.entry.word(), "widget");
+                assert_eq!(pattern.suggestion.forms, ["widget"]);
+                assert_eq!(
+                    pattern.suggestion,
+                    session
+                        .preview_entry("widget", pattern.suggestion.entry.flags())
+                        .unwrap()
+                );
+            }
+            let selected = &patterns[3];
+            assert_eq!(selected.prefix.as_deref(), Some("U"));
+            assert_eq!(selected.suffix.as_deref(), Some("C"));
+            assert_eq!(selected.suggestion.entry.flags(), Some("UC"));
+            let preview = session
+                .preview_entry("hope", selected.suggestion.entry.flags())
+                .unwrap();
+            assert_eq!(preview.forms, ["hope", "hoping", "unhope", "unhoping"]);
+            assert!(session
+                .record_entry(preview.entry.clone(), &selected.suggestion.forms)
+                .is_err());
+            assert!(session.accepted_words.is_empty());
+            assert!(session.accepted_entries.is_empty());
+            assert!(session.confirmed_affix_forms.is_empty());
+            assert_eq!(fixture.snapshot(), before);
+
+            session
+                .record_entry(preview.entry.clone(), &preview.forms)
+                .unwrap();
+            assert_eq!(
+                session.accepted_entries,
+                BTreeSet::from([preview.entry.clone()])
+            );
+            let forms = preview.forms.into_iter().collect::<BTreeSet<_>>();
+            assert_eq!(session.accepted_words, forms);
+            assert!(!session.knows_word("widget"));
+            let mut engines =
+                crate::checker::Checkers::new(session.config.clone().unwrap()).unwrap();
+            let events = Events::default();
+            session
+                .commit(UserPicked::default(), &mut sources(&events), &mut engines)
+                .unwrap();
+            assert_eq!(*events.borrow(), ["source"]);
+            engines.verify_words(&forms).unwrap();
+            assert_eq!(
+                dictionary::DictionaryFile::new(fixture.0.join("learning.dic"))
+                    .read_entries()
+                    .unwrap(),
+                BTreeSet::from(["Existing".into(), "hope/UC".into()])
+            );
+            for path in ["en_US.aff", "en_US.dic"] {
+                assert_eq!(
+                    fs_err::read(fixture.0.join(path)).unwrap(),
+                    before[std::ffi::OsStr::new(path)]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn extensions_reload_rules_and_revalidate_at_preview_record_and_commit() {
+        let fixture = Fixture::new();
+        for (_, mut session) in fixture.sessions() {
+            fs_err::write(fixture.0.join("en_US.aff"), PATTERN_RULES).unwrap();
+            let selected = session
+                .extension_patterns("foobar")
+                .unwrap()
+                .pop()
+                .unwrap()
+                .suggestion;
+            assert_eq!(selected.entry.to_line(), "foobar/UD");
+
+            fs_err::write(
+                fixture.0.join("en_US.aff"),
+                PATTERN_RULES.replace("PFX U Y", "PFX U N"),
+            )
+            .unwrap();
+            let patterns = session.extension_patterns("foobar").unwrap();
+            assert_eq!(patterns.len(), 3);
+            assert!(patterns
+                .iter()
+                .all(|pattern| pattern.prefix.is_none() || pattern.suffix.is_none()));
+            assert!(session.preview_entry("foobar", Some("UD")).is_err());
+            assert!(session
+                .record_entry(selected.entry.clone(), &selected.forms)
+                .is_err());
+
+            fs_err::write(
+                fixture.0.join("en_US.aff"),
+                PATTERN_RULES.replace("SFX D 0 ed .", "SFX D 0 ing ."),
+            )
+            .unwrap();
+            let fresh = session
+                .extension_patterns("foobar")
+                .unwrap()
+                .pop()
+                .unwrap()
+                .suggestion;
+            assert_eq!(fresh.entry, selected.entry);
+            assert_eq!(
+                fresh.forms,
+                ["foobar", "foobaring", "unfoobar", "unfoobaring"]
+            );
+            assert_eq!(session.preview_entry("foobar", Some("UD")).unwrap(), fresh);
+            assert!(session
+                .record_entry(selected.entry, &selected.forms)
+                .unwrap_err()
+                .to_string()
+                .contains("do not match the regenerated expansion"));
+            assert!(session.accepted_words.is_empty());
+            assert!(session.accepted_entries.is_empty());
+            assert!(session.confirmed_affix_forms.is_empty());
+            session.record_entry(fresh.entry, &fresh.forms).unwrap();
+
+            fs_err::write(fixture.0.join("en_US.aff"), PATTERN_RULES).unwrap();
+            let before = fixture.snapshot();
+            let events = Events::default();
+            let mut engines = Engines {
+                events: Rc::clone(&events),
+                fail: Failure::None,
+            };
+            assert!(session
+                .commit(UserPicked::default(), &mut sources(&events), &mut engines)
+                .unwrap_err()
+                .to_string()
+                .contains("preview the entry again"));
+            assert!(events.borrow().is_empty());
+            assert_eq!(fixture.snapshot(), before);
+        }
+    }
+
+    #[test]
+    fn pattern_bundles_revalidate_at_preview_record_and_commit() {
+        let fixture = Fixture::new();
+        for (_, mut session) in fixture.sessions() {
+            fs_err::write(fixture.0.join("en_US.aff"), PATTERN_RULES).unwrap();
+            let pattern = session
+                .pattern_suggestions("unfoobared")
+                .unwrap()
+                .into_iter()
+                .find(|pattern| pattern.suggestion.entry.to_line() == "foobar/UD")
+                .unwrap();
+            let preview = pattern.suggestion;
+            let mut incomplete = preview.forms.clone();
+            incomplete.retain(|word| word != "unfoobared");
+            assert!(session
+                .record_entry(preview.entry.clone(), &incomplete)
+                .unwrap_err()
+                .to_string()
+                .contains("do not match the regenerated expansion"));
+            let changed_rules = PATTERN_RULES.replace("SFX D 0 ed .", "SFX D 0 ing .");
+            fs_err::write(fixture.0.join("en_US.aff"), &changed_rules).unwrap();
+            let fresh = session.preview_entry("foobar", Some("UD")).unwrap();
+            assert!(fresh.forms.contains(&"unfoobaring".into()));
+            assert!(!fresh.forms.contains(&"unfoobared".into()));
+            assert!(session
+                .record_entry(preview.entry.clone(), &preview.forms)
+                .unwrap_err()
+                .to_string()
+                .contains("do not match the regenerated expansion"));
+            assert!(session.accepted_words.is_empty());
+            assert!(session.accepted_entries.is_empty());
+            assert!(session.confirmed_affix_forms.is_empty());
+
+            fs_err::write(fixture.0.join("en_US.aff"), PATTERN_RULES).unwrap();
+            session.record_entry(preview.entry, &preview.forms).unwrap();
+            // Separately accepted surfaces cannot authorize changes to a bundle's forms.
+            for word in ["foobaring", "unfoobaring"] {
+                session
+                    .record_entry(DictionaryEntry::plain(word).unwrap(), &[])
+                    .unwrap();
+            }
+            fs_err::write(fixture.0.join("en_US.aff"), changed_rules).unwrap();
+            let before = fixture.snapshot();
+            let events = Events::default();
+            let mut engines = Engines {
+                events: Rc::clone(&events),
+                fail: Failure::None,
+            };
+            assert!(session
+                .commit(source_changes(), &mut sources(&events), &mut engines)
+                .unwrap_err()
+                .to_string()
+                .contains("preview the entry again"));
+            assert!(events.borrow().is_empty());
+            assert_eq!(fixture.snapshot(), before);
         }
     }
 
@@ -948,10 +1396,15 @@ mod affix_sessions {
                 .record_entry(DictionaryEntry::plain("Ferris").unwrap(), &[])
                 .unwrap();
             let accepted_before = session.accepted_words.clone();
-            let error = session.entry_suggestions("Tokio").err().unwrap();
-            let message = error.to_string().to_lowercase();
-            assert!(message.contains("unavailable"), "{error:?}");
-            assert!(message.contains(&backend.to_lowercase()), "{error:?}");
+            for error in [
+                session.entry_suggestions("Tokio").unwrap_err(),
+                session.pattern_suggestions("unfoobared").unwrap_err(),
+                session.extension_patterns("foobar").unwrap_err(),
+            ] {
+                let message = error.to_string().to_lowercase();
+                assert!(message.contains("unavailable"), "{error:?}");
+                assert!(message.contains(&backend.to_lowercase()), "{error:?}");
+            }
             assert_eq!(session.accepted_words, accepted_before);
             assert!(!session.knows_word("Tokio"));
             assert_eq!(fixture.snapshot(), before);

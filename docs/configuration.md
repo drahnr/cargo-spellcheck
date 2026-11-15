@@ -70,11 +70,13 @@ lang = "en_US"
 # on how to define a custom dictionary file.
 extra_dictionaries = []
 
-# Optional: persist interactively accepted words to this existing extra dictionary.
+# Optional: choose this existing extra dictionary as the learning target.
 # Also supported under [Spellbook] and [ZSpell]; there is no top-level setting.
 # All enabled spelling backends must load the shared target and use the same lang.
 # Relative to this configuration file, not searched in search_dirs.
-# Omit from all spelling backends for session-only acceptance (the default).
+# Omit from all enabled spelling backends to warn and use an automatic target:
+# CWD/.config/spellcheck/learnings.dic, or existing CWD/.config/learnings.dic
+# if the preferred dictionary is absent. Missing defaults are created on commit.
 # learning_dictionary = "lingo.dic"
 
 # If set to `true`, the OS specific default search paths
@@ -204,77 +206,163 @@ In an interactive fix session, the main fix picker combines checker suggestions,
 a separate backtick-wrapping choice, custom input, and (for learnable spelling
 findings) a bottom row labelled `{word} < learn`. Row descriptions use
 `< custom input`, `< wrap backticks`, and `< learn`, printed in the terminal's
-default color, outside the selection highlight. The default is the first checker
-suggestion, or backtick wrapping when there are no suggestions; learning is never
-selected automatically. The custom input row sits immediately above the learning
+default color, outside the selection highlight. Every `<` description in a rendered
+list starts in the same terminal display column, one space after its widest
+content, including checker suggestions without descriptions. Padding also stays
+outside the highlight. Editing custom input can move this column; each list
+calculates its own alignment rather than sharing a fixed column across menus.
+The default is the first checker suggestion, or backtick wrapping when there are
+no suggestions; learning is never selected automatically. The custom input row sits immediately above the learning
 row. Grammar findings have no learning row, so custom input remains at the bottom.
 
 At every interactive prompt, including text editors, `?` shows only the current
 commands as concise `key - brief side effect` lines, ending with
 `? - show commands`. It preserves the current input, cursor, and selection without
 applying, confirming, learning, or cancelling anything. `?` is reserved for help
-and cannot be inserted into an editor.
+and cannot be inserted into an editor. Inline prompts list only single-character
+keys; Enter, arrow keys, Esc, Ctrl-C, and their effects are explained by `?` rather
+than repeated in the prompt. The main prompt is
+`Resolve this issue [y,n,q,a,d,j,e,?]?`; unlearnable findings omit `a`:
+`Resolve this issue [y,n,q,d,j,e,?]?`.
 
 - Select the bottom learning row with Home, then press Enter or `y` to keep the
-  **unchanged original word** and go **directly to the suffix picker**. There is no
+  **unchanged original word** and go **directly to the inferred affix choices**. There is no
   intervening Learn prompt or word editor, and no source edit is made.
 - Backtick wrapping remains a separate source-editing choice; it does not learn
   the original word. Up from the bottom learning row selects custom input; Up
   again selects backtick wrapping. Checker suggestions appear above those rows.
 - `a` keeps the source as is and opens the existing optional Learn prompt. Enter
-  or `p` opens the suffix picker; it does **not** record the word. `e` first opens
-  `Word (plain word only; Enter=preview, Esc=back, ?=help): ` with the original word
-  prefilled, then Enter opens the suffix picker for the edited word. `n` or Esc
+  or `p` opens the affix choices; it does **not** record the word. `e` first opens
+  `Word [?]: ` with the original word
+  prefilled, then Enter opens the affix choices for the edited word. `n` or Esc
   at the Learn prompt cancels and returns to the finding.
 - `y` or Enter applies the selected resolution. An unknown single-word spelling
   replacement offers the same optional learning follow-up: Enter or `p` opens
-  suffix choices, `e` pre-edits the word, and `n` or Esc skips learning **without
+  inferred affix choices, `e` pre-edits the word, and `n` or Esc skips learning **without
   cancelling the source edit**. Known replacements do not need this follow-up.
   Neither the original typo nor its replacement is automatically recorded by `y`
   at the resolution prompt.
 
-The optional prompts highlight the word in bold green on black and offer
-`[Enter/p=affixes, e=edit word, n/Esc=cancel, Ctrl-C=abort, ?=help]: ` (or
-`n/Esc=skip learning` for replacements). All learning routes show the real suffix
-choices before an entry can be recorded, including when learning a plain word.
+The optional prompts are `Learn "{word}" [p,e,n,?]: ` and
+`Learn replacement "{word}" [p,e,n,?]: `, with the word highlighted in bold green
+on black. Enter or `p` chooses affixes, `e` edits the word, and `n` or Esc cancels
+learning (without discarding a pending replacement). All learning routes first
+show inferred affix choices and an explicit plain-word choice; nothing is
+recorded until the final confirmation is accepted.
 
-### Choosing suffixes, stems, and expansions
+### Choosing affixes, stems, and expansions
 
-The suffix picker uses
-`Suffix [Up/Down=select, Enter=stems, n/Esc=back, ?=help]: `. Its bottom row (index zero)
-is `{word} < plain`; the other rows are `/FLAG < suffix`, with flag identifiers
-sorted lexicographically. Enter on a suffix opens
-`Stem [Up/Down=select, Enter=edit, n/Esc=back, ?=help]: `, whose rows show full
+The first picker uses `Affixes [y,a,e,n,?]: `.
+It immediately offers ranked, engine-validated decompositions of the word into a
+stem and a prefix, suffix, or compatible prefix/suffix pair. Dictionary-known
+stems rank first, followed by patterns using more affixes and shorter stems, with
+deterministic tie-breaking. The best inferred pattern is selected by default at
+index zero. Initially, the unchanged original word is the **last** choice, with
+no flags; if no pattern can be inferred, this plain row is the only choice and is
+selected at index zero. Left/Right can then change the flags on any selected row.
+
+If the dictionary's full supported catalog contains a productive prefix, the
+table has three columns, `prefix | stem | suffix`, even when all inferred choices
+use only suffixes. A suffix-only catalog has two columns, `stem | suffix`. Flag cells show
+`/U`, `/S`, or another dictionary flag identifier; missing flags show `-`. The
+initial plain row shows the original word in the stem column and `-` in both affix
+columns. A default-color column header appears on one line directly after the
+prompt, above the list. Column padding uses terminal display widths, and long
+stems are clipped at Unicode boundaries to keep rows within the terminal width.
+Flagged rows have a `< pattern` hint, while unflagged rows have `< plain`; hints
+align outside the selection highlight.
+
+Left/Right cycles backward/forward through **all supported affix bundles for the
+currently selected stem**, not just decompositions that generate the original
+surface word. The stem stays exactly as selected or edited. Alternatives are
+visible in a horizontal strip below the table, labelled `-` for plain or `/FLAGS`
+for an affix bundle. They are globally sorted alphabetically by their complete
+flag strings, with plain first, rather than grouped by prefix or suffix. For
+example, the order is `- /D /G /R /S /U /UD /US`. This ordering does not change the
+initial selection: the best inferred match remains selected, not the first strip
+label.
+
+A `^` on the next row marks the selected label's terminal-display-width midpoint.
+Left/Right shifts the strip beneath this fixed, centered caret; both directions
+wrap. Narrow terminals show a window of whole labels, with `..` at either edge
+when choices on that side are hidden. Labels and caret stay in the default color.
+Only supported pairs whose prefix and suffix rules allow cross-product are
+offered; a rule marked `N` cannot participate in a pair. Cycling updates the same
+selected row, strip, and expansion in place, without adding table rows or
+remounting the prompt or an unchanged header. A bundle need not generate the
+original word: for example, an inferred `root/S` can cycle to `root/D` without
+changing `root`, even if `/D` produces `rooted` instead of `roots`.
+
+Enter or `y` on any row goes **directly to the full confirmation preview**, with
+no mandatory editor, suffix picker, or stem-candidate picker. `e` instead opens
+`Stem [?]: ` prefilled with the selected stem, retaining all flags separately.
+Enter validates the edit, refreshes that row and its expansion, and **returns to
+the affix table**, remounting its prompt and header while preserving the strip's
+selected flags; it does not confirm learning.
+Subsequent Left/Right cycling uses the edited stem. Esc in the editor preserves
+the previous row and selection. `n` or Esc in the table cancels learning without
+cancelling a pending source replacement. `?` explains navigation, Left/Right,
+Enter/`y` to preview confirmation, `e` to edit the stem, `a` to choose suffixes
+manually, `n`/Esc to cancel, and Ctrl-C to abort; help remounts the header and table
+without changing the selection, strip, or caret position.
+
+#### Manual suffix fallback
+
+Press `a` in the affix table to open the manual suffix → stem candidates → stem
+editor flow. The automatic table already makes every supported bundle reachable;
+this fallback offers suffix-specific stem suggestions instead. Its suffix picker
+uses `Suffix [y,e,n,?]: `. Its bottom row (index zero) is `{word} < plain`; the
+other rows are `/FLAG < suffix`, with flag identifiers sorted lexicographically.
+Enter or `y` on a suffix opens `Stem [y,e,n,?]: `, whose rows show full
 `stem/FLAG < stem` entries. Candidate roots are validated by engine expansion:
 shortened stems that generate the original word are suggested first, preferring
 dictionary-known roots; the unchanged original word is last.
 
-Both pickers reuse the main replacement renderer: no row numbers, a separate `»`
+All learning pickers reuse the main replacement renderer: no row numbers, a separate `»`
 marker, selected text in bold green on black, and unselected text in blue on
-black. The short `< plain`, `< suffix`, and `< stem` hints remain in the default
-color outside the highlight. The prompt appears above the list and is remounted
-after help without changing the selection. Index zero
-is at the bottom: Up increments the index, Down decrements it, and navigation
-wraps. Home/End selects the first/last choice. A separate default-color
-`Affix expansion: ...` context row follows each draw and is truncated to fit on
-one terminal line; this context is not the final confirmation preview.
+black. The short `< pattern`, `< plain`, `< suffix`, and `< stem` hints align within each
+rendered list; both their padding and text remain in the default color outside
+the highlight. All visible content shares a truncation budget that reserves room
+for the longest visible hint, so alignment cannot wrap a row. The prompt appears
+above the list and is remounted after help without changing the selection. Index
+zero is at the bottom: Up increments the index, Down decrements it, and navigation
+wraps. Home/End selects the first/last choice. The automatic affix picker reserves
+three context rows below the list: the alternatives strip, its caret, and
+`Affix expansion: ...`. Manual suffix and stem pickers have only the expansion
+context row. Each context row fits on one terminal line without leaking highlight
+styling; the expansion is truncated as needed and is not the final confirmation
+preview.
 
-Enter on a stem candidate opens the **mandatory** stem editor,
-`Stem (plain word only; Enter=preview, Esc=back, ?=help): `, prefilled with that stem.
-Enter on the plain suffix choice skips the candidate picker and opens this editor
-directly. The stem can be edited independently of the source and any earlier
-word edit; flags are retained separately and must not be typed into the editor.
-Esc returns to the stem candidates for a flagged entry, or to the suffix picker
-for a plain entry. `n` or Esc in the stem candidate picker returns to suffixes.
-`n` or Esc in the suffix picker cancels learning; a selected replacement still
-remains a pending source edit.
+In both the picker context and the full confirmation expansion, each form's
+longest unchanged contiguous stem core stays in the terminal's default color.
+Added or changed prefix and suffix spans are bold green on black: `hope` → `hoped`
+highlights `d`, `city` → `cities` highlights `ies`, and `root` → `unrooted`
+highlights both `un` and `ed`, leaving `root` unstyled. An unchanged base form is
+entirely unstyled. Separators and the plain-word explanation also remain in the
+default color.
 
-Enter in the stem editor shows the highlighted exact `New entry: stem/FLAG`
-(or a plain word) and the **full** engine-generated `Affix expansion`, followed by
-`Confirm learning [y=yes, Enter/n/Esc=no, e=edit stem, ?=help]: `. Plain entries explicitly show
-“plain word; no affixes”. Only `y` records the entry; Enter, `n`, or Esc declines
+In the manual flow, Enter, `y`, or `e` on a stem candidate opens the **mandatory**
+stem editor, `Stem [?]: `, prefilled with that stem. Enter or `y` on the plain
+suffix choice skips the candidate picker and opens this editor directly. `e` in
+the suffix picker edits the selected entry directly, skipping stem candidates
+also for flagged entries; its initial stem is the unchanged word, with the
+selected suffix retained separately. The stem can be edited independently of the
+source and any earlier word edit; flags must not be typed into the editor. Esc
+returns to the originating picker: stem candidates after choosing a candidate,
+or suffixes after editing a suffix entry directly. `n` or Esc in the stem
+candidate picker returns to suffixes.
+`n` or Esc in the manual suffix picker cancels learning; it does not return to
+the automatic affix table. A selected replacement still remains a pending source
+edit.
+
+Enter/`y` in the automatic affix table, or Enter in a manual stem editor, shows
+the highlighted exact `New entry: stem/FLAG` (or a plain word) and the **full**
+engine-generated `Affix expansion`, followed by
+`Confirm learning [y,e,n,?]: `. Plain entries explicitly
+show “plain word; no affixes”. Enter or `y` records the entry; `n` or Esc declines
 learning and returns to the finding (or continues with the selected replacement).
-`e` at confirmation edits the stem again and requires a new expansion preview.
+`e` at confirmation edits the stem again, retaining its flags, and Enter returns
+to a new full confirmation preview rather than the affix table.
 Ctrl-C at any stage aborts the session.
 
 Learning works with **Hunspell, Spellbook, and Zet**, including builds without
@@ -282,13 +370,41 @@ Hunspell. Confirmed entries immediately suppress all their expanded forms across
 enabled spelling backends, including queued diagnostics and later sources.
 Grammar diagnostics cannot be learned.
 
-By default acceptance is **session-only**: no dictionary or configuration file is
-changed. The first `extra_dictionaries` entry is never implicitly chosen as a
-write target.
+Learning is **persistent by default**, with or without an explicit
+`learning_dictionary`. At fix-session startup, the learning target is validated
+before any interactive prompt. Only if the chosen dictionary is missing, one
+warning names its absolute path:
 
-To keep accepted words for future runs, explicitly configure an existing UTF-8
-dictionary in Hunspell `.dic` format as both an extra dictionary and the learning
-target. For example, when using `--checkers=hunspell`:
+```text
+Warning: learning dictionary {absolute path} does not exist; a new file will be created when learned entries are saved.
+```
+
+An existing writable regular file produces no warning. Existing nonfiles,
+read-only files, and dangling symlinks are errors before interaction, not reasons
+to select a fallback. Entering or revisiting learning prompts prints no
+persistent-learning, session-only, or missing-configuration notices.
+
+The preferred target is `.config/spellcheck/learnings.dic` under the **current
+working directory**, not relative to the configuration file. If that file is
+absent and `.config/learnings.dic` already exists in the current working directory,
+the existing legacy file is used instead. If both exist, the preferred file wins;
+entries are not merged from the legacy file. If neither exists, the preferred
+path is selected, but its dictionary and any missing parent directories are
+created **only when confirmed entries are saved on normal completion or `q`**.
+Checks, aborted sessions, and sessions that record no learning entries create no
+dictionary, lock file, or configuration directory.
+
+An existing automatic dictionary is added at runtime to the extra dictionaries
+of **every active, compiled spelling backend**, for both fresh `check` and `fix`
+runs. A newly created target is registered before the engines are reloaded at
+commit. No TOML changes are needed or written, and the first `extra_dictionaries`
+entry is never implicitly chosen as a write target.
+
+To choose a different target, explicitly configure a dictionary path as both an
+extra dictionary and the learning target. An existing dictionary must be writable
+and use UTF-8 Hunspell `.dic` format; a missing target is allowed when registered
+in every enabled spelling backend's `extra_dictionaries`.
+For example, when using `--checkers=hunspell`:
 
 ```toml
 # .config/spellcheck.toml
@@ -300,8 +416,11 @@ skip_os_lookups = true
 use_builtin = true
 ```
 
-Create `.config/lingo.dic` **before** running cargo-spellcheck. An empty dictionary
-contains a numeric entry count followed by a newline:
+There is no need to create `.config/lingo.dic` first. If missing, it and any
+missing parent directories are created only when a nonempty set of confirmed
+entries is committed on normal completion or `q`, just like an automatic target.
+If you create an empty dictionary manually, it contains a numeric entry count
+followed by a newline:
 
 ```text
 0
@@ -314,10 +433,14 @@ learning target. If more than one enabled backend sets it, all configured target
 must identify the same file. Conflicting targets are errors, not a precedence
 rule. Settings on disabled backends do not select a learning target.
 
-`learning_dictionary` is resolved relative to the configuration file's directory
-(or may be absolute). Its existing file is canonicalized and must match one of
-the canonicalized `extra_dictionaries` of **each enabled spelling backend**. Those
-backends must also use the same `lang`. Missing shared targets or differing
+An explicit `learning_dictionary` remains authoritative: it never causes an
+automatic fallback to be used or created, even when the explicit file is missing.
+It is resolved relative to the configuration file's directory (or may be
+absolute). Existing paths are canonicalized; missing paths are resolved through
+their existing ancestors. The resolved target must match an `extra_dictionaries`
+entry of **each enabled spelling backend**, even when the target does not yet
+exist. A typo that does not match those registrations is still an error. Those
+backends must also use the same `lang`. Missing shared registrations or differing
 languages fail validation when an interactive fix session starts. Learning-specific
 validation runs after backend filtering, so unused backend learning settings do
 not block ordinary checks. Unlike extra-dictionary lookup, the learning target
@@ -347,13 +470,17 @@ use_builtin = true
 ```
 
 Only `[ZSpell]` names the write target here, but both engines load it and share
-accepted vocabulary. Hunspell is not required for either session-only acceptance
-or persistence.
+accepted vocabulary. Hunspell is not required for learning or persistence,
+including with an automatic target.
 
 Accepted words and confirmed entries are collected for the session and saved on
 normal completion or when leaving with `q`. **Ctrl-C abort discards pending source
-edits and learned entries**, including from any learning follow-up. Learning never
-rewrites the TOML configuration or mutates active spelling engines during a session.
+edits and learned entries**, including from any learning follow-up, without
+creating a missing dictionary (automatic or explicit), its directories, or a lock
+file. Cancelling or declining learning records nothing; a session with no recorded
+entries likewise creates none of these files or directories. Learning never
+rewrites the TOML configuration or mutates active spelling engines during a session;
+pending entries use a shared session overlay until commit.
 
 Word input remains strictly a single plain word: numeric-only entries, whitespace,
 control characters, `/` flags, backslash escapes, a leading `#`, and a byte-order
@@ -361,30 +488,34 @@ mark are rejected. Multiword replacements are not offered for learning. Case is
 preserved. In the learning editor, Backspace removes a Unicode character and Ctrl-U
 clears the prefilled word; entering a different base word does not edit the source.
 
-### Supported suffix definitions
+### Supported affix definitions
 
-Suffix learning uses the configured `.aff` file, including the builtin dictionary
-when selected, with an individual-`SFX` expansion helper powered by ZSpell. This
-helper is available with any spelling backend; it does not depend on Hunspell's
-public API exposing flag enumeration. cargo-spellcheck indexes suffix identifiers
-and strip alternatives, but passes each selected suffix's conditions and additions
-to the engine unchanged. Suggested shortened roots must expand back to the
-original word. Confirming `root/S` persists that exact entry, not separate surface
-entries such as `roots`; the complete expansion is also accepted for the session.
+Affix learning uses the configured `.aff` file, including the builtin dictionary
+when selected, with an expansion helper powered by ZSpell. This helper is
+available with any spelling backend; it does not depend on Hunspell's public API
+exposing flag enumeration. cargo-spellcheck indexes prefix/suffix identifiers and
+strip alternatives, but passes each selected rule's conditions and additions to
+the engine unchanged. Inferred stems must expand back to the original word.
+Confirming `root/S` persists that exact entry, not separate surface entries such
+as `roots`; confirming `root/UD` retains both flags and accepts the full expansion
+for the session, including the base, prefixed, suffixed, and combined forms.
 
-The catalog supports individual suffix flags in short, `FLAG long`, `FLAG num`,
-and `FLAG UTF-8` modes. It does not offer prefix flags, special-purpose flags, or
-arbitrary flag combinations. Enabled backends must resolve matching affix
-definitions before flags can be shared safely.
+The catalog supports individual prefix or suffix flags in short, `FLAG long`,
+`FLAG num`, and `FLAG UTF-8` modes, plus one prefix/suffix pair when **both** rule
+headers allow cross-product (`Y`). Saved bundles use the dictionary's native flag
+encoding, for example `root/UD` for short flags or `root/123,456` for numeric flags.
+Special-purpose flags and arbitrary flag combinations are not offered. The manual
+fallback remains a suffix-only picker. Enabled backends must resolve matching
+affix definitions before flags can be shared safely.
 
 Unsupported or malformed syntax produces an explicit diagnostic rather than a
 guessed preview. Examples include non-UTF-8 encodings, `AF`/`AM` aliases,
-continuation classes, suffix identifiers used in compound rules, shared
-prefix/suffix flag identifiers, and suffix rules with
-zero additions (which the current helper engine cannot expand faithfully).
-Directives such as `IGNORE`, `ICONV`, `OCONV`, `FULLSTRIP`, and `COMPLEXPREFIXES`
-are also rejected because suffix-only previews cannot preserve their semantics.
-Plain-word learning remains available when suffix discovery fails; existing
+continuation classes, affix identifiers used in compound rules, shared
+prefix/suffix flag identifiers, and rules with zero additions (which the current
+helper engine cannot expand faithfully). Directives such as `IGNORE`, `ICONV`,
+`OCONV`, `FULLSTRIP`, and `COMPLEXPREFIXES` are also rejected because the helper's
+previews cannot preserve their semantics. Plain-word learning remains available
+when affix discovery fails; existing
 flagged dictionaries continue to be loaded by the configured spelling backends.
 Flags are validated again against the current definitions when recording, rather
 than trusting a stale preview. Before commit, every flagged entry is re-expanded

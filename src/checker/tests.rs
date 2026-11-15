@@ -1173,6 +1173,53 @@ mod dictionaries {
         ]
     }
 
+    #[test]
+    fn newly_registered_default_dictionary_is_loaded_only_on_reload() {
+        let dictionary = ExtraDictionary::new();
+        let detectors = enabled_spelling_backends();
+        let mut config = spelling_config(&detectors, vec![]);
+        assert_eq!(
+            config
+                .include_default_learning_dictionary(&dictionary.directory)
+                .unwrap(),
+            None
+        );
+        let mut checkers = Checkers::new(config).unwrap();
+        assert!(!checkers.contains_word(WORD));
+
+        let path = Config::default_learning_dictionary(&dictionary.directory).unwrap();
+        assert!(path.is_absolute());
+        assert!(!path.exists());
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let contents = format!("1\n{WORD}\n");
+        fs::write(&path, &contents).unwrap();
+        let reloader: &mut dyn DictionaryReload = &mut checkers;
+        reloader.include_learning_dictionary(&path).unwrap();
+        reloader.include_learning_dictionary(&path).unwrap();
+        assert!(!checkers.contains_word(WORD));
+        assert_eq!(fs::read_to_string(&path).unwrap(), contents);
+        for config in [
+            checkers.config.hunspell.as_ref(),
+            checkers.config.zet.as_ref(),
+            checkers.config.spellbook.as_ref(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            assert_eq!(config.extra_dictionaries, vec![path.clone()]);
+            assert!(config.learning_dictionary.is_none());
+        }
+
+        checkers.reload_dictionaries().unwrap();
+        assert!(checkers.contains_word(WORD));
+        for detector in detectors {
+            let mut checker =
+                Checkers::new(spelling_config(&[detector], vec![path.clone()])).unwrap();
+            checker.reload_dictionaries().unwrap();
+            assert!(checker.contains_word(WORD), "{detector}");
+        }
+    }
+
     fn reload_transactionally(detectors: &[Detector]) {
         let (source, expected_markdown, expected_metadata, words) = (
             r#"/// Zzyzxqvocab

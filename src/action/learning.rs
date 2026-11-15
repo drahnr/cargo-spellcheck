@@ -5,12 +5,13 @@ use crate::checker::DictionaryReload;
 use crate::errors::*;
 use crate::{Config, Suggestion};
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
 
 mod affix;
 mod dictionary;
 mod entry;
 
-pub(super) use affix::AffixSuggestion;
+pub(super) use affix::{AffixPattern, AffixSuggestion};
 pub(super) use entry::DictionaryEntry;
 
 /// A vocabulary store owns its format, validation, and locked read-merge-write.
@@ -46,20 +47,42 @@ pub(super) struct SessionResolutions {
     confirmed_affix_forms: BTreeMap<DictionaryEntry, BTreeSet<String>>,
     config: Option<Config>,
     store: Option<Box<dyn DictionaryStore>>,
+    learning_path: Option<PathBuf>,
 }
 
 impl SessionResolutions {
-    pub(super) fn new(config: &Config) -> Result<Self> {
-        let store = if let Some(path) = config.learning_dictionary()? {
-            log::info!("Accepted words will be saved to {}", path.display());
-            Some(Box::new(dictionary::DictionaryFile::new(path)) as Box<dyn DictionaryStore>)
-        } else {
-            log::info!("Accepted words are session-only; configure learning_dictionary on an enabled spelling backend to save them");
-            None
+    pub(super) fn new(config: &Config, fallback_base: &Path) -> Result<Self> {
+        let configured = config.learning_dictionary()?;
+        let target = match configured {
+            Some(path) => Some(path),
+            None if config.has_spelling_backends() => {
+                Some(Config::default_learning_dictionary(fallback_base)?)
+            }
+            None => None,
         };
+        let mut config = config.clone();
+        let mut store = None;
+        let mut learning_path = None;
+        if let Some(target) = target {
+            let (path, missing) = Config::validate_learning_dictionary(&target)?;
+            let dictionary = if missing {
+                config.omit_missing_learning_dictionary(&path)?;
+                eprintln!(
+                    "Warning: learning dictionary {} does not exist; a new file will be created when learned entries are saved.",
+                    path.display()
+                );
+                dictionary::DictionaryFile::new_default(path.clone())
+            } else {
+                dictionary::DictionaryFile::new(path.clone())
+            };
+            log::info!("Accepted words will be saved to {}", path.display());
+            store = Some(Box::new(dictionary) as Box<dyn DictionaryStore>);
+            learning_path = Some(path);
+        }
         Ok(Self {
             store,
-            config: Some(config.clone()),
+            learning_path,
+            config: Some(config),
             ..Self::default()
         })
     }
@@ -102,8 +125,16 @@ impl SessionResolutions {
         Ok(())
     }
 
+    #[cfg(all(
+        test,
+        any(feature = "hunspell", feature = "zet", feature = "spellbook")
+    ))]
     pub(super) fn is_persistent(&self) -> bool {
         self.store.is_some()
+    }
+
+    pub(super) fn learning_dictionary_path(&self) -> Option<&Path> {
+        self.learning_path.as_deref()
     }
 
     pub(super) fn validate_learning_word(&self, word: &str) -> Result<()> {
@@ -116,6 +147,22 @@ impl SessionResolutions {
             eyre!("Affix learning unavailable: no spelling configuration; plain-word acceptance is still available")
         })?;
         affix::suggestions(config, word)
+    }
+
+    pub(super) fn pattern_suggestions(&self, word: &str) -> Result<Vec<AffixPattern>> {
+        self.validate_word(word)?;
+        let config = self.config.as_ref().ok_or_else(|| {
+            eyre!("Affix learning unavailable: no spelling configuration; plain-word acceptance is still available")
+        })?;
+        affix::AffixCatalog::load(config)?.pattern_suggestions(word)
+    }
+
+    pub(super) fn extension_patterns(&self, stem: &str) -> Result<Vec<AffixPattern>> {
+        self.validate_word(stem)?;
+        let config = self.config.as_ref().ok_or_else(|| {
+            eyre!("Affix learning unavailable: no spelling configuration; plain-word acceptance is still available")
+        })?;
+        affix::AffixCatalog::load(config)?.extension_patterns(stem)
     }
 
     pub(super) fn stem_suggestions(&self, word: &str, flags: &str) -> Result<Vec<AffixSuggestion>> {
@@ -225,6 +272,9 @@ impl SessionResolutions {
                 .all(|entry| persisted.contains(&entry.to_line()))
             {
                 bail!("Dictionary update did not retain every accepted word or confirmed entry");
+            }
+            if let Some(path) = self.learning_path.as_deref() {
+                dictionaries.include_learning_dictionary(path)?;
             }
             dictionaries.reload_dictionaries()?;
             dictionaries.verify_words(&words)?;

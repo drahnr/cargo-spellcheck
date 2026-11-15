@@ -1,4 +1,4 @@
-//! Backend-independent validation and opt-in persistence in Hunspell dictionary format.
+//! Backend-independent validation and persistence in Hunspell dictionary format.
 
 use super::entry::DictionaryEntry;
 use super::DictionaryStore;
@@ -8,11 +8,23 @@ use std::path::{Path, PathBuf};
 
 pub(super) struct DictionaryFile {
     path: PathBuf,
+    allow_create: bool,
 }
 
 impl DictionaryFile {
     pub(super) fn new(path: PathBuf) -> Self {
-        Self { path }
+        Self {
+            path,
+            allow_create: false,
+        }
+    }
+
+    /// A missing learning dictionary stays in memory until a nonempty commit.
+    pub(super) fn new_default(path: PathBuf) -> Self {
+        Self {
+            path,
+            allow_create: true,
+        }
     }
 }
 
@@ -22,8 +34,7 @@ impl DictionaryStore for DictionaryFile {
     }
 
     fn read(&self) -> Result<BTreeSet<String>> {
-        let contents =
-            fs_err::read_to_string(&self.path).wrap_err("Could not read a UTF-8 dictionary")?;
+        let (contents, _) = read_dictionary(&self.path, self.allow_create)?;
         Ok(parse_dictionary(&contents)?
             .stems
             .into_iter()
@@ -32,7 +43,11 @@ impl DictionaryStore for DictionaryFile {
     }
 
     fn update(&self, words: &BTreeSet<String>) -> Result<()> {
-        persist_words(&self.path, words)
+        if self.allow_create {
+            persist_words_with_creation(&self.path, words, true)
+        } else {
+            persist_words(&self.path, words)
+        }
     }
 
     fn update_entries(&self, entries: &BTreeSet<DictionaryEntry>) -> Result<()> {
@@ -44,12 +59,15 @@ impl DictionaryStore for DictionaryFile {
                     .collect(),
             );
         }
-        persist_entries(&self.path, entries)
+        if self.allow_create {
+            persist_entries_with_creation(&self.path, entries, true)
+        } else {
+            persist_entries(&self.path, entries)
+        }
     }
 
     fn read_entries(&self) -> Result<BTreeSet<String>> {
-        let contents =
-            fs_err::read_to_string(&self.path).wrap_err("Could not read a UTF-8 dictionary")?;
+        let (contents, _) = read_dictionary(&self.path, self.allow_create)?;
         Ok(parse_dictionary(&contents)?
             .entry_tokens
             .into_iter()
@@ -67,6 +85,14 @@ pub(super) fn validate_word(word: &str) -> Result<()> {
 ///
 /// Validate the whole batch before opening even the sidecar lock file.
 pub(super) fn persist_words(path: &Path, words: &BTreeSet<String>) -> Result<()> {
+    persist_words_with_creation(path, words, false)
+}
+
+fn persist_words_with_creation(
+    path: &Path,
+    words: &BTreeSet<String>,
+    allow_create: bool,
+) -> Result<()> {
     if words.is_empty() {
         return Ok(());
     }
@@ -76,17 +102,54 @@ pub(super) fn persist_words(path: &Path, words: &BTreeSet<String>) -> Result<()>
         .map(DictionaryEntry::plain)
         .collect::<Result<BTreeSet<_>>>()?;
 
-    persistence::persist(path, &entries)
+    persistence::persist(path, &entries, allow_create)
         .wrap_err_with(|| format!("Could not persist accepted words to {}", path.display()))
 }
 
 /// Merge confirmed entries, whose flags can only be constructed by the affix catalog.
 pub(super) fn persist_entries(path: &Path, entries: &BTreeSet<DictionaryEntry>) -> Result<()> {
+    persist_entries_with_creation(path, entries, false)
+}
+
+fn persist_entries_with_creation(
+    path: &Path,
+    entries: &BTreeSet<DictionaryEntry>,
+    allow_create: bool,
+) -> Result<()> {
     if entries.is_empty() {
         return Ok(());
     }
-    persistence::persist(path, entries)
+    persistence::persist(path, entries, allow_create)
         .wrap_err_with(|| format!("Could not persist accepted entries to {}", path.display()))
+}
+
+fn read_dictionary(
+    path: &Path,
+    allow_missing: bool,
+) -> Result<(String, Option<std::fs::Permissions>)> {
+    let metadata = if allow_missing {
+        match fs_err::symlink_metadata(path) {
+            Ok(metadata) => {
+                if !metadata.is_file() {
+                    bail!(
+                        "Learning dictionary is not a regular file: {}",
+                        path.display()
+                    );
+                }
+                metadata
+            }
+            // Unlike exists() or metadata(), this does not mistake a dangling
+            // symlink for an absent dictionary that may safely be replaced.
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(("0\n".to_owned(), None));
+            }
+            Err(error) => return Err(error).wrap_err("Could not read a UTF-8 dictionary"),
+        }
+    } else {
+        fs_err::metadata(path).wrap_err("Could not read a UTF-8 dictionary")?
+    };
+    let contents = fs_err::read_to_string(path).wrap_err("Could not read a UTF-8 dictionary")?;
+    Ok((contents, Some(metadata.permissions())))
 }
 
 struct ParsedDictionary<'a> {
@@ -140,7 +203,24 @@ mod persistence {
     use std::ffi::OsString;
     use std::io::Write;
 
-    pub(super) fn persist(path: &Path, accepted: &BTreeSet<DictionaryEntry>) -> Result<()> {
+    pub(super) fn persist(
+        path: &Path,
+        accepted: &BTreeSet<DictionaryEntry>,
+        allow_create: bool,
+    ) -> Result<()> {
+        if accepted.is_empty() {
+            return Ok(());
+        }
+        for entry in accepted {
+            validate_word(entry.word())?;
+        }
+        let parent = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
+        if allow_create {
+            fs::create_dir_all(parent).wrap_err("Could not create learning dictionary parents")?;
+        }
         let mut lock_path = path.as_os_str().to_os_string();
         lock_path.push(".cargo-spellcheck.lock");
         let lock_file = fs::OpenOptions::new()
@@ -160,7 +240,7 @@ mod persistence {
         // Do not defer shutdown while waiting for another process's file lock.
         let _hat = crate::TinHat::on();
 
-        let contents = fs::read_to_string(path).wrap_err("Could not read a UTF-8 dictionary")?;
+        let (contents, permissions) = read_dictionary(path, allow_create)?;
         let ParsedDictionary {
             entries,
             entry_tokens,
@@ -197,11 +277,6 @@ mod persistence {
             return Ok(());
         }
 
-        let permissions = fs::metadata(path)?.permissions();
-        let parent = path
-            .parent()
-            .filter(|parent| !parent.as_os_str().is_empty())
-            .unwrap_or_else(|| Path::new("."));
         let name = path
             .file_name()
             .ok_or_else(|| eyre!("Dictionary path has no file name"))?;
@@ -221,7 +296,9 @@ mod persistence {
             .wrap_err("Could not create a temporary dictionary alongside the destination")?;
         let result = (|| -> Result<()> {
             // Apply destination permissions before writing any dictionary content.
-            file.set_permissions(permissions)?;
+            if let Some(permissions) = permissions {
+                file.set_permissions(permissions)?;
+            }
             file.write_all(merged.as_bytes())?;
             file.flush()?;
             file.sync_all()?;

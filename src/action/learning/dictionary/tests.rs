@@ -834,6 +834,358 @@ fn concurrent_sessions_merge_under_the_stable_lock() {
     );
 }
 
+mod default_dictionary {
+    use super::*;
+
+    fn flagged(word: &str) -> DictionaryEntry {
+        DictionaryEntry::with_test_flags(word, "S").unwrap()
+    }
+
+    #[test]
+    fn construction_reads_and_empty_batches_create_nothing() {
+        let dir = TempDir::new();
+        for path in [
+            dir.0.join("missing.dic"),
+            dir.0.join("missing/parents/lingo.dic"),
+        ] {
+            let file = DictionaryFile::new_default(path);
+            let store: &dyn DictionaryStore = &file;
+            store.validate_word("Word").unwrap();
+            assert!(store.read().unwrap().is_empty());
+            assert!(store.read_entries().unwrap().is_empty());
+            store.update(&BTreeSet::new()).unwrap();
+            store.update_entries(&BTreeSet::new()).unwrap();
+            drop(file);
+            assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 0);
+        }
+        // Even an unusable parent must not be inspected for an empty batch.
+        let parent = dir.0.join("not-a-directory");
+        fs::write(&parent, "untouched").unwrap();
+        let file = DictionaryFile::new_default(parent.join("lingo.dic"));
+        file.update(&BTreeSet::new()).unwrap();
+        file.update_entries(&BTreeSet::new()).unwrap();
+        assert_eq!(fs::read_to_string(&parent).unwrap(), "untouched");
+        assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn plain_commits_create_parents_and_a_reloadable_dictionary() {
+        for use_entries in [false, true] {
+            let dir = TempDir::new();
+            let path = dir.0.join("missing/parents/lingo.dic");
+            let file = DictionaryFile::new_default(path.clone());
+            let accepted = words(&["Word", "word", "Éclair", "東京"]);
+            if use_entries {
+                let entries = accepted
+                    .iter()
+                    .cloned()
+                    .map(DictionaryEntry::plain)
+                    .collect::<Result<BTreeSet<_>>>()
+                    .unwrap();
+                file.update_entries(&entries).unwrap();
+            } else {
+                file.update(&accepted).unwrap();
+            }
+            assert_eq!(
+                fs::read_to_string(&path).unwrap(),
+                "4\nWord\nword\nÉclair\n東京\n"
+            );
+            assert_eq!(file.read().unwrap(), accepted);
+            assert_eq!(file.read_entries().unwrap(), accepted);
+            let reopened = DictionaryFile::new(path.clone());
+            assert_eq!(reopened.read().unwrap(), accepted);
+            assert_eq!(fs::read_dir(path.parent().unwrap()).unwrap().count(), 2);
+        }
+    }
+
+    #[test]
+    fn flagged_commit_creates_and_then_merges_through_the_same_store() {
+        let dir = TempDir::new();
+        let path = dir.0.join("missing/parents/lingo.dic");
+        let file = DictionaryFile::new_default(path.clone());
+        let entries = BTreeSet::from([flagged("Word"), DictionaryEntry::plain("Éclair").unwrap()]);
+        file.update_entries(&entries).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "2\nWord/S\nÉclair\n");
+        assert_eq!(file.read_entries().unwrap(), words(&["Word/S", "Éclair"]));
+        assert_eq!(file.read().unwrap(), words(&["Word", "Éclair"]));
+        file.update(&words(&["Word"])).unwrap();
+        file.update_entries(&entries).unwrap();
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            "3\nWord/S\nÉclair\nWord\n"
+        );
+        assert_eq!(
+            file.read_entries().unwrap(),
+            words(&["Word", "Word/S", "Éclair"])
+        );
+        let reopened = DictionaryFile::new(path.clone());
+        assert_eq!(
+            reopened.read_entries().unwrap(),
+            file.read_entries().unwrap()
+        );
+        assert_eq!(fs::read_dir(path.parent().unwrap()).unwrap().count(), 2);
+    }
+
+    #[test]
+    fn strict_stores_and_public_persistence_still_require_an_existing_dictionary() {
+        let dir = TempDir::new();
+        for path in [
+            dir.0.join("missing.dic"),
+            dir.0.join("missing/parents/lingo.dic"),
+        ] {
+            let file = DictionaryFile::new(path.clone());
+            let accepted = words(&["Word"]);
+            let entries = BTreeSet::from([flagged("Word")]);
+            assert!(file.read().is_err());
+            assert!(file.read_entries().is_err());
+            assert!(file.update(&accepted).is_err());
+            assert!(file.update_entries(&entries).is_err());
+            assert!(persist_words(&path, &accepted).is_err());
+            assert!(persist_entries(&path, &entries).is_err());
+            assert!(!path.exists());
+        }
+        assert!(!dir.0.join("missing").exists());
+        // The strict existing-parent path retains its established sidecar behavior.
+        assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn invalid_batches_and_escaped_stems_never_create_parents_or_locks() {
+        let dir = TempDir::new();
+        for existing in [false, true] {
+            let path = if existing {
+                dir.0.join("lingo.dic")
+            } else {
+                dir.0.join("missing/parents/lingo.dic")
+            };
+            let original = "1\nExisting/S\n";
+            if existing {
+                fs::write(&path, original).unwrap();
+            }
+            let file = DictionaryFile::new_default(path.clone());
+            for invalid in [
+                "",
+                "123",
+                "two words",
+                "word/S",
+                "word\\/S",
+                "word\\S",
+                "word\tpo:noun",
+                "word\nInjected",
+                "word\0",
+                "#comment",
+                "\u{feff}word",
+            ] {
+                assert!(file.validate_word(invalid).is_err());
+                assert!(file.update(&words(&["Accepted", invalid])).is_err());
+                assert!(DictionaryEntry::plain(invalid).is_err());
+                assert!(DictionaryEntry::with_test_flags(invalid, "S").is_err());
+                assert!(!dir.0.join("missing").exists());
+                assert_eq!(fs::read_dir(&dir.0).unwrap().count(), usize::from(existing));
+                if existing {
+                    assert_eq!(fs::read_to_string(&path).unwrap(), original);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn existing_malformed_defaults_are_never_initialized_or_replaced() {
+        let dir = TempDir::new();
+        let path = dir.0.join("lingo.dic");
+        let file = DictionaryFile::new_default(path.clone());
+        for original in [
+            b"".as_ref(),
+            b"Word\n",
+            b"1\n/SM\n",
+            b"1\n\n",
+            b"1\nWo\0rd\n",
+            b"1\n\xff\n",
+        ] {
+            fs::write(&path, original).unwrap();
+            assert!(file.read().is_err());
+            assert!(file.read_entries().is_err());
+            assert!(file.update(&words(&["Word"])).is_err());
+            assert!(file
+                .update_entries(&BTreeSet::from([flagged("Word")]))
+                .is_err());
+            assert_eq!(fs::read(&path).unwrap(), original);
+            assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 2);
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn new_defaults_are_private_and_existing_permissions_are_preserved() {
+        use std::os::unix::fs::PermissionsExt;
+
+        for use_entries in [false, true] {
+            let dir = TempDir::new();
+            let path = dir.0.join("missing/lingo.dic");
+            let file = DictionaryFile::new_default(path.clone());
+            if use_entries {
+                file.update_entries(&BTreeSet::from([flagged("First")]))
+                    .unwrap();
+            } else {
+                file.update(&words(&["First"])).unwrap();
+            }
+            assert_eq!(
+                fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+            fs::set_permissions(&path, std::fs::Permissions::from_mode(0o640)).unwrap();
+            if use_entries {
+                file.update_entries(&BTreeSet::from([flagged("Second")]))
+                    .unwrap();
+            } else {
+                file.update(&words(&["Second"])).unwrap();
+            }
+            assert_eq!(
+                fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+                0o640
+            );
+        }
+    }
+
+    #[test]
+    fn directory_default_is_not_replaced() {
+        let dir = TempDir::new();
+        let path = dir.0.join("lingo.dic");
+        fs::create_dir(&path).unwrap();
+        let file = DictionaryFile::new_default(path.clone());
+        assert!(file.read().is_err());
+        assert!(file.read_entries().is_err());
+        assert!(file.update(&words(&["Word"])).is_err());
+        assert!(file
+            .update_entries(&BTreeSet::from([flagged("Word")]))
+            .is_err());
+        assert!(path.is_dir());
+        assert_eq!(fs::read_dir(&path).unwrap().count(), 0);
+        assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 2);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn dangling_and_live_symlink_defaults_are_not_replaced() {
+        use std::os::unix::fs::symlink;
+
+        for target_exists in [false, true] {
+            let dir = TempDir::new();
+            let path = dir.0.join("lingo.dic");
+            let target = dir.0.join("target.dic");
+            if target_exists {
+                fs::write(&target, "1\nExisting/S\n").unwrap();
+            }
+            symlink(&target, &path).unwrap();
+            let file = DictionaryFile::new_default(path.clone());
+            assert!(file.read().is_err());
+            assert!(file.read_entries().is_err());
+            assert!(file.update(&words(&["Word"])).is_err());
+            assert!(file
+                .update_entries(&BTreeSet::from([flagged("Word")]))
+                .is_err());
+            assert!(fs::symlink_metadata(&path)
+                .unwrap()
+                .file_type()
+                .is_symlink());
+            assert_eq!(fs::read_link(&path).unwrap(), target);
+            if target_exists {
+                assert_eq!(fs::read_to_string(&target).unwrap(), "1\nExisting/S\n");
+            } else {
+                assert!(!target.exists());
+            }
+            assert_eq!(
+                fs::read_dir(&dir.0).unwrap().count(),
+                2 + usize::from(target_exists)
+            );
+        }
+    }
+
+    #[test]
+    fn waiting_commit_does_not_initialize_before_locking_and_rereads_after_locking() {
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        let dir = TempDir::new();
+        let path = dir.0.join("lingo.dic");
+        let lock = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create_new(true)
+            .open(dir.0.join("lingo.dic.cargo-spellcheck.lock"))
+            .unwrap();
+        lock.file().lock().unwrap();
+        let (ready_tx, ready_rx) = mpsc::channel();
+        let (done_tx, done_rx) = mpsc::channel();
+        let file = DictionaryFile::new_default(path.clone());
+        let handle = std::thread::spawn(move || {
+            ready_tx.send(()).unwrap();
+            file.update_entries(&BTreeSet::from([flagged("Word")]))
+                .unwrap();
+            done_tx.send(()).unwrap();
+        });
+        ready_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        let waiting = matches!(
+            done_rx.recv_timeout(Duration::from_millis(100)),
+            Err(mpsc::RecvTimeoutError::Timeout)
+        );
+        let absent_while_locked = !path.exists();
+        fs::write(&path, "1\nOther/S\n").unwrap();
+        drop(lock);
+        if waiting {
+            done_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        }
+        handle.join().unwrap();
+        assert!(waiting, "commit did not wait for the stable sidecar lock");
+        assert!(
+            absent_while_locked,
+            "dictionary was initialized before locking"
+        );
+        assert_eq!(fs::read_to_string(&path).unwrap(), "2\nOther/S\nWord/S\n");
+        assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 2);
+    }
+
+    #[test]
+    fn concurrent_initial_plain_and_flagged_commits_merge_under_the_stable_lock() {
+        use std::sync::{Arc, Barrier};
+
+        let dir = TempDir::new();
+        let path = dir.0.join("missing/parents/lingo.dic");
+        let barrier = Arc::new(Barrier::new(8));
+        let handles = (0..8)
+            .map(|index| {
+                let path = path.clone();
+                let barrier = Arc::clone(&barrier);
+                std::thread::spawn(move || {
+                    let file = DictionaryFile::new_default(path);
+                    let word = format!("Word{}", index / 2);
+                    barrier.wait();
+                    if index % 2 == 0 {
+                        file.update(&words(&["Shared", &word])).unwrap();
+                    } else {
+                        file.update_entries(&BTreeSet::from([flagged("Shared"), flagged(&word)]))
+                            .unwrap();
+                    }
+                })
+            })
+            .collect::<Vec<_>>();
+        for handle in handles {
+            handle.join().unwrap();
+        }
+        let mut expected = words(&["Shared", "Shared/S"]);
+        for index in 0..4 {
+            expected.insert(format!("Word{index}"));
+            expected.insert(format!("Word{index}/S"));
+        }
+        let file = DictionaryFile::new(path.clone());
+        assert_eq!(file.read_entries().unwrap(), expected);
+        let contents = fs::read_to_string(&path).unwrap();
+        assert_eq!(contents.lines().next(), Some("10"));
+        assert_eq!(contents.lines().skip(1).count(), 10);
+        assert_eq!(fs::read_dir(path.parent().unwrap()).unwrap().count(), 2);
+    }
+}
+
 mod confirmed_entries {
     use super::*;
 

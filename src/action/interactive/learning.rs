@@ -4,7 +4,7 @@ use super::{
     print_commands, print_selection_list, select_key, selection_style, ScopedRaw, SelectionAction,
     NAVIGATION_COMMANDS,
 };
-use crate::action::learning::{AffixSuggestion, DictionaryEntry, SessionResolutions};
+use crate::action::learning::{AffixPattern, AffixSuggestion, DictionaryEntry, SessionResolutions};
 use crate::errors::Result;
 use crossterm::{
     cursor,
@@ -29,7 +29,6 @@ pub(super) fn prompt(
 ) -> Result<LearningOutcome> {
     // Keep raw mode active across every stage, including queued input.
     let _raw = ScopedRaw::new()?;
-    print_learning_mode(session)?;
     print_learning_prompt(&mut stdout(), word, accept_as_is)?;
     loop {
         let key = read_key()?;
@@ -62,17 +61,7 @@ pub(super) fn prompt(
 pub(super) fn choose_word(word: &str, session: &SessionResolutions) -> Result<LearningOutcome> {
     session.validate_learning_word(word)?;
     let _raw = ScopedRaw::new()?;
-    print_learning_mode(session)?;
     Ok(choose_and_confirm(word, session)?.unwrap_or(LearningOutcome::Cancel))
-}
-
-fn print_learning_mode(session: &SessionResolutions) -> Result<()> {
-    if session.is_persistent() {
-        write!(stdout(), "\r\nPersistent learning: recorded entries will be saved when this session is applied.\r\n")?;
-    } else {
-        write!(stdout(), "\r\nSession-only learning: entries are not saved; configure learning_dictionary to persist them.\r\n")?;
-    }
-    Ok(())
 }
 
 fn print_entry_preview(
@@ -91,9 +80,46 @@ fn print_entry_preview(
             "unavailable (backend supplied no expanded forms)\r\n"
         )?;
     } else {
-        write!(output, "{}\r\n", forms.join(", "))?;
+        write!(output, "{}\r\n", highlight_expansion(entry.word(), forms))?;
     }
     Ok(())
+}
+
+fn highlight_expansion(stem: &str, forms: &[String]) -> String {
+    forms
+        .iter()
+        .map(|form| {
+            let boundaries = stem
+                .char_indices()
+                .map(|(index, _)| index)
+                .chain(std::iter::once(stem.len()))
+                .collect::<Vec<_>>();
+            let mut core = (0, 0);
+            'search: for length in (1..boundaries.len()).rev() {
+                for start in 0..boundaries.len() - length {
+                    let candidate = &stem[boundaries[start]..boundaries[start + length]];
+                    if let Some(offset) = form.find(candidate) {
+                        core = (offset, offset + candidate.len());
+                        break 'search;
+                    }
+                }
+            }
+            let highlight = |text: &str| {
+                if text.is_empty() {
+                    String::new()
+                } else {
+                    selection_style().apply(text).to_string()
+                }
+            };
+            format!(
+                "{}{}{}",
+                highlight(&form[..core.0]),
+                &form[core.0..core.1],
+                highlight(&form[core.1..])
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn print_learning_prompt(output: &mut impl Write, word: &str, accept_as_is: bool) -> Result<()> {
@@ -103,17 +129,9 @@ fn print_learning_prompt(output: &mut impl Write, word: &str, accept_as_is: bool
 
 fn print_learning_options(output: &mut impl Write, word: &str, accept_as_is: bool) -> Result<()> {
     let replacement = if accept_as_is { "" } else { " replacement" };
-    let cancel = if accept_as_is {
-        "cancel"
-    } else {
-        "skip learning"
-    };
     write!(output, "Learn{replacement} \"")?;
     output.queue(PrintStyledContent(selection_style().apply(word)))?;
-    write!(
-        output,
-        "\" [Enter/p=affixes, e=edit word, n/Esc={cancel}, Ctrl-C=abort, ?=help]: "
-    )?;
+    write!(output, "\" [p,e,n,?]: ")?;
     Ok(())
 }
 
@@ -155,6 +173,38 @@ fn edit_and_choose(word: &str, session: &SessionResolutions) -> Result<Option<Le
 }
 
 fn choose_and_confirm(word: &str, session: &SessionResolutions) -> Result<Option<LearningOutcome>> {
+    let mut patterns = match session.pattern_suggestions(word) {
+        Ok(patterns) => patterns,
+        Err(error) => {
+            write!(
+                stdout(),
+                "{error}; plain-word learning is still available.\r\n"
+            )?;
+            Vec::new()
+        }
+    };
+    patterns.push(AffixPattern {
+        prefix: None,
+        suffix: None,
+        suggestion: session.preview_entry(word, None)?,
+    });
+    let mut selected = 0;
+    loop {
+        match choose_pattern(&mut patterns, &mut selected, session)? {
+            PatternAction::Manual => return choose_manually(word, session),
+            PatternAction::Cancel => return Ok(None),
+            PatternAction::Abort => return Ok(Some(LearningOutcome::Abort)),
+            PatternAction::Submit => {
+                match confirm_entry(&patterns[selected].suggestion, session, false)? {
+                    EditOutcome::Back => continue,
+                    EditOutcome::Finished(outcome) => return Ok(outcome),
+                }
+            }
+        }
+    }
+}
+
+fn choose_manually(word: &str, session: &SessionResolutions) -> Result<Option<LearningOutcome>> {
     let mut suffixes = vec![session.preview_entry(word, None)?];
     match session.entry_suggestions(word) {
         Ok(suggestions) => suffixes.extend(suggestions),
@@ -166,9 +216,13 @@ fn choose_and_confirm(word: &str, session: &SessionResolutions) -> Result<Option
     'suffix: loop {
         let (action, selected) = choose_entry(&suffixes, EntryStage::Suffix)?;
         match action {
-            Input::Abort => return Ok(Some(LearningOutcome::Abort)),
-            Input::Cancel => return Ok(None),
-            Input::Submit => {}
+            EntryAction::Abort => return Ok(Some(LearningOutcome::Abort)),
+            EntryAction::Cancel => return Ok(None),
+            EntryAction::Edit => match confirm_entry(&suffixes[selected], session, true)? {
+                EditOutcome::Back => continue 'suffix,
+                EditOutcome::Finished(outcome) => return Ok(outcome),
+            },
+            EntryAction::Submit => {}
         }
         let flags = suffixes[selected].entry.flags();
         let stems = match flags {
@@ -179,73 +233,443 @@ fn choose_and_confirm(word: &str, session: &SessionResolutions) -> Result<Option
             let selected = if flags.is_some() {
                 let (action, selected) = choose_entry(&stems, EntryStage::Stem)?;
                 match action {
-                    Input::Abort => return Ok(Some(LearningOutcome::Abort)),
-                    Input::Cancel => continue 'suffix,
-                    Input::Submit => selected,
+                    EntryAction::Abort => return Ok(Some(LearningOutcome::Abort)),
+                    EntryAction::Cancel => continue 'suffix,
+                    EntryAction::Submit | EntryAction::Edit => selected,
                 }
             } else {
                 0
             };
-            let mut stem = stems[selected].entry.word().to_owned();
-            'edit: loop {
-                let (action, edited) = read_line(EditorStage::Stem, &stem)?;
-                match action {
-                    Input::Abort => return Ok(Some(LearningOutcome::Abort)),
-                    Input::Cancel if flags.is_some() => continue 'stem,
-                    Input::Cancel => continue 'suffix,
-                    Input::Submit => stem = edited,
-                }
-                let preview = match session.preview_entry(&stem, flags) {
-                    Ok(preview) => preview,
-                    Err(error) => {
-                        write!(stdout(), "Invalid stem: {error}\r\n")?;
-                        continue 'edit;
-                    }
-                };
-                print_entry_preview(&mut stdout(), &preview.entry, &preview.forms)?;
-                write!(stdout(), "{CONFIRMATION_PROMPT}")?;
-                loop {
-                    let key = read_key()?;
-                    if key.code == KeyCode::Char('?') {
-                        print_confirmation_commands(&mut stdout())?;
-                        write!(stdout(), "{CONFIRMATION_PROMPT}")?;
-                        continue;
-                    }
-                    if is_control(key, 'c') {
-                        write!(stdout(), "\r\n")?;
-                        return Ok(Some(LearningOutcome::Abort));
-                    }
-                    match key.code {
-                        KeyCode::Char('y')
-                            if key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT =>
-                        {
-                            write!(stdout(), "\r\n")?;
-                            return Ok(Some(LearningOutcome::Record(preview.entry, preview.forms)));
-                        }
-                        KeyCode::Char('e') => {
-                            write!(stdout(), "\r\n")?;
-                            continue 'edit;
-                        }
-                        KeyCode::Enter | KeyCode::Esc | KeyCode::Char('n') => {
-                            write!(stdout(), "\r\n")?;
-                            return Ok(None);
-                        }
-                        _ => {}
-                    }
-                }
+            match confirm_entry(&stems[selected], session, true)? {
+                EditOutcome::Back if flags.is_some() => continue 'stem,
+                EditOutcome::Back => continue 'suffix,
+                EditOutcome::Finished(outcome) => return Ok(outcome),
             }
         }
     }
 }
 
-const CONFIRMATION_PROMPT: &str = "Confirm learning [y=yes, Enter/n/Esc=no, e=edit stem, ?=help]: ";
+enum EditOutcome {
+    Back,
+    Finished(Option<LearningOutcome>),
+}
+
+fn edit_stem(
+    suggestion: &AffixSuggestion,
+    session: &SessionResolutions,
+) -> Result<(Input, AffixSuggestion)> {
+    let mut stem = suggestion.entry.word().to_owned();
+    loop {
+        let (action, edited) = read_line(EditorStage::Stem, &stem)?;
+        match action {
+            Input::Abort | Input::Cancel => return Ok((action, suggestion.clone())),
+            Input::Submit => stem = edited,
+        }
+        match session.preview_entry(&stem, suggestion.entry.flags()) {
+            Ok(preview) => return Ok((Input::Submit, preview)),
+            Err(error) => write!(stdout(), "Invalid stem: {error}\r\n")?,
+        }
+    }
+}
+
+fn confirm_entry(
+    suggestion: &AffixSuggestion,
+    session: &SessionResolutions,
+    mut edit_first: bool,
+) -> Result<EditOutcome> {
+    let mut preview = suggestion.clone();
+    'edit: loop {
+        if edit_first {
+            let (action, edited) = edit_stem(&preview, session)?;
+            match action {
+                Input::Abort => return Ok(EditOutcome::Finished(Some(LearningOutcome::Abort))),
+                Input::Cancel => return Ok(EditOutcome::Back),
+                Input::Submit => preview = edited,
+            }
+        }
+        print_entry_preview(&mut stdout(), &preview.entry, &preview.forms)?;
+        write!(stdout(), "{CONFIRMATION_PROMPT}")?;
+        loop {
+            let key = read_key()?;
+            if key.code == KeyCode::Char('?') {
+                print_confirmation_commands(&mut stdout())?;
+                write!(stdout(), "{CONFIRMATION_PROMPT}")?;
+                continue;
+            }
+            if is_control(key, 'c') {
+                write!(stdout(), "\r\n")?;
+                return Ok(EditOutcome::Finished(Some(LearningOutcome::Abort)));
+            }
+            match key.code {
+                KeyCode::Enter | KeyCode::Char('y')
+                    if key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT =>
+                {
+                    write!(stdout(), "\r\n")?;
+                    return Ok(EditOutcome::Finished(Some(LearningOutcome::Record(
+                        preview.entry,
+                        preview.forms,
+                    ))));
+                }
+                KeyCode::Char('e') => {
+                    write!(stdout(), "\r\n")?;
+                    edit_first = true;
+                    continue 'edit;
+                }
+                KeyCode::Esc | KeyCode::Char('n') => {
+                    write!(stdout(), "\r\n")?;
+                    return Ok(EditOutcome::Finished(None));
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+const AFFIX_PROMPT: &str = "Affixes [y,a,e,n,?]: ";
+
+enum PatternAction {
+    Submit,
+    Manual,
+    Cancel,
+    Abort,
+}
+
+fn sorted_extensions(session: &SessionResolutions, stem: &str) -> Result<Vec<AffixPattern>> {
+    let mut choices = session.extension_patterns(stem)?;
+    choices.sort_by(|left, right| {
+        left.suggestion
+            .entry
+            .flags()
+            .unwrap_or("")
+            .cmp(right.suggestion.entry.flags().unwrap_or(""))
+    });
+    Ok(choices)
+}
+
+fn extension_label(pattern: &AffixPattern) -> String {
+    pattern
+        .suggestion
+        .entry
+        .flags()
+        .map_or_else(|| "-".to_owned(), |flags| format!("/{flags}"))
+}
+
+fn extension_strip(labels: &[String], selected: usize, width: u16) -> (String, String) {
+    let width = usize::from(width.saturating_sub(1));
+    if labels.is_empty() || width == 0 {
+        return (String::new(), String::new());
+    }
+    let selected_label = &labels[selected];
+    let selected_label = if console::measure_text_width(selected_label) <= width {
+        std::borrow::Cow::Borrowed(selected_label.as_str())
+    } else {
+        console::truncate_str(selected_label, width, "…")
+    };
+    let caret = width / 2;
+    let selected_width = console::measure_text_width(&selected_label);
+    let selected_start = caret.saturating_sub(selected_width / 2);
+
+    // Keep the chosen label centered and move whole neighboring labels beneath
+    // the caret. Reserve edge markers whenever more alternatives are hidden.
+    let mut start = selected;
+    let mut left_width = 0;
+    while start > 0 {
+        let candidate = left_width + console::measure_text_width(&labels[start - 1]) + 1;
+        let marker = if start > 1 { 3 } else { 0 };
+        if candidate + marker > selected_start {
+            break;
+        }
+        start -= 1;
+        left_width = candidate;
+    }
+    let mut left = if start > 0 && selected_start >= left_width + 3 {
+        ".. ".to_owned()
+    } else {
+        String::new()
+    };
+    for label in &labels[start..selected] {
+        left.push_str(label);
+        left.push(' ');
+    }
+    let padding = selected_start.saturating_sub(console::measure_text_width(&left));
+    let mut strip = format!("{:padding$}{left}{selected_label}", "");
+    let mut used = selected_start + selected_width;
+    let mut end = selected + 1;
+    while end < labels.len() {
+        let candidate = used + 1 + console::measure_text_width(&labels[end]);
+        let marker = if end + 1 < labels.len() { 3 } else { 0 };
+        if candidate + marker > width {
+            break;
+        }
+        strip.push(' ');
+        strip.push_str(&labels[end]);
+        used = candidate;
+        end += 1;
+    }
+    if end < labels.len() && used + 3 <= width {
+        strip.push_str(" ..");
+    }
+    (strip, format!("{:caret$}^", ""))
+}
+
+fn choose_pattern(
+    patterns: &mut [AffixPattern],
+    selected: &mut usize,
+    session: &SessionResolutions,
+) -> Result<PatternAction> {
+    let mut output = stdout();
+    let (width, height) = terminal::size().unwrap_or((80, 24));
+    if height < 4 {
+        return Err(crate::errors::eyre!(
+            "Affix selection requires at least four terminal rows; enlarge the terminal and retry"
+        ));
+    }
+    let visible = patterns
+        .len()
+        .min(usize::from(height.saturating_sub(6).max(1)));
+    let stem = patterns[*selected].suggestion.entry.word();
+    let extensions = match sorted_extensions(session, stem) {
+        Ok(extensions) => extensions,
+        Err(error) => {
+            write!(output, "{error}; extension cycling is unavailable.\r\n")?;
+            Vec::new()
+        }
+    };
+    // Flag availability is catalog-wide, including conditional rules that do
+    // not currently change this stem. Keep those columns stable while cycling.
+    let layout = extensions.clone();
+    let mut cache = std::collections::BTreeMap::from([(stem.to_owned(), extensions)]);
+    let (mut heading, _) = pattern_rows(patterns, &layout, width);
+    mount_patterns(&mut output, &heading, visible)?;
+    loop {
+        let (next_heading, rows) = pattern_rows(patterns, &layout, width);
+        heading = next_heading;
+        let pattern = &patterns[*selected];
+        let stem = pattern.suggestion.entry.word();
+        let choices = match cache.entry(stem.to_owned()) {
+            std::collections::btree_map::Entry::Occupied(entry) => entry.into_mut(),
+            std::collections::btree_map::Entry::Vacant(entry) => {
+                let extensions = match sorted_extensions(session, stem) {
+                    Ok(extensions) => extensions,
+                    Err(error) => {
+                        write!(
+                            output,
+                            "\r\n\r\n\r\n\r\n{error}; extension cycling is unavailable.\r\n"
+                        )?;
+                        mount_patterns(&mut output, &heading, visible)?;
+                        Vec::new()
+                    }
+                };
+                entry.insert(extensions)
+            }
+        };
+        let start = selected.saturating_sub(visible - 1);
+        let mut style = ContentStyle::new();
+        style.background_color = Some(Color::Black);
+        style.foreground_color = Some(Color::Blue);
+        print_selection_list(
+            &mut output,
+            rows.iter()
+                .zip(patterns.iter())
+                .skip(start)
+                .take(visible)
+                .map(|(row, pattern)| {
+                    (
+                        style,
+                        row.as_str(),
+                        Some(if pattern.suggestion.entry.flags().is_some() {
+                            "pattern"
+                        } else {
+                            "plain"
+                        }),
+                    )
+                }),
+            *selected - start,
+            None,
+        )?;
+        let current = choices
+            .iter()
+            .position(|choice| choice.prefix == pattern.prefix && choice.suffix == pattern.suffix)
+            .unwrap_or(0);
+        let labels = if choices.is_empty() {
+            vec![extension_label(pattern)]
+        } else {
+            choices.iter().map(extension_label).collect()
+        };
+        let (strip, caret) = extension_strip(&labels, current, width);
+        print_picker_context(
+            &mut output,
+            &pattern.suggestion,
+            width,
+            Some((&strip, &caret)),
+        )?;
+        let key = read_key()?;
+        if key.code == KeyCode::Char('?') {
+            write!(output, "\r\n\r\n\r\n\r\n")?;
+            print_commands(
+                &mut output,
+                NAVIGATION_COMMANDS.iter().copied().chain([
+                    ("Left", "previous extension"),
+                    ("Right", "next extension"),
+                    ("Enter", "preview entry"),
+                    ("y", "preview entry"),
+                    ("a", "choose affixes"),
+                    ("e", "edit stem"),
+                    ("n", "cancel learning"),
+                    ("Esc", "cancel learning"),
+                    ("Ctrl-C", "discard choices and abort"),
+                ]),
+            )?;
+            mount_patterns(&mut output, &heading, visible)?;
+            continue;
+        }
+        if matches!(key.code, KeyCode::Left | KeyCode::Right) {
+            if !choices.is_empty() {
+                let next = if key.code == KeyCode::Left {
+                    (current + choices.len() - 1) % choices.len()
+                } else {
+                    (current + 1) % choices.len()
+                };
+                patterns[*selected] = choices[next].clone();
+            }
+            continue;
+        }
+        if key.code == KeyCode::Char('e') {
+            write!(output, "\r\n\r\n\r\n\r\n")?;
+            let (action, suggestion) = edit_stem(&patterns[*selected].suggestion, session)?;
+            match action {
+                Input::Abort => return Ok(PatternAction::Abort),
+                Input::Cancel => {}
+                Input::Submit => patterns[*selected].suggestion = suggestion,
+            }
+            let (next_heading, _) = pattern_rows(patterns, &layout, width);
+            mount_patterns(&mut output, &next_heading, visible)?;
+            continue;
+        }
+        let action = if key.code == KeyCode::Char('a') {
+            Some(PatternAction::Manual)
+        } else {
+            match select_entry_key(selected, patterns.len(), key) {
+                Some(Input::Submit) => Some(PatternAction::Submit),
+                Some(Input::Cancel) => Some(PatternAction::Cancel),
+                Some(Input::Abort) => Some(PatternAction::Abort),
+                None => None,
+            }
+        };
+        if let Some(action) = action {
+            write!(output, "\r\n\r\n\r\n\r\n")?;
+            return Ok(action);
+        }
+    }
+}
+
+fn mount_patterns(output: &mut impl Write, heading: &str, visible: usize) -> Result<()> {
+    write!(output, "{AFFIX_PROMPT}\r\n    {heading}\r\n")?;
+    for _ in 0..visible + 3 {
+        write!(output, "\r\n")?;
+    }
+    output.queue(cursor::MoveUp(3))?;
+    Ok(())
+}
+
+fn pattern_rows(
+    patterns: &[AffixPattern],
+    extensions: &[AffixPattern],
+    width: u16,
+) -> (String, Vec<String>) {
+    let with_prefix = patterns
+        .iter()
+        .chain(extensions)
+        .any(|pattern| pattern.prefix.is_some());
+    let flags = |flag: &Option<String>| {
+        flag.as_ref()
+            .map_or_else(|| "-".to_owned(), |flag| format!("/{flag}"))
+    };
+    let prefix_width = patterns
+        .iter()
+        .chain(extensions)
+        .map(|pattern| console::measure_text_width(&flags(&pattern.prefix)))
+        .max()
+        .unwrap_or(0)
+        .max(6);
+    let suffix_width = patterns
+        .iter()
+        .chain(extensions)
+        .map(|pattern| console::measure_text_width(&flags(&pattern.suffix)))
+        .max()
+        .unwrap_or(0)
+        .max(6);
+    let fixed = if with_prefix { prefix_width + 3 } else { 0 } + 3 + suffix_width;
+    let row_width = usize::from(width.saturating_sub(15));
+    let clip = |text: &str, width: usize| {
+        if console::measure_text_width(text) <= width {
+            text.to_owned()
+        } else if width == 0 {
+            String::new()
+        } else {
+            console::truncate_str(text, width, "…").into_owned()
+        }
+    };
+    // If the fixed columns alone crowd out the stem, show a clipped native
+    // entry instead. Wrapping a picker row would invalidate cursor restores.
+    if fixed + 4 > row_width {
+        return (
+            clip("stem/flags", row_width),
+            patterns
+                .iter()
+                .map(|pattern| clip(&pattern.suggestion.entry.to_line(), row_width))
+                .collect(),
+        );
+    }
+    let available = row_width - fixed;
+    let stem_width = patterns
+        .iter()
+        .map(|pattern| console::measure_text_width(pattern.suggestion.entry.word()))
+        .max()
+        .unwrap_or(0)
+        .max(4)
+        .min(available);
+    let row = |prefix: &str, stem: &str, suffix: &str| {
+        let stem = if console::measure_text_width(stem) <= stem_width {
+            std::borrow::Cow::Borrowed(stem)
+        } else if stem_width == 0 {
+            std::borrow::Cow::Borrowed("")
+        } else {
+            console::truncate_str(stem, stem_width, "…")
+        };
+        let padding = stem_width.saturating_sub(console::measure_text_width(&stem));
+        if with_prefix {
+            let prefix_padding = prefix_width.saturating_sub(console::measure_text_width(prefix));
+            format!(
+                "{prefix}{:prefix_padding$} | {stem}{:padding$} | {suffix}",
+                "", ""
+            )
+        } else {
+            format!("{stem}{:padding$} | {suffix}", "")
+        }
+    };
+    let heading = row("prefix", "stem", "suffix");
+    let rows = patterns
+        .iter()
+        .map(|pattern| {
+            row(
+                &flags(&pattern.prefix),
+                pattern.suggestion.entry.word(),
+                &flags(&pattern.suffix),
+            )
+        })
+        .collect();
+    (heading, rows)
+}
+
+const CONFIRMATION_PROMPT: &str = "Confirm learning [y,e,n,?]: ";
 
 fn print_confirmation_commands(output: &mut impl Write) -> Result<()> {
     print_commands(
         output,
         [
             ("y", "record entry"),
-            ("Enter", "decline learning"),
+            ("Enter", "record entry"),
             ("n", "decline learning"),
             ("Esc", "decline learning"),
             ("e", "edit stem"),
@@ -263,13 +687,20 @@ enum EntryStage {
 impl EntryStage {
     fn prompt(self) -> &'static str {
         match self {
-            Self::Suffix => "Suffix [Up/Down=select, Enter=stems, n/Esc=back, ?=help]: ",
-            Self::Stem => "Stem [Up/Down=select, Enter=edit, n/Esc=back, ?=help]: ",
+            Self::Suffix => "Suffix [y,e,n,?]: ",
+            Self::Stem => "Stem [y,e,n,?]: ",
         }
     }
 }
 
-fn choose_entry(choices: &[AffixSuggestion], stage: EntryStage) -> Result<(Input, usize)> {
+enum EntryAction {
+    Submit,
+    Edit,
+    Cancel,
+    Abort,
+}
+
+fn choose_entry(choices: &[AffixSuggestion], stage: EntryStage) -> Result<(EntryAction, usize)> {
     let mut selected = 0;
     let mut output = stdout();
     let (width, height) = terminal::size().unwrap_or((80, 24));
@@ -285,7 +716,16 @@ fn choose_entry(choices: &[AffixSuggestion], stage: EntryStage) -> Result<(Input
             print_picker_commands(&mut output, stage, visible)?;
             continue;
         }
-        if let Some(action) = select_entry_key(&mut selected, choices.len(), key) {
+        let action = if key.code == KeyCode::Char('e') {
+            Some(EntryAction::Edit)
+        } else {
+            select_entry_key(&mut selected, choices.len(), key).map(|action| match action {
+                Input::Submit => EntryAction::Submit,
+                Input::Cancel => EntryAction::Cancel,
+                Input::Abort => EntryAction::Abort,
+            })
+        };
+        if let Some(action) = action {
             write!(output, "\r\n\r\n")?;
             return Ok((action, selected));
         }
@@ -315,6 +755,7 @@ fn print_picker_commands(output: &mut impl Write, stage: EntryStage, visible: us
         NAVIGATION_COMMANDS.iter().copied().chain([
             ("Enter", submit),
             ("y", submit),
+            ("e", "edit stem"),
             ("n", back),
             ("Esc", back),
             ("Ctrl-C", "discard choices and abort"),
@@ -348,7 +789,18 @@ fn print_entries(
                 (EntryStage::Suffix, Some(flags)) => (format!("/{flags}"), "suffix"),
                 (EntryStage::Stem, Some(_)) => (entry.to_line(), "stem"),
             };
-            let available = width.saturating_sub(description.len() + 3);
+            (content, description)
+        })
+        .collect::<Vec<_>>();
+    let description_width = rows
+        .iter()
+        .map(|(_, description)| console::measure_text_width(description))
+        .max()
+        .unwrap_or(0);
+    let available = width.saturating_sub(description_width + 3);
+    let rows = rows
+        .into_iter()
+        .map(|(content, description)| {
             (
                 console::truncate_str(&content, available, "…").into_owned(),
                 description,
@@ -373,22 +825,49 @@ fn print_picker_expansion(
     suggestion: &AffixSuggestion,
     width: u16,
 ) -> Result<()> {
+    print_picker_context(output, suggestion, width, None)
+}
+
+fn print_picker_context(
+    output: &mut impl Write,
+    suggestion: &AffixSuggestion,
+    width: u16,
+    strip: Option<(&str, &str)>,
+) -> Result<()> {
     let expansion = if suggestion.entry.flags().is_none() {
         format!("{} (plain word; no affixes)", suggestion.entry.word())
     } else {
         suggestion.forms.join(", ")
     };
     let context = format!("Affix expansion: {expansion}");
-    output
-        .queue(cursor::SavePosition)?
-        .queue(cursor::MoveDown(1))?
-        .queue(cursor::MoveToColumn(0))?
-        .queue(terminal::Clear(terminal::ClearType::CurrentLine))?;
-    write!(
-        output,
-        "{}",
-        console::truncate_str(&context, usize::from(width.saturating_sub(1)), "…")
-    )?;
+    let visible = console::truncate_str(&context, usize::from(width.saturating_sub(1)), "…");
+    // Clip plain text first so invisible extensions cannot leave stray styles.
+    let rendered = if let Some(forms) = visible
+        .strip_prefix("Affix expansion: ")
+        .filter(|_| suggestion.entry.flags().is_some())
+    {
+        let (forms, ellipsis) = if visible != context && forms.ends_with('…') {
+            (forms.strip_suffix('…').unwrap(), "…")
+        } else {
+            (forms, "")
+        };
+        let forms = forms.split(", ").map(str::to_owned).collect::<Vec<_>>();
+        format!(
+            "Affix expansion: {}{ellipsis}",
+            highlight_expansion(suggestion.entry.word(), &forms)
+        )
+    } else {
+        visible.into_owned()
+    };
+    output.queue(cursor::SavePosition)?;
+    let rows = strip.into_iter().flat_map(|(strip, caret)| [strip, caret]);
+    for row in rows.chain(std::iter::once(rendered.as_str())) {
+        output
+            .queue(cursor::MoveDown(1))?
+            .queue(cursor::MoveToColumn(0))?
+            .queue(terminal::Clear(terminal::ClearType::CurrentLine))?;
+        write!(output, "{row}")?;
+    }
     output.queue(cursor::RestorePosition)?.flush()?;
     Ok(())
 }
@@ -461,8 +940,8 @@ enum EditorStage {
 impl EditorStage {
     fn prompt(self) -> &'static str {
         match self {
-            Self::Word => "Word (plain word only; Enter=preview, Esc=back, ?=help): ",
-            Self::Stem => "Stem (plain word only; Enter=preview, Esc=back, ?=help): ",
+            Self::Word => "Word [?]: ",
+            Self::Stem => "Stem [?]: ",
         }
     }
 
@@ -511,15 +990,8 @@ mod tests {
             print_learning_prompt(&mut output, "MSRV", accept_as_is).unwrap();
             let raw = String::from_utf8(output).unwrap();
             assert!(raw.contains(&selection_style().apply("MSRV").to_string()));
-            assert!(console::strip_ansi_codes(&raw).contains("\"MSRV\" [Enter/p=affixes"));
-            let cancel = if accept_as_is {
-                "cancel"
-            } else {
-                "skip learning"
-            };
-            assert!(raw.ends_with(&format!(
-                " [Enter/p=affixes, e=edit word, n/Esc={cancel}, Ctrl-C=abort, ?=help]: "
-            )));
+            assert!(console::strip_ansi_codes(&raw).contains("\"MSRV\" [p,e,n,?]: "));
+            assert!(raw.ends_with(" [p,e,n,?]: "));
             assert!(!raw.contains("Enter/n/Esc"));
         }
     }
@@ -549,12 +1021,9 @@ mod tests {
         print_confirmation_commands(&mut output).unwrap();
         assert_eq!(
             String::from_utf8(output).unwrap(),
-            "\r\ny - record entry\r\nEnter - decline learning\r\nn - decline learning\r\nEsc - decline learning\r\ne - edit stem\r\nCtrl-C - discard choices and abort\r\n? - show commands\r\n"
+            "\r\ny - record entry\r\nEnter - record entry\r\nn - decline learning\r\nEsc - decline learning\r\ne - edit stem\r\nCtrl-C - discard choices and abort\r\n? - show commands\r\n"
         );
-        assert_eq!(
-            CONFIRMATION_PROMPT,
-            "Confirm learning [y=yes, Enter/n/Esc=no, e=edit stem, ?=help]: "
-        );
+        assert_eq!(CONFIRMATION_PROMPT, "Confirm learning [y,e,n,?]: ");
     }
 
     #[test]
@@ -584,10 +1053,7 @@ mod tests {
                     "\r\nBackspace - delete last character\r\nCtrl-U - clear input\r\nEnter - {submit}\r\nEsc - {back}\r\nCtrl-C - discard choices and abort\r\n? - show commands\r\n"
                 )
             );
-            assert_eq!(
-                stage.prompt(),
-                format!("{name} (plain word only; Enter=preview, Esc=back, ?=help): ")
-            );
+            assert_eq!(stage.prompt(), format!("{name} [?]: "));
         }
     }
 
@@ -624,6 +1090,7 @@ mod tests {
             for (key, effect) in NAVIGATION_COMMANDS.iter().copied().chain([
                 ("Enter", submit),
                 ("y", submit),
+                ("e", "edit stem"),
                 ("n", back),
                 ("Esc", back),
                 ("Ctrl-C", "discard choices and abort"),
@@ -632,7 +1099,7 @@ mod tests {
                 assert!(help.contains(&format!("{key} - {effect}\r\n")));
             }
             assert!(help.contains(&format!("? - show commands\r\n{name} [")));
-            assert!(stage.prompt().ends_with(", ?=help]: "));
+            assert_eq!(stage.prompt(), format!("{name} [y,e,n,?]: "));
             assert!(help.ends_with(&format!("{}\r\n\r\n\r\n\r\n\x1b[1A", stage.prompt())));
             assert!(!help.contains("\x1b8"));
             assert_eq!(selected, 2);
@@ -666,6 +1133,226 @@ mod tests {
     }
 
     #[test]
+    fn immediate_pattern_columns_align_unicode_and_keep_full_entries() {
+        for with_prefix in [false, true] {
+            let patterns = vec![
+                AffixPattern {
+                    prefix: with_prefix.then(|| "S".to_owned()),
+                    suffix: (!with_prefix).then(|| "S".to_owned()),
+                    suggestion: AffixSuggestion {
+                        entry: DictionaryEntry::with_test_flags("café🦀", "S").unwrap(),
+                        forms: vec![],
+                    },
+                },
+                AffixPattern {
+                    prefix: None,
+                    suffix: None,
+                    suggestion: AffixSuggestion {
+                        entry: DictionaryEntry::plain("e\u{301}longoriginal").unwrap(),
+                        forms: vec![],
+                    },
+                },
+            ];
+            for width in [40, 80] {
+                let (heading, rows) = pattern_rows(&patterns, &[], width);
+                let columns = |row: &str| {
+                    row.match_indices('|')
+                        .map(|(offset, _)| console::measure_text_width(&row[..offset]))
+                        .collect::<Vec<_>>()
+                };
+                assert_eq!(columns(&heading).len(), if with_prefix { 2 } else { 1 });
+                for row in &rows {
+                    assert_eq!(columns(row), columns(&heading));
+                    assert!(
+                        console::measure_text_width(row) + 4 + " < pattern".len()
+                            < usize::from(width)
+                    );
+                }
+                let cells = rows[0].split('|').map(str::trim).collect::<Vec<_>>();
+                if with_prefix {
+                    assert_eq!(cells[0], "/S");
+                } else {
+                    assert_eq!(cells[1], "/S");
+                }
+            }
+            let (_, rows) = pattern_rows(&patterns, &[], 80);
+            assert!(rows[1].contains("e\u{301}longoriginal"));
+            assert!(
+                !rows[1].contains('…'),
+                "Exact-width values must not be shortened"
+            );
+            for width in [0, 1] {
+                let _ = pattern_rows(&patterns, &[], width);
+            }
+            assert_eq!(patterns[0].suggestion.entry.to_line(), "café🦀/S");
+        }
+    }
+
+    #[test]
+    fn extension_strip_centers_the_selection_and_scrolls_whole_sorted_labels() {
+        let labels = std::iter::once("-".to_owned())
+            .chain(('A'..='Z').map(|flag| format!("/{flag}")))
+            .collect::<Vec<_>>();
+        for width in [16, 24, 40, 80, 160] {
+            let mut previous = None;
+            for (selected, label) in labels.iter().enumerate() {
+                let (strip, caret) = extension_strip(&labels, selected, width);
+                assert!(console::measure_text_width(&strip) < usize::from(width));
+                assert_eq!(caret.trim(), "^");
+                let column = console::measure_text_width(caret.strip_suffix('^').unwrap());
+                assert_eq!(column, usize::from(width - 1) / 2);
+                let tokens = strip
+                    .split_whitespace()
+                    .filter(|token| *token != "..")
+                    .collect::<Vec<_>>();
+                assert!(tokens.contains(&label.as_str()));
+                assert!(tokens.windows(2).all(|pair| pair[0] < pair[1]));
+                let selected_offset = strip
+                    .match_indices(label)
+                    .find_map(|(offset, _)| {
+                        let after = &strip[offset + label.len()..];
+                        after
+                            .chars()
+                            .next()
+                            .is_none_or(char::is_whitespace)
+                            .then_some(offset)
+                    })
+                    .unwrap();
+                assert_eq!(
+                    console::measure_text_width(&strip[..selected_offset])
+                        + console::measure_text_width(label) / 2,
+                    column
+                );
+                if let Some(previous) = previous {
+                    assert_ne!(strip, previous);
+                }
+                previous = Some(strip);
+            }
+        }
+    }
+
+    #[test]
+    fn extension_strip_handles_unicode_labels_and_extremely_narrow_terminals() {
+        let labels = ["-", "/Ä", "/東京", "/🦀"].map(str::to_owned);
+        for width in 0..80 {
+            for selected in 0..labels.len() {
+                let (strip, caret) = extension_strip(&labels, selected, width);
+                assert!(
+                    console::measure_text_width(&strip) <= usize::from(width.saturating_sub(1))
+                );
+                assert!(
+                    console::measure_text_width(&caret) <= usize::from(width.saturating_sub(1))
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn catalog_columns_stay_stable_and_narrow_rows_do_not_wrap() {
+        let patterns = vec![AffixPattern {
+            prefix: None,
+            suffix: Some("S".to_owned()),
+            suggestion: AffixSuggestion {
+                entry: DictionaryEntry::with_test_flags("café🦀root", "S").unwrap(),
+                forms: vec![],
+            },
+        }];
+        let extensions = vec![AffixPattern {
+            prefix: Some("LONGPREFIX".to_owned()),
+            suffix: Some("LONGSUFFIX".to_owned()),
+            suggestion: AffixSuggestion {
+                entry: DictionaryEntry::with_test_flags("café🦀root", "S").unwrap(),
+                forms: vec![],
+            },
+        }];
+        let (heading, _) = pattern_rows(&patterns, &extensions, 80);
+        assert!(heading.contains("prefix"));
+        let (cycled_heading, _) = pattern_rows(&extensions, &extensions, 80);
+        assert_eq!(heading, cycled_heading);
+        for width in 16..32 {
+            let (heading, rows) = pattern_rows(&patterns, &extensions, width);
+            assert!(console::measure_text_width(&heading) + 4 < usize::from(width));
+            for row in rows {
+                assert!(
+                    console::measure_text_width(&row) + 4 + " < pattern".len() < usize::from(width),
+                    "row must not wrap at width {width}: {row}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn prefix_expansions_keep_the_unchanged_stem_core_unstyled() {
+        let forms = ["hope", "unhope", "hoped", "unhoped", "unhoping"].map(str::to_owned);
+        assert_eq!(
+            highlight_expansion("hope", &forms),
+            format!(
+                "hope, {}hope, hope{}, {}hope{}, {}hop{}",
+                selection_style().apply("un"),
+                selection_style().apply("d"),
+                selection_style().apply("un"),
+                selection_style().apply("d"),
+                selection_style().apply("un"),
+                selection_style().apply("ing"),
+            )
+        );
+    }
+
+    #[test]
+    fn expansions_highlight_only_added_or_changed_affixes() {
+        for (stem, form, prefix, extension) in [
+            ("hope", "hoped", "hope", "d"),
+            ("hope", "hoping", "hop", "ing"),
+            ("city", "cities", "cit", "ies"),
+            ("café", "cafés", "café", "s"),
+            ("e\u{301}", "e\u{301}s", "e\u{301}", "s"),
+        ] {
+            let rendered = highlight_expansion(stem, &[stem.to_owned(), form.to_owned()]);
+            assert_eq!(
+                rendered,
+                format!("{stem}, {prefix}{}", selection_style().apply(extension))
+            );
+            assert_eq!(
+                console::strip_ansi_codes(&rendered),
+                format!("{stem}, {form}")
+            );
+            assert!(rendered.ends_with("\x1b[0m"));
+        }
+        assert_eq!(highlight_expansion("same", &["same".to_owned()]), "same");
+    }
+
+    #[test]
+    fn aligned_suffix_hints_fit_within_the_available_columns() {
+        let choices = vec![
+            AffixSuggestion {
+                entry: DictionaryEntry::plain("longplainword").unwrap(),
+                forms: vec![],
+            },
+            AffixSuggestion {
+                entry: DictionaryEntry::with_test_flags("stem", "S").unwrap(),
+                forms: vec![],
+            },
+        ];
+        let mut output = Vec::new();
+        print_entries(&mut output, &choices, 0, 20, 10, EntryStage::Suffix).unwrap();
+        let raw = String::from_utf8(output).unwrap();
+        let mut columns = Vec::new();
+        for row in raw.split("\x1b[5G").skip(1) {
+            let text = console::strip_ansi_codes(row);
+            let (content, hint) = text.split_once("< ").unwrap();
+            // Ignore subsequent cursor commands and marker when counting this row.
+            let hint = hint.split(['»']).next().unwrap();
+            columns.push(console::measure_text_width(content));
+            assert!(
+                4 + console::measure_text_width(content) + 2 + console::measure_text_width(hint)
+                    < 20
+            );
+        }
+        assert_eq!(columns.len(), 2);
+        assert_eq!(columns[0], columns[1]);
+    }
+
+    #[test]
     fn plain_entry_preview_explicitly_has_no_affixes() {
         let mut output = Vec::new();
         print_entry_preview(&mut output, &DictionaryEntry::plain("MSRV").unwrap(), &[]).unwrap();
@@ -685,6 +1372,10 @@ mod tests {
         print_entry_preview(&mut output, &entry, &forms).unwrap();
         let raw = String::from_utf8(output).unwrap();
         assert!(raw.contains(&selection_style().apply("widget/S").to_string()));
+        assert!(raw.contains(&format!(
+            "Affix expansion: widget, widget{}\r\n",
+            selection_style().apply("s")
+        )));
         assert_eq!(
             console::strip_ansi_codes(&raw),
             "New entry: widget/S\r\nAffix expansion: widget, widgets\r\n"

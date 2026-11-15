@@ -5,9 +5,10 @@
 
 use std::fs::{self, File};
 use std::io::{self, Read, Write};
+use std::os::unix::fs::{symlink, PermissionsExt};
 use std::os::unix::io::{AsRawFd, FromRawFd};
 use std::os::unix::process::CommandExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::Mutex;
 use std::thread;
@@ -20,21 +21,27 @@ use nix::sys::termios::{tcgetattr, LocalFlags};
 use nix::unistd::setsid;
 
 const DEADLINE: Duration = Duration::from_secs(30);
-const PROMPT: &str = "Resolve this issue [y=use resolution,n,q,a=accept as is,d,j,e,?]?";
-const WORD_PROMPT: &str = "Word (plain word only; Enter=preview, Esc=back, ?=help): ";
-const SUFFIX_PROMPT: &str = "Suffix [Up/Down=select, Enter=stems, n/Esc=back, ?=help]: ";
-const STEM_CHOICE_PROMPT: &str = "Stem [Up/Down=select, Enter=edit, n/Esc=back, ?=help]: ";
-const EDIT_STEM_PROMPT: &str = "Stem (plain word only; Enter=preview, Esc=back, ?=help): ";
-const CONFIRM_PROMPT: &str = "Confirm learning [y=yes, Enter/n/Esc=no, e=edit stem, ?=help]: ";
+const PROMPT: &str = "Resolve this issue [y,n,q,a,d,j,e,?]?";
+const WORD_PROMPT: &str = "Word [?]: ";
+const AFFIX_PROMPT: &str = "Affixes [y,a,e,n,?]: ";
+const SUFFIX_PROMPT: &str = "Suffix [y,e,n,?]: ";
+const STEM_CHOICE_PROMPT: &str = "Stem [y,e,n,?]: ";
+const EDIT_STEM_PROMPT: &str = "Stem [?]: ";
+const CONFIRM_PROMPT: &str = "Confirm learning [y,e,n,?]: ";
 const MAIN_COMMANDS: &[&str] = &[
     "Up", "Down", "Home", "End", "y", "Enter", "n", "q", "a", "d", "j", "e", "Esc", "Ctrl-C", "?",
 ];
 const PICKER_COMMANDS: &[&str] = &[
-    "Up", "Down", "Home", "End", "Enter", "y", "n", "Esc", "Ctrl-C", "?",
+    "Up", "Down", "Home", "End", "Enter", "y", "e", "n", "Esc", "Ctrl-C", "?",
+];
+const AFFIX_COMMANDS: &[&str] = &[
+    "Up", "Down", "Home", "End", "Left", "Right", "Enter", "y", "a", "e", "n", "Esc", "Ctrl-C", "?",
 ];
 const EDITOR_COMMANDS: &[&str] = &["Enter", "Esc", "Backspace", "Ctrl-U", "Ctrl-C", "?"];
 const UNKNOWN: &str = "Zzyzxqvocab";
 const MISTAKES: &str = "Zzyzxqvocab Spelchekr Thirdwrng";
+const DEFAULT_DICTIONARY: &str = ".config/spellcheck/learnings.dic";
+const LEGACY_DICTIONARY: &str = ".config/learnings.dic";
 
 // openpty cannot atomically set CLOEXEC. Serialize only descriptor setup and
 // spawn, so another session cannot inherit a not-yet-marked PTY descriptor.
@@ -72,6 +79,8 @@ struct Fixture {
 }
 
 impl Fixture {
+    // This switch controls explicit configuration, not whether learning persists:
+    // false exercises the automatic default without naming it in extra_dictionaries.
     fn new(persistent: bool, sources: &[(&str, &str)]) -> Self {
         Self::with_backends(persistent, sources, &BACKENDS[..1])
     }
@@ -120,23 +129,42 @@ impl Fixture {
     }
 
     fn with_suffixes(sources: &[(&str, &str)], backends: &[Backend]) -> Self {
+        Self::with_affixes(sources, backends, "SET UTF-8\nSFX S Y 1\nSFX S 0 s .\n")
+    }
+
+    fn with_affixes(sources: &[(&str, &str)], backends: &[Backend], aff: &str) -> Self {
         let mut fixture = Self::with_backends(true, sources, backends);
         fixture.config = fixture
             .config
             .replace("use_builtin = true", "use_builtin = false");
         fs::write(fixture.root.join("spellcheck.toml"), &fixture.config).unwrap();
-        fs::write(
-            fixture.root.join("en_US.aff"),
-            "SET UTF-8\nSFX S Y 1\nSFX S 0 s .\n",
-        )
-        .unwrap();
+        fs::write(fixture.root.join("en_US.aff"), aff).unwrap();
         // Every backend's debug initialization checks this sentinel word.
         fs::write(fixture.root.join("en_US.dic"), "1\nTest\n").unwrap();
         fixture
     }
 
+    fn without_learning_target(mut self) -> Self {
+        self.config = self
+            .config
+            .replace("learning_dictionary = \"lingo.dic\"\n", "");
+        fs::write(self.root.join("spellcheck.toml"), &self.config).unwrap();
+        self
+    }
+
     fn read(&self, name: &str) -> String {
         fs::read_to_string(self.root.join(name)).unwrap()
+    }
+
+    fn assert_learning_saved(&self, configured: bool, entries: &str) {
+        if configured {
+            assert_eq!(self.read("lingo.dic"), entries);
+            assert!(!self.root.join(".config").exists());
+        } else {
+            assert_eq!(self.read("lingo.dic"), "0\n");
+            assert_eq!(self.read(DEFAULT_DICTIONARY), entries);
+            assert!(!self.root.join(LEGACY_DICTIONARY).exists());
+        }
     }
 
     fn assert_config_unchanged(&self) {
@@ -144,6 +172,10 @@ impl Fixture {
     }
 
     fn cli(&self, action: &str, paths: &[&str]) -> Session {
+        self.cli_with_columns(action, paths, 160)
+    }
+
+    fn cli_with_columns(&self, action: &str, paths: &[&str], columns: u16) -> Session {
         let mut command = Command::new(env!("CARGO_BIN_EXE_cargo-spellcheck"));
         command
             .current_dir(&self.root)
@@ -153,7 +185,7 @@ impl Fixture {
             .arg(format!("--checkers={}", self.checkers))
             .args(["--jobs=1", "--code=17"])
             .args(paths);
-        Session::spawn(command)
+        Session::spawn(command, columns)
     }
 
     fn check(&self, paths: &[&str], expected_code: i32) -> String {
@@ -176,15 +208,16 @@ struct Session {
     transcript: Vec<u8>,
     consumed: usize,
     eof: bool,
+    columns: u16,
 }
 
 impl Session {
-    fn spawn(mut command: Command) -> Self {
+    fn spawn(mut command: Command, columns: u16) -> Self {
         let _spawn_guard = SPAWN_LOCK.lock().unwrap_or_else(|error| error.into_inner());
         let pty = openpty(
             Some(&Winsize {
                 ws_row: 40,
-                ws_col: 160,
+                ws_col: columns,
                 ws_xpixel: 0,
                 ws_ypixel: 0,
             }),
@@ -226,6 +259,7 @@ impl Session {
             transcript: Vec::new(),
             consumed: 0,
             eof: false,
+            columns,
         }
     }
 
@@ -254,25 +288,37 @@ impl Session {
     }
 
     fn expect(&mut self, needle: &str) -> String {
+        self.expect_any(&[needle]).1
+    }
+
+    fn expect_any(&mut self, needles: &[&str]) -> (usize, String) {
+        assert!(!needles.is_empty() && needles.iter().all(|needle| !needle.is_empty()));
         let deadline = Instant::now() + DEADLINE;
         loop {
             self.read_available();
-            if let Some(offset) = self.transcript[self.consumed..]
-                .windows(needle.len())
-                .position(|window| window == needle.as_bytes())
-            {
-                let end = self.consumed + offset + needle.len();
+            let found = needles
+                .iter()
+                .enumerate()
+                .filter_map(|(index, needle)| {
+                    self.transcript[self.consumed..]
+                        .windows(needle.len())
+                        .position(|window| window == needle.as_bytes())
+                        .map(|offset| (offset, index, needle.len()))
+                })
+                .min_by_key(|(offset, _, _)| *offset);
+            if let Some((offset, index, length)) = found {
+                let end = self.consumed + offset + length;
                 let found = console::strip_ansi_codes(&String::from_utf8_lossy(
                     &self.transcript[self.consumed..end],
                 ))
                 .into_owned();
                 self.consumed = end;
-                return found;
+                return (index, found);
             }
             assert!(
                 Instant::now() < deadline && !self.eof,
-                "CLI never produced {:?}\n{}",
-                needle,
+                "CLI never produced any of {:?}\n{}",
+                needles,
                 self.output()
             );
             thread::sleep(Duration::from_millis(10));
@@ -365,16 +411,32 @@ impl Session {
         column
     }
 
-    fn command_help(&mut self, required: &[&str], optional: &[&str]) {
+    fn command_help(&mut self, required: &[&str], optional: &[&str]) -> String {
         self.send(b"?");
         let help = self.expect("? - show commands\r\n");
         assert_command_help(&help, required, optional);
+        help
+    }
+
+    fn confirmation_help(&mut self) {
+        let help = self.command_help(&["y", "Enter", "n", "Esc", "e", "Ctrl-C", "?"], &[]);
+        for (key, effect) in [
+            ("Enter", "record entry"),
+            ("y", "record entry"),
+            ("n", "decline learning"),
+            ("Esc", "decline learning"),
+            ("e", "edit stem"),
+            ("Ctrl-C", "discard choices and abort"),
+        ] {
+            assert_command_effect(&help, key, effect);
+        }
+        self.help_prompt(CONFIRM_PROMPT);
     }
 
     fn help_prompt(&mut self, prompt: &str) {
         let remount = self.expect(prompt);
         // Help remounts only the current question, not source context, previews,
-        // persistence notices, or a different stage of the interaction.
+        // startup warnings, or a different stage of the interaction.
         assert_eq!(
             remount.trim_start_matches(['\r', '\n']),
             console::strip_ansi_codes(prompt),
@@ -383,13 +445,62 @@ impl Session {
     }
 
     fn main_help(&mut self, position: &str, word: &str, active_idx: usize) {
-        self.command_help(MAIN_COMMANDS, &[]);
+        let help = self.command_help(MAIN_COMMANDS, &[]);
+        for (key, effect) in [
+            ("Enter", "use selected action"),
+            ("y", "use selected action"),
+            ("n", "skip finding"),
+            ("a", "open learning"),
+            ("q", "apply choices and quit"),
+            ("Esc", "apply choices and quit"),
+            ("Ctrl-C", "discard choices and abort"),
+            ("d", "skip remaining file"),
+            ("j", "report unavailable navigation"),
+            ("e", "edit replacement"),
+        ] {
+            assert_command_effect(&help, key, effect);
+        }
         self.help_prompt(&format!("({position}) {PROMPT}"));
         self.main_picker_redraw(word, active_idx);
     }
 
+    fn assert_no_learning_notices(&self) {
+        let output = self.output();
+        for notice in [
+            "Persistent learning:",
+            "Session-only learning",
+            "Warning: no learning_dictionary",
+        ] {
+            assert!(!output.contains(notice), "{output:?}");
+        }
+    }
+
+    fn assert_startup_learning_warning(&self, missing_target: Option<&Path>) {
+        self.assert_no_learning_notices();
+        let output = self.output();
+        let Some(path) = missing_target else {
+            assert!(!output.contains("Warning:"), "{output:?}");
+            return;
+        };
+        assert!(path.is_absolute(), "{}", path.display());
+        let warning = format!(
+            "Warning: learning dictionary {} does not exist; a new file will be created when learned entries are saved.",
+            path.display()
+        );
+        assert_eq!(
+            output.lines().filter(|line| *line == warning).count(),
+            1,
+            "{output:?}"
+        );
+        assert_eq!(output.matches("Warning:").count(), 1, "{output:?}");
+        let warning_position = output.find(&warning).unwrap();
+        let prompt_position = output.find(PROMPT).expect("Missing resolution prompt");
+        assert!(warning_position < prompt_position, "{output:?}");
+    }
+
     fn learning_prompt(&mut self, word: &str, replacement: bool) {
         self.expect(&learning_question(word, replacement));
+        self.assert_no_learning_notices();
     }
 
     fn accept_plain(&mut self, word: &str) {
@@ -415,15 +526,126 @@ impl Session {
     }
 
     fn plain_fallback_menu(&mut self, word: &str) -> Vec<String> {
-        let menu = self.expect(SUFFIX_PROMPT);
+        let (prompt, menu) = self.expect_any(&[AFFIX_PROMPT, SUFFIX_PROMPT]);
         assert!(!menu.contains("Affix suggestions unavailable"), "{menu}");
+        if prompt == 0 {
+            // The automatic table and its expansion must both finish before
+            // entering the unchanged manual flow. Backtracking may already be there.
+            self.picker_redraw(AFFIX_PROMPT);
+            self.send(b"a");
+            self.expect(SUFFIX_PROMPT);
+        }
         self.suffix_redraw(word, 0)
+    }
+
+    fn affix_menu(
+        &mut self,
+        rows: &[(&str, &str, &str)],
+        active_idx: usize,
+        with_prefix: bool,
+    ) -> String {
+        let menu = self.expect(AFFIX_PROMPT);
+        assert!(!menu.contains("Affix suggestions unavailable"), "{menu}");
+        self.affix_redraw(rows, active_idx, true, with_prefix)
+    }
+
+    fn affix_redraw(
+        &mut self,
+        rows: &[(&str, &str, &str)],
+        active_idx: usize,
+        header: bool,
+        with_prefix: bool,
+    ) -> String {
+        let start = self.consumed;
+        let (list, context) = self.picker_redraw(AFFIX_PROMPT);
+        let raw = String::from_utf8_lossy(&self.transcript[start..self.consumed]);
+        assert!(
+            !raw.contains(AFFIX_PROMPT),
+            "Repeated affix prompt: {raw:?}"
+        );
+        let before_list_raw = raw.split_once("\x1b7").unwrap().0;
+        let before_list = console::strip_ansi_codes(before_list_raw);
+        let headings = before_list
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .collect::<Vec<_>>();
+        let heading = if header {
+            assert!(before_list.starts_with("\r\n"), "{raw:?}");
+            assert_eq!(
+                headings.len(),
+                1,
+                "Expected one header after prompt: {raw:?}"
+            );
+            let heading = headings[0].trim_start_matches(' ');
+            let header_line = before_list_raw
+                .split_once("\r\n")
+                .unwrap()
+                .1
+                .split("\r\n")
+                .next()
+                .unwrap();
+            // Either spaces or an absolute cursor move may position the header,
+            // but its first cell must start in the list's content column five.
+            let positioned = header_line.replace("\x1b[5G", "    ");
+            assert_eq!(
+                console::strip_ansi_codes(&positioned),
+                format!("    {heading}"),
+                "Header must immediately follow the prompt and align with values: {raw:?}"
+            );
+            for color in [Color::Green, Color::Blue, Color::Black] {
+                assert!(
+                    !header_line
+                        .contains(&format!("{}", crossterm::style::SetForegroundColor(color))),
+                    "Header must stay default-colored: {raw:?}"
+                );
+            }
+            assert!(
+                !header_line.contains(&format!(
+                    "{}",
+                    crossterm::style::SetBackgroundColor(Color::Black)
+                )),
+                "Header must not be highlighted: {raw:?}"
+            );
+            Some(heading)
+        } else {
+            assert!(
+                headings.is_empty(),
+                "Repeated header on navigation: {raw:?}"
+            );
+            None
+        };
+        assert_affix_picker_list(&list, rows, active_idx, heading, with_prefix);
+        let (prefix, stem, suffix) = rows[active_idx];
+        let flags = [prefix, suffix]
+            .into_iter()
+            .filter(|flag| *flag != "-")
+            .map(|flag| flag.strip_prefix('/').expect("Missing affix flag slash"))
+            .collect::<String>();
+        let selected = if flags.is_empty() {
+            "-".to_owned()
+        } else {
+            format!("/{flags}")
+        };
+        assert_affix_strip(&context, &selected, self.columns);
+        assert_picker_expansion_style(&context, stem)
+    }
+
+    fn affix_strip(&self) -> (String, String) {
+        let raw = String::from_utf8_lossy(&self.transcript[..self.consumed]);
+        let start = raw.rfind("\x1b7").expect("Missing saved context cursor");
+        let rows = picker_context_rows(&raw[start..]);
+        assert_eq!(rows.len(), 3, "{raw:?}");
+        (
+            console::strip_ansi_codes(rows[0]).into_owned(),
+            console::strip_ansi_codes(rows[1]).into_owned(),
+        )
     }
 
     fn picker_redraw(&mut self, prompt: &str) -> (String, String) {
         let start = self.consumed;
-        // The shared list renderer restores once; the separate expansion context
-        // row saves/restores again. Input is safe only after BOTH restores.
+        // The shared list renderer restores once; the entire context (three
+        // automatic rows, one manual row) uses a second save/restore block.
+        // Input is safe only after BOTH restores.
         self.expect("\x1b8");
         let raw = String::from_utf8_lossy(&self.transcript[start..self.consumed]);
         let list_start = raw.find("\x1b7").expect("Missing saved picker cursor");
@@ -432,30 +654,35 @@ impl Session {
         self.expect("\x1b8");
         let context = String::from_utf8_lossy(&self.transcript[start..self.consumed]).into_owned();
         assert!(!list.contains(prompt), "Repeated picker prompt: {list:?}");
-        assert!(context.contains("\x1b7"), "{context:?}");
-        assert!(context.ends_with("\x1b8"), "{context:?}");
-        let text = console::strip_ansi_codes(&context);
-        assert!(text.starts_with("Affix expansion: "), "{context:?}");
-        assert!(!text.contains(['\r', '\n']), "Wrapped context: {context:?}");
-        assert!(console::measure_text_width(&text) < 160, "{context:?}");
-        for color in [Color::Green, Color::Blue, Color::Black] {
+        let rows = picker_context_rows(&context);
+        assert_eq!(
+            rows.len(),
+            if prompt == AFFIX_PROMPT { 3 } else { 1 },
+            "{context:?}"
+        );
+        for row in &rows {
+            let text = console::strip_ansi_codes(row);
+            assert!(
+                console::measure_text_width(&text) < usize::from(self.columns),
+                "{context:?}"
+            );
+        }
+        let expansion = console::strip_ansi_codes(rows.last().unwrap());
+        assert!(expansion.starts_with("Would match: "), "{context:?}");
+        for color in [Color::Blue, Color::Black] {
             assert!(
                 !context.contains(&format!("{}", crossterm::style::SetForegroundColor(color))),
                 "Colored expansion context: {context:?}"
             );
         }
-        assert!(
-            !context.contains(&format!(
-                "{}",
-                crossterm::style::SetBackgroundColor(Color::Black)
-            )),
-            "Highlighted expansion context: {context:?}"
-        );
-        (list, text.into_owned())
+        // Green-on-black is reserved for changed affix spans; callers validate
+        // those spans against the selected stem, not the list's selected row.
+        (list, context)
     }
 
     fn suffix_redraw(&mut self, word: &str, active_idx: usize) -> Vec<String> {
         let (raw, context) = self.picker_redraw(SUFFIX_PROMPT);
+        let context = assert_picker_expansion_style(&context, word);
         let rendered = selection_list_rows(&raw);
         let flags = rendered
             .iter()
@@ -482,10 +709,12 @@ impl Session {
         rows.extend(flags.iter().map(|flag| (format!("/{flag}"), "suffix")));
         assert_learning_picker_list(&raw, &rows, active_idx);
         if active_idx == 0 {
-            assert_eq!(
-                context,
-                format!("Affix expansion: {word} (plain word; no affixes)")
-            );
+            let full = format!("Would match: {word} (plain word; no affixes)");
+            if let Some(visible) = context.strip_suffix('…') {
+                assert!(full.starts_with(visible), "{context:?}");
+            } else {
+                assert_eq!(context, full);
+            }
         }
         flags
     }
@@ -497,6 +726,11 @@ impl Session {
 
     fn stem_redraw(&mut self, entries: &[&str], active_idx: usize) -> String {
         let (raw, context) = self.picker_redraw(STEM_CHOICE_PROMPT);
+        let stem = entries[active_idx]
+            .rsplit_once('/')
+            .expect("Missing stem flag")
+            .0;
+        let context = assert_picker_expansion_style(&context, stem);
         let rows = entries
             .iter()
             .map(|entry| ((*entry).to_owned(), "stem"))
@@ -547,9 +781,15 @@ impl Session {
             " (plain word; no affixes)"
         };
         assert!(
-            preview.contains(&format!("Affix expansion: {forms}{suffix}\r\n")),
+            preview.contains(&format!("Would match: {forms}{suffix}\r\n")),
             "{}",
             preview
+        );
+        let stem = entry.rsplit_once('/').map_or(entry, |(stem, _)| stem);
+        let expansion = styled_expansion(stem, &format!("{forms}{suffix}"));
+        assert!(
+            raw.contains(&format!("\r\nWould match: {expansion}\r\n{CONFIRM_PROMPT}")),
+            "Match preview must use cyan stem cores and bold green-on-black affix changes: {raw:?}"
         );
     }
 
@@ -570,6 +810,7 @@ impl Session {
             thread::sleep(Duration::from_millis(10));
         };
         assert_eq!(status.code(), Some(expected_code), "{}", self.output());
+        self.assert_no_learning_notices();
     }
 
     fn assert_prompt_count(&self, expected: usize) {
@@ -595,10 +836,195 @@ impl Drop for Session {
 fn learning_question(word: &str, replacement: bool) -> String {
     let highlighted = word.with(Color::Green).on(Color::Black).bold();
     if replacement {
-        format!("Learn replacement \"{highlighted}\" [Enter/p=affixes, e=edit word, n/Esc=skip learning, Ctrl-C=abort, ?=help]: ")
+        format!("Learn replacement \"{highlighted}\" [p,e,n,?]: ")
     } else {
-        format!("Learn \"{highlighted}\" [Enter/p=affixes, e=edit word, n/Esc=cancel, Ctrl-C=abort, ?=help]: ")
+        format!("Learn \"{highlighted}\" [p,e,n,?]: ")
     }
+}
+
+fn styled_expansion(stem: &str, forms: &str) -> String {
+    if let Some(word) = forms.strip_suffix(" (plain word; no affixes)") {
+        return format!("{} (plain word; no affixes)", word.with(Color::Cyan));
+    }
+    forms
+        .split(", ")
+        .map(|form| {
+            let boundaries = stem
+                .char_indices()
+                .map(|(index, _)| index)
+                .chain(std::iter::once(stem.len()))
+                .collect::<Vec<_>>();
+            // Color the longest unchanged stem core cyan, including when an
+            // added prefix shifts it away from the start of the expanded form.
+            let mut core = (0, 0);
+            'search: for length in (1..boundaries.len()).rev() {
+                for start in 0..boundaries.len() - length {
+                    let candidate = &stem[boundaries[start]..boundaries[start + length]];
+                    if let Some(offset) = form.find(candidate) {
+                        core = (offset, offset + candidate.len());
+                        break 'search;
+                    }
+                }
+            }
+            let highlight = |text: &str| {
+                if text.is_empty() {
+                    String::new()
+                } else {
+                    format!("{}", text.with(Color::Green).on(Color::Black).bold())
+                }
+            };
+            format!(
+                "{}{}{}",
+                highlight(&form[..core.0]),
+                if core.0 == core.1 {
+                    String::new()
+                } else {
+                    format!("{}", form[core.0..core.1].with(Color::Cyan))
+                },
+                highlight(&form[core.1..])
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn picker_context_rows(raw: &str) -> Vec<&str> {
+    assert!(!raw.contains(['\r', '\n']), "Wrapped context: {raw:?}");
+    let context = raw
+        .strip_prefix("\x1b7")
+        .expect("Missing context cursor save")
+        .strip_suffix("\x1b8")
+        .expect("Missing context cursor restore");
+    // MoveDown(1), MoveToColumn(0), Clear(CurrentLine) positions each row;
+    // stripping ANSI alone would concatenate the strip, caret, and expansion.
+    let mut rows = context.split("\x1b[1B\x1b[1G\x1b[2K");
+    assert_eq!(rows.next(), Some(""), "{raw:?}");
+    rows.collect()
+}
+
+fn assert_affix_strip(raw: &str, selected: &str, columns: u16) {
+    let rows = picker_context_rows(raw);
+    assert_eq!(rows.len(), 3, "{raw:?}");
+    let strip = console::strip_ansi_codes(rows[0]);
+    let caret = console::strip_ansi_codes(rows[1]);
+    for row in &rows[..2] {
+        for color in [Color::Green, Color::Blue, Color::Black] {
+            assert!(
+                !row.contains(&format!("{}", crossterm::style::SetForegroundColor(color))),
+                "Strip and caret must stay default-colored: {raw:?}"
+            );
+        }
+        assert!(
+            !row.contains(&format!(
+                "{}",
+                crossterm::style::SetBackgroundColor(Color::Black)
+            )),
+            "Strip and caret must not be highlighted: {raw:?}"
+        );
+    }
+    let tokens = strip.split_whitespace().collect::<Vec<_>>();
+    for (index, token) in tokens.iter().enumerate() {
+        assert!(
+            *token == "-"
+                || (token.starts_with('/') && token.len() > 1)
+                || (*token == ".." && (index == 0 || index == tokens.len() - 1)),
+            "Invalid or partially clipped strip label: {raw:?}"
+        );
+    }
+    let flags = tokens
+        .iter()
+        .filter(|token| **token != "..")
+        .map(|token| {
+            if *token == "-" {
+                ""
+            } else {
+                token.strip_prefix('/').unwrap()
+            }
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        flags.windows(2).all(|pair| pair[0] < pair[1]),
+        "Visible alternatives must be globally alphabetically sorted: {raw:?}"
+    );
+    assert_eq!(
+        tokens.iter().filter(|token| **token == selected).count(),
+        1,
+        "Selected flags must remain visible: {raw:?}"
+    );
+    assert_eq!(caret.trim(), "^", "Expected one caret: {raw:?}");
+    let caret_column = console::measure_text_width(caret.split_once('^').unwrap().0);
+    let center = usize::from(columns) / 2;
+    assert!(
+        (center.saturating_sub(1)..=center).contains(&caret_column),
+        "Caret must stay centered in the {columns}-column terminal: {raw:?}"
+    );
+    let selected_start = strip
+        .match_indices(selected)
+        .find_map(|(offset, _)| {
+            let before = &strip[..offset];
+            let after = &strip[offset + selected.len()..];
+            (before.chars().next_back().is_none_or(char::is_whitespace)
+                && after.chars().next().is_none_or(char::is_whitespace))
+            .then_some(offset)
+        })
+        .unwrap();
+    assert_eq!(
+        caret_column,
+        console::measure_text_width(&strip[..selected_start])
+            + console::measure_text_width(selected) / 2,
+        "Caret must align under the selected label's display-width midpoint: {raw:?}"
+    );
+}
+
+fn assert_picker_expansion_style(raw: &str, stem: &str) -> String {
+    let line = raw
+        .split_once("Would match: ")
+        .expect("Missing expansion context")
+        .1
+        .strip_suffix("\x1b8")
+        .expect("Missing context cursor restore");
+    let text = console::strip_ansi_codes(line);
+    if text.ends_with('…') {
+        // Truncation may hide an entire extension, but must never leave an open
+        // selection style or a partial escape sequence at the context boundary.
+        assert!(!text.contains('\x1b'), "Broken truncated ANSI: {raw:?}");
+        if text
+            .trim_end_matches('…')
+            .split(", ")
+            .all(|form| stem.starts_with(form))
+        {
+            assert_eq!(
+                line, text,
+                "Truncated stem prefixes must stay unstyled: {raw:?}"
+            );
+        }
+        let green = format!("{}", crossterm::style::SetForegroundColor(Color::Green));
+        if let Some(last_green) = line.rfind(&green) {
+            let probe = format!("{}", "probe".with(Color::Green).on(Color::Black).bold());
+            let reset = probe.split_once("probe").unwrap().1;
+            assert!(
+                line[last_green..].contains(reset),
+                "Unreset affix style: {raw:?}"
+            );
+        }
+    } else {
+        assert_eq!(
+            line,
+            styled_expansion(stem, &text),
+            "Only added/changed affix spans may be highlighted: {raw:?}"
+        );
+    }
+    format!("Affix expansion: {text}")
+}
+
+fn assert_command_effect(help: &str, key: &str, effect: &str) {
+    let description = help
+        .lines()
+        .filter_map(|line| line.split_once(" - "))
+        .find(|(keys, _)| keys.split('/').any(|candidate| candidate.trim() == key))
+        .unwrap_or_else(|| panic!("Missing command {key:?}: {help:?}"))
+        .1;
+    assert_eq!(description, effect, "{help:?}");
 }
 
 fn assert_command_help(help: &str, required: &[&str], optional: &[&str]) {
@@ -790,6 +1216,67 @@ fn assert_learning_picker_list(raw: &str, rows: &[(String, &str)], active_idx: u
     );
 }
 
+fn assert_affix_picker_list(
+    raw: &str,
+    rows: &[(&str, &str, &str)],
+    active_idx: usize,
+    heading: Option<&str>,
+    with_prefix: bool,
+) {
+    let headings = if with_prefix {
+        vec!["prefix", "stem", "suffix"]
+    } else {
+        vec!["stem", "suffix"]
+    };
+    let separators = |text: &str| {
+        text.match_indices('|')
+            .map(|(offset, _)| console::measure_text_width(&text[..offset]))
+            .collect::<Vec<_>>()
+    };
+    let rendered = selection_list_rows(raw);
+    assert_eq!(rendered.len(), rows.len(), "{raw:?}");
+    let mut aligned = None;
+    let mut expected = Vec::new();
+    for (row, (prefix, stem, suffix)) in rendered.iter().zip(rows) {
+        let text = console::strip_ansi_codes(selection_row_content(row));
+        let (content, hint) = text.rsplit_once("< ").expect("Missing affix row hint");
+        let content = content.trim_end_matches(' ');
+        let cells = content.split('|').map(str::trim).collect::<Vec<_>>();
+        let values = if with_prefix {
+            vec![*prefix, *stem, *suffix]
+        } else {
+            vec![*stem, *suffix]
+        };
+        assert_eq!(cells, values, "Incorrect affix cells: {raw:?}");
+        let columns = separators(content);
+        if let Some(aligned) = &aligned {
+            assert_eq!(&columns, aligned, "Misaligned affix columns: {raw:?}");
+        } else {
+            aligned = Some(columns);
+        }
+        let plain = (*prefix, *suffix) == ("-", "-");
+        assert_eq!(hint, if plain { "plain" } else { "pattern" }, "{raw:?}");
+        if plain {
+            assert_eq!((*prefix, *suffix), ("-", "-"), "{raw:?}");
+        }
+        expected.push((content.to_owned(), if plain { "plain" } else { "pattern" }));
+    }
+    if let Some(heading) = heading {
+        assert_eq!(
+            heading.split('|').map(str::trim).collect::<Vec<_>>(),
+            headings
+        );
+        assert_eq!(
+            separators(heading),
+            aligned.unwrap(),
+            "Header must align with the value columns: {heading:?}, {raw:?}"
+        );
+    }
+    // Retain the shared renderer's exact marker, color, padding, hint alignment,
+    // and terminal-width checks for these already column-padded contents too.
+    assert_learning_picker_list(raw, &expected, active_idx);
+}
+
 fn exercise_acceptance(backends: &[Backend], persistent: bool) {
     let repeated = "Zzyzxqvocab Zzyzxqvocab";
     let fixture = Fixture::with_backends(
@@ -804,35 +1291,34 @@ fn exercise_acceptance(backends: &[Backend], persistent: bool) {
 
     let mut session = fixture.cli("fix", &paths);
     session.prompt("1/2", "first.md");
+    let target = fixture.root.join(DEFAULT_DICTIONARY);
+    session.assert_startup_learning_warning((!persistent).then_some(target.as_path()));
     session.accept_plain(UNKNOWN);
     // Both the already-queued duplicate and the later document must be skipped
     // without another keystroke; a regression fails on this finite deadline.
     session.finish(0);
     session.assert_prompt_count(1);
+    session.assert_startup_learning_warning((!persistent).then_some(target.as_path()));
     assert_eq!(fixture.read("first.md"), repeated);
     assert_eq!(fixture.read("second.md"), UNKNOWN);
-    assert_eq!(
-        fixture.read("lingo.dic"),
-        if persistent {
-            "1\nZzyzxqvocab\n"
-        } else {
-            "0\n"
-        }
-    );
+    fixture.assert_learning_saved(persistent, "1\nZzyzxqvocab\n");
     fixture.assert_config_unchanged();
-    let output = fixture.check(&paths, if persistent { 0 } else { 17 });
-    assert_eq!(
-        output.contains("Possible spelling mistake found"),
-        !persistent,
-        "{}",
-        output
+    let output = fixture.check(&paths, 0);
+    assert!(
+        !output.contains("Possible spelling mistake found"),
+        "{output}"
     );
+    let mut next = fixture.cli("fix", &paths);
+    next.finish(0);
+    next.assert_prompt_count(0);
 }
 
 #[test]
 fn acceptance_suppresses_duplicates_saves_and_reloads_on_next_check() {
     for backend in BACKENDS {
-        exercise_acceptance(std::slice::from_ref(backend), true);
+        for persistent in [false, true] {
+            exercise_acceptance(std::slice::from_ref(backend), persistent);
+        }
     }
 }
 
@@ -843,8 +1329,8 @@ fn acceptance_suppresses_duplicates_saves_and_reloads_on_next_check() {
 ))]
 #[test]
 fn mixed_backends_share_acceptance_and_a_single_learning_target() {
-    // Session-only acceptance must also suppress queued and later diagnostics
-    // from every spelling backend, without relying on a dictionary reload.
+    // Both configured and automatic targets must suppress queued diagnostics and
+    // reload in every backend, even though no TOML extras name the default.
     for persistent in [false, true] {
         exercise_acceptance(BACKENDS, persistent);
     }
@@ -905,32 +1391,434 @@ fn ctrl_c_discards_both_accepted_words_and_pending_source_edits() {
 }
 
 #[test]
-fn acceptance_without_learning_target_is_session_only() {
-    let repeated = "Zzyzxqvocab Zzyzxqvocab";
-    let fixture = Fixture::new(false, &[("first.md", repeated)]);
-    let mut session = fixture.cli("fix", &["first.md"]);
-    session.prompt("1/2", "first.md");
-    session.accept_plain(UNKNOWN);
-    session.finish(0);
-    session.assert_prompt_count(1);
-    assert_eq!(fixture.read("first.md"), repeated);
-    assert_eq!(fixture.read("lingo.dic"), "0\n");
-    fixture.assert_config_unchanged();
-    assert!(fixture
-        .check(&["first.md"], 17)
-        .contains("Possible spelling mistake found"));
+fn automatic_learning_creates_preferred_target_only_on_commit_and_reloads_all_backends() {
+    // Include both individual engines and the mixed-engine session. No backend's
+    // configured extras name the default, so fresh recognition requires autoload.
+    for backends in BACKENDS
+        .iter()
+        .map(std::slice::from_ref)
+        .chain(std::iter::once(BACKENDS))
+    {
+        for end in [b"q", b"n", b"\x03"] {
+            let source = format!("{UNKNOWN} Zzyzxqroots Thirdwrng");
+            let fixture = Fixture::with_suffixes(
+                &[
+                    ("first.md", &source),
+                    ("forms.md", "Zzyzxqvocab Zzyzxqroot Zzyzxqroots"),
+                    ("unlearned.md", "Thirdwrng"),
+                ],
+                backends,
+            )
+            .without_learning_target();
+            let target = fixture.root.join(DEFAULT_DICTIONARY);
+            fixture.check(&["forms.md"], 17);
+            assert!(!fixture.root.join(".config").exists());
 
-    // Prove a fresh interactive process asks again, rather than merely trusting
-    // that a nonzero check result came from some unrelated diagnostic.
-    let mut next = fixture.cli("fix", &["first.md"]);
-    next.prompt("1/2", "first.md");
-    next.send(b"q");
-    next.finish(0);
-    assert_eq!(fixture.read("lingo.dic"), "0\n");
+            let mut session = fixture.cli("fix", &["first.md"]);
+            session.prompt("1/3", "first.md");
+            session.assert_startup_learning_warning(Some(&target));
+            assert!(!fixture.root.join(".config").exists());
+            session.send(b"a");
+            session.learning_prompt(UNKNOWN, false);
+            session.send(b"\r");
+            session.select_plain_fallback(UNKNOWN);
+            session.send(b"\r");
+            session.prompt("2/3", "first.md");
+            assert!(!fixture.root.join(".config").exists());
+
+            session.send(b"\x1b[H");
+            session.main_picker_redraw("Zzyzxqroots", 0);
+            session.send(b"\r");
+            session.affix_menu(
+                &[("-", "Zzyzxqroot", "/S"), ("-", "Zzyzxqroots", "-")],
+                0,
+                false,
+            );
+            session.send(b"\r");
+            session.learning_confirmation("Zzyzxqroot/S", "Zzyzxqroot, Zzyzxqroots");
+            session.send(b"\r");
+            session.prompt("3/3", "first.md");
+            assert!(!fixture.root.join(".config").exists());
+            assert_eq!(fixture.read("lingo.dic"), "0\n");
+            assert_eq!(fixture.read("first.md"), source);
+            session.send(end);
+            let abort = end == b"\x03";
+            session.finish(if abort { 130 } else { 0 });
+            session.assert_prompt_count(3);
+            session.assert_startup_learning_warning(Some(&target));
+            assert_eq!(fixture.read("first.md"), source);
+            fixture.assert_config_unchanged();
+            if abort {
+                assert!(!fixture.root.join(".config").exists());
+                assert_eq!(fixture.read("lingo.dic"), "0\n");
+            } else {
+                fixture.assert_learning_saved(false, "2\nZzyzxqroot/S\nZzyzxqvocab\n");
+            }
+            fixture.check(&["forms.md"], if abort { 17 } else { 0 });
+            fixture.check(&["unlearned.md"], 17);
+            if !abort {
+                let mut next = fixture.cli("fix", &["forms.md"]);
+                next.finish(0);
+                next.assert_prompt_count(0);
+            }
+        }
+    }
 }
 
 #[test]
-fn learn_row_goes_directly_to_suffixes_and_suppresses_duplicates() {
+fn automatic_learning_prefers_existing_preferred_target_then_existing_legacy_target() {
+    for (preferred, legacy) in [(true, false), (false, true), (true, true)] {
+        let fixture = Fixture::with_backends(
+            false,
+            &[
+                ("first.md", UNKNOWN),
+                ("preferred.md", "Zzyzxqpreferred"),
+                ("legacy.md", "Zzyzxqlegacy"),
+            ],
+            BACKENDS,
+        );
+        for (exists, name, contents) in [
+            (preferred, DEFAULT_DICTIONARY, "1\nZzyzxqpreferred\n"),
+            (legacy, LEGACY_DICTIONARY, "1\nZzyzxqlegacy\n"),
+        ] {
+            if exists {
+                let path = fixture.root.join(name);
+                fs::create_dir_all(path.parent().unwrap()).unwrap();
+                fs::write(path, contents).unwrap();
+            }
+        }
+        fixture.check(&["preferred.md"], if preferred { 0 } else { 17 });
+        fixture.check(&["legacy.md"], if preferred { 17 } else { 0 });
+        if preferred {
+            assert_eq!(fixture.read(DEFAULT_DICTIONARY), "1\nZzyzxqpreferred\n");
+            assert_eq!(
+                fs::read_dir(fixture.root.join(".config/spellcheck"))
+                    .unwrap()
+                    .count(),
+                1
+            );
+        }
+        if legacy {
+            assert_eq!(fixture.read(LEGACY_DICTIONARY), "1\nZzyzxqlegacy\n");
+        }
+        assert_eq!(
+            fs::read_dir(fixture.root.join(".config")).unwrap().count(),
+            usize::from(preferred) + usize::from(legacy)
+        );
+        let chosen = if preferred {
+            DEFAULT_DICTIONARY
+        } else {
+            LEGACY_DICTIONARY
+        };
+        let before = fixture.read(chosen);
+        let mut session = fixture.cli("fix", &["first.md"]);
+        session.prompt("1/1", "first.md");
+        session.assert_startup_learning_warning(None);
+        session.send(b"a");
+        session.learning_prompt(UNKNOWN, false);
+        session.send(b"\r");
+        session.select_plain_fallback(UNKNOWN);
+        assert_eq!(fixture.read(chosen), before);
+        session.send(b"y");
+        session.finish(0);
+        session.assert_prompt_count(1);
+        session.assert_startup_learning_warning(None);
+        let seed = if preferred {
+            "Zzyzxqpreferred"
+        } else {
+            "Zzyzxqlegacy"
+        };
+        assert_eq!(fixture.read(chosen), format!("2\n{seed}\n{UNKNOWN}\n"));
+        assert_eq!(fixture.read("lingo.dic"), "0\n");
+        if preferred && legacy {
+            assert_eq!(fixture.read(LEGACY_DICTIONARY), "1\nZzyzxqlegacy\n");
+        } else if preferred {
+            assert!(!fixture.root.join(LEGACY_DICTIONARY).exists());
+        } else {
+            assert!(!fixture.root.join(".config/spellcheck").exists());
+        }
+        fixture.assert_config_unchanged();
+        fixture.check(&["first.md"], 0);
+        let mut next = fixture.cli("fix", &["first.md"]);
+        next.finish(0);
+        next.assert_prompt_count(0);
+    }
+}
+
+#[test]
+fn automatic_learning_does_not_create_empty_config_on_check_quit_or_cancelled_learning() {
+    for stage in ["quit", "skip", "abort", "cancel", "decline", "replacement"] {
+        let fixture = Fixture::with_backends(
+            false,
+            &[("first.md", UNKNOWN), ("known.md", "spellchecker")],
+            BACKENDS,
+        );
+        fixture.check(&["first.md"], 17);
+        fixture.check(&["known.md"], 0);
+        assert!(!fixture.root.join(".config").exists());
+        let mut session = fixture.cli("fix", &["first.md"]);
+        session.prompt("1/1", "first.md");
+        session.assert_startup_learning_warning(Some(&fixture.root.join(DEFAULT_DICTIONARY)));
+        match stage {
+            "quit" => session.send(b"q"),
+            "skip" => session.send(b"n"),
+            "abort" => session.send(b"\x03"),
+            "replacement" => {
+                session.replace_custom("Zzyzxqcorrection");
+                session.learning_prompt("Zzyzxqcorrection", true);
+                session.send(b"n");
+            }
+            _ => {
+                session.send(b"a");
+                session.learning_prompt(UNKNOWN, false);
+                if stage == "decline" {
+                    session.send(b"\r");
+                    session.select_plain_fallback(UNKNOWN);
+                }
+                session.send(b"n");
+                session.prompt("1/1", "first.md");
+                session.send(b"q");
+            }
+        }
+        session.finish(match stage {
+            "abort" => 130,
+            "replacement" => 17,
+            _ => 0,
+        });
+        session.assert_startup_learning_warning(Some(&fixture.root.join(DEFAULT_DICTIONARY)));
+        assert!(!fixture.root.join(".config").exists());
+        assert_eq!(fixture.read("lingo.dic"), "0\n");
+        assert_eq!(
+            fixture.read("first.md"),
+            if stage == "replacement" {
+                "Zzyzxqcorrection"
+            } else {
+                UNKNOWN
+            }
+        );
+        fixture.assert_config_unchanged();
+    }
+}
+
+#[test]
+fn explicitly_configured_writable_learning_target_has_no_warning_or_fallback() {
+    for existing_default in [false, true] {
+        let fixture = Fixture::with_backends(true, &[("first.md", UNKNOWN)], BACKENDS);
+        if existing_default {
+            let target = fixture.root.join(DEFAULT_DICTIONARY);
+            fs::create_dir_all(target.parent().unwrap()).unwrap();
+            fs::write(target, "1\nZzyzxqpreferred\n").unwrap();
+        }
+        let mut session = fixture.cli("fix", &["first.md"]);
+        session.prompt("1/1", "first.md");
+        session.assert_startup_learning_warning(None);
+        session.send(b"a");
+        session.learning_prompt(UNKNOWN, false);
+        session.send(b"\r");
+        session.select_plain_fallback(UNKNOWN);
+        session.send(b"y");
+        session.finish(0);
+        session.assert_startup_learning_warning(None);
+        assert_eq!(fixture.read("lingo.dic"), "1\nZzyzxqvocab\n");
+        if existing_default {
+            assert_eq!(fixture.read(DEFAULT_DICTIONARY), "1\nZzyzxqpreferred\n");
+            assert_eq!(
+                fs::read_dir(fixture.root.join(".config/spellcheck"))
+                    .unwrap()
+                    .count(),
+                1
+            );
+        } else {
+            assert!(!fixture.root.join(".config").exists());
+        }
+        assert!(!fixture.root.join(LEGACY_DICTIONARY).exists());
+        fixture.assert_config_unchanged();
+        fixture.check(&["first.md"], 0);
+    }
+}
+
+#[test]
+fn explicitly_configured_unregistered_target_is_an_error_even_when_a_default_exists() {
+    for existing_default in [false, true] {
+        let mut fixture = Fixture::with_backends(true, &[("first.md", UNKNOWN)], BACKENDS);
+        fixture.config = fixture.config.replace(
+            "learning_dictionary = \"lingo.dic\"",
+            "learning_dictionary = \"misspelled.dic\"",
+        );
+        fs::write(fixture.root.join("spellcheck.toml"), &fixture.config).unwrap();
+        if existing_default {
+            let target = fixture.root.join(DEFAULT_DICTIONARY);
+            fs::create_dir_all(target.parent().unwrap()).unwrap();
+            fs::write(target, "1\nZzyzxqvocab\n").unwrap();
+        }
+        let mut session = fixture.cli("fix", &["first.md"]);
+        session.finish(1);
+        session.assert_prompt_count(0);
+        let output = session.output();
+        assert!(output.contains("misspelled.dic"), "{output}");
+        assert!(
+            output.contains(
+                "must be listed in extra_dictionaries for every enabled spelling backend"
+            ),
+            "{output}"
+        );
+        session.assert_startup_learning_warning(None);
+        assert!(!fixture.root.join("misspelled.dic").exists());
+        assert_eq!(fixture.read("lingo.dic"), "0\n");
+        if existing_default {
+            assert_eq!(fixture.read(DEFAULT_DICTIONARY), "1\nZzyzxqvocab\n");
+            assert_eq!(
+                fs::read_dir(fixture.root.join(".config/spellcheck"))
+                    .unwrap()
+                    .count(),
+                1
+            );
+        } else {
+            assert!(!fixture.root.join(".config").exists());
+        }
+        assert!(!fixture.root.join(LEGACY_DICTIONARY).exists());
+        fixture.assert_config_unchanged();
+    }
+}
+
+#[test]
+fn missing_registered_explicit_target_is_created_only_on_nonempty_commit() {
+    for backends in BACKENDS
+        .iter()
+        .map(std::slice::from_ref)
+        .chain(std::iter::once(BACKENDS))
+    {
+        for stage in ["apply", "quit", "abort", "cancel", "decline", "empty"] {
+            let source = format!("{UNKNOWN} Thirdwrng");
+            let mut fixture = Fixture::with_backends(true, &[("first.md", &source)], backends);
+            fixture.config = fixture
+                .config
+                .replace("\"lingo.dic\"", "\"learned/vocabulary.dic\"");
+            fs::write(fixture.root.join("spellcheck.toml"), &fixture.config).unwrap();
+            let target = fixture.root.join("learned/vocabulary.dic");
+            fixture.check(&["first.md"], 17);
+            assert!(!fixture.root.join("learned").exists());
+
+            let mut session = fixture.cli("fix", &["first.md"]);
+            session.prompt("1/2", "first.md");
+            session.assert_startup_learning_warning(Some(&target));
+            assert!(!fixture.root.join("learned").exists());
+            match stage {
+                "empty" => session.send(b"q"),
+                "cancel" | "decline" => {
+                    session.send(b"a");
+                    session.learning_prompt(UNKNOWN, false);
+                    if stage == "decline" {
+                        session.send(b"\r");
+                        session.select_plain_fallback(UNKNOWN);
+                    }
+                    session.send(b"n");
+                    session.prompt("1/2", "first.md");
+                    session.send(b"q");
+                }
+                _ => {
+                    session.accept_plain(UNKNOWN);
+                    session.prompt("2/2", "first.md");
+                    assert!(!fixture.root.join("learned").exists());
+                    assert_eq!(fixture.read("first.md"), source);
+                    session.send(match stage {
+                        "apply" => b"n",
+                        "quit" => b"q",
+                        "abort" => b"\x03",
+                        _ => unreachable!(),
+                    });
+                }
+            }
+            session.finish(if stage == "abort" { 130 } else { 0 });
+            session.assert_startup_learning_warning(Some(&target));
+            assert_eq!(fixture.read("first.md"), source);
+            assert_eq!(fixture.read("lingo.dic"), "0\n");
+            assert!(!fixture.root.join(".config").exists());
+            fixture.assert_config_unchanged();
+            if matches!(stage, "apply" | "quit") {
+                assert_eq!(fixture.read("learned/vocabulary.dic"), "1\nZzyzxqvocab\n");
+                fs::write(fixture.root.join("known.md"), UNKNOWN).unwrap();
+                fixture.check(&["known.md"], 0);
+                let mut next = fixture.cli("fix", &["known.md"]);
+                next.finish(0);
+                next.assert_prompt_count(0);
+                next.assert_startup_learning_warning(None);
+            } else {
+                // No dictionary, parent directory, or sidecar lock on abort or
+                // when learning was cancelled or never confirmed.
+                assert!(!fixture.root.join("learned").exists());
+            }
+        }
+    }
+}
+
+#[test]
+fn invalid_learning_targets_fail_before_any_interactive_prompt() {
+    for configured in [false, true] {
+        for kind in ["readonly", "directory", "dangling symlink"] {
+            let fixture = Fixture::with_backends(configured, &[("first.md", UNKNOWN)], BACKENDS);
+            let target = fixture.root.join(if configured {
+                "lingo.dic"
+            } else {
+                DEFAULT_DICTIONARY
+            });
+            fs::create_dir_all(target.parent().unwrap()).unwrap();
+            if configured {
+                fs::remove_file(&target).unwrap();
+            }
+            match kind {
+                "readonly" => {
+                    fs::write(&target, "0\n").unwrap();
+                    fs::set_permissions(&target, fs::Permissions::from_mode(0o444)).unwrap();
+                }
+                "directory" => fs::create_dir(&target).unwrap(),
+                "dangling symlink" => symlink("missing.dic", &target).unwrap(),
+                _ => unreachable!(),
+            }
+
+            let mut session = fixture.cli("fix", &["first.md"]);
+            session.finish(1);
+            session.assert_prompt_count(0);
+            session.assert_startup_learning_warning(None);
+            let output = session.output();
+            // Automatic discovery may return the underlying filesystem error
+            // directly for a dangling symlink, without path context.
+            if configured || kind != "dangling symlink" {
+                assert!(output.contains(&target.display().to_string()), "{output}");
+            }
+            for prompt in [
+                "Learn \"",
+                "Learn replacement \"",
+                AFFIX_PROMPT,
+                EDIT_STEM_PROMPT,
+            ] {
+                assert!(!output.contains(prompt), "{output}");
+            }
+            assert_eq!(fixture.read("first.md"), UNKNOWN);
+            assert!(!PathBuf::from(format!("{}.cargo-spellcheck.lock", target.display())).exists());
+            match kind {
+                "readonly" => {
+                    assert!(output.contains("writable"), "{output}");
+                    assert_eq!(fs::read_to_string(&target).unwrap(), "0\n");
+                    assert!(fs::metadata(&target).unwrap().permissions().readonly());
+                }
+                "directory" => {
+                    assert!(output.contains("regular file"), "{output}");
+                    assert_eq!(fs::read_dir(&target).unwrap().count(), 0);
+                }
+                "dangling symlink" => {
+                    assert_eq!(fs::read_link(&target).unwrap(), Path::new("missing.dic"));
+                    assert!(!target.parent().unwrap().join("missing.dic").exists());
+                }
+                _ => unreachable!(),
+            }
+            fixture.assert_config_unchanged();
+        }
+    }
+}
+
+#[test]
+fn learn_row_goes_directly_to_affixes_and_suppresses_duplicates() {
     for backend in BACKENDS {
         for persistent in [false, true] {
             let repeated = format!("{UNKNOWN} {UNKNOWN}");
@@ -945,7 +1833,7 @@ fn learn_row_goes_directly_to_suffixes_and_suppresses_duplicates() {
             session.send(b"\x1b[H");
             session.main_picker_redraw(UNKNOWN, 0);
             session.send(b"\r");
-            session.plain_fallback_menu(UNKNOWN);
+            session.affix_menu(&[("-", UNKNOWN, "-")], 0, true);
             assert!(!session.output().contains("Learn \""));
             assert!(!session.output().contains("Learn replacement \""));
             assert!(!session.output().contains(WORD_PROMPT));
@@ -954,30 +1842,53 @@ fn learn_row_goes_directly_to_suffixes_and_suppresses_duplicates() {
             assert_eq!(fixture.read("lingo.dic"), "0\n");
 
             session.send(b"\r");
-            session.edit_stem(UNKNOWN, UNKNOWN);
             session.learning_confirmation(UNKNOWN, UNKNOWN);
             assert_eq!(fixture.read("lingo.dic"), "0\n");
             session.send(b"y");
             // No input is supplied for the queued duplicate or the later source.
             session.finish(0);
             session.assert_prompt_count(1);
-            assert_eq!(session.output().matches(SUFFIX_PROMPT).count(), 1);
-            assert_eq!(session.output().matches(EDIT_STEM_PROMPT).count(), 1);
+            assert_eq!(session.output().matches(AFFIX_PROMPT).count(), 1);
+            assert!(!session.output().contains(SUFFIX_PROMPT));
+            assert!(!session.output().contains(EDIT_STEM_PROMPT));
             assert!(!session.output().contains(STEM_CHOICE_PROMPT));
             assert_eq!(fixture.read("first.md"), repeated);
             assert_eq!(fixture.read("second.md"), UNKNOWN);
-            assert_eq!(
-                fixture.read("lingo.dic"),
-                if persistent {
-                    "1\nZzyzxqvocab\n"
-                } else {
-                    "0\n"
-                }
-            );
+            fixture.assert_learning_saved(persistent, "1\nZzyzxqvocab\n");
             fixture.assert_config_unchanged();
-            fixture.check(&paths, if persistent { 0 } else { 17 });
+            fixture.check(&paths, 0);
         }
     }
+}
+
+#[test]
+fn enter_through_learning_row_automatic_plain_and_confirmation_records_entry() {
+    let fixture = Fixture::with_suffixes(&[("first.md", UNKNOWN)], &BACKENDS[..1]);
+    let mut session = fixture.cli("fix", &["first.md"]);
+    session.prompt("1/1", "first.md");
+    session.send(b"\x1b[H");
+    session.main_picker_redraw(UNKNOWN, 0);
+    session.send(b"\r");
+    session.affix_menu(&[("-", UNKNOWN, "-")], 0, false);
+    assert!(!session.output().contains(SUFFIX_PROMPT));
+    session.send(b"\r");
+    session.learning_confirmation(UNKNOWN, UNKNOWN);
+    assert!(!session.output().contains(EDIT_STEM_PROMPT));
+    assert_eq!(fixture.read("lingo.dic"), "0\n");
+    session.send(b"\r");
+    session.finish(0);
+    assert!(
+        !session.output().contains("Abort"),
+        "Enter must never abort"
+    );
+    session.assert_prompt_count(1);
+    assert!(!session.output().contains("Learn \""));
+    assert!(!session.output().contains(WORD_PROMPT));
+    assert!(!session.output().contains(STEM_CHOICE_PROMPT));
+    assert_eq!(fixture.read("first.md"), UNKNOWN);
+    assert_eq!(fixture.read("lingo.dic"), "1\nZzyzxqvocab\n");
+    fixture.assert_config_unchanged();
+    fixture.check(&["first.md"], 0);
 }
 
 #[test]
@@ -989,7 +1900,7 @@ fn cancelling_verbatim_entry_returns_to_main_and_backticks_do_not_learn() {
         session.send(b"\x1b[H");
         session.main_picker_redraw(UNKNOWN, 0);
         session.send(b"\r");
-        session.plain_fallback_menu(UNKNOWN);
+        session.affix_menu(&[("-", UNKNOWN, "-")], 0, true);
         session.send(cancel);
         session.prompt("1/1", "first.md");
         assert!(!session.output().contains("Learn \""));
@@ -1011,7 +1922,8 @@ fn cancelling_verbatim_entry_returns_to_main_and_backticks_do_not_learn() {
         session.send(b"\r");
         session.finish(17);
         session.assert_prompt_count(2);
-        assert_eq!(session.output().matches(SUFFIX_PROMPT).count(), 1);
+        assert_eq!(session.output().matches(AFFIX_PROMPT).count(), 1);
+        assert!(!session.output().contains(SUFFIX_PROMPT));
         assert!(!session.output().contains("Learn replacement \""));
         assert!(!session.output().contains(CONFIRM_PROMPT));
         assert_eq!(fixture.read("first.md"), format!("`{UNKNOWN}`"));
@@ -1023,14 +1935,17 @@ fn cancelling_verbatim_entry_returns_to_main_and_backticks_do_not_learn() {
 
 #[test]
 fn declining_verbatim_confirmation_returns_to_main_without_learning() {
-    for decline in [b"\r".as_slice(), b"n".as_slice(), b"\x1b".as_slice()] {
+    for decline in [b"n".as_slice(), b"\x1b".as_slice()] {
         let fixture = Fixture::new(true, &[("first.md", UNKNOWN)]);
         let mut session = fixture.cli("fix", &["first.md"]);
         session.prompt("1/1", "first.md");
         session.send(b"\x1b[H");
         session.main_picker_redraw(UNKNOWN, 0);
         session.send(b"\r");
-        session.select_plain_fallback(UNKNOWN);
+        session.affix_menu(&[("-", UNKNOWN, "-")], 0, true);
+        session.send(b"\r");
+        session.learning_confirmation(UNKNOWN, UNKNOWN);
+        assert!(!session.output().contains(EDIT_STEM_PROMPT));
         session.send(decline);
         session.prompt("1/1", "first.md");
         assert!(!session.output().contains("Learn \""));
@@ -1092,6 +2007,80 @@ fn custom_cursor_stays_on_its_row_while_editing() {
         session.finish(17);
         assert_eq!(fixture.read("first.md"), "cat");
         assert_eq!(fixture.read("lingo.dic"), "0\n");
+    }
+}
+
+#[test]
+fn long_custom_input_realigns_hints_without_losing_cursor_edits_or_help_state() {
+    const CUSTOM: &str = "Zzyzxqlongcustomreplacement";
+    for source in [UNKNOWN, "Spelchekr"] {
+        let fixture = Fixture::new(true, &[("first.md", source)]);
+        let mut session = fixture.cli("fix", &["first.md"]);
+        session.prompt("1/1", "first.md");
+        session.send(b"\x1b[H");
+        let initial_column = session.main_picker_redraw(source, 0);
+        session.send(b"e");
+        session.custom_picker_redraw(source, "...", 0);
+        let mut column = initial_column;
+        for (offset, byte) in CUSTOM.bytes().enumerate() {
+            session.send(&[byte]);
+            column = session.custom_picker_redraw(source, &CUSTOM[..offset + 1], offset + 1);
+        }
+        assert!(
+            column > initial_column,
+            "Long custom input did not widen the hint column"
+        );
+        for offset in [CUSTOM.len() - 1, CUSTOM.len() - 2] {
+            session.send(b"\x1b[D");
+            assert_eq!(session.custom_picker_redraw(source, CUSTOM, offset), column);
+        }
+        session.command_help(
+            &[
+                "Left",
+                "Right",
+                "Up",
+                "Down",
+                "Backspace",
+                "Enter",
+                "Esc",
+                "Ctrl-C",
+                "?",
+            ],
+            &["text", "characters"],
+        );
+        session.help_prompt(&format!("(1/1) {PROMPT}"));
+        assert_eq!(
+            session.custom_picker_redraw(source, CUSTOM, CUSTOM.len() - 2),
+            column
+        );
+        // Insert and remove inside the long field: help must retain the actual
+        // editing offset, not merely draw the cursor at its former location.
+        let mut edited = CUSTOM.to_owned();
+        edited.insert(CUSTOM.len() - 2, 'x');
+        session.send(b"x");
+        assert_eq!(
+            session.custom_picker_redraw(source, &edited, CUSTOM.len() - 1),
+            column + 1
+        );
+        session.send(b"\x7f");
+        assert_eq!(
+            session.custom_picker_redraw(source, CUSTOM, CUSTOM.len() - 2),
+            column
+        );
+        for offset in [CUSTOM.len() - 1, CUSTOM.len()] {
+            session.send(b"\x1b[C");
+            session.custom_picker_redraw(source, CUSTOM, offset);
+        }
+        assert_eq!(fixture.read("first.md"), source);
+        assert_eq!(fixture.read("lingo.dic"), "0\n");
+        session.send(b"\r");
+        session.learning_prompt(CUSTOM, true);
+        session.send(b"n");
+        session.finish(17);
+        session.assert_prompt_count(2);
+        assert_eq!(fixture.read("first.md"), CUSTOM);
+        assert_eq!(fixture.read("lingo.dic"), "0\n");
+        fixture.assert_config_unchanged();
     }
 }
 
@@ -1174,8 +2163,7 @@ fn help_preserves_custom_input_and_every_learning_stage_without_recording_entrie
     session.help_prompt(&format!("{EDIT_STEM_PROMPT}{WORD}"));
     session.send(b"\r");
     session.learning_confirmation("Zzyzxqroots/S", "Zzyzxqroots, Zzyzxqrootss");
-    session.command_help(&["y", "Enter", "n", "Esc", "e", "Ctrl-C", "?"], &[]);
-    session.help_prompt(CONFIRM_PROMPT);
+    session.confirmation_help();
     assert_eq!(fixture.read("first.md"), SOURCE);
     assert_eq!(fixture.read("lingo.dic"), "0\n");
     session.send(b"n");
@@ -1402,6 +2390,542 @@ fn plain_fallback_replacement_learning_records_only_the_correction_not_flags_or_
 }
 
 #[test]
+fn inferred_suffix_defaults_to_shortened_stem_without_manual_pickers() {
+    const WORD: &str = "Zzyzxqroots";
+    const STEM: &str = "Zzyzxqroot";
+    for backend in BACKENDS {
+        for replacement in [false, true] {
+            let original = if replacement { "Zzyzxqtypo" } else { WORD };
+            let source = format!("{original} {WORD}");
+            let fixture = Fixture::with_suffixes(
+                &[("first.md", &source), ("later.md", WORD), ("stem.md", STEM)],
+                std::slice::from_ref(backend),
+            );
+            let paths = ["first.md", "later.md"];
+            let mut session = fixture.cli("fix", &paths);
+            session.prompt("1/2", "first.md");
+            if replacement {
+                session.replace_custom(WORD);
+                session.learning_prompt(WORD, true);
+                session.send(b"p");
+            } else {
+                session.send(b"\x1b[H");
+                session.main_picker_redraw(WORD, 0);
+                session.send(b"\r");
+            }
+            assert_eq!(
+                session.affix_menu(&[("-", STEM, "/S"), ("-", WORD, "-")], 0, false),
+                "Affix expansion: Zzyzxqroot, Zzyzxqroots"
+            );
+            assert!(!session.output().contains(EDIT_STEM_PROMPT));
+            assert!(!session.output().contains(CONFIRM_PROMPT));
+            session.send(b"\r");
+            session.learning_confirmation("Zzyzxqroot/S", "Zzyzxqroot, Zzyzxqroots");
+            assert!(!session.output().contains(EDIT_STEM_PROMPT));
+            assert!(!session.output().contains(SUFFIX_PROMPT));
+            assert!(!session.output().contains(STEM_CHOICE_PROMPT));
+            assert_eq!(fixture.read("first.md"), source);
+            assert_eq!(fixture.read("lingo.dic"), "0\n");
+            session.send(b"\r");
+            session.finish(if replacement { 17 } else { 0 });
+            session.assert_prompt_count(1);
+            assert_eq!(session.output().matches(AFFIX_PROMPT).count(), 1);
+            assert_eq!(fixture.read("first.md"), format!("{WORD} {WORD}"));
+            assert_eq!(fixture.read("lingo.dic"), "1\nZzyzxqroot/S\n");
+            fixture.assert_config_unchanged();
+            fixture.check(&paths, 0);
+            fixture.check(&["stem.md"], 0);
+        }
+    }
+}
+
+#[test]
+fn cycling_all_suffix_bundles_keeps_the_stem_and_refreshes_edited_expansions() {
+    const WORD: &str = "Zzyzxqroots";
+    const STEM: &str = "Zzyzxqroot";
+    const EDITED: &str = "Zzyzxqverb";
+    const SOURCE: &str = "Zzyzxqroots Zzyzxqverbed Thirdwrng";
+    for backend in BACKENDS {
+        let fixture = Fixture::with_affixes(
+            &[
+                ("first.md", SOURCE),
+                ("forms.md", "Zzyzxqverb Zzyzxqverbed"),
+                ("original.md", WORD),
+                ("plural.md", "Zzyzxqverbs"),
+            ],
+            std::slice::from_ref(backend),
+            "SET UTF-8\nSFX S Y 1\nSFX S 0 s .\nSFX D Y 1\nSFX D 0 ed .\n",
+        );
+        let mut session = fixture.cli("fix", &["first.md"]);
+        session.prompt("1/3", "first.md");
+        session.send(b"\x1b[H");
+        session.main_picker_redraw(WORD, 0);
+        session.send(b"\r");
+        let mut rows = [("-", STEM, "/S"), ("-", WORD, "-")];
+        session.affix_menu(&rows, 0, false);
+        let initial_strip = session.affix_strip();
+        assert_eq!(
+            initial_strip.0.split_whitespace().collect::<Vec<_>>(),
+            ["-", "/D", "/S"]
+        );
+        session.command_help(AFFIX_COMMANDS, &[]);
+        session.help_prompt(AFFIX_PROMPT);
+        session.affix_redraw(&rows, 0, true, false);
+        assert_eq!(session.affix_strip(), initial_strip);
+
+        // D cannot generate the original plural, but must still be reachable
+        // from inferred S without replacing the selected stem or adding a row.
+        session.send(b"\x1b[D");
+        rows[0].2 = "/D";
+        assert_eq!(
+            session.affix_redraw(&rows, 0, false, false),
+            "Affix expansion: Zzyzxqroot, Zzyzxqrooted"
+        );
+        let edited_strip = session.affix_strip();
+        assert_ne!(edited_strip.0, initial_strip.0, "Left must shift the strip");
+        assert_eq!(edited_strip.1, initial_strip.1, "Caret must stay fixed");
+        session.send(b"e");
+        session.edit_stem(STEM, EDITED);
+        rows[0].1 = EDITED;
+        assert_eq!(
+            session.affix_menu(&rows, 0, false),
+            "Affix expansion: Zzyzxqverb, Zzyzxqverbed"
+        );
+        assert_eq!(session.affix_strip(), edited_strip);
+        assert!(!session.output().contains(CONFIRM_PROMPT));
+
+        // Cancelling an edit must preserve the previously accepted row and flags.
+        session.send(b"e");
+        session.stem_editor(EDITED);
+        session.send(b"x");
+        session.expect(&format!("{EDIT_STEM_PROMPT}{EDITED}x"));
+        session.send(b"\x1b");
+        session.affix_menu(&rows, 0, false);
+        assert_eq!(session.affix_strip(), edited_strip);
+        // Alphabetical strip order is plain, D, S, with wraparound in both directions.
+        for (key, suffix, forms) in [
+            (b"\x1b[C".as_slice(), "/S", "Zzyzxqverb, Zzyzxqverbs"),
+            (
+                b"\x1b[C".as_slice(),
+                "-",
+                "Zzyzxqverb (plain word; no affixes)",
+            ),
+            (b"\x1b[C".as_slice(), "/D", "Zzyzxqverb, Zzyzxqverbed"),
+            (
+                b"\x1b[D".as_slice(),
+                "-",
+                "Zzyzxqverb (plain word; no affixes)",
+            ),
+            (b"\x1b[D".as_slice(), "/S", "Zzyzxqverb, Zzyzxqverbs"),
+            (b"\x1b[D".as_slice(), "/D", "Zzyzxqverb, Zzyzxqverbed"),
+        ] {
+            let before = session.affix_strip();
+            session.send(key);
+            rows[0].2 = suffix;
+            assert_eq!(
+                session.affix_redraw(&rows, 0, false, false),
+                format!("Affix expansion: {forms}")
+            );
+            let after = session.affix_strip();
+            assert_ne!(
+                after.0, before.0,
+                "Left/Right must shift the strip, including wrap"
+            );
+            assert_eq!(after.1, before.1, "Caret must stay fixed during cycling");
+            assert_eq!(fixture.read("first.md"), SOURCE);
+            assert_eq!(fixture.read("lingo.dic"), "0\n");
+        }
+        assert!(!session.output().contains(CONFIRM_PROMPT));
+        session.send(b"\r");
+        session.learning_confirmation("Zzyzxqverb/D", "Zzyzxqverb, Zzyzxqverbed");
+        assert_eq!(fixture.read("lingo.dic"), "0\n");
+        session.send(b"y");
+        // The newly expanded form is suppressed in the queued diagnostics, but
+        // the confirmed entry is not written until the session is applied.
+        session.prompt("3/3", "first.md");
+        assert_eq!(fixture.read("lingo.dic"), "0\n");
+        session.send(b"q");
+        session.finish(0);
+        session.assert_prompt_count(2);
+        assert!(!session.output().contains(SUFFIX_PROMPT));
+        assert!(!session.output().contains(STEM_CHOICE_PROMPT));
+        assert_eq!(fixture.read("first.md"), SOURCE);
+        assert_eq!(fixture.read("lingo.dic"), "1\nZzyzxqverb/D\n");
+        fixture.assert_config_unchanged();
+        fixture.check(&["forms.md"], 0);
+        fixture.check(&["original.md"], 17);
+        fixture.check(&["plural.md"], 17);
+    }
+}
+
+#[test]
+fn cycling_catalog_exposes_prefixes_and_only_cross_product_pairs() {
+    const WORD: &str = "Zzyzxqroots";
+    const STEM: &str = "Zzyzxqroot";
+    const FORMS: &str = "Zzyzxqroot, Zzyzxqroots, unZzyzxqroot, unZzyzxqroots";
+    for backend in BACKENDS {
+        let fixture = Fixture::with_affixes(
+            &[
+                ("first.md", WORD),
+                ("forms.md", "Zzyzxqroot Zzyzxqroots unZzyzxqroot unZzyzxqroots"),
+            ],
+            std::slice::from_ref(backend),
+            "SET UTF-8\nPFX U Y 1\nPFX U 0 un .\nPFX R N 1\nPFX R 0 re .\nSFX S Y 1\nSFX S 0 s .\nSFX G N 1\nSFX G 0 ing .\nSFX D Y 1\nSFX D 0 ed .\n",
+        );
+        let mut session = fixture.cli("fix", &["first.md"]);
+        session.prompt("1/1", "first.md");
+        session.send(b"\x1b[H");
+        session.main_picker_redraw(WORD, 0);
+        session.send(b"\r");
+        let mut rows = [("-", STEM, "/S"), ("-", WORD, "-")];
+        // Three columns are required even though no inferred row has a prefix.
+        session.affix_menu(&rows, 0, true);
+        assert_eq!(
+            session
+                .affix_strip()
+                .0
+                .split_whitespace()
+                .collect::<Vec<_>>(),
+            ["-", "/D", "/G", "/R", "/S", "/U", "/UD", "/US"]
+        );
+        // Cycling the explicit plain row must also keep its own surface stem,
+        // rather than substitute the shorter stem from the inferred row.
+        session.send(b"\x1b[A");
+        session.affix_redraw(&rows, 1, false, true);
+        session.send(b"\x1b[C");
+        rows[1].2 = "/D";
+        assert_eq!(
+            session.affix_redraw(&rows, 1, false, true),
+            "Affix expansion: Zzyzxqroots, Zzyzxqrootsed"
+        );
+        session.send(b"\x1b[D");
+        rows[1].2 = "-";
+        session.affix_redraw(&rows, 1, false, true);
+        session.send(b"\x1b[H");
+        session.affix_redraw(&rows, 0, false, true);
+        // Global alphabetical bundle order ignores declaration order and prefix
+        // grouping. Neither N prefix R nor N suffix G may participate in a pair.
+        for (prefix, suffix, forms) in [
+            ("/U", "-", "Zzyzxqroot, unZzyzxqroot"),
+            (
+                "/U",
+                "/D",
+                "Zzyzxqroot, Zzyzxqrooted, unZzyzxqroot, unZzyzxqrooted",
+            ),
+            ("/U", "/S", FORMS),
+            ("-", "-", "Zzyzxqroot (plain word; no affixes)"),
+            ("-", "/D", "Zzyzxqroot, Zzyzxqrooted"),
+            ("-", "/G", "Zzyzxqroot, Zzyzxqrooting"),
+            ("/R", "-", "Zzyzxqroot, reZzyzxqroot"),
+            ("-", "/S", "Zzyzxqroot, Zzyzxqroots"),
+        ] {
+            session.send(b"\x1b[C");
+            rows[0] = (prefix, STEM, suffix);
+            assert_eq!(
+                session.affix_redraw(&rows, 0, false, true),
+                format!("Affix expansion: {forms}")
+            );
+            assert_eq!(fixture.read("lingo.dic"), "0\n");
+        }
+        for (prefix, suffix) in [
+            ("/R", "-"),
+            ("-", "/G"),
+            ("-", "/D"),
+            ("-", "-"),
+            ("/U", "/S"),
+        ] {
+            session.send(b"\x1b[D");
+            rows[0] = (prefix, STEM, suffix);
+            session.affix_redraw(&rows, 0, false, true);
+        }
+        assert_eq!(session.output().matches(AFFIX_PROMPT).count(), 1);
+        assert!(!session.output().contains(EDIT_STEM_PROMPT));
+        session.send(b"y");
+        session.learning_confirmation("Zzyzxqroot/US", FORMS);
+        assert_eq!(fixture.read("lingo.dic"), "0\n");
+        session.send(b"\r");
+        session.finish(0);
+        assert_eq!(fixture.read("first.md"), WORD);
+        assert_eq!(fixture.read("lingo.dic"), "1\nZzyzxqroot/US\n");
+        fixture.assert_config_unchanged();
+        fixture.check(&["forms.md"], 0);
+    }
+}
+
+#[test]
+fn automatic_affix_strip_clips_whole_labels_and_wraps_under_a_fixed_caret() {
+    const WORD: &str = "Zzyzxqroots";
+    let mut affixes = "SET UTF-8\nPFX U Y 1\nPFX U 0 un .\n".to_owned();
+    let mut choices = vec!["-".to_owned(), "/U".to_owned()];
+    for flag in 'A'..='T' {
+        let suffix = if flag == 'S' {
+            "s".to_owned()
+        } else {
+            format!("zz{flag}")
+        };
+        affixes.push_str(&format!("SFX {flag} Y 1\nSFX {flag} 0 {suffix} .\n"));
+        choices.push(format!("/{flag}"));
+        choices.push(format!("/U{flag}"));
+    }
+    choices.sort_by(|left, right| {
+        left.strip_prefix('/')
+            .unwrap_or("")
+            .cmp(right.strip_prefix('/').unwrap_or(""))
+    });
+    for backend in BACKENDS {
+        let fixture = Fixture::with_affixes(
+            &[("first.md", WORD)],
+            std::slice::from_ref(backend),
+            &affixes,
+        );
+        for columns in [40, 160] {
+            let mut session = fixture.cli_with_columns("fix", &["first.md"], columns);
+            session.prompt("1/1", "first.md");
+            session.send(b"a");
+            session.learning_prompt(WORD, false);
+            session.send(b"p");
+            session.expect(AFFIX_PROMPT);
+            let (_, context) = session.picker_redraw(AFFIX_PROMPT);
+            // Alphabetical order does not replace the initial best inferred S.
+            assert_affix_strip(&context, "/S", columns);
+            let initial = session.affix_strip();
+            assert!(initial.0.contains(".."), "{initial:?}");
+            let mut previous = initial;
+            for (key, selected) in [
+                (b"\x1b[D".as_slice(), "/R"),
+                (b"\x1b[C".as_slice(), "/S"),
+                (b"\x1b[A".as_slice(), "-"),
+                (b"\x1b[D".as_slice(), "/UT"),
+                (b"\x1b[C".as_slice(), "-"),
+                (b"\x1b[C".as_slice(), "/A"),
+            ] {
+                session.send(key);
+                let (_, context) = session.picker_redraw(AFFIX_PROMPT);
+                assert_affix_strip(&context, selected, columns);
+                let current = session.affix_strip();
+                assert_ne!(current.0, previous.0, "Selection must shift the strip");
+                assert_eq!(current.1, previous.1, "Caret must remain fixed");
+                let tokens = current.0.split_whitespace().collect::<Vec<_>>();
+                let visible = tokens
+                    .iter()
+                    .copied()
+                    .filter(|token| *token != "..")
+                    .collect::<Vec<_>>();
+                let start = choices
+                    .iter()
+                    .position(|choice| choice == visible[0])
+                    .unwrap();
+                let end = start + visible.len();
+                assert_eq!(
+                    visible,
+                    choices[start..end],
+                    "Only edge labels may be hidden"
+                );
+                assert_eq!(tokens.first() == Some(&".."), start > 0);
+                assert_eq!(tokens.last() == Some(&".."), end < choices.len());
+                previous = current;
+            }
+            session.send(b"n");
+            session.prompt("1/1", "first.md");
+            session.send(b"q");
+            session.finish(0);
+            assert_eq!(fixture.read("first.md"), WORD);
+            assert_eq!(fixture.read("lingo.dic"), "0\n");
+            fixture.assert_config_unchanged();
+        }
+    }
+}
+
+#[test]
+fn manual_picker_e_edits_the_selected_entry_without_an_extra_candidate_picker() {
+    const WORD: &str = "Zzyzxqroots";
+    for stage in ["plain", "suffix", "stem"] {
+        let fixture = Fixture::with_suffixes(&[("first.md", WORD)], &BACKENDS[..1]);
+        let mut session = fixture.cli("fix", &["first.md"]);
+        session.prompt("1/1", "first.md");
+        session.send(b"a");
+        session.learning_prompt(WORD, false);
+        session.send(b"p");
+        session.plain_fallback_menu(WORD);
+        if stage != "plain" {
+            session.send(b"\x1b[A");
+            session.suffix_redraw(WORD, 1);
+        }
+        let initial = if stage == "stem" {
+            session.send(b"\r");
+            session.stem_menu(&["Zzyzxqroot/S", "Zzyzxqroots/S"]);
+            "Zzyzxqroot"
+        } else {
+            WORD
+        };
+        session.command_help(PICKER_COMMANDS, &[]);
+        session.help_prompt(if stage == "stem" {
+            STEM_CHOICE_PROMPT
+        } else {
+            SUFFIX_PROMPT
+        });
+        if stage == "stem" {
+            session.stem_redraw(&["Zzyzxqroot/S", "Zzyzxqroots/S"], 0);
+        } else {
+            session.suffix_redraw(WORD, usize::from(stage == "suffix"));
+        }
+        session.send(b"e");
+        session.edit_stem(initial, "Zzyzxqmanual");
+        if stage == "plain" {
+            session.learning_confirmation("Zzyzxqmanual", "Zzyzxqmanual");
+        } else {
+            session.learning_confirmation("Zzyzxqmanual/S", "Zzyzxqmanual, Zzyzxqmanuals");
+        }
+        assert_eq!(
+            session.output().matches(STEM_CHOICE_PROMPT).count(),
+            if stage == "stem" { 2 } else { 0 }
+        );
+        assert_eq!(fixture.read("lingo.dic"), "0\n");
+        session.send(b"y");
+        session.finish(0);
+        assert_eq!(fixture.read("first.md"), WORD);
+        assert_eq!(
+            fixture.read("lingo.dic"),
+            if stage == "plain" {
+                "1\nZzyzxqmanual\n"
+            } else {
+                "1\nZzyzxqmanual/S\n"
+            }
+        );
+        fixture.assert_config_unchanged();
+    }
+}
+
+#[test]
+fn inferred_prefix_suffix_pair_preserves_selection_help_flags_and_native_reload() {
+    const WORD: &str = "unZzyzxqrooted";
+    const STEM: &str = "Zzyzxqroot";
+    const FORMS: &str = "Zzyzxqroot, Zzyzxqrooted, unZzyzxqroot, unZzyzxqrooted";
+    let rows = [
+        ("/U", STEM, "/D"),
+        ("/U", "Zzyzxqrooted", "-"),
+        ("-", "unZzyzxqroot", "/D"),
+        ("-", WORD, "-"),
+    ];
+    for backend in BACKENDS {
+        let fixture = Fixture::with_affixes(
+            &[
+                ("first.md", WORD),
+                (
+                    "forms.md",
+                    "Zzyzxqroot Zzyzxqrooted unZzyzxqroot unZzyzxqrooted",
+                ),
+            ],
+            std::slice::from_ref(backend),
+            "SET UTF-8\nPFX U Y 1\nPFX U 0 un .\nSFX D Y 1\nSFX D 0 ed .\n",
+        );
+        let mut session = fixture.cli("fix", &["first.md"]);
+        session.prompt("1/1", "first.md");
+        session.send(b"\x1b[H");
+        session.main_picker_redraw(WORD, 0);
+        session.send(b"\r");
+        assert_eq!(
+            session.affix_menu(&rows, 0, true),
+            format!("Affix expansion: {FORMS}")
+        );
+        assert!(!session.output().contains("Learn \""));
+        assert!(!session.output().contains(WORD_PROMPT));
+        assert!(!session.output().contains(EDIT_STEM_PROMPT));
+        assert_eq!(fixture.read("lingo.dic"), "0\n");
+
+        for (key, index) in [
+            (b"\x1b[B".as_slice(), 3),
+            (b"\x1b[A".as_slice(), 0),
+            (b"\x1b[F".as_slice(), 3),
+            (b"\x1b[H".as_slice(), 0),
+            (b"\x1b[A".as_slice(), 1),
+        ] {
+            session.send(key);
+            session.affix_redraw(&rows, index, false, true);
+        }
+        let help = session.command_help(AFFIX_COMMANDS, &[]);
+        assert!(help.contains("edit stem"), "{help:?}");
+        assert!(help.contains("choose affixes"), "{help:?}");
+        assert!(help.contains("cancel learning"), "{help:?}");
+        session.help_prompt(AFFIX_PROMPT);
+        assert_eq!(
+            session.affix_redraw(&rows, 1, true, true),
+            "Affix expansion: Zzyzxqrooted, unZzyzxqrooted"
+        );
+        // e edits the selected row; Esc must restore it unchanged, not the
+        // default pair or the manual suffix/stem candidate menus.
+        session.send(b"e");
+        session.stem_editor("Zzyzxqrooted");
+        session.send(b"\x1b");
+        session.affix_menu(&rows, 1, true);
+        assert_eq!(fixture.read("lingo.dic"), "0\n");
+        session.send(b"\x1b[H");
+        session.affix_redraw(&rows, 0, false, true);
+        session.send(b"e");
+        session.stem_editor(STEM);
+        session.command_help(EDITOR_COMMANDS, &["text", "characters"]);
+        session.help_prompt(&format!("{EDIT_STEM_PROMPT}{STEM}"));
+        session.send(b"\r");
+        session.affix_menu(&rows, 0, true);
+        assert!(!session.output().contains(CONFIRM_PROMPT));
+        session.send(b"y");
+        session.learning_confirmation("Zzyzxqroot/UD", FORMS);
+        // Re-editing from confirmation must retain both flags, too.
+        session.send(b"e");
+        session.edit_stem(STEM, STEM);
+        session.learning_confirmation("Zzyzxqroot/UD", FORMS);
+        session.confirmation_help();
+        assert_eq!(fixture.read("first.md"), WORD);
+        assert_eq!(fixture.read("lingo.dic"), "0\n");
+        assert!(!session.output().contains(SUFFIX_PROMPT));
+        assert!(!session.output().contains(STEM_CHOICE_PROMPT));
+        session.send(b"\r");
+        session.finish(0);
+        session.assert_prompt_count(1);
+        assert_eq!(fixture.read("first.md"), WORD);
+        assert_eq!(fixture.read("lingo.dic"), "1\nZzyzxqroot/UD\n");
+        fixture.assert_config_unchanged();
+        // A new process checks every form through the native backend, rather
+        // than relying on the interactive session's accepted-forms overlay.
+        fixture.check(&["forms.md"], 0);
+    }
+}
+
+#[test]
+fn inferred_prefix_only_uses_three_columns_and_highlights_the_added_prefix() {
+    const WORD: &str = "unZzyzxqroot";
+    const STEM: &str = "Zzyzxqroot";
+    for backend in BACKENDS {
+        let fixture = Fixture::with_affixes(
+            &[("first.md", WORD), ("forms.md", "Zzyzxqroot unZzyzxqroot")],
+            std::slice::from_ref(backend),
+            "SET UTF-8\nPFX U Y 1\nPFX U 0 un .\n",
+        );
+        let mut session = fixture.cli("fix", &["first.md"]);
+        session.prompt("1/1", "first.md");
+        session.send(b"\x1b[H");
+        session.main_picker_redraw(WORD, 0);
+        session.send(b"\r");
+        assert_eq!(
+            session.affix_menu(&[("/U", STEM, "-"), ("-", WORD, "-")], 0, true),
+            "Affix expansion: Zzyzxqroot, unZzyzxqroot"
+        );
+        session.send(b"\r");
+        session.learning_confirmation("Zzyzxqroot/U", "Zzyzxqroot, unZzyzxqroot");
+        assert!(!session.output().contains(EDIT_STEM_PROMPT));
+        assert!(!session.output().contains(SUFFIX_PROMPT));
+        assert!(!session.output().contains(STEM_CHOICE_PROMPT));
+        assert_eq!(fixture.read("lingo.dic"), "0\n");
+        session.send(b"\r");
+        session.finish(0);
+        assert_eq!(fixture.read("first.md"), WORD);
+        assert_eq!(fixture.read("lingo.dic"), "1\nZzyzxqroot/U\n");
+        fixture.assert_config_unchanged();
+        fixture.check(&["forms.md"], 0);
+    }
+}
+
+#[test]
 fn real_suffix_learning_suggests_shortened_stem_persists_flags_and_reloads_expansion() {
     const WORD: &str = "Zzyzxqroots";
     const STEM: &str = "Zzyzxqroot";
@@ -1451,7 +2975,7 @@ fn real_suffix_learning_suggests_shortened_stem_persists_flags_and_reloads_expan
             session.learning_confirmation("Zzyzxqroot/S", "Zzyzxqroot, Zzyzxqroots");
             assert_eq!(fixture.read("first.md"), source);
             assert_eq!(fixture.read("lingo.dic"), "0\n");
-            session.send(b"y");
+            session.send(b"\r");
             // Full expansions suppress both queued plurals and later sources.
             session.finish(if replacement { 17 } else { 0 });
             session.assert_prompt_count(1);
@@ -1643,16 +3167,9 @@ fn builtin_suffix_options_still_allow_explicit_plain_learning() {
             session.finish(0);
             session.assert_prompt_count(1);
             assert_eq!(fixture.read("first.md"), UNKNOWN);
-            assert_eq!(
-                fixture.read("lingo.dic"),
-                if persistent {
-                    "1\nZzyzxqvocab\n"
-                } else {
-                    "0\n"
-                }
-            );
+            fixture.assert_learning_saved(persistent, "1\nZzyzxqvocab\n");
             fixture.assert_config_unchanged();
-            fixture.check(&["first.md"], if persistent { 0 } else { 17 });
+            fixture.check(&["first.md"], 0);
             fixture.check(&["plural.md"], 17);
         }
     }
@@ -1766,7 +3283,7 @@ fn learning_editor_handles_unicode_and_plain_entry_requires_explicit_confirmatio
         session.select_plain_fallback(UNKNOWN);
         assert_eq!(fixture.read("lingo.dic"), "0\n");
         session.send(confirm);
-        let yes = confirm == b"y";
+        let yes = confirm == b"y" || confirm == b"\r";
         if !yes {
             session.prompt("1/1", "first.md");
             session.send(b"q");
@@ -1788,6 +3305,9 @@ fn cancelling_acceptance_or_backing_out_of_the_editor_does_not_learn() {
         "followup-n",
         "followup-esc",
         "word",
+        "affixes-n",
+        "affixes-esc",
+        "automatic-plain-stem",
         "suffix-n",
         "suffix-esc",
         "plain-stem",
@@ -1800,6 +3320,18 @@ fn cancelling_acceptance_or_backing_out_of_the_editor_does_not_learn() {
         match stage {
             "followup-n" => session.send(b"n"),
             "followup-esc" => session.send(b"\x1b"),
+            "affixes-n" | "affixes-esc" | "automatic-plain-stem" => {
+                session.send(b"\r");
+                let rows = [("-", UNKNOWN, "-")];
+                session.affix_menu(&rows, 0, true);
+                if stage == "automatic-plain-stem" {
+                    session.send(b"e");
+                    session.stem_editor(UNKNOWN);
+                    session.send(b"\x1b");
+                    session.affix_menu(&rows, 0, true);
+                }
+                session.send(if stage == "affixes-n" { b"n" } else { b"\x1b" });
+            }
             _ => {
                 if stage == "word" {
                     session.send(b"e");
@@ -1834,6 +3366,9 @@ fn ctrl_c_at_each_learning_stage_discards_pending_source_edits_and_plain_entries
         "replacement-followup",
         "followup",
         "word",
+        "affixes",
+        "automatic-stem-editor",
+        "automatic-confirmation",
         "suffix",
         "stem-editor",
         "confirmation",
@@ -1854,6 +3389,17 @@ fn ctrl_c_at_each_learning_stage_discards_pending_source_edits_and_plain_entries
                 "word" => {
                     session.send(b"e");
                     session.expect(&format!("{WORD_PROMPT}Thirdwrng"));
+                }
+                "affixes" | "automatic-stem-editor" | "automatic-confirmation" => {
+                    session.send(b"\r");
+                    session.affix_menu(&[("-", "Thirdwrng", "-")], 0, true);
+                    if stage == "automatic-stem-editor" {
+                        session.send(b"e");
+                        session.stem_editor("Thirdwrng");
+                    } else if stage == "automatic-confirmation" {
+                        session.send(b"\r");
+                        session.learning_confirmation("Thirdwrng", "Thirdwrng");
+                    }
                 }
                 "suffix" | "stem-editor" | "confirmation" => {
                     session.edit_learning_word("Thirdwrng", "Thirdwrng");
