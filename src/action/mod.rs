@@ -266,6 +266,21 @@ impl Action {
     ) -> Result<()> {
         let path = fs::canonicalize(path.as_path())?;
         let path = path.as_path();
+        let mut lock_path = path.as_os_str().to_os_string();
+        lock_path.push(".cargo-spellcheck.lock");
+        let lock_file = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(std::path::Path::new(&lock_path))
+            .wrap_err("Could not open the source sidecar lock")?;
+        // Rename replaces the source inode, so coordinate through a stable
+        // sidecar and leave it in place for other sessions waiting on it.
+        lock_file
+            .file()
+            .lock()
+            .wrap_err("Could not lock the source file")?;
         log::trace!("Attempting to open {} as read", path.display());
         let ro = fs::OpenOptions::new().read(true).open(path)?;
 
