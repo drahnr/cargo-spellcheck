@@ -18,24 +18,9 @@ pub(super) use entry::DictionaryEntry;
 /// Engines consume its persisted file through their separate reload interface.
 pub(super) trait DictionaryStore {
     fn validate_word(&self, word: &str) -> Result<()>;
-    fn read(&self) -> Result<BTreeSet<String>>;
-    fn update(&self, words: &BTreeSet<String>) -> Result<()>;
-    fn read_entries(&self) -> Result<BTreeSet<String>> {
-        self.read()
-    }
-
-    fn update_entries(&self, entries: &BTreeSet<DictionaryEntry>) -> Result<()> {
-        let words = entries
-            .iter()
-            .map(|entry| {
-                if entry.flags().is_some() {
-                    bail!("This vocabulary store does not support affix entries");
-                }
-                Ok(entry.word().to_owned())
-            })
-            .collect::<Result<BTreeSet<_>>>()?;
-        self.update(&words)
-    }
+    /// Exact dictionary tokens, excluding morphology but retaining flags.
+    fn read_entries(&self) -> Result<BTreeSet<String>>;
+    fn update_entries(&self, entries: &BTreeSet<DictionaryEntry>) -> Result<()>;
 }
 
 /// One shared overlay for all spelling backends; engine instances stay immutable
@@ -43,8 +28,7 @@ pub(super) trait DictionaryStore {
 #[derive(Default)]
 pub(super) struct SessionResolutions {
     accepted_words: BTreeSet<String>,
-    accepted_entries: BTreeSet<DictionaryEntry>,
-    confirmed_affix_forms: BTreeMap<DictionaryEntry, BTreeSet<String>>,
+    pending_entries: BTreeMap<DictionaryEntry, BTreeSet<String>>,
     config: Option<Config>,
     store: Option<Box<dyn DictionaryStore>>,
     learning_path: Option<PathBuf>,
@@ -118,11 +102,19 @@ impl SessionResolutions {
             .as_deref()
             .ok_or_else(|| eyre!("Cannot accept vocabulary without the original checked word"))?;
         self.validate_word(word)?;
-        if !self.knows_word(word) {
-            self.accepted_entries.insert(DictionaryEntry::plain(word)?);
-            self.accepted_words.insert(word.to_owned());
-        }
+        self.remember_entry(
+            DictionaryEntry::plain(word)?,
+            BTreeSet::from([word.to_owned()]),
+        );
         Ok(())
+    }
+
+    #[cfg(all(
+        test,
+        any(feature = "hunspell", feature = "zet", feature = "spellbook")
+    ))]
+    pub(super) fn is_persistent(&self) -> bool {
+        self.store.is_some()
     }
 
     pub(super) fn learning_dictionary_path(&self) -> Option<&Path> {
@@ -202,19 +194,21 @@ impl SessionResolutions {
             self.validate_word(form)?;
         }
 
-        if validated.entry.flags().is_some() {
-            self.confirmed_affix_forms.insert(
-                validated.entry.clone(),
-                validated.forms.iter().cloned().collect(),
-            );
-            self.accepted_entries
-                .remove(&DictionaryEntry::plain(validated.entry.word())?);
-        } else if self.knows_word(validated.entry.word()) {
-            return Ok(());
-        }
-        self.accepted_words.extend(validated.forms);
-        self.accepted_entries.insert(validated.entry);
+        self.remember_entry(validated.entry, validated.forms.into_iter().collect());
         Ok(())
+    }
+
+    fn remember_entry(&mut self, entry: DictionaryEntry, forms: BTreeSet<String>) {
+        if entry.flags().is_some() {
+            self.pending_entries
+                .retain(|pending, _| pending.flags().is_some() || pending.word() != entry.word());
+        } else if self.knows_word(entry.word()) {
+            return;
+        }
+        // Reconfirmation replaces this entry's authority, but never revokes words
+        // already accepted during the session (even if its expansion has changed).
+        self.accepted_words.extend(forms.iter().cloned());
+        self.pending_entries.insert(entry, forms);
     }
 
     /// Re-validate confirmed affixes before any writes, then update sources and vocabulary,
@@ -226,21 +220,23 @@ impl SessionResolutions {
         sources: &mut dyn SourceUpdates,
         dictionaries: &mut dyn DictionaryReload,
     ) -> Result<()> {
-        for entry in self
-            .accepted_entries
+        let mut catalog = None;
+        for (entry, confirmed) in self
+            .pending_entries
             .iter()
-            .filter(|entry| entry.flags().is_some())
+            .filter(|(entry, _)| entry.flags().is_some())
         {
-            let confirmed = self.confirmed_affix_forms.get(entry).ok_or_else(|| {
-                eyre!(
-                    "Missing confirmed affix forms for {}; preview the entry again",
-                    entry.to_line()
-                )
-            })?;
             let config = self.config.as_ref().ok_or_else(|| {
                 eyre!("Cannot revalidate affix forms without a spelling configuration; preview the entry again")
             })?;
-            let regenerated = affix::validate_entry(config, entry).wrap_err_with(|| {
+            let regenerated = (|| -> Result<AffixSuggestion> {
+                let catalog = match &mut catalog {
+                    Some(catalog) => catalog,
+                    slot @ None => slot.insert(affix::AffixCatalog::load(config)?),
+                };
+                catalog.expand(entry.word(), entry.flags())
+            })()
+            .wrap_err_with(|| {
                 format!(
                     "Could not revalidate confirmed affix entry {} before commit; preview the entry again",
                     entry.to_line()
@@ -253,7 +249,7 @@ impl SessionResolutions {
                 );
             }
         }
-        let entries = self.accepted_entries;
+        let entries: BTreeSet<_> = self.pending_entries.into_keys().collect();
         let words = self.accepted_words;
         sources.apply_source_changes(changes)?;
         if let Some(store) = self.store.filter(|_| !entries.is_empty()) {

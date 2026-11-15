@@ -99,6 +99,7 @@ enum Failure {
     Source,
     Update,
     Read,
+    Include,
     Reload,
     Verify,
     LostUpdate,
@@ -127,6 +128,14 @@ struct Engines {
 }
 
 impl DictionaryReload for Engines {
+    fn include_learning_dictionary(&mut self, _: &Path) -> Result<()> {
+        self.events.borrow_mut().push("include");
+        if self.fail == Failure::Include {
+            bail!("dictionary registration failed");
+        }
+        Ok(())
+    }
+
     fn reload_dictionaries(&mut self) -> Result<()> {
         self.events.borrow_mut().push("reload");
         if self.fail == Failure::Reload {
@@ -159,7 +168,7 @@ impl DictionaryStore for Store {
         dictionary::validate_word(word)
     }
 
-    fn read(&self) -> Result<BTreeSet<String>> {
+    fn read_entries(&self) -> Result<BTreeSet<String>> {
         self.events.borrow_mut().push("read");
         if self.fail == Failure::Read {
             bail!("dictionary read failed");
@@ -167,13 +176,15 @@ impl DictionaryStore for Store {
         Ok(self.words.borrow().clone())
     }
 
-    fn update(&self, words: &BTreeSet<String>) -> Result<()> {
+    fn update_entries(&self, entries: &BTreeSet<DictionaryEntry>) -> Result<()> {
         self.events.borrow_mut().push("update");
         if self.fail == Failure::Update {
             bail!("dictionary update failed");
         }
         if self.fail != Failure::LostUpdate {
-            self.words.borrow_mut().extend(words.iter().cloned());
+            self.words
+                .borrow_mut()
+                .extend(entries.iter().map(DictionaryEntry::to_line));
         }
         Ok(())
     }
@@ -182,7 +193,10 @@ impl DictionaryStore for Store {
 fn pending_session(events: &Events, failure: Failure) -> SessionResolutions {
     SessionResolutions {
         accepted_words: BTreeSet::from(["Tokio".into()]),
-        accepted_entries: BTreeSet::from([DictionaryEntry::plain("Tokio").unwrap()]),
+        pending_entries: BTreeMap::from([(
+            DictionaryEntry::plain("Tokio").unwrap(),
+            BTreeSet::from(["Tokio".into()]),
+        )]),
         store: Some(Box::new(Store {
             events: Rc::clone(events),
             words: RefCell::default(),
@@ -268,6 +282,27 @@ fn commit_stops_at_each_failing_interface() {
 }
 
 #[test]
+fn registration_failure_stops_after_persistence_and_readback_before_reload() {
+    let events = Events::default();
+    let mut session = pending_session(&events, Failure::None);
+    session.learning_path = Some(PathBuf::from("learning.dic"));
+    let mut sources = Sources {
+        events: Rc::clone(&events),
+        fail: Failure::None,
+        changes: 0,
+    };
+    let mut engines = Engines {
+        events: Rc::clone(&events),
+        fail: Failure::Include,
+    };
+    let error = session
+        .commit(UserPicked::default(), &mut sources, &mut engines)
+        .unwrap_err();
+    assert!(error.to_string().contains("dictionary registration failed"));
+    assert_eq!(*events.borrow(), ["source", "update", "read", "include"]);
+}
+
+#[test]
 fn session_only_commit_does_not_touch_dictionary_interfaces() {
     let events = Events::default();
     let chunk = chunk("Tokio");
@@ -295,7 +330,7 @@ fn no_pending_acceptances_does_not_touch_dictionary_interfaces() {
     let events = Events::default();
     let mut session = pending_session(&events, Failure::Update);
     session.accepted_words.clear();
-    session.accepted_entries.clear();
+    session.pending_entries.clear();
     let mut sources = Sources {
         events: Rc::clone(&events),
         fail: Failure::None,
@@ -387,10 +422,12 @@ fn pattern_suggestions_validate_policy_before_requiring_configuration() {
         .contains("no spelling configuration"));
     assert_eq!(session.accepted_words, BTreeSet::from(["Tokio".into()]));
     assert_eq!(
-        session.accepted_entries,
-        BTreeSet::from([DictionaryEntry::plain("Tokio").unwrap()])
+        session.pending_entries,
+        BTreeMap::from([(
+            DictionaryEntry::plain("Tokio").unwrap(),
+            BTreeSet::from(["Tokio".into()])
+        )])
     );
-    assert!(session.confirmed_affix_forms.is_empty());
     assert!(events.borrow().is_empty());
 
     let mut session = SessionResolutions::default();
@@ -430,10 +467,12 @@ fn extension_patterns_validate_policy_before_requiring_configuration() {
         .contains("no spelling configuration"));
     assert_eq!(session.accepted_words, BTreeSet::from(["Tokio".into()]));
     assert_eq!(
-        session.accepted_entries,
-        BTreeSet::from([DictionaryEntry::plain("Tokio").unwrap()])
+        session.pending_entries,
+        BTreeMap::from([(
+            DictionaryEntry::plain("Tokio").unwrap(),
+            BTreeSet::from(["Tokio".into()])
+        )])
     );
-    assert!(session.confirmed_affix_forms.is_empty());
     assert!(events.borrow().is_empty());
 
     let session = SessionResolutions {
@@ -595,14 +634,6 @@ mod affix_sessions {
             dictionary::validate_word(word)
         }
 
-        fn read(&self) -> Result<BTreeSet<String>> {
-            panic!("typed commits must read exact entries, not stems")
-        }
-
-        fn update(&self, _: &BTreeSet<String>) -> Result<()> {
-            panic!("typed commits must update entries, not plain words")
-        }
-
         fn read_entries(&self) -> Result<BTreeSet<String>> {
             self.events.borrow_mut().push("read_entries");
             Ok(self.lines.borrow().clone())
@@ -677,7 +708,7 @@ mod affix_sessions {
                 assert!(session.stem_suggestions("Tokios", flags).is_err());
             }
             assert!(session.accepted_words.is_empty());
-            assert!(session.accepted_entries.is_empty());
+            assert!(session.pending_entries.is_empty());
             assert_eq!(fixture.snapshot(), before);
         }
     }
@@ -690,7 +721,7 @@ mod affix_sessions {
         let sessions = fixture.sessions_with_target(target.clone());
         for (backend, mut session) in sessions {
             assert_eq!(session.learning_dictionary_path(), Some(target.as_path()));
-            assert!(session.store.is_some());
+            assert!(session.is_persistent());
             let config = session.config.as_ref().unwrap();
             for spelling in [&config.hunspell, &config.zet, &config.spellbook]
                 .into_iter()
@@ -709,7 +740,10 @@ mod affix_sessions {
                 .commit(UserPicked::default(), &mut sources(&events), &mut engines)
                 .unwrap();
             assert_eq!(fs_err::read_to_string(&target).unwrap(), "1\nTokio/S\n");
-            assert!(engines.contains_word("Tokios"), "{backend}");
+            assert!(
+                engines.contains_word("Tokios"),
+                "{backend}"
+            );
             fs_err::remove_dir_all(target.parent().unwrap()).unwrap();
         }
         assert_eq!(fixture.snapshot(), before);
@@ -759,8 +793,8 @@ mod affix_sessions {
             }
             assert_eq!(
                 session
-                    .accepted_entries
-                    .iter()
+                    .pending_entries
+                    .keys()
                     .map(DictionaryEntry::to_line)
                     .collect::<BTreeSet<_>>(),
                 BTreeSet::from(["Tokio/S".into(), "hope/D".into()])
@@ -843,8 +877,7 @@ mod affix_sessions {
                 forms
             );
             assert!(session.accepted_words.is_empty());
-            assert!(session.accepted_entries.is_empty());
-            assert!(session.confirmed_affix_forms.is_empty());
+            assert!(session.pending_entries.is_empty());
             assert_eq!(fixture.snapshot(), before);
 
             session
@@ -869,11 +902,7 @@ mod affix_sessions {
             }
             assert_eq!(session.accepted_words, forms);
             assert_eq!(
-                session.accepted_entries,
-                BTreeSet::from([preview.entry.clone()])
-            );
-            assert_eq!(
-                session.confirmed_affix_forms,
+                session.pending_entries,
                 BTreeMap::from([(preview.entry, forms.clone())])
             );
             for word in ["Foobar", "foobar/UD", "foobars", "ununfoobar"] {
@@ -937,16 +966,18 @@ mod affix_sessions {
                 .record_entry(preview.entry.clone(), &selected.suggestion.forms)
                 .is_err());
             assert!(session.accepted_words.is_empty());
-            assert!(session.accepted_entries.is_empty());
-            assert!(session.confirmed_affix_forms.is_empty());
+            assert!(session.pending_entries.is_empty());
             assert_eq!(fixture.snapshot(), before);
 
             session
                 .record_entry(preview.entry.clone(), &preview.forms)
                 .unwrap();
             assert_eq!(
-                session.accepted_entries,
-                BTreeSet::from([preview.entry.clone()])
+                session.pending_entries,
+                BTreeMap::from([(
+                    preview.entry.clone(),
+                    preview.forms.iter().cloned().collect()
+                )])
             );
             let forms = preview.forms.into_iter().collect::<BTreeSet<_>>();
             assert_eq!(session.accepted_words, forms);
@@ -1025,8 +1056,7 @@ mod affix_sessions {
                 .to_string()
                 .contains("do not match the regenerated expansion"));
             assert!(session.accepted_words.is_empty());
-            assert!(session.accepted_entries.is_empty());
-            assert!(session.confirmed_affix_forms.is_empty());
+            assert!(session.pending_entries.is_empty());
             session.record_entry(fresh.entry, &fresh.forms).unwrap();
 
             fs_err::write(fixture.0.join("en_US.aff"), PATTERN_RULES).unwrap();
@@ -1076,8 +1106,7 @@ mod affix_sessions {
                 .to_string()
                 .contains("do not match the regenerated expansion"));
             assert!(session.accepted_words.is_empty());
-            assert!(session.accepted_entries.is_empty());
-            assert!(session.confirmed_affix_forms.is_empty());
+            assert!(session.pending_entries.is_empty());
 
             fs_err::write(fixture.0.join("en_US.aff"), PATTERN_RULES).unwrap();
             session.record_entry(preview.entry, &preview.forms).unwrap();
@@ -1111,7 +1140,7 @@ mod affix_sessions {
         for (_, mut session) in fixture.sessions() {
             record_entries(&mut session);
             let words = session.accepted_words.clone();
-            let entries = session.accepted_entries.clone();
+            let entries = session.pending_entries.clone();
             for (stem, flags) in [("Tokio", "S"), ("hope", "D")] {
                 let preview = session.preview_entry(stem, Some(flags)).unwrap();
                 let mut forged = preview.forms.clone();
@@ -1127,7 +1156,7 @@ mod affix_sessions {
                         "{error:?}"
                     );
                     assert_eq!(session.accepted_words, words);
-                    assert_eq!(session.accepted_entries, entries);
+                    assert_eq!(session.pending_entries, entries);
                     assert_eq!(fixture.snapshot(), before);
                 }
             }
@@ -1159,7 +1188,7 @@ mod affix_sessions {
                     .unwrap_err();
                 assert!(error.to_string().contains(message), "{error:?}");
                 assert!(session.accepted_words.is_empty());
-                assert!(session.accepted_entries.is_empty());
+                assert!(session.pending_entries.is_empty());
                 assert_eq!(fixture.snapshot(), before);
             }
         }
@@ -1205,6 +1234,96 @@ mod affix_sessions {
                 assert_eq!(sources.changes, 0);
                 assert_eq!(fixture.snapshot(), before);
             }
+        }
+    }
+
+    #[test]
+    fn reconfirmation_replaces_entry_authority_without_revoking_session_words() {
+        let fixture = Fixture::new();
+        for (_, mut session) in fixture.sessions() {
+            fs_err::write(fixture.0.join("en_US.aff"), RULES).unwrap();
+            let first = session.preview_entry("Tokio", Some("S")).unwrap();
+            session
+                .record_entry(first.entry.clone(), &first.forms)
+                .unwrap();
+            fs_err::write(
+                fixture.0.join("en_US.aff"),
+                RULES.replace("SFX S 0 s .", "SFX S 0 z ."),
+            )
+            .unwrap();
+            let fresh = session.preview_entry("Tokio", Some("S")).unwrap();
+            session
+                .record_entry(fresh.entry.clone(), &fresh.forms)
+                .unwrap();
+            assert_eq!(
+                session.pending_entries,
+                BTreeMap::from([(fresh.entry, fresh.forms.into_iter().collect())])
+            );
+            assert_eq!(
+                session.accepted_words,
+                BTreeSet::from([
+                    "Tokio".into(),
+                    "Tokio's".into(),
+                    "Tokios".into(),
+                    "Tokioz".into()
+                ])
+            );
+            // The old surfaces stay accepted, but cannot authorize an obsolete expansion.
+            fs_err::write(fixture.0.join("en_US.aff"), RULES).unwrap();
+            let before = fixture.snapshot();
+            let events = Events::default();
+            let mut engines = Engines {
+                events: Rc::clone(&events),
+                fail: Failure::None,
+            };
+            assert!(session
+                .commit(source_changes(), &mut sources(&events), &mut engines)
+                .unwrap_err()
+                .to_string()
+                .contains("preview the entry again"));
+            assert!(events.borrow().is_empty());
+            assert_eq!(fixture.snapshot(), before);
+        }
+    }
+
+    #[test]
+    fn distinct_flagged_entries_for_one_stem_survive_plain_acceptance_and_commit() {
+        let fixture = Fixture::new();
+        for (_, mut session) in fixture.sessions() {
+            fs_err::write(fixture.0.join("learning.dic"), "1\nExisting\n").unwrap();
+            session
+                .record_entry(DictionaryEntry::plain("hope").unwrap(), &[])
+                .unwrap();
+            for flags in ["S", "D"] {
+                let preview = session.preview_entry("hope", Some(flags)).unwrap();
+                session.record_entry(preview.entry, &preview.forms).unwrap();
+            }
+            let stem = chunk("hope");
+            session
+                .accept(&suggestion(&stem, 0..4, Detector::Spellbook))
+                .unwrap();
+            assert_eq!(
+                session
+                    .pending_entries
+                    .keys()
+                    .map(DictionaryEntry::to_line)
+                    .collect::<BTreeSet<_>>(),
+                BTreeSet::from(["hope/D".into(), "hope/S".into()])
+            );
+            let forms = session.accepted_words.clone();
+            let mut engines =
+                crate::checker::Checkers::new(session.config.clone().unwrap()).unwrap();
+            let events = Events::default();
+            session
+                .commit(UserPicked::default(), &mut sources(&events), &mut engines)
+                .unwrap();
+            assert_eq!(
+                dictionary::DictionaryFile::new(fixture.0.join("learning.dic"))
+                    .read_entries()
+                    .unwrap(),
+                BTreeSet::from(["Existing".into(), "hope/D".into(), "hope/S".into()])
+            );
+            engines.verify_words(&forms).unwrap();
         }
     }
 
@@ -1262,7 +1381,7 @@ mod affix_sessions {
                 .unwrap_err();
             assert!(error.to_string().contains("store policy"), "{error:?}");
             assert!(session.accepted_words.is_empty());
-            assert!(session.accepted_entries.is_empty());
+            assert!(session.pending_entries.is_empty());
             assert!(events.borrow().is_empty());
             assert_eq!(fixture.snapshot(), before);
         }
@@ -1278,12 +1397,6 @@ mod affix_sessions {
         impl DictionaryStore for FlaggedStore {
             fn validate_word(&self, word: &str) -> Result<()> {
                 self.file.validate_word(word)
-            }
-            fn read(&self) -> Result<BTreeSet<String>> {
-                panic!("flagged commits must read exact entries")
-            }
-            fn update(&self, _: &BTreeSet<String>) -> Result<()> {
-                panic!("flagged commits must not persist generated surfaces")
             }
             fn update_entries(&self, entries: &BTreeSet<DictionaryEntry>) -> Result<()> {
                 self.events.borrow_mut().push("update");
@@ -1305,7 +1418,7 @@ mod affix_sessions {
                     bail!("dictionary read failed");
                 }
                 if self.fail == Failure::LostUpdate {
-                    return self.file.read();
+                    return Ok(BTreeSet::from(["Tokio".into()]));
                 }
                 self.file.read_entries()
             }
@@ -1391,7 +1504,7 @@ mod affix_sessions {
         fs_err::remove_file(fixture.0.join("en_US.aff")).unwrap();
         let before = fixture.snapshot();
         for (backend, mut session) in fixture.sessions() {
-            assert!(session.store.is_some());
+            assert!(session.is_persistent());
             session
                 .record_entry(DictionaryEntry::plain("Ferris").unwrap(), &[])
                 .unwrap();
@@ -1541,7 +1654,7 @@ mod affix_sessions {
     fn plain_recording_without_configuration_remains_session_only() {
         let events = Events::default();
         let mut session = SessionResolutions::default();
-        assert!(session.store.is_none());
+        assert!(!session.is_persistent());
         let error = session.entry_suggestions("Tokio").err().unwrap();
         assert!(error.to_string().contains("unavailable"), "{error:?}");
         record_entries(&mut session);
