@@ -183,15 +183,17 @@ impl HunspellConfig {
         base: &Path,
         learning_targets: &[PathBuf],
     ) -> Result<()> {
+        // Resolution errors for declared targets are intentionally deferred until CLI filtering.
+        // Keep both spellings so invalid declarations and equivalent missing paths remain registered.
+        let learning_targets = learning_targets
+            .iter()
+            .map(|path| (path, Config::resolve_dictionary_path(path)))
+            .collect::<Vec<_>>();
         self.search_dirs = self
             .search_dirs
             .iter(!self.skip_os_lookups)
             .filter_map(|search_dir| {
-                let abspath = if !search_dir.is_absolute() {
-                    base.join(search_dir)
-                } else {
-                    search_dir.to_owned()
-                };
+                let abspath = base.join(search_dir);
 
                 abspath.canonicalize().ok().inspect(|abspath| {
                     log::trace!(
@@ -207,52 +209,43 @@ impl HunspellConfig {
 
         // convert all extra dictionaries to absolute paths
 
-        'o: for extra_dic in self.extra_dictionaries.iter_mut() {
-            if extra_dic.is_absolute() {
-                if let Ok(resolved) = extra_dic.canonicalize() {
-                    if resolved.is_file() {
-                        *extra_dic = resolved;
-                        continue;
-                    }
-                }
-            }
-            for search_dir in
+        for extra_dic in &mut self.extra_dictionaries {
+            // Search failures are intentional: a later search directory may contain the file.
+            let resolved = if extra_dic.is_absolute() {
+                extra_dic.canonicalize().ok().filter(|path| path.is_file())
+            } else {
                 self.search_dirs
                     .iter(!self.skip_os_lookups)
-                    .filter_map(|search_dir| {
-                        if !extra_dic.is_absolute() {
-                            base.join(search_dir).canonicalize().ok()
-                        } else {
-                            Some(search_dir.to_owned())
+                    .find_map(|search_dir| {
+                        let abspath = search_dir.join(&*extra_dic);
+                        match abspath.canonicalize() {
+                            Ok(path) => path.is_file().then_some(path),
+                            Err(_) => {
+                                log::debug!("Failed to canonicalize {}", abspath.display());
+                                None
+                            }
                         }
                     })
-            {
-                let abspath = if !extra_dic.is_absolute() {
-                    search_dir.join(&extra_dic)
-                } else {
-                    break;
-                };
-                if let Ok(abspath) = abspath.canonicalize() {
-                    if abspath.is_file() {
-                        *extra_dic = abspath;
-                        continue 'o;
-                    }
-                } else {
-                    log::debug!("Failed to canonicalize {}", abspath.display());
-                }
+            };
+            if let Some(resolved) = resolved {
+                *extra_dic = resolved;
+                continue;
             }
             let candidate = base.join(&*extra_dic);
-            if learning_targets.contains(&candidate) {
-                // Keep invalid declared registrations for validation after backend filtering.
-                *extra_dic = Config::resolve_dictionary_path(&candidate).unwrap_or(candidate);
+            if let Some((_, resolved)) = learning_targets
+                .iter()
+                .find(|(path, _)| **path == candidate)
+            {
+                *extra_dic = resolved.as_ref().unwrap_or(&candidate).clone();
                 continue;
             }
             let resolved = Config::resolve_dictionary_path(&candidate).wrap_err_with(|| {
                 format!("Could not find extra dictionary {}", candidate.display())
             })?;
-            if learning_targets.iter().any(|target| {
-                Config::resolve_dictionary_path(target).is_ok_and(|target| target == resolved)
-            }) {
+            if learning_targets
+                .iter()
+                .any(|(_, target)| matches!(target, Ok(target) if target == &resolved))
+            {
                 *extra_dic = resolved;
                 continue;
             }
@@ -378,6 +371,36 @@ mod tests {
             vec![fs::canonicalize(dir.0.join("search/lingo.dic")).unwrap()]
         );
         assert!(!dir.0.join("lingo.dic").exists());
+    }
+
+    #[test]
+    fn searches_past_missing_directories_and_non_file_candidates() {
+        let dir = TempDir::new();
+        fs::create_dir_all(dir.0.join("first/lingo.dic")).unwrap();
+        fs::create_dir(dir.0.join("second")).unwrap();
+        fs::write(dir.0.join("second/lingo.dic"), "0\n").unwrap();
+        let mut config = dir.config();
+        config.learning_dictionary = None;
+        config.search_dirs = vec!["missing".into(), "first".into(), "second".into()].into();
+        config.sanitize_paths(&dir.0).unwrap();
+        assert_eq!(
+            config.extra_dictionaries,
+            vec![dir.0.join("second/lingo.dic").canonicalize().unwrap()]
+        );
+        assert!(!dir.0.join("missing").exists());
+    }
+
+    #[test]
+    fn deferred_target_errors_do_not_hide_invalid_ordinary_registrations() {
+        let dir = TempDir::new();
+        fs::write(dir.0.join("lingo.dic"), "0\n").unwrap();
+        let mut config = dir.config();
+        config.learning_dictionary = Some("lingo.dic/child.dic".into());
+        config.extra_dictionaries =
+            vec!["lingo.dic/child.dic".into(), "ordinary-missing.dic".into()];
+        let error = config.sanitize_paths(&dir.0).unwrap_err().to_string();
+        assert!(error.contains("ordinary-missing.dic"), "{error}");
+        assert!(!dir.0.join("ordinary-missing.dic").exists());
     }
 
     #[test]
