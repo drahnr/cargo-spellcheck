@@ -2,6 +2,22 @@
 
 use crate::Range;
 use fancy_regex::Regex;
+use lazy_static::lazy_static;
+
+/// The value is `true` if string is made of emoji's or Unicode
+/// `VULGAR FRACTION`.
+pub(crate) fn consists_of_vulgar_fractions_or_emojis(word: &str) -> bool {
+    lazy_static! {
+        static ref VULGAR_OR_EMOJI: regex::RegexSet = regex::RegexSetBuilder::new([
+            r"[\u00BC-\u00BE\u2150-\u215E-\u2189]",
+            r"^[\p{Emoji}]+$"
+        ])
+        .case_insensitive(true)
+        .build()
+        .expect("REGEX grammar is human checked. qed");
+    };
+    VULGAR_OR_EMOJI.is_match(word)
+}
 
 #[cfg(test)]
 mod tests;

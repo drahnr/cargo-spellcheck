@@ -36,6 +36,7 @@ mod spellbook;
 #[cfg(feature = "nlprules")]
 mod nlprules;
 
+#[cfg(any(feature = "hunspell", feature = "zet", feature = "spellbook"))]
 mod dictaffix;
 
 #[cfg(any(feature = "spellbook", feature = "zet", feature = "hunspell"))]
@@ -76,11 +77,13 @@ pub trait Checker {
 ///
 /// Only configured checkers are used.
 pub struct Checkers {
+    #[cfg(feature = "hunspell")]
     hunspell: Option<HunspellChecker>,
     #[cfg(feature = "zet")]
     zet: Option<ZetChecker>,
     #[cfg(feature = "spellbook")]
     spellbook: Option<SpellbookChecker>,
+    #[cfg(feature = "nlprules")]
     nlprules: Option<NlpRulesChecker>,
 }
 
@@ -105,6 +108,7 @@ impl Checkers {
             };
         }
 
+        #[cfg(feature = "hunspell")]
         let hunspell = create_checker!(
             "hunspell",
             HunspellChecker,
@@ -120,6 +124,7 @@ impl Checkers {
             &config,
             config.spellbook.as_ref()
         );
+        #[cfg(feature = "nlprules")]
         let nlprules = create_checker!(
             "nlprules",
             NlpRulesChecker,
@@ -127,11 +132,13 @@ impl Checkers {
             config.nlprules.as_ref()
         );
         Ok(Self {
+            #[cfg(feature = "hunspell")]
             hunspell,
             #[cfg(feature = "zet")]
             zet,
             #[cfg(feature = "spellbook")]
             spellbook,
+            #[cfg(feature = "nlprules")]
             nlprules,
         })
     }
@@ -153,6 +160,7 @@ impl Checker for Checkers {
         'a: 's,
     {
         let mut collective = HashSet::<Suggestion<'s>>::new();
+        #[cfg(feature = "hunspell")]
         if let Some(ref hunspell) = self.hunspell {
             collective.extend(hunspell.check(origin, chunks)?);
         }
@@ -164,6 +172,7 @@ impl Checker for Checkers {
         if let Some(ref spellbook) = self.spellbook {
             collective.extend(spellbook.check(origin, chunks)?);
         }
+        #[cfg(feature = "nlprules")]
         if let Some(ref nlprule) = self.nlprules {
             collective.extend(nlprule.check(origin, chunks)?);
         }

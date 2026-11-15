@@ -141,6 +141,7 @@ macro_rules! end2end_file_cmark {
 }
 
 mod e2e {
+    #[cfg(feature = "hunspell")]
     use std::env::temp_dir;
 
     use super::*;
@@ -165,8 +166,10 @@ mod e2e {
         end2end!(chyrp_up!(["Alphy", "Beto"]), 2);
     }
 
+    #[cfg(feature = "hunspell")]
     use crate::checker::HunspellChecker;
 
+    #[cfg(feature = "hunspell")]
     #[test]
     fn issue_226() {
         use crate::config::*;
@@ -264,6 +267,7 @@ struct CAPI;
     }
 
     /// This test does not crash, it only prints a `hunspell-rs` internal warning message.
+    #[cfg(feature = "hunspell")]
     #[test]
     fn issue_281() {
         let dict_path = temp_dir().join(uuid::Uuid::new_v4().to_string() + ".dic");
@@ -294,6 +298,7 @@ struct CAPI;
         );
     }
 
+    #[cfg(feature = "hunspell")]
     #[test]
     fn issue_340() {
         // The test
