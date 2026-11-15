@@ -1,6 +1,6 @@
 //! Hunspell checker configuration.
 
-use super::{Lang5, SearchDirs, WrappedRegex};
+use super::{Config, Lang5, SearchDirs, WrappedRegex};
 use std::path::{Path, PathBuf};
 
 use crate::errors::*;
@@ -132,7 +132,7 @@ pub struct HunspellConfig {
     /// Additional dictionaries for topic specific lingo.
     #[serde(default)]
     pub extra_dictionaries: Vec<PathBuf>,
-    /// Existing extra dictionary to receive words accepted during an interactive run.
+    /// Extra dictionary to receive words accepted during an interactive run, created if absent.
     /// Relative paths are resolved against the configuration file's directory.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub learning_dictionary: Option<PathBuf>,
@@ -170,6 +170,19 @@ impl HunspellConfig {
     }
 
     pub fn sanitize_paths(&mut self, base: &Path) -> Result<()> {
+        let targets = self
+            .learning_dictionary
+            .iter()
+            .map(|path| base.join(path))
+            .collect::<Vec<_>>();
+        self.sanitize_paths_with_learning_targets(base, &targets)
+    }
+
+    pub(super) fn sanitize_paths_with_learning_targets(
+        &mut self,
+        base: &Path,
+        learning_targets: &[PathBuf],
+    ) -> Result<()> {
         self.search_dirs = self
             .search_dirs
             .iter(!self.skip_os_lookups)
@@ -195,6 +208,14 @@ impl HunspellConfig {
         // convert all extra dictionaries to absolute paths
 
         'o: for extra_dic in self.extra_dictionaries.iter_mut() {
+            if extra_dic.is_absolute() {
+                if let Ok(resolved) = extra_dic.canonicalize() {
+                    if resolved.is_file() {
+                        *extra_dic = resolved;
+                        continue;
+                    }
+                }
+            }
             for search_dir in
                 self.search_dirs
                     .iter(!self.skip_os_lookups)
@@ -209,7 +230,7 @@ impl HunspellConfig {
                 let abspath = if !extra_dic.is_absolute() {
                     search_dir.join(&extra_dic)
                 } else {
-                    continue 'o;
+                    break;
                 };
                 if let Ok(abspath) = abspath.canonicalize() {
                     if abspath.is_file() {
@@ -220,9 +241,24 @@ impl HunspellConfig {
                     log::debug!("Failed to canonicalize {}", abspath.display());
                 }
             }
+            let candidate = base.join(&*extra_dic);
+            if learning_targets.contains(&candidate) {
+                // Keep invalid declared registrations for validation after backend filtering.
+                *extra_dic = Config::resolve_dictionary_path(&candidate).unwrap_or(candidate);
+                continue;
+            }
+            let resolved = Config::resolve_dictionary_path(&candidate).wrap_err_with(|| {
+                format!("Could not find extra dictionary {}", candidate.display())
+            })?;
+            if learning_targets.iter().any(|target| {
+                Config::resolve_dictionary_path(target).is_ok_and(|target| target == resolved)
+            }) {
+                *extra_dic = resolved;
+                continue;
+            }
             bail!(
-                "Could not find extra dictionary {} in any of the search paths",
-                extra_dic.display()
+                "Could not find extra dictionary {} in any of the search paths; expected a regular file",
+                candidate.display()
             );
         }
 

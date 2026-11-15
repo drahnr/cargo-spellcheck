@@ -11,7 +11,7 @@ use rayon::iter::ParallelIterator;
 
 use crate::paths::OutputPaths;
 use std::io::{Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub mod bandaid;
 pub mod interactive;
@@ -392,9 +392,11 @@ impl Action {
         config: Config,
         output_paths: &OutputPaths,
     ) -> Result<Finish> {
+        let fallback_base = crate::traverse::cwd()?;
         self.run_fix_interactive_with(
             documents,
             config,
+            &fallback_base,
             |origin, suggestions, resolutions, checkers| {
                 UserPicked::select_interactive(
                     origin,
@@ -410,7 +412,8 @@ impl Action {
     fn run_fix_interactive_with(
         mut self,
         documents: Documentation,
-        config: Config,
+        mut config: Config,
+        fallback_base: &Path,
         mut select: impl for<'s> FnMut(
             ContentOrigin,
             Vec<Suggestion<'s>>,
@@ -419,7 +422,11 @@ impl Action {
         ) -> Result<(UserPicked, DocumentOutcome)>,
     ) -> Result<Finish> {
         let n = documents.entry_count();
-        let mut resolutions = SessionResolutions::new(&config)?;
+        config.include_default_learning_dictionary(fallback_base)?;
+        let mut resolutions = SessionResolutions::new(&config, fallback_base)?;
+        if let Some(path) = resolutions.learning_dictionary_path() {
+            config.omit_missing_learning_dictionary(path)?;
+        }
         let mut checkers = Checkers::new(config)?;
         let mut collected_picks = UserPicked::default();
 
@@ -448,9 +455,24 @@ impl Action {
     async fn run_check(
         self,
         documents: Documentation,
-        config: Config,
+        mut config: Config,
         output_paths: &OutputPaths,
     ) -> Result<Finish> {
+        let fallback_base = crate::traverse::cwd()?;
+        config.include_default_learning_dictionary(&fallback_base)?;
+        // Checks never validate writability or create a learning session.
+        let targets = [
+            (cfg!(feature = "hunspell"), config.hunspell.as_ref()),
+            (cfg!(feature = "zet"), config.zet.as_ref()),
+            (cfg!(feature = "spellbook"), config.spellbook.as_ref()),
+        ]
+        .into_iter()
+        .filter(|(compiled, _)| *compiled)
+        .filter_map(|(_, spelling)| spelling?.learning_dictionary.clone())
+        .collect::<Vec<_>>();
+        for path in targets {
+            config.omit_missing_learning_dictionary(&path)?;
+        }
         let checkers = Checkers::new(config)?;
         let num_mistakes = documents
             .into_par_iter()

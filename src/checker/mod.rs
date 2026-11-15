@@ -95,9 +95,7 @@ impl Checkers {
     /// Test a literal word without Markdown/tokenization quirks. All active
     /// spelling backends must recognize it before learning can be skipped.
     pub(crate) fn contains_word(&self, word: &str) -> bool {
-        let spelling_enabled = (cfg!(feature = "hunspell") && self.config.hunspell.is_some())
-            || (cfg!(feature = "zet") && self.config.zet.is_some())
-            || (cfg!(feature = "spellbook") && self.config.spellbook.is_some());
+        let spelling_enabled = self.config.has_spelling_backends();
         spelling_enabled
             && self
                 .verify_words(&std::collections::BTreeSet::from([word.to_owned()]))
@@ -162,6 +160,11 @@ impl Checkers {
 }
 
 impl DictionaryReload for Checkers {
+    fn include_learning_dictionary(&mut self, path: &std::path::Path) -> Result<()> {
+        self.config.add_learning_dictionary(path);
+        Ok(())
+    }
+
     fn reload_dictionaries(&mut self) -> Result<()> {
         // Reconstruct all active engines (including NLP for now) using the original config.
         // Do not replace any live engine unless every replacement initialized successfully.

@@ -1,7 +1,7 @@
-//! Suffix metadata discovery and engine-owned expansion for vocabulary learning.
+//! Affix metadata discovery and engine-owned expansion for vocabulary learning.
 //!
-//! We index identifiers and strip alternatives, never apply affix rules ourselves.
-//! Every preview and proposed shortened stem is checked by ZSpell's expansion engine.
+//! We invert indexed additions/strips only to propose stems, never evaluate conditions.
+//! Every preview and proposed stem is checked by ZSpell's expansion engine.
 
 use super::entry::{validate_word, DictionaryEntry};
 use crate::errors::*;
@@ -11,6 +11,15 @@ use crate::Config;
 pub(crate) struct AffixSuggestion {
     pub entry: DictionaryEntry,
     pub forms: Vec<String>,
+}
+
+/// An engine-validated affix choice. Prefix/suffix fields are individual flag IDs;
+/// the suggestion contains the selected stem and its canonical native flag bundle.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub(crate) struct AffixPattern {
+    pub prefix: Option<String>,
+    pub suffix: Option<String>,
+    pub suggestion: AffixSuggestion,
 }
 
 #[derive(Debug)]
@@ -70,6 +79,27 @@ impl AffixCatalog {
             let _ = flags;
             bail!("Affix suggestions unavailable: no compiled spelling backend");
         }
+    }
+
+    pub(super) fn pattern_suggestions(&self, word: &str) -> Result<Vec<AffixPattern>> {
+        validate_word(word)?;
+        #[cfg(any(feature = "hunspell", feature = "zet", feature = "spellbook"))]
+        {
+            self.inner.pattern_suggestions(word)
+        }
+        #[cfg(not(any(feature = "hunspell", feature = "zet", feature = "spellbook")))]
+        bail!("Affix suggestions unavailable: no compiled spelling backend")
+    }
+
+    /// All supported extensions of this exact stem, independent of inference.
+    pub(super) fn extension_patterns(&self, stem: &str) -> Result<Vec<AffixPattern>> {
+        validate_word(stem)?;
+        #[cfg(any(feature = "hunspell", feature = "zet", feature = "spellbook"))]
+        {
+            self.inner.extension_patterns(stem)
+        }
+        #[cfg(not(any(feature = "hunspell", feature = "zet", feature = "spellbook")))]
+        bail!("Affix suggestions unavailable: no compiled spelling backend")
     }
 
     pub(super) fn expand(&self, word: &str, flags: Option<&str>) -> Result<AffixSuggestion> {
@@ -189,6 +219,42 @@ mod engine {
             Ok(flags)
         }
 
+        fn bundle(self, text: &str) -> Result<Vec<String>> {
+            let flags: Result<Vec<String>> = match self {
+                Self::Numeric => text.split(',').map(|flag| self.flag(flag)).collect(),
+                Self::Short | Self::Utf8 => {
+                    text.chars().map(|ch| self.flag(&ch.to_string())).collect()
+                }
+                Self::Long => {
+                    let (flags, remainder) = text.as_bytes().as_chunks::<2>();
+                    if !text.is_ascii() || !remainder.is_empty() {
+                        bail!("Invalid long FLAG bundle: expected two-byte flag identifiers");
+                    }
+                    flags
+                        .iter()
+                        .map(|flag| self.flag(std::str::from_utf8(flag)?))
+                        .collect()
+                }
+            };
+            let flags = flags?;
+            if flags.is_empty() || flags.len() > 2 {
+                bail!("Expected one affix flag or one PFX+SFX flag bundle");
+            }
+            Ok(flags)
+        }
+
+        fn join(self, prefix: Option<&str>, suffix: Option<&str>) -> String {
+            [prefix, suffix]
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>()
+                .join(if matches!(self, Self::Numeric) {
+                    ","
+                } else {
+                    ""
+                })
+        }
+
         fn directive(self) -> &'static str {
             match self {
                 Self::Short => "",
@@ -199,9 +265,19 @@ mod engine {
         }
     }
 
+    #[derive(Debug, Eq, PartialEq, Ord, PartialOrd)]
+    struct Rule {
+        addition: String,
+        strip: String,
+    }
+
     #[derive(Debug)]
-    struct Suffix {
+    struct Affix {
+        // Only this flag's header/rules; SET/FLAG are emitted once per projection.
         aff: String,
+        cross_product: bool,
+        rules: BTreeSet<Rule>,
+        // Preserve the manual suffix flow's existing boundary/strip search.
         strips: BTreeSet<String>,
     }
 
@@ -209,7 +285,8 @@ mod engine {
     pub(super) struct Catalog {
         mode: FlagMode,
         explicit_utf8: bool,
-        suffixes: BTreeMap<String, Suffix>,
+        prefixes: BTreeMap<String, Affix>,
+        suffixes: BTreeMap<String, Affix>,
         known_stems: BTreeSet<String>,
     }
 
@@ -276,7 +353,8 @@ mod engine {
             let mut has_encoding = false;
             let mut special = BTreeSet::new();
             let mut prefix_flags = BTreeSet::new();
-            // Metadata only: rule conditions and additions are passed untouched to ZSpell.
+            let mut suffix_flags = BTreeSet::new();
+            // Metadata only: conditions are passed untouched to ZSpell.
             for line in &lines {
                 let fields = line.split_whitespace().collect::<Vec<_>>();
                 let Some(&key) = fields.first() else { continue };
@@ -297,6 +375,9 @@ mod engine {
                     }
                     "PFX" if fields.len() == 4 && matches!(fields[2], "Y" | "N") => {
                         prefix_flags.insert(fields[1].to_owned());
+                    }
+                    "SFX" if fields.len() == 4 && matches!(fields[2], "Y" | "N") => {
+                        suffix_flags.insert(fields[1].to_owned());
                     }
                     "AF" | "AM" => bail!("Unsupported affix directive {key}: flag/morphology aliases are not supported by suffix learning"),
                     "IGNORE" | "ICONV" | "OCONV" | "FULLSTRIP" | "COMPLEXPREFIXES" => {
@@ -326,78 +407,103 @@ mod engine {
                 .map(|flag| mode.flag(flag))
                 .collect::<Result<BTreeSet<_>>>()?;
             let compound_flags = compound_rule_flags(&lines, mode)?;
+            let suffix_flags = suffix_flags
+                .iter()
+                .map(|flag| mode.flag(flag))
+                .collect::<Result<BTreeSet<_>>>()?;
+            if let Some(flag) = prefix_flags.intersection(&suffix_flags).next() {
+                bail!("Unsupported shared PFX/SFX flag {flag}: learning requires distinct prefix and suffix identifiers");
+            }
+            let mut prefixes = BTreeMap::new();
             let mut suffixes = BTreeMap::new();
             let mut index = 0;
             while index < lines.len() {
                 let fields = lines[index].split_whitespace().collect::<Vec<_>>();
                 index += 1;
-                if fields.first() != Some(&"SFX") {
+                let Some(&kind @ ("PFX" | "SFX")) = fields.first() else {
                     continue;
-                }
+                };
                 if fields.len() != 4 || !matches!(fields[2], "Y" | "N") {
-                    bail!("Malformed SFX header: expected SFX flag Y/N count");
+                    bail!("Malformed {kind} header: expected {kind} flag Y/N count");
                 }
                 let flag = mode.flag(fields[1])?;
-                if prefix_flags.contains(&flag) {
-                    bail!("Unsupported shared PFX/SFX flag {flag}: a suffix-only preview would omit prefix forms");
-                }
                 if compound_flags.contains(&flag) {
-                    bail!("Unsupported SFX flag {flag} referenced by COMPOUNDRULE: a suffix-only preview would omit compound forms");
+                    bail!("Unsupported {kind} flag {flag} referenced by COMPOUNDRULE: an isolated preview would omit compound forms");
                 }
                 let count = fields[3]
                     .parse::<usize>()
-                    .wrap_err("Invalid SFX rule count")?;
+                    .wrap_err_with(|| format!("Invalid {kind} rule count"))?;
                 if count > lines.len().saturating_sub(index) {
-                    bail!("Malformed SFX {flag}: missing rule lines");
+                    bail!("Malformed {kind} {flag}: missing rule lines");
                 }
-                let mut suffix = Suffix {
-                    aff: format!("SET UTF-8\n{}{}\n", mode.directive(), lines[index - 1]),
+                let mut affix = Affix {
+                    aff: format!("{}\n", lines[index - 1]),
+                    cross_product: fields[2] == "Y",
+                    rules: BTreeSet::new(),
                     strips: BTreeSet::from([String::new()]),
                 };
                 for line in &lines[index..index + count] {
                     let rule = line.split_whitespace().collect::<Vec<_>>();
-                    if rule.len() < 5 || rule[0] != "SFX" || mode.flag(rule[1])? != flag {
-                        bail!("Malformed SFX {flag}: expected matching rule with a condition");
+                    if rule.len() < 5 || rule[0] != kind || mode.flag(rule[1])? != flag {
+                        bail!("Malformed {kind} {flag}: expected matching rule with a condition");
                     }
                     if rule[3].contains('/') {
-                        bail!("Unsupported SFX {flag} continuation classes: ZSpell cannot expand them faithfully");
+                        bail!("Unsupported {kind} {flag} continuation classes: ZSpell cannot expand them faithfully");
                     }
                     // ZSpell 0.5.5 treats the zero-addition marker as a literal '0'.
                     if rule[3] == "0" {
-                        bail!("Unsupported SFX {flag} zero addition: ZSpell 0.5.5 cannot expand it faithfully");
+                        bail!("Unsupported {kind} {flag} zero addition: ZSpell 0.5.5 cannot expand it faithfully");
                     }
-                    if rule[2] != "0" {
-                        suffix.strips.insert(rule[2].to_owned());
-                    }
-                    suffix.aff.push_str(line);
-                    suffix.aff.push('\n');
+                    let strip = if rule[2] == "0" { "" } else { rule[2] };
+                    affix.strips.insert(strip.to_owned());
+                    affix.rules.insert(Rule {
+                        addition: rule[3].to_owned(),
+                        strip: strip.to_owned(),
+                    });
+                    affix.aff.push_str(line);
+                    affix.aff.push('\n');
                 }
                 index += count;
+                let choices = if kind == "PFX" {
+                    &mut prefixes
+                } else {
+                    &mut suffixes
+                };
                 if count != 0
                     && !special.contains(&flag)
-                    && suffixes.insert(flag.clone(), suffix).is_some()
+                    && choices.insert(flag.clone(), affix).is_some()
                 {
-                    bail!("Duplicate SFX flag {flag}");
+                    bail!("Duplicate {kind} flag {flag}");
                 }
             }
             let catalog = Self {
                 mode,
                 explicit_utf8: has_encoding,
+                prefixes,
                 suffixes,
                 known_stems,
             };
             // Make engine parsing failures visible even before the first preview.
-            for suffix in catalog.suffixes.values() {
+            for affix in catalog.prefixes.values().chain(catalog.suffixes.values()) {
+                let aff = catalog.projection([affix]);
                 let _ = zspell::builder()
-                    .config_str(&suffix.aff)
+                    .config_str(&aff)
                     .dict_str("0\n")
                     .build()
-                    .wrap_err("Could not parse suffix rules with the ZSpell expansion engine")?;
+                    .wrap_err("Could not parse affix rules with the ZSpell expansion engine")?;
             }
             Ok(catalog)
         }
 
-        fn suffix(&self, flags: &str) -> Result<(String, &Suffix)> {
+        fn projection<'a>(&self, affixes: impl IntoIterator<Item = &'a Affix>) -> String {
+            let mut aff = format!("SET UTF-8\n{}", self.mode.directive());
+            for affix in affixes {
+                aff.push_str(&affix.aff);
+            }
+            aff
+        }
+
+        fn suffix(&self, flags: &str) -> Result<(String, &Affix)> {
             let flag = self.mode.flag(flags)?;
             let suffix = self.suffixes.get(&flag).ok_or_else(|| {
                 eyre!("Unknown or nonproductive suffix flag {flags:?}: choose a suffix from this dictionary's catalog")
@@ -415,13 +521,37 @@ mod engine {
             if !self.explicit_utf8 && !word.is_ascii() {
                 bail!("Unsupported affix encoding: non-ASCII learned stems require SET UTF-8");
             }
-            let (flag, suffix) = self.suffix(flags)?;
-            let dic = format!("1\n{word}/{flag}\n");
+            let selected = self.mode.bundle(flags)?;
+            // Keep the manual suffix flow's lookup diagnostic for single flags.
+            if selected.len() == 1 && !self.prefixes.contains_key(&selected[0]) {
+                self.suffix(&selected[0])?;
+            }
+            let mut prefix = None;
+            let mut suffix = None;
+            for flag in selected {
+                if self.prefixes.contains_key(&flag) && prefix.is_none() {
+                    prefix = Some(flag);
+                } else if self.suffixes.contains_key(&flag) && suffix.is_none() {
+                    suffix = Some(flag);
+                } else {
+                    bail!("Unknown, duplicate, or incompatible affix flag {flag:?}: choose a single PFX, single SFX, or one cross-product PFX+SFX pair from this dictionary's catalog");
+                }
+            }
+            let prefix_rule = prefix.as_ref().map(|flag| &self.prefixes[flag]);
+            let suffix_rule = suffix.as_ref().map(|flag| &self.suffixes[flag]);
+            if let (Some(prefix), Some(suffix)) = (prefix_rule, suffix_rule) {
+                if !prefix.cross_product || !suffix.cross_product {
+                    bail!("Incompatible PFX+SFX flags: both rules must allow cross-product Y");
+                }
+            }
+            let flags = self.mode.join(prefix.as_deref(), suffix.as_deref());
+            let aff = self.projection(prefix_rule.into_iter().chain(suffix_rule));
+            let dic = format!("1\n{word}/{flags}\n");
             let dictionary = zspell::builder()
-                .config_str(&suffix.aff)
+                .config_str(&aff)
                 .dict_str(&dic)
                 .build()
-                .wrap_err("Could not expand the selected suffix with ZSpell")?;
+                .wrap_err("Could not expand the selected affixes with ZSpell")?;
             let forms = dictionary
                 .wordlist()
                 .inner()
@@ -437,10 +567,10 @@ mod engine {
                 .collect::<BTreeSet<_>>();
             for form in &forms {
                 validate_word(form)
-                    .wrap_err("Suffix expansion produced a word that cannot be learned")?;
+                    .wrap_err("Affix expansion produced a word that cannot be learned")?;
             }
             Ok(AffixSuggestion {
-                entry: DictionaryEntry::flagged(word, &flag)?,
+                entry: DictionaryEntry::flagged(word, &flags)?,
                 forms: forms.into_iter().collect(),
             })
         }
@@ -450,6 +580,125 @@ mod engine {
                 .keys()
                 .map(|flag| self.expand(word, flag))
                 .collect()
+        }
+
+        pub(super) fn extension_patterns(&self, stem: &str) -> Result<Vec<AffixPattern>> {
+            let mut patterns = Vec::new();
+            let mut push = |prefix: Option<&str>, suffix: Option<&str>| -> Result<()> {
+                let suggestion = if prefix.is_none() && suffix.is_none() {
+                    plain(stem)?
+                } else {
+                    self.expand(stem, &self.mode.join(prefix, suffix))?
+                };
+                patterns.push(AffixPattern {
+                    prefix: prefix.map(str::to_owned),
+                    suffix: suffix.map(str::to_owned),
+                    suggestion,
+                });
+                Ok(())
+            };
+            push(None, None)?;
+            for suffix in self.suffixes.keys() {
+                push(None, Some(suffix))?;
+            }
+            for (prefix, pfx) in &self.prefixes {
+                push(Some(prefix), None)?;
+                for (suffix, sfx) in &self.suffixes {
+                    if pfx.cross_product && sfx.cross_product {
+                        // Conditions may currently produce only the stem. Keep the
+                        // flags selectable so a later stem edit can activate them.
+                        push(Some(prefix), Some(suffix))?;
+                    }
+                }
+            }
+            Ok(patterns)
+        }
+
+        pub(super) fn pattern_suggestions(&self, word: &str) -> Result<Vec<AffixPattern>> {
+            // Only additions actually observed at an edge participate. In particular,
+            // pair inference never searches the word's character-boundary product.
+            let prefixes = self
+                .prefixes
+                .iter()
+                .flat_map(|(flag, affix)| {
+                    affix.rules.iter().filter_map(move |rule| {
+                        word.strip_prefix(rule.addition.as_str())
+                            .map(|rest| (flag, affix, rule, rest))
+                    })
+                })
+                .collect::<Vec<_>>();
+            let suffixes = self
+                .suffixes
+                .iter()
+                .flat_map(|(flag, affix)| {
+                    affix.rules.iter().filter_map(move |rule| {
+                        word.strip_suffix(rule.addition.as_str())
+                            .map(|rest| (flag, affix, rule, rest))
+                    })
+                })
+                .collect::<Vec<_>>();
+            let mut candidates = BTreeSet::new();
+            for (flag, _, rule, rest) in &prefixes {
+                candidates.insert((format!("{}{rest}", rule.strip), Some((*flag).clone()), None));
+            }
+            for (flag, _, rule, rest) in &suffixes {
+                candidates.insert((format!("{rest}{}", rule.strip), None, Some((*flag).clone())));
+            }
+            for (prefix, pfx, prefix_rule, rest) in &prefixes {
+                if !pfx.cross_product {
+                    continue;
+                }
+                for (suffix, sfx, suffix_rule, _) in &suffixes {
+                    if !sfx.cross_product || prefix == suffix {
+                        continue;
+                    }
+                    if let Some(middle) = rest.strip_suffix(suffix_rule.addition.as_str()) {
+                        candidates.insert((
+                            format!("{}{middle}{}", prefix_rule.strip, suffix_rule.strip),
+                            Some((*prefix).clone()),
+                            Some((*suffix).clone()),
+                        ));
+                    }
+                }
+            }
+            let mut patterns = Vec::new();
+            for (stem, prefix, suffix) in candidates {
+                if stem == word || validate_word(&stem).is_err() {
+                    continue;
+                }
+                let flags = self.mode.join(prefix.as_deref(), suffix.as_deref());
+                let suggestion = self.expand(&stem, &flags)?;
+                if suggestion.forms.iter().any(|form| form == word) {
+                    patterns.push(AffixPattern {
+                        prefix,
+                        suffix,
+                        suggestion,
+                    });
+                }
+            }
+            patterns.sort_by(|left, right| {
+                let rank = |pattern: &AffixPattern| {
+                    (
+                        !self.known_stems.contains(pattern.suggestion.entry.word()),
+                        std::cmp::Reverse(
+                            usize::from(pattern.prefix.is_some())
+                                + usize::from(pattern.suffix.is_some()),
+                        ),
+                        pattern.suggestion.entry.word().chars().count(),
+                    )
+                };
+                rank(left)
+                    .cmp(&rank(right))
+                    .then_with(|| {
+                        left.suggestion
+                            .entry
+                            .word()
+                            .cmp(right.suggestion.entry.word())
+                    })
+                    .then_with(|| left.prefix.cmp(&right.prefix))
+                    .then_with(|| left.suffix.cmp(&right.suffix))
+            });
+            Ok(patterns)
         }
 
         pub(super) fn stem_suggestions(
@@ -697,6 +946,381 @@ mod tests {
         }
 
         #[test]
+        fn immediate_patterns_include_prefixes_suffixes_and_cross_products() {
+            let fixture = Fixture::new(
+                "SET UTF-8\nPFX R Y 1\nPFX R 0 re .\nPFX U Y 1\nPFX U 0 un .\nSFX S Y 1\nSFX S 0 s .\n",
+            );
+            fs_err::write(fixture.0.join("en_US.dic"), "3\ntry\ntested\nuntested\n").unwrap();
+            let catalog = AffixCatalog::load(&fixture.config()).unwrap();
+            let retry = catalog.pattern_suggestions("retry").unwrap();
+            assert_eq!(retry.len(), 1);
+            assert_eq!(retry[0].prefix.as_deref(), Some("R"));
+            assert_eq!(retry[0].suffix, None);
+            assert_eq!(retry[0].suggestion.entry.to_line(), "try/R");
+            assert_eq!(retry[0].suggestion.forms, ["retry", "try"]);
+
+            let patterns = catalog.pattern_suggestions("untesteds").unwrap();
+            assert_eq!(patterns[0].prefix.as_deref(), Some("U"));
+            assert_eq!(patterns[0].suffix.as_deref(), Some("S"));
+            assert_eq!(patterns[0].suggestion.entry.to_line(), "tested/US");
+            assert_eq!(
+                patterns[0].suggestion.forms,
+                ["tested", "testeds", "untested", "untesteds"]
+            );
+            assert!(patterns.iter().any(|pattern| {
+                pattern.prefix.is_none()
+                    && pattern.suffix.as_deref() == Some("S")
+                    && pattern.suggestion.entry.word() == "untested"
+            }));
+            assert_eq!(patterns, catalog.pattern_suggestions("untesteds").unwrap());
+            for pattern in &patterns {
+                assert_ne!(pattern.suggestion.entry.word(), "untesteds");
+                assert!(pattern
+                    .suggestion
+                    .forms
+                    .iter()
+                    .any(|form| form == "untesteds"));
+                assert_eq!(
+                    validate_entry(&fixture.config(), &pattern.suggestion.entry).unwrap(),
+                    pattern.suggestion
+                );
+            }
+            assert!(catalog.pattern_suggestions("widget").unwrap().is_empty());
+            assert!(catalog.pattern_suggestions("word/S").is_err());
+
+            // Dictionary membership takes precedence even over a shorter pair stem.
+            fs_err::write(fixture.0.join("en_US.dic"), "1\nuntested\n").unwrap();
+            let catalog = AffixCatalog::load(&fixture.config()).unwrap();
+            assert_eq!(
+                catalog.pattern_suggestions("untesteds").unwrap()[0]
+                    .suggestion
+                    .entry
+                    .to_line(),
+                "untested/S"
+            );
+        }
+
+        #[test]
+        fn extensions_cover_the_catalog_without_inferring_or_deduplicating_stems() {
+            let fixture = Fixture::new(
+                "SET UTF-8\nPFX Z N 1\nPFX Z 0 pre .\nPFX U Y 1\nPFX U 0 un .\nPFX R Y 1\nPFX R 0 un .\nSFX Y N 1\nSFX Y y ies [^aeiou]y\nSFX T Y 1\nSFX T 0 s .\nSFX S Y 1\nSFX S 0 s .\nSFX D Y 1\nSFX D 0 ed .\nSFX C Y 1\nSFX C e ing e\nNOSUGGEST X\nPFX X Y 1\nPFX X 0 non .\nFORBIDDENWORD F\nSFX F Y 1\nSFX F 0 bad .\nONLYINCOMPOUND c\nCOMPOUNDRULE 1\nCOMPOUNDRULE c*\n",
+            );
+            let config = fixture.config();
+            let catalog = AffixCatalog::load(&config).unwrap();
+            assert!(catalog.pattern_suggestions("widget").unwrap().is_empty());
+            assert!(catalog
+                .pattern_suggestions("widgets")
+                .unwrap()
+                .iter()
+                .any(|p| p.suggestion.entry.to_line() == "widget/S"));
+            for stem in ["widget", "widgets"] {
+                let patterns = catalog.extension_patterns(stem).unwrap();
+                assert_eq!(patterns, catalog.extension_patterns(stem).unwrap());
+                assert_eq!(
+                    patterns
+                        .iter()
+                        .map(|p| p.suggestion.entry.flags())
+                        .collect::<Vec<_>>(),
+                    [
+                        None,
+                        Some("C"),
+                        Some("D"),
+                        Some("S"),
+                        Some("T"),
+                        Some("Y"),
+                        Some("R"),
+                        Some("RC"),
+                        Some("RD"),
+                        Some("RS"),
+                        Some("RT"),
+                        Some("U"),
+                        Some("UC"),
+                        Some("UD"),
+                        Some("US"),
+                        Some("UT"),
+                        Some("Z"),
+                    ]
+                );
+                assert_eq!(patterns[0].prefix, None);
+                assert_eq!(patterns[0].suffix, None);
+                assert_eq!(patterns[0].suggestion.forms, [stem]);
+                for pattern in &patterns {
+                    assert_eq!(pattern.suggestion.entry.word(), stem);
+                    assert_eq!(
+                        pattern.suggestion,
+                        catalog
+                            .expand(stem, pattern.suggestion.entry.flags())
+                            .unwrap()
+                    );
+                    assert_eq!(
+                        pattern.suggestion,
+                        validate_entry(&config, &pattern.suggestion.entry).unwrap()
+                    );
+                    assert!(!matches!(pattern.prefix.as_deref(), Some("X" | "c")));
+                    assert!(!matches!(pattern.suffix.as_deref(), Some("F" | "c")));
+                    if pattern.prefix.is_some() && pattern.suffix.is_some() {
+                        assert_ne!(pattern.prefix.as_deref(), Some("Z"));
+                        assert_ne!(pattern.suffix.as_deref(), Some("Y"));
+                    }
+                }
+                // Nonmatching conditions and identical expansions do not hide flags.
+                assert_eq!(patterns[1].suggestion.forms, [stem]);
+                assert_eq!(patterns[5].suggestion.forms, [stem]);
+                assert_eq!(patterns[3].suggestion.forms, patterns[4].suggestion.forms);
+                assert_eq!(patterns[6].suggestion.forms, patterns[11].suggestion.forms);
+                assert_eq!(patterns[7].suggestion.forms, patterns[6].suggestion.forms);
+            }
+            for stem in ["", "42", "word/S", "two words", "word\nInjected"] {
+                assert!(catalog.extension_patterns(stem).is_err());
+            }
+        }
+
+        #[test]
+        fn extensions_preserve_native_flag_semantics_and_engine_expansions() {
+            for (mode, prefix, suffix, bundle) in [
+                ("", "U", "S", "US"),
+                ("FLAG num\n", "123", "456", "123,456"),
+                ("FLAG long\n", "AB", "CD", "ABCD"),
+                ("FLAG UTF-8\n", "é", "β", "éβ"),
+            ] {
+                let aff = format!("SET UTF-8\n{mode}PFX {prefix} Y 1\nPFX {prefix} 0 un .\nSFX {suffix} Y 1\nSFX {suffix} 0 s .\n");
+                let fixture = Fixture::new(&aff);
+                let catalog = AffixCatalog::load(&fixture.config()).unwrap();
+                let patterns = catalog.extension_patterns("café").unwrap();
+                assert_eq!(
+                    patterns
+                        .iter()
+                        .map(|p| (p.prefix.as_deref(), p.suffix.as_deref()))
+                        .collect::<Vec<_>>(),
+                    [
+                        (None, None),
+                        (None, Some(suffix)),
+                        (Some(prefix), None),
+                        (Some(prefix), Some(suffix))
+                    ]
+                );
+                assert_eq!(patterns[3].suggestion.entry.flags(), Some(bundle));
+                assert_eq!(
+                    patterns[3].suggestion.forms,
+                    ["café", "cafés", "uncafé", "uncafés"]
+                );
+                for pattern in patterns {
+                    assert_eq!(pattern.suggestion.entry.word(), "café");
+                    let dic = format!("1\n{}\n", pattern.suggestion.entry.to_line());
+                    let dictionary = zspell::builder()
+                        .config_str(&aff)
+                        .dict_str(&dic)
+                        .build()
+                        .unwrap();
+                    let mut forms = dictionary
+                        .wordlist()
+                        .inner()
+                        .keys()
+                        .map(|word| word.to_string())
+                        .collect::<Vec<_>>();
+                    forms.sort();
+                    assert_eq!(pattern.suggestion.forms, forms);
+                }
+            }
+        }
+
+        #[test]
+        fn extensions_include_plain_when_no_productive_flags_exist() {
+            let fixture = Fixture::new("SET UTF-8\nNOSUGGEST X\n");
+            let catalog = AffixCatalog::load(&fixture.config()).unwrap();
+            assert_eq!(
+                catalog.extension_patterns("widget").unwrap(),
+                [AffixPattern {
+                    prefix: None,
+                    suffix: None,
+                    suggestion: catalog.expand("widget", None).unwrap(),
+                }]
+            );
+        }
+
+        #[test]
+        fn pattern_inference_restores_both_strips_and_uses_engine_conditions() {
+            let fixture = Fixture::new(
+                "SET UTF-8\nPFX P Y 2\nPFX P a re a\nPFX P b un b\nSFX S Y 2\nSFX S e ing e\nSFX S y ies [^aeiou]y\n",
+            );
+            let catalog = AffixCatalog::load(&fixture.config()).unwrap();
+            let patterns = catalog.pattern_suggestions("rebaking").unwrap();
+            let pair = patterns
+                .iter()
+                .find(|pattern| {
+                    pattern.prefix.as_deref() == Some("P") && pattern.suffix.as_deref() == Some("S")
+                })
+                .unwrap();
+            assert_eq!(pair.suggestion.entry.to_line(), "abake/PS");
+            assert_eq!(
+                pair.suggestion.forms,
+                ["abake", "abaking", "rebake", "rebaking"]
+            );
+            assert!(patterns
+                .iter()
+                .all(|pattern| pattern.suggestion.entry.word() != "bbake"));
+            assert!(catalog.pattern_suggestions("keies").unwrap().is_empty());
+
+            let fixture =
+                Fixture::new("SET UTF-8\nPFX R Y 1\nPFX R 0 re [^t]\nSFX S Y 1\nSFX S 0 s [^y]\n");
+            let catalog = AffixCatalog::load(&fixture.config()).unwrap();
+            assert!(catalog.pattern_suggestions("retry").unwrap().is_empty());
+            // Both additions are present, but neither the inferred pair nor either
+            // single-rule reconstruction satisfies the actual engine conditions.
+            assert!(catalog.pattern_suggestions("retrys").unwrap().is_empty());
+        }
+
+        #[test]
+        fn pattern_order_prefers_coverage_then_shorter_stems_with_stable_ties() {
+            let fixture = Fixture::new(
+                "SET UTF-8\nPFX U Y 1\nPFX U 0 un .\nPFX V Y 1\nPFX V 0 un .\nSFX S Y 1\nSFX S 0 s .\nSFX T Y 1\nSFX T 0 ds .\n",
+            );
+            let catalog = AffixCatalog::load(&fixture.config()).unwrap();
+            let patterns = catalog.pattern_suggestions("untesteds").unwrap();
+            let rows = patterns
+                .iter()
+                .map(|p| p.suggestion.entry.to_line())
+                .collect::<Vec<_>>();
+            assert_eq!(
+                rows,
+                [
+                    "teste/UT",
+                    "teste/VT",
+                    "tested/US",
+                    "tested/VS",
+                    "testeds/U",
+                    "testeds/V",
+                    "unteste/T",
+                    "untested/S"
+                ]
+            );
+        }
+
+        #[test]
+        fn bundles_preserve_native_semantics_and_exact_dictionary_line_expansion() {
+            for (mode, prefix, suffix, bundle, reversed) in [
+                ("", "U", "S", "US", "SU"),
+                ("FLAG num\n", "123", "456", "123,456", "0456,0123"),
+                ("FLAG long\n", "AB", "CD", "ABCD", "CDAB"),
+                ("FLAG UTF-8\n", "é", "β", "éβ", "βé"),
+            ] {
+                let aff = format!("SET UTF-8\n{mode}PFX {prefix} Y 1\nPFX {prefix} 0 un .\nSFX {suffix} Y 1\nSFX {suffix} 0 s .\n");
+                let fixture = Fixture::new(&aff);
+                let catalog = AffixCatalog::load(&fixture.config()).unwrap();
+                let patterns = catalog.pattern_suggestions("uncafés").unwrap();
+                let pair = patterns
+                    .iter()
+                    .find(|pattern| {
+                        pattern.prefix.as_deref() == Some(prefix)
+                            && pattern.suffix.as_deref() == Some(suffix)
+                    })
+                    .unwrap();
+                let selected = &pair.suggestion;
+                assert_eq!(selected.entry.word(), "café");
+                assert_eq!(selected.entry.flags(), Some(bundle));
+                assert_eq!(selected.forms, ["café", "cafés", "uncafé", "uncafés"]);
+                assert_eq!(catalog.expand("café", Some(reversed)).unwrap(), *selected);
+                assert_eq!(
+                    validate_entry(&fixture.config(), &selected.entry).unwrap(),
+                    *selected
+                );
+
+                // Rebuild from the exact persisted line and the complete source .aff,
+                // not the catalog projection, so a dropped prefix cannot pass.
+                let dic = format!("1\n{}\n", selected.entry.to_line());
+                let dictionary = zspell::builder()
+                    .config_str(&aff)
+                    .dict_str(&dic)
+                    .build()
+                    .unwrap();
+                let mut forms = dictionary
+                    .wordlist()
+                    .inner()
+                    .keys()
+                    .map(|word| word.to_string())
+                    .collect::<Vec<_>>();
+                forms.sort();
+                assert_eq!(forms, selected.forms);
+                assert!(catalog
+                    .expand("café", Some(&format!("{bundle}{bundle}")))
+                    .is_err());
+            }
+        }
+
+        #[test]
+        fn non_cross_product_and_invalid_bundles_are_rejected_without_dropping_flags() {
+            for (prefix_cross, suffix_cross) in [("N", "Y"), ("Y", "N"), ("N", "N")] {
+                let fixture = Fixture::new(&format!(
+                    "SET UTF-8\nPFX U {prefix_cross} 1\nPFX U 0 un .\nSFX S {suffix_cross} 1\nSFX S 0 s .\n"
+                ));
+                let catalog = AffixCatalog::load(&fixture.config()).unwrap();
+                assert!(catalog.expand("test", Some("U")).is_ok());
+                assert!(catalog.expand("test", Some("S")).is_ok());
+                for flags in ["US", "SU"] {
+                    assert!(catalog
+                        .expand("test", Some(flags))
+                        .unwrap_err()
+                        .to_string()
+                        .contains("cross-product Y"));
+                }
+                assert!(catalog
+                    .pattern_suggestions("untests")
+                    .unwrap()
+                    .iter()
+                    .all(|p| { p.prefix.is_none() || p.suffix.is_none() }));
+            }
+            let fixture = Fixture::new(
+                "SET UTF-8\nPFX U Y 1\nPFX U 0 un .\nPFX R Y 1\nPFX R 0 re .\nSFX S Y 1\nSFX S 0 s .\nSFX D Y 1\nSFX D 0 ed .\nNOSUGGEST !\n",
+            );
+            let catalog = AffixCatalog::load(&fixture.config()).unwrap();
+            for flags in [
+                "", "UU", "SS", "UR", "SD", "USX", "U!", "UX", "S,U", "U S", "U/S",
+            ] {
+                assert!(
+                    catalog.expand("test", Some(flags)).is_err(),
+                    "accepted {flags:?}"
+                );
+            }
+        }
+
+        #[test]
+        fn prefix_rules_keep_unsupported_and_global_flag_diagnostics() {
+            for (extra, expected) in [
+                ("PFX U Y 1\nPFX U 0 un/S .\n", "continuation"),
+                ("PFX U Y 1\nPFX U u 0 u\n", "zero addition"),
+                (
+                    "COMPOUNDRULE 1\nCOMPOUNDRULE U*\nPFX U Y 1\nPFX U 0 un .\n",
+                    "COMPOUNDRULE",
+                ),
+            ] {
+                let fixture = Fixture::new(&format!("SET UTF-8\n{extra}"));
+                assert!(AffixCatalog::load(&fixture.config())
+                    .unwrap_err()
+                    .to_string()
+                    .contains(expected));
+            }
+            for special in [
+                "NOSUGGEST",
+                "NEEDAFFIX",
+                "ONLYINCOMPOUND",
+                "FORBIDDENWORD",
+                "COMPOUNDFLAG",
+            ] {
+                let fixture = Fixture::new(&format!(
+                    "SET UTF-8\n{special} U\nPFX U Y 1\nPFX U 0 un .\nSFX S Y 1\nSFX S 0 s .\n"
+                ));
+                let catalog = AffixCatalog::load(&fixture.config()).unwrap();
+                assert!(catalog.expand("test", Some("U")).is_err());
+                assert!(catalog.expand("test", Some("US")).is_err());
+                assert!(catalog
+                    .pattern_suggestions("untests")
+                    .unwrap()
+                    .iter()
+                    .all(|p| p.prefix.is_none()));
+            }
+        }
+
+        #[test]
         fn numeric_long_and_unicode_flag_identifiers_are_not_split() {
             for (mode, flag) in [("num", "123"), ("long", "AB"), ("UTF-8", "é")] {
                 let fixture = Fixture::new(&format!(
@@ -753,7 +1377,17 @@ mod tests {
             let catalog = AffixCatalog::load(&fixture.config()).unwrap();
             assert!(catalog.expand("word", Some("c")).is_err());
             assert!(catalog.expand("word", Some("!")).is_err());
-            assert!(catalog.expand("word", Some("U")).is_err());
+            assert_eq!(
+                catalog.expand("word", Some("U")).unwrap().forms,
+                ["unword", "word"]
+            );
+            // The manual suffix catalog still does not offer prefix flags.
+            assert!(catalog
+                .suggestions("word")
+                .unwrap()
+                .iter()
+                .all(|suggestion| { suggestion.entry.flags() != Some("U") }));
+            assert!(catalog.stem_suggestions("unword", "U").is_err());
             assert_eq!(
                 catalog.expand("word", Some("S")).unwrap().forms,
                 ["word", "words"]
@@ -836,6 +1470,49 @@ mod tests {
                 .unwrap()
                 .iter()
                 .any(|s| s.entry.word() == "foobar"));
+        }
+
+        #[cfg(any(
+            all(feature = "hunspell", feature = "spellbook"),
+            all(feature = "hunspell", feature = "zet"),
+            all(feature = "spellbook", feature = "zet")
+        ))]
+        #[test]
+        fn pair_record_validation_rejects_different_active_backend_rules() {
+            let aff = "SET UTF-8\nPFX U Y 1\nPFX U 0 un .\nSFX S Y 1\nSFX S 0 s .\n";
+            let first = Fixture::new(aff);
+            let second = Fixture::new(aff);
+            let selected = AffixCatalog::load(&first.config())
+                .unwrap()
+                .pattern_suggestions("untests")
+                .unwrap()
+                .into_iter()
+                .find(|pattern| pattern.prefix.is_some() && pattern.suffix.is_some())
+                .unwrap()
+                .suggestion;
+            assert_eq!(selected.entry.to_line(), "test/US");
+            let mut config = no_backend();
+            if cfg!(feature = "hunspell") {
+                config.hunspell = Some(first.spelling());
+                if cfg!(feature = "spellbook") {
+                    config.spellbook = Some(second.spelling());
+                } else {
+                    config.zet = Some(second.spelling());
+                }
+            } else {
+                config.spellbook = Some(first.spelling());
+                config.zet = Some(second.spelling());
+            }
+            assert_eq!(validate_entry(&config, &selected.entry).unwrap(), selected);
+            for incompatible in [aff.replace("0 un", "0 re"), aff.replace("0 s", "0 z")] {
+                fs_err::write(second.0.join("en_US.aff"), incompatible).unwrap();
+                assert!(validate_entry(&config, &selected.entry)
+                    .unwrap_err()
+                    .to_string()
+                    .contains("Incompatible affix definitions"));
+            }
+            fs_err::write(second.0.join("en_US.aff"), format!("# same rules\n{aff}")).unwrap();
+            assert_eq!(validate_entry(&config, &selected.entry).unwrap(), selected);
         }
 
         #[cfg(any(

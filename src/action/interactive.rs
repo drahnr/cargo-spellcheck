@@ -504,13 +504,9 @@ impl UserPicked {
         running_idx: usize,
         total: usize,
     ) -> Result<UserSelection> {
-        let acceptance = if state.can_accept {
-            ",a=accept as is"
-        } else {
-            ""
-        };
+        let acceptance = if state.can_accept { ",a" } else { "" };
         let question = format!(
-            "({nth}/{of_n}) Resolve this issue [y=use resolution,n,q{acceptance},d,j,e,?]?",
+            "({nth}/{of_n}) Resolve this issue [y,n,q{acceptance},d,j,e,?]?",
             nth = running_idx + 1,
             of_n = total,
         );

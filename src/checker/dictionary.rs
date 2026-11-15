@@ -2,7 +2,7 @@
 
 use crate::errors::Result;
 
-/// Explicitly re-read configured dictionaries without changing the active configuration.
+/// Register persisted learning dictionaries and explicitly re-read configured files.
 ///
 /// Call after learned words have been persisted. Session acceptance belongs to the
 /// learner's shared overlay, not individual engines; checking does not reload files.
@@ -11,6 +11,11 @@ use crate::errors::Result;
 /// `Checkers` currently reconstructs all active engines, including NLP, and only
 /// installs the replacement once construction succeeds.
 pub(crate) trait DictionaryReload {
+    /// Register a persisted dictionary for the next reload without mutating live engines.
+    fn include_learning_dictionary(&mut self, _path: &std::path::Path) -> Result<()> {
+        Ok(())
+    }
+
     fn reload_dictionaries(&mut self) -> Result<()>;
 
     /// Verify that every supplied word is recognized by every active spelling engine.
