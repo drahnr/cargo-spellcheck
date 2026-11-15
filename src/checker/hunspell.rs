@@ -18,8 +18,9 @@ use crate::{
 };
 
 use nlprule::Tokenizer;
+use std::io::Write;
 use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use hunspell_rs::{CheckResult, Hunspell};
@@ -126,6 +127,7 @@ impl HunspellSafe {
         })
     }
 
+    #[cfg(test)]
     fn add_dictionary(&self, path: &str) -> Result<bool> {
         self.run_action(&format!("adding dictionary {path:?}"), |engine| {
             let _lifecycle = HUNSPELL_LIFECYCLE
@@ -133,6 +135,57 @@ impl HunspellSafe {
                 .unwrap_or_else(|error| error.into_inner());
             engine.add_dictionary(path)
         })
+    }
+}
+
+/// Hunspell stops at the first dictionary containing a stem during affix lookup.
+/// Load homonyms together so learned flags can extend an existing base entry.
+struct MergedDictionary(PathBuf);
+
+impl MergedDictionary {
+    fn new<'a>(paths: impl IntoIterator<Item = &'a Path>) -> Result<Self> {
+        let mut entries = Vec::new();
+        let mut count = 0;
+        for path in paths {
+            is_valid_hunspell_dic_path(path)?;
+            let contents = fs_err::read(path)?;
+            let body = contents
+                .splitn(2, |byte| *byte == b'\n')
+                .nth(1)
+                .unwrap_or_default();
+            for line in body.split_inclusive(|byte| *byte == b'\n') {
+                entries.extend_from_slice(line);
+                if !line.ends_with(b"\n") {
+                    entries.push(b'\n');
+                }
+                count += 1;
+            }
+        }
+
+        let path = std::env::temp_dir().join(format!(
+            "cargo-spellcheck-hunspell-{}.dic",
+            uuid::Uuid::new_v4()
+        ));
+        let mut options = fs_err::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use fs_err::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut file = options.open(&path)?;
+        let dictionary = Self(path);
+        writeln!(file, "{count}")?;
+        file.write_all(&entries)?;
+        Ok(dictionary)
+    }
+}
+
+impl Drop for MergedDictionary {
+    fn drop(&mut self) {
+        if let Err(error) = fs_err::remove_file(&self.0) {
+            log::warn!("Failed to remove temporary Hunspell dictionary: {error}");
+        }
     }
 }
 
@@ -233,12 +286,24 @@ impl HunspellCheckerInner {
                 }
             })?;
 
-        let dic = dic.to_str().unwrap();
+        let merged = if config.extra_dictionaries().next().is_none() {
+            None
+        } else {
+            Some(MergedDictionary::new(
+                std::iter::once(dic.as_path())
+                    .chain(config.extra_dictionaries().map(PathBuf::as_path)),
+            )?)
+        };
+        let dic = merged
+            .as_ref()
+            .map_or(dic.as_path(), |merged| merged.0.as_path());
+        is_valid_hunspell_dic_path(dic)?;
+        let dic = dic
+            .to_str()
+            .ok_or_else(|| eyre!("Failed to convert dictionary path to str {}", dic.display()))?;
         let aff = aff.to_str().unwrap();
 
         let hunspell = HunspellSafe::new(aff, dic)?;
-        is_valid_hunspell_dic_path(dic)?;
-        hunspell.add_dictionary(dic)?;
 
         if cfg!(debug_assertions) && Lang5::en_US == lang {
             // "Test" is a valid word
@@ -247,25 +312,6 @@ impl HunspellCheckerInner {
             debug_assert!(hunspell.suggest("Test")?.contains(&"Test".to_string()));
         }
 
-        // suggestion must contain the word itself if it is valid extra dictionary
-        // be more strict about the extra dictionaries, they have to exist
-        for extra_dic in config.extra_dictionaries() {
-            log::debug!("Adding extra dictionary {}", extra_dic.display());
-            if !extra_dic.is_file() {
-                bail!("Extra dictionary {} is not a file", extra_dic.display());
-            }
-            is_valid_hunspell_dic_path(extra_dic)?;
-            if let Some(extra_dic) = extra_dic.to_str() {
-                if !hunspell.add_dictionary(extra_dic)? {
-                    bail!("Failed to add extra dictionary path to context {extra_dic}");
-                }
-            } else {
-                bail!(
-                    "Failed to convert extra dictionary path to str {}",
-                    extra_dic.display()
-                );
-            }
-        }
         log::debug!("Dictionary setup completed successfully.");
         Ok(Self {
             hunspell,

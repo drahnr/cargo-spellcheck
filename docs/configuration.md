@@ -200,11 +200,87 @@ To increase verbosity add `-v` (multiple) to increase verbosity.
 
 ## Learning accepted words
 
-In an interactive fix session, press `a` to accept a spelling without changing the
-source. Acceptance works with **Hunspell, Spellbook, and Zet**, including builds
-without Hunspell. It immediately suppresses the same checked word across all
-enabled spelling backends, including already-queued diagnostics and later
-sources. Grammar diagnostics cannot be learned.
+In an interactive fix session, the main fix picker combines checker suggestions,
+a separate backtick-wrapping choice, custom input, and (for learnable spelling
+findings) a bottom row labelled `{word} < learn`. Row descriptions use
+`< custom input`, `< wrap backticks`, and `< learn`, printed in the terminal's
+default color, outside the selection highlight. The default is the first checker
+suggestion, or backtick wrapping when there are no suggestions; learning is never
+selected automatically. The custom input row sits immediately above the learning
+row. Grammar findings have no learning row, so custom input remains at the bottom.
+
+At every interactive prompt, including text editors, `?` shows only the current
+commands as concise `key - brief side effect` lines, ending with
+`? - show commands`. It preserves the current input, cursor, and selection without
+applying, confirming, learning, or cancelling anything. `?` is reserved for help
+and cannot be inserted into an editor.
+
+- Select the bottom learning row with Home, then press Enter or `y` to keep the
+  **unchanged original word** and go **directly to the suffix picker**. There is no
+  intervening Learn prompt or word editor, and no source edit is made.
+- Backtick wrapping remains a separate source-editing choice; it does not learn
+  the original word. Up from the bottom learning row selects custom input; Up
+  again selects backtick wrapping. Checker suggestions appear above those rows.
+- `a` keeps the source as is and opens the existing optional Learn prompt. Enter
+  or `p` opens the suffix picker; it does **not** record the word. `e` first opens
+  `Word (plain word only; Enter=preview, Esc=back, ?=help): ` with the original word
+  prefilled, then Enter opens the suffix picker for the edited word. `n` or Esc
+  at the Learn prompt cancels and returns to the finding.
+- `y` or Enter applies the selected resolution. An unknown single-word spelling
+  replacement offers the same optional learning follow-up: Enter or `p` opens
+  suffix choices, `e` pre-edits the word, and `n` or Esc skips learning **without
+  cancelling the source edit**. Known replacements do not need this follow-up.
+  Neither the original typo nor its replacement is automatically recorded by `y`
+  at the resolution prompt.
+
+The optional prompts highlight the word in bold green on black and offer
+`[Enter/p=affixes, e=edit word, n/Esc=cancel, Ctrl-C=abort, ?=help]: ` (or
+`n/Esc=skip learning` for replacements). All learning routes show the real suffix
+choices before an entry can be recorded, including when learning a plain word.
+
+### Choosing suffixes, stems, and expansions
+
+The suffix picker uses
+`Suffix [Up/Down=select, Enter=stems, n/Esc=back, ?=help]: `. Its bottom row (index zero)
+is `{word} < plain`; the other rows are `/FLAG < suffix`, with flag identifiers
+sorted lexicographically. Enter on a suffix opens
+`Stem [Up/Down=select, Enter=edit, n/Esc=back, ?=help]: `, whose rows show full
+`stem/FLAG < stem` entries. Candidate roots are validated by engine expansion:
+shortened stems that generate the original word are suggested first, preferring
+dictionary-known roots; the unchanged original word is last.
+
+Both pickers reuse the main replacement renderer: no row numbers, a separate `»`
+marker, selected text in bold green on black, and unselected text in blue on
+black. The short `< plain`, `< suffix`, and `< stem` hints remain in the default
+color outside the highlight. The prompt appears above the list and is remounted
+after help without changing the selection. Index zero
+is at the bottom: Up increments the index, Down decrements it, and navigation
+wraps. Home/End selects the first/last choice. A separate default-color
+`Affix expansion: ...` context row follows each draw and is truncated to fit on
+one terminal line; this context is not the final confirmation preview.
+
+Enter on a stem candidate opens the **mandatory** stem editor,
+`Stem (plain word only; Enter=preview, Esc=back, ?=help): `, prefilled with that stem.
+Enter on the plain suffix choice skips the candidate picker and opens this editor
+directly. The stem can be edited independently of the source and any earlier
+word edit; flags are retained separately and must not be typed into the editor.
+Esc returns to the stem candidates for a flagged entry, or to the suffix picker
+for a plain entry. `n` or Esc in the stem candidate picker returns to suffixes.
+`n` or Esc in the suffix picker cancels learning; a selected replacement still
+remains a pending source edit.
+
+Enter in the stem editor shows the highlighted exact `New entry: stem/FLAG`
+(or a plain word) and the **full** engine-generated `Affix expansion`, followed by
+`Confirm learning [y=yes, Enter/n/Esc=no, e=edit stem, ?=help]: `. Plain entries explicitly show
+“plain word; no affixes”. Only `y` records the entry; Enter, `n`, or Esc declines
+learning and returns to the finding (or continues with the selected replacement).
+`e` at confirmation edits the stem again and requires a new expansion preview.
+Ctrl-C at any stage aborts the session.
+
+Learning works with **Hunspell, Spellbook, and Zet**, including builds without
+Hunspell. Confirmed entries immediately suppress all their expanded forms across
+enabled spelling backends, including queued diagnostics and later sources.
+Grammar diagnostics cannot be learned.
 
 By default acceptance is **session-only**: no dictionary or configuration file is
 changed. The first `extra_dictionaries` entry is never implicitly chosen as a
@@ -274,31 +350,62 @@ Only `[ZSpell]` names the write target here, but both engines load it and share
 accepted vocabulary. Hunspell is not required for either session-only acceptance
 or persistence.
 
-Accepted words are collected for the session and saved on normal completion or
-when leaving with `q`. **Abort does not persist** the session's accepted words.
-Only single plain words can be accepted: numeric-only entries, whitespace,
-control characters, `/` flags, backslash escapes, a leading `#`, and a byte-order
-mark are rejected.
-Multiword suggestions cannot be learned this way. Case is preserved. Existing
-entry order, affix flags, and morphology are retained. Duplicate plain entries
-are not added. If an accepted word exists only with flags, a plain entry is added
-alongside it so standalone acceptance is explicit. New entries are appended in
-sorted order, and the entry count is recomputed.
-To add flags or word variants, edit the dictionary explicitly instead. Learning
-never rewrites the TOML configuration. Custom replacements remain source edits;
-only explicit acceptance with `a` learns vocabulary. Acceptance uses the word
-checked by the spelling backend, not a replacement suggestion. It does not add
-words directly to individual engines: pending acceptance is a shared session
-overlay.
+Accepted words and confirmed entries are collected for the session and saved on
+normal completion or when leaving with `q`. **Ctrl-C abort discards pending source
+edits and learned entries**, including from any learning follow-up. Learning never
+rewrites the TOML configuration or mutates active spelling engines during a session.
 
-On commit, source edits are applied first. A source-update failure stops the
+Word input remains strictly a single plain word: numeric-only entries, whitespace,
+control characters, `/` flags, backslash escapes, a leading `#`, and a byte-order
+mark are rejected. Multiword replacements are not offered for learning. Case is
+preserved. In the learning editor, Backspace removes a Unicode character and Ctrl-U
+clears the prefilled word; entering a different base word does not edit the source.
+
+### Supported suffix definitions
+
+Suffix learning uses the configured `.aff` file, including the builtin dictionary
+when selected, with an individual-`SFX` expansion helper powered by ZSpell. This
+helper is available with any spelling backend; it does not depend on Hunspell's
+public API exposing flag enumeration. cargo-spellcheck indexes suffix identifiers
+and strip alternatives, but passes each selected suffix's conditions and additions
+to the engine unchanged. Suggested shortened roots must expand back to the
+original word. Confirming `root/S` persists that exact entry, not separate surface
+entries such as `roots`; the complete expansion is also accepted for the session.
+
+The catalog supports individual suffix flags in short, `FLAG long`, `FLAG num`,
+and `FLAG UTF-8` modes. It does not offer prefix flags, special-purpose flags, or
+arbitrary flag combinations. Enabled backends must resolve matching affix
+definitions before flags can be shared safely.
+
+Unsupported or malformed syntax produces an explicit diagnostic rather than a
+guessed preview. Examples include non-UTF-8 encodings, `AF`/`AM` aliases,
+continuation classes, suffix identifiers used in compound rules, shared
+prefix/suffix flag identifiers, and suffix rules with
+zero additions (which the current helper engine cannot expand faithfully).
+Directives such as `IGNORE`, `ICONV`, `OCONV`, `FULLSTRIP`, and `COMPLEXPREFIXES`
+are also rejected because suffix-only previews cannot preserve their semantics.
+Plain-word learning remains available when suffix discovery fails; existing
+flagged dictionaries continue to be loaded by the configured spelling backends.
+Flags are validated again against the current definitions when recording, rather
+than trusting a stale preview. Before commit, every flagged entry is re-expanded
+and compared with its exact confirmed forms; changed expansions require a new
+preview before any source or dictionary writes.
+
+Existing entry order, affix flags, and morphology are retained. Plain words are
+deduplicated by stem; confirmed flagged entries by their exact entry token. If a
+plain word exists only with flags, plain acceptance adds an unflagged entry so
+standalone acceptance is explicit. New entries are appended in sorted order, and
+the entry count is recomputed.
+
+
+After this pre-commit validation, source edits are applied first. A source-update failure stops the
 dictionary update and backend reload. After successful source updates, accepted
 words are merged into the dictionary, re-reading its current contents under the
 lock so concurrent additions are preserved. The saved dictionary is then read
-back for verification, and the enabled engines are rebuilt from their
-configurations. Each spelling engine is then asked to verify that the accepted
-words are recognized as standalone words. Restrictive flags that still override
-a plain entry produce an error rather than a false success. Explicit dictionary
+back to verify the exact confirmed entries, and the enabled engines are rebuilt
+from their configurations. Each spelling engine is then asked to verify the
+confirmed entries' expanded forms as standalone words. Restrictive flags that
+still override a plain entry produce an error rather than a false success. Explicit dictionary
 reloads also rebuild engines rather than mutating individual words.
 
 Dictionary update, verification, or reload failures are reported as errors.
@@ -306,6 +413,13 @@ Already-written source edits are not rolled back, and a reload failure does not
 undo a saved dictionary. Individual dictionary replacement is atomic, **not a
 transaction across source files and dictionaries**; even source edits may be
 partially applied before a later source-update failure.
+
+Source updates also use an exclusive advisory lock on a stable sidecar, such as
+`src/lib.rs.cargo-spellcheck.lock`, held from reading through replacement. These
+locks serialize cooperating writers, but do not rebase suggestions if another
+session has changed their source locations. On Unix, waiting for a file lock does
+not defer signal processing. Once shutdown starts, new `TinHat` requests are
+ignored; only guards admitted before shutdown delay exit until their IO finishes.
 
 Track the `.dic` file in your repository to share the vocabulary. Writes use an
 adjacent temporary file and an atomic replacement, preserving file permissions.
@@ -316,5 +430,5 @@ delete it while sessions may be active, and do not commit it. Add this pattern t
 `.gitignore` (it matches at any directory depth):
 
 ```gitignore
-*.dic.cargo-spellcheck.lock
+*.cargo-spellcheck.lock
 ```

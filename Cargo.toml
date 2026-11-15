@@ -102,7 +102,7 @@ url = { version = "2", features = ["serde"] }
 # dictionary lookup with affixes
 hunspell-rs = { version = "0.4.0", optional = true }
 encoding_rs = { version = "0.8.31", optional = true, features = [] }
-zspell = { version = "0.5.5", optional = true }
+zspell = { version = "0.5.5", optional = true, features = ["zspell-unstable"] }
 spellbook = { version = "0.1", optional = true }
 
 # Shared tokenization; the grammar checker is enabled separately by `nlprules`.
@@ -133,9 +133,10 @@ hunspell = [
   "hunspell-rs?/bundled",
   "nlprules",
   "dep:encoding_rs",
+  "dep:zspell",
 ]
 zet = ["dep:zspell", "tokenizer"]
-spellbook = ["dep:spellbook", "tokenizer"]
+spellbook = ["dep:spellbook", "dep:zspell", "tokenizer"]
 tokenizer = ["dep:nlprule", "nlprule?/regex-fancy"]
 nlprules = ["tokenizer", "dep:nlprule-build"]
 

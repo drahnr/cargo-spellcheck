@@ -32,12 +32,22 @@ produce false positives.
 
 ## Accepting project vocabulary
 
-During an interactive fix session, press `a` to accept a correctly spelled word
-without editing the source. This works with Hunspell, Spellbook, and Zet, including
-Rust-only builds. The accepted checked word is immediately suppressed across all
-enabled spelling backends, including queued diagnostics and later files; grammar
-diagnostics remain unlearnable. Custom replacements still edit the source and do
-not learn either word.
+Press `?` at any interactive prompt, including text editors, for context-specific
+`key - brief side effect` lines ending with `? - show commands`, without headings
+or prose. Help leaves input, cursor, and selection unchanged; it never applies,
+confirms, learns, or cancels anything. `?` is reserved for help, not inserted as text.
+
+During an interactive fix session, select the `{word} < learn` row to keep the
+source unchanged and choose a suffix (or the plain word). Suffix selection offers
+shortened `stem/FLAG` candidates, then an editable stem and a full expansion
+preview. Only confirmation records the entry. The `a` shortcut also offers this
+flow: Enter or `p` continues to suffix selection.
+
+This works with Hunspell, Spellbook, and Zet, including Rust-only builds.
+Confirmed expanded forms are immediately recognized across all enabled spelling
+backends, including queued diagnostics and later files; grammar diagnostics remain
+unlearnable. Custom replacements edit the source and offer optional learning for
+unknown words; skipping learning does not discard the source edit.
 
 Acceptance is session-only unless you explicitly set `learning_dictionary` under
 an enabled `[Hunspell]`, `[Spellbook]`, or `[ZSpell]` (Zet) section. The setting remains
@@ -69,12 +79,14 @@ languages are errors.
 
 On normal completion or `q`, accepted words are merged into the dictionary; Abort
 (including Ctrl-C) discards pending accepted words and source edits. Case is
-preserved, existing flags and entry order are retained, and duplicate plain
-entries are not added. Accepted words with only flagged entries get a plain entry
-alongside them. Only single plain words are accepted, not phrases or Hunspell
-flag/escape syntax. Add affix flags manually when appropriate, as described below.
+preserved, existing flags and entry order are retained, and duplicate entries are
+not added. Confirmed suffix choices are saved as exact `stem/FLAG` entries, not as
+separate copies of their expanded forms. Plain-word acceptance remains available.
+Stem editors accept only single plain words, not phrases or typed Hunspell
+flag/escape syntax; suffix flags come from the dictionary's supported catalog.
 
-Source edits are applied before vocabulary is saved. A source-update failure
+Before writing, flagged entries are re-expanded and checked against their
+confirmed forms. Source edits are then applied before vocabulary is saved. A source-update failure
 stops the save and reload. Saving re-reads and merges the dictionary under its
 lock, reads it back for verification, then rebuilds the spelling engines from
 configuration and checks that each engine accepts the learned words. Save,

@@ -294,6 +294,42 @@ fn concurrent_dictionary_addition_and_lifecycles_preserve_live_handles() {
 }
 
 #[test]
+fn merging_preserves_entry_bytes_and_removes_temporary_dictionary() {
+    // Keep the non-UTF-8 entry beyond the validator's ten-line sample, and
+    // use explicit newline bytes so editor normalization cannot change them.
+    let (base_contents, empty_contents, extra_contents, expected) = (
+        b"11\r\nTest\r\nTest\r\nTest\r\nTest\r\nTest\r\nTest\r\nTest\r\nTest\r\nTest\r\nTest\r\ncaf\xe9".as_slice(),
+        b"0".as_slice(),
+        b"1\nterminate/UD".as_slice(),
+        b"12\nTest\r\nTest\r\nTest\r\nTest\r\nTest\r\nTest\r\nTest\r\nTest\r\nTest\r\nTest\r\ncaf\xe9\nterminate/UD\n".as_slice(),
+    );
+    let dictionary = TestDictionary::new();
+    let base = dictionary.0.join("base.dic");
+    let empty = dictionary.0.join("empty.dic");
+    let extra = dictionary.0.join("extra.dic");
+    fs::write(&base, base_contents).unwrap();
+    fs::write(&empty, empty_contents).unwrap();
+    fs::write(&extra, extra_contents).unwrap();
+
+    let merged = MergedDictionary::new([base.as_path(), empty.as_path(), extra.as_path()]).unwrap();
+    let path = merged.0.clone();
+    assert_eq!(fs::read(&path).unwrap(), expected);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+    }
+    drop(merged);
+    assert!(!path.exists());
+    assert_eq!(fs::read(&base).unwrap(), base_contents);
+    assert_eq!(fs::read(&empty).unwrap(), empty_contents);
+    assert_eq!(fs::read(&extra).unwrap(), extra_contents);
+}
+
+#[test]
 fn hunspell_dic_format() {
     const GOOD: &str = "2
 whitespazes

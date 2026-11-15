@@ -80,6 +80,8 @@ fn empty_batch_does_no_io() {
     let file = DictionaryFile::new(dir.0.join("missing.dic"));
     let store: &dyn DictionaryStore = &file;
     store.update(&BTreeSet::new()).unwrap();
+    store.update_entries(&BTreeSet::new()).unwrap();
+    persist_entries(&dir.0.join("also-missing.dic"), &BTreeSet::new()).unwrap();
     assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 0);
 }
 
@@ -121,6 +123,66 @@ fn read_returns_stems_without_rewriting_dictionary_or_creating_lock() {
 }
 
 #[test]
+fn read_entries_returns_exact_tokens_without_morphology_or_io_side_effects() {
+    let dir = TempDir::new();
+    let path = dir.0.join("lingo.dic");
+    let file = DictionaryFile::new(path.clone());
+    let store: &dyn DictionaryStore = &file;
+    for (original, expected) in [
+        ("0", BTreeSet::new()),
+        ("0\n", BTreeSet::new()),
+        ("0\r\n", BTreeSet::new()),
+        (
+            concat!(
+                "99\r\n",
+                "Word/SM\r\n",
+                "Word/MS po:noun\r\n",
+                "Word/SM\tpo:verb\r\n",
+                "Word\tpo:noun st:word/metadata\r\n",
+                "word/S\r\n",
+                "Éclair po:noun\r\n",
+                "東京",
+            ),
+            words(&["Word/SM", "Word/MS", "Word", "word/S", "Éclair", "東京"]),
+        ),
+    ] {
+        fs::write(&path, original).unwrap();
+        assert_eq!(store.read_entries().unwrap(), expected);
+        assert_eq!(fs::read_to_string(&path).unwrap(), original);
+        assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 1);
+    }
+}
+
+#[test]
+fn plain_entries_share_the_legacy_merge_behavior() {
+    let dir = TempDir::new();
+    let path = dir.0.join("lingo.dic");
+    let legacy = dir.0.join("legacy.dic");
+    let original = "99\r\nWord/S\r\nOther\tpo:noun\r\n";
+    fs::write(&path, original).unwrap();
+    fs::write(&legacy, original).unwrap();
+    let accepted = words(&["Word", "Other", "New", "word"]);
+    let entries = accepted
+        .iter()
+        .cloned()
+        .map(DictionaryEntry::plain)
+        .collect::<Result<BTreeSet<_>>>()
+        .unwrap();
+    let file = DictionaryFile::new(path.clone());
+    let store: &dyn DictionaryStore = &file;
+
+    store.update_entries(&entries).unwrap();
+    persist_words(&legacy, &accepted).unwrap();
+
+    assert_eq!(fs::read(&path).unwrap(), fs::read(&legacy).unwrap());
+    assert_eq!(
+        store.read_entries().unwrap(),
+        words(&["Word/S", "Other", "New", "Word", "word"])
+    );
+    assert_eq!(store.read().unwrap(), accepted);
+}
+
+#[test]
 fn same_store_rereads_external_edits_and_merges_updates() {
     let dir = TempDir::new();
     let path = dir.0.join("lingo.dic");
@@ -152,14 +214,18 @@ fn failed_read_does_not_return_cached_words_or_create_files() {
     let file = DictionaryFile::new(path.clone());
     let store: &dyn DictionaryStore = &file;
     assert!(store.read().is_err());
+    assert!(store.read_entries().is_err());
     assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 0);
     fs::write(&path, "1\nExisting/S\n").unwrap();
     assert_eq!(store.read().unwrap(), words(&["Existing"]));
+    assert_eq!(store.read_entries().unwrap(), words(&["Existing/S"]));
     fs::remove_file(&path).unwrap();
     assert!(store.read().is_err());
+    assert!(store.read_entries().is_err());
     assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 0);
     fs::create_dir(&path).unwrap();
     assert!(store.read().is_err());
+    assert!(store.read_entries().is_err());
     assert_eq!(fs::read_dir(&path).unwrap().count(), 0);
 }
 
@@ -433,6 +499,13 @@ fn malformed_dictionaries_are_not_replaced() {
             original,
             read_error
         );
+        let entry_read_error = store.read_entries().unwrap_err();
+        assert!(
+            format!("{:?}", entry_read_error).contains(cause),
+            "input: {:?}, entry read error: {:?}",
+            original,
+            entry_read_error
+        );
         let error = store.update(&words(&["NewWord"])).unwrap_err();
         let report = format!("{:?}", error);
         assert!(
@@ -441,6 +514,9 @@ fn malformed_dictionaries_are_not_replaced() {
             original,
             report
         );
+        let entries = BTreeSet::from([DictionaryEntry::plain("NewWord").unwrap()]);
+        let entry_error = store.update_entries(&entries).unwrap_err();
+        assert!(format!("{:?}", entry_error).contains(cause));
         assert_eq!(fs::read(&path).unwrap(), original);
         // A rejected dictionary must not leave a temporary replacement.
         assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 2);
@@ -756,4 +832,159 @@ fn concurrent_sessions_merge_under_the_stable_lock() {
         lines.map(str::to_owned).collect::<BTreeSet<_>>(),
         (0..8).map(|index| format!("Word{}", index)).collect()
     );
+}
+
+mod confirmed_entries {
+    use super::*;
+
+    // Storage fixtures do not imply engine confirmation or affix validation.
+    fn flagged_fixture(word: &str, flags: &str) -> DictionaryEntry {
+        DictionaryEntry::with_test_flags(word, flags).unwrap()
+    }
+
+    #[test]
+    fn roundtrip_deduplicates_morphology_but_keeps_distinct_flagged_entries() {
+        let dir = TempDir::new();
+        let path = dir.0.join("lingo.dic");
+        let file = DictionaryFile::new(path.clone());
+        let store: &dyn DictionaryStore = &file;
+        let accepted = BTreeSet::from([
+            flagged_fixture("Existing", "S"),
+            DictionaryEntry::plain("Other").unwrap(),
+            DictionaryEntry::plain("Word").unwrap(),
+            flagged_fixture("Word", "D"),
+            flagged_fixture("Word", "S"),
+            flagged_fixture("word", "S"),
+            flagged_fixture("Éclair", "S"),
+        ]);
+        for newline in ["\n", "\r\n"] {
+            let original = concat!(
+                "99\n",
+                "Existing/S\tpo:noun st:existing/metadata\n",
+                "Other po:noun\n",
+                "Untouched/DS\n",
+            );
+            fs::write(&path, original.replace('\n', newline)).unwrap();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                fs::set_permissions(&path, std::fs::Permissions::from_mode(0o640)).unwrap();
+            }
+
+            store.update_entries(&accepted).unwrap();
+
+            let expected = concat!(
+                "8\n",
+                "Existing/S\tpo:noun st:existing/metadata\n",
+                "Other po:noun\n",
+                "Untouched/DS\n",
+                "Word\n",
+                "Word/D\n",
+                "Word/S\n",
+                "word/S\n",
+                "Éclair/S\n",
+            )
+            .replace('\n', newline);
+            assert_eq!(fs::read_to_string(&path).unwrap(), expected);
+            let tokens = words(&[
+                "Existing/S",
+                "Other",
+                "Untouched/DS",
+                "Word",
+                "Word/D",
+                "Word/S",
+                "word/S",
+                "Éclair/S",
+            ]);
+            assert_eq!(store.read_entries().unwrap(), tokens);
+            assert_eq!(
+                store.read().unwrap(),
+                words(&["Existing", "Other", "Untouched", "Word", "word", "Éclair"])
+            );
+            assert!(accepted
+                .iter()
+                .all(|entry| tokens.contains(&entry.to_line())));
+            store.update_entries(&accepted).unwrap();
+            persist_entries(&path, &accepted).unwrap();
+            assert_eq!(fs::read_to_string(&path).unwrap(), expected);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                assert_eq!(
+                    fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+                    0o640
+                );
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn duplicate_flagged_tokens_with_morphology_do_not_replace_dictionary() {
+        use std::os::unix::fs::MetadataExt;
+
+        let dir = TempDir::new();
+        let path = dir.0.join("lingo.dic");
+        let link = dir.0.join("original.dic");
+        let original = "2\r\nWord/S\tpo:noun\r\nWord po:verb\r\n";
+        fs::write(&path, original).unwrap();
+        fs::hard_link(&path, &link).unwrap();
+        let before = fs::metadata(&link).unwrap();
+        let accepted = BTreeSet::from([
+            flagged_fixture("Word", "S"),
+            DictionaryEntry::plain("Word").unwrap(),
+        ]);
+
+        persist_entries(&path, &accepted).unwrap();
+
+        let after = fs::metadata(&path).unwrap();
+        assert_eq!((after.dev(), after.ino()), (before.dev(), before.ino()));
+        assert_eq!(after.modified().unwrap(), before.modified().unwrap());
+        assert_eq!(fs::read_to_string(&path).unwrap(), original);
+        assert_eq!(fs::read_to_string(&link).unwrap(), original);
+    }
+
+    #[test]
+    fn concurrent_plain_and_flagged_sessions_merge_under_the_same_lock() {
+        use std::sync::{Arc, Barrier};
+
+        let dir = TempDir::new();
+        let path = dir.0.join("lingo.dic");
+        fs::write(&path, "1\r\nExisting/D\tpo:noun\r\n").unwrap();
+        let barrier = Arc::new(Barrier::new(8));
+        let handles = (0..8)
+            .map(|index| {
+                let path = path.clone();
+                let barrier = Arc::clone(&barrier);
+                let word = format!("Word{}", index / 2);
+                let plain = words(&["Shared", &word]);
+                let flagged =
+                    BTreeSet::from([flagged_fixture("Shared", "S"), flagged_fixture(&word, "S")]);
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    if index % 2 == 0 {
+                        persist_words(&path, &plain).unwrap();
+                    } else {
+                        persist_entries(&path, &flagged).unwrap();
+                    }
+                })
+            })
+            .collect::<Vec<_>>();
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        let contents = fs::read_to_string(&path).unwrap();
+        assert!(contents.starts_with("11\r\nExisting/D\tpo:noun\r\n"));
+        assert_eq!(contents.lines().skip(1).count(), 11);
+        assert_eq!(contents.matches("\r\n").count(), 12);
+        let mut expected = words(&["Existing/D", "Shared", "Shared/S"]);
+        for index in 0..4 {
+            expected.insert(format!("Word{index}"));
+            expected.insert(format!("Word{index}/S"));
+        }
+        let file = DictionaryFile::new(path);
+        let store: &dyn DictionaryStore = &file;
+        assert_eq!(store.read_entries().unwrap(), expected);
+    }
 }

@@ -392,9 +392,19 @@ impl Action {
         config: Config,
         output_paths: &OutputPaths,
     ) -> Result<Finish> {
-        self.run_fix_interactive_with(documents, config, |origin, suggestions, resolutions| {
-            UserPicked::select_interactive(origin, suggestions, resolutions, output_paths)
-        })
+        self.run_fix_interactive_with(
+            documents,
+            config,
+            |origin, suggestions, resolutions, checkers| {
+                UserPicked::select_interactive(
+                    origin,
+                    suggestions,
+                    resolutions,
+                    checkers,
+                    output_paths,
+                )
+            },
+        )
     }
 
     fn run_fix_interactive_with(
@@ -405,6 +415,7 @@ impl Action {
             ContentOrigin,
             Vec<Suggestion<'s>>,
             &mut SessionResolutions,
+            &Checkers,
         ) -> Result<(UserPicked, DocumentOutcome)>,
     ) -> Result<Finish> {
         let n = documents.entry_count();
@@ -415,7 +426,8 @@ impl Action {
         'documents: for (idx, (origin, chunks)) in documents.iter().enumerate() {
             let suggestions = checkers.check(origin, chunks)?;
             log::debug!("Running checkers on {}/{},{:?}", idx + 1, n, origin);
-            let (picked, outcome) = select(origin.clone(), suggestions, &mut resolutions)?;
+            let (picked, outcome) =
+                select(origin.clone(), suggestions, &mut resolutions, &checkers)?;
             if outcome == DocumentOutcome::Abort {
                 return Ok(Finish::Abort);
             }

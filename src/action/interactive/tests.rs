@@ -29,6 +29,96 @@ fn suggestion(chunk: &CheckableChunk, range: Range, detector: Detector) -> Sugge
 }
 
 #[test]
+fn shortcut_help_is_only_brief_context_commands() {
+    for custom in [false, true] {
+        for can_accept in [false, true] {
+            let mut output = Vec::new();
+            print_resolution_commands(&mut output, custom, can_accept).unwrap();
+            let text = String::from_utf8(output).unwrap();
+            assert!(text.starts_with("\r\n"));
+            assert!(text.ends_with("? - show commands\r\n"));
+            assert!(!text.contains('\x1b'));
+            let mut keys = std::collections::BTreeSet::new();
+            for line in text.trim_matches(['\r', '\n']).split("\r\n") {
+                let (key, description) = line.split_once(" - ").unwrap();
+                assert!(keys.insert(key), "duplicate command: {key}");
+                assert!(!description.is_empty());
+                assert!(description.split_whitespace().count() <= 6);
+                assert!(!description.contains(['.', ';']));
+            }
+            assert_eq!(keys.contains("a"), !custom && can_accept);
+            assert_eq!(keys.contains("Left"), custom);
+            assert!(!keys.contains("g"));
+            assert!(!keys.contains("J"));
+        }
+    }
+}
+
+#[test]
+fn question_mark_never_edits_custom_input() {
+    let chunk = chunk("Tokoi");
+    let suggestion = suggestion(&chunk, 0..5, Detector::Hunspell);
+    let mut state = State::new(&suggestion, true);
+    state.select_custom();
+    state.custom_replacement = "Tokio".into();
+    state.cursor_offset = 2;
+    let selected = state.pick_idx;
+    assert_eq!(
+        UserPicked::default()
+            .enter_custom_replacement(&mut state, KeyCode::Char('?').into())
+            .unwrap(),
+        UserSelection::Nop
+    );
+    assert_eq!(state.custom_replacement, "Tokio");
+    assert_eq!(state.cursor_offset, 2);
+    assert_eq!(state.pick_idx, selected);
+}
+
+#[test]
+fn selection_keys_navigate_and_wrap() {
+    for count in [1, 3] {
+        let mut selected = 0;
+        for (key, expected) in [
+            (KeyCode::Up, 1 % count),
+            (KeyCode::Down, 0),
+            (KeyCode::Down, count - 1),
+            (KeyCode::Home, 0),
+            (KeyCode::End, count - 1),
+            (KeyCode::Up, 0),
+        ] {
+            assert_eq!(
+                select_key(&mut selected, count, key.into()),
+                Some(SelectionAction::Redraw)
+            );
+            assert_eq!(selected, expected);
+        }
+        assert_eq!(
+            select_key(&mut selected, count, KeyCode::Char('e').into()),
+            None
+        );
+        assert_eq!(selected, 0);
+    }
+}
+
+#[test]
+fn selection_keys_return_actions_without_moving() {
+    let mut selected = 1;
+    for (key, expected) in [
+        (KeyCode::Enter.into(), SelectionAction::Submit),
+        (KeyCode::Char('y').into(), SelectionAction::Submit),
+        (KeyCode::Char('n').into(), SelectionAction::Skip),
+        (KeyCode::Esc.into(), SelectionAction::Cancel),
+        (
+            KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL),
+            SelectionAction::Abort,
+        ),
+    ] {
+        assert_eq!(select_key(&mut selected, 3, key), Some(expected));
+        assert_eq!(selected, 1);
+    }
+}
+
+#[test]
 fn acceptance_suppresses_queued_duplicates_and_later_documents() {
     let chunk = chunk("Tokio Tokio");
     let mut session = SessionResolutions::default();
@@ -156,10 +246,185 @@ fn skip_file_returns_current_picks_without_prompting_remaining_suggestions() {
 }
 
 #[test]
+fn picker_indices_and_default_keep_learning_opt_in() {
+    let chunk = chunk("Tokoi");
+    for can_accept in [false, true] {
+        for replacements in [vec![], vec!["Tokio"], vec!["Tokio", "Tokyo", "Toki"]] {
+            let mut suggestion = suggestion(&chunk, 0..5, Detector::Hunspell);
+            suggestion.replacements = replacements.into_iter().map(str::to_owned).collect();
+            let mut state = State::new(&suggestion, can_accept);
+            let custom = usize::from(can_accept);
+            let backtick = custom + 1;
+            let first_replacement = custom + 2;
+
+            assert_eq!(state.can_accept, can_accept);
+            assert_eq!(state.custom_index(), custom);
+            assert_eq!(
+                state.n_items,
+                suggestion.replacements.len() + first_replacement
+            );
+            assert_eq!(
+                state.pick_idx,
+                if suggestion.replacements.is_empty() {
+                    backtick
+                } else {
+                    first_replacement
+                }
+            );
+            assert!(!state.is_custom_entry());
+            assert!(!state.is_learning_entry());
+            assert_eq!(state.is_ticked_entry(), suggestion.replacements.is_empty());
+            assert!(state.custom_replacement.is_empty());
+            assert_eq!(state.cursor_offset, 0);
+
+            state.select_custom();
+            assert_eq!(state.pick_idx, custom);
+            assert!(state.is_custom_entry());
+            assert!(!state.is_ticked_entry());
+            assert!(!state.is_learning_entry());
+        }
+    }
+}
+
+#[test]
+fn every_picker_row_maps_to_learning_or_its_own_replacement() {
+    let chunk = chunk("Tokoi");
+    for can_accept in [false, true] {
+        for replacements in [vec![], vec!["Tokio", "Tokyo"]] {
+            let mut suggestion = suggestion(&chunk, 0..5, Detector::Hunspell);
+            suggestion.replacements = replacements.into_iter().map(str::to_owned).collect();
+            let mut state = State::new(&suggestion, can_accept);
+            state.custom_replacement = "custom word".into();
+            let custom = usize::from(can_accept);
+
+            for index in 0..state.n_items {
+                state.pick_idx = index;
+                let learning = can_accept && index == 0;
+                assert_eq!(state.is_learning_entry(), learning);
+                assert_eq!(state.is_custom_entry(), index == custom);
+                assert_eq!(state.is_ticked_entry(), index == custom + 1);
+                if learning {
+                    assert_eq!(state.to_selection(), UserSelection::LearnWord);
+                    continue;
+                }
+
+                let expected = if index == custom {
+                    "custom word"
+                } else if index == custom + 1 {
+                    "`Tokoi`"
+                } else {
+                    &suggestion.replacements[index - custom - 2]
+                };
+                let bandaid = state.to_bandaid();
+                assert_eq!(bandaid.content, expected);
+                assert_eq!(
+                    state.to_selection(),
+                    UserSelection::Replacement(BandAid::from((
+                        expected.to_owned(),
+                        &suggestion.span,
+                    )))
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn shared_renderer_edits_the_custom_row_for_spelling_and_grammar() {
+    let chunk = chunk("Tokoi");
+    for (detector, can_accept) in [(Detector::Hunspell, true), (Detector::NlpRules, false)] {
+        let suggestion = suggestion(&chunk, 0..5, detector);
+        let mut state = State::new(&suggestion, can_accept);
+        state.select_custom();
+        let mut rows = Vec::new();
+        if can_accept {
+            rows.push((ContentStyle::new(), "Tokoi", Some("learn")));
+        }
+        rows.push((ContentStyle::new(), "...", Some("custom input")));
+        rows.push((ContentStyle::new(), "`Tokoi`", Some("wrap backticks")));
+        let mut output = Vec::new();
+        print_selection_list(
+            &mut output,
+            rows,
+            state.pick_idx,
+            Some(state.custom_index()),
+        )
+        .unwrap();
+        let raw = String::from_utf8(output).unwrap();
+        assert!(raw.contains("\x1b[2K\x1b[?25h\x1b[3G"), "{raw:?}");
+        assert!(!raw.contains("\x1b[?25l"), "{raw:?}");
+        assert!(raw.contains(&selection_style().apply("...").to_string()));
+        assert_eq!(console::strip_ansi_codes(&raw).matches('»').count(), 1);
+        assert_eq!(raw.matches("\x1b[1A").count(), state.n_items - 1);
+        assert!(raw.starts_with("\x1b7\x1b[2K"));
+        assert!(raw.ends_with("\x1b8"));
+    }
+}
+
+#[test]
+fn row_descriptions_stay_outside_the_highlight() {
+    let rows = [
+        (ContentStyle::new(), "Tokoi", Some("learn")),
+        (ContentStyle::new(), "...", Some("custom input")),
+        (ContentStyle::new(), "`Tokoi`", Some("wrap backticks")),
+    ];
+    for selected in 0..rows.len() {
+        let mut output = Vec::new();
+        print_selection_list(&mut output, rows, selected, Some(1)).unwrap();
+        let raw = String::from_utf8(output).unwrap();
+        for (index, (style, content, description)) in rows.iter().enumerate() {
+            let description = description.unwrap();
+            assert!(description.split_whitespace().count() <= 2);
+            let style = if index == selected {
+                selection_style()
+            } else {
+                *style
+            };
+            assert!(
+                raw.contains(&format!(
+                    "{}{:padding$}< {description}",
+                    style.apply(content),
+                    "",
+                    padding = 7 - console::measure_text_width(content) + 1,
+                )),
+                "Description must follow the styled content's reset: {raw:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn hint_columns_use_display_width_including_unhinted_rows() {
+    let rows = [
+        (ContentStyle::new(), "é", Some("learn")),
+        (ContentStyle::new(), "e\u{301}", Some("custom input")),
+        (ContentStyle::new(), "界🦀", Some("wrap backticks")),
+        (ContentStyle::new(), "long suggestion", None),
+    ];
+    let width = console::measure_text_width("long suggestion");
+    for selected in 0..rows.len() {
+        let mut output = Vec::new();
+        print_selection_list(&mut output, rows, selected, None).unwrap();
+        let raw = String::from_utf8(output).unwrap();
+        for row in raw.split("\x1b[5G").skip(1) {
+            let text = console::strip_ansi_codes(row);
+            if let Some((before_hint, _)) = text.split_once("< ") {
+                assert_eq!(
+                    console::measure_text_width(before_hint),
+                    width + 1,
+                    "{raw:?}"
+                );
+            }
+        }
+        assert_eq!(console::strip_ansi_codes(&raw).matches("< ").count(), 3);
+    }
+}
+
+#[test]
 fn custom_replacement_does_not_accept_vocabulary() {
     let chunk = chunk("Tokoi");
     let suggestion = suggestion(&chunk, 0..5, Detector::Hunspell);
-    let mut state = State::from(&suggestion);
+    let mut state = State::new(&suggestion, false);
     state.select_custom();
     state.custom_replacement = "Tokio and friends".into();
     assert_eq!(state.to_bandaid().content, "Tokio and friends");
@@ -212,13 +477,13 @@ fn no_replacement_prompt_keeps_the_same_context_layout() {
     let without = format!(
         "{}\n{}",
         suggestion,
-        State::from(&suggestion).prompt_padding()
+        State::new(&suggestion, false).prompt_padding()
     );
     suggestion.replacements.push("Known".into());
     let with = format!(
         "{}\n{}",
         suggestion,
-        State::from(&suggestion).prompt_padding()
+        State::new(&suggestion, false).prompt_padding()
     );
     assert_eq!(without.lines().count(), with.lines().count());
 }

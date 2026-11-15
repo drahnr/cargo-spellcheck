@@ -1,27 +1,27 @@
 //! Shared Hunspell-format dictionary loading.
 
-#[cfg(any(feature = "zet", feature = "spellbook"))]
+#[cfg(any(feature = "hunspell", feature = "zet", feature = "spellbook"))]
 use super::cached::cache_builtin;
 use super::Result;
-#[cfg(any(feature = "zet", feature = "spellbook"))]
+#[cfg(any(feature = "hunspell", feature = "zet", feature = "spellbook"))]
 use crate::config::{Lang5, SearchDirs};
 use color_eyre::eyre::{bail, eyre, WrapErr};
 use fs_err as fs;
-#[cfg(any(feature = "zet", feature = "spellbook"))]
+#[cfg(any(feature = "hunspell", feature = "zet", feature = "spellbook"))]
 use itertools::Itertools;
 use std::io::BufRead;
 #[cfg(feature = "hunspell")]
 use std::path::Path;
-#[cfg(any(feature = "zet", feature = "spellbook"))]
+#[cfg(any(feature = "hunspell", feature = "zet", feature = "spellbook"))]
 use std::path::PathBuf;
 
-#[cfg(any(feature = "zet", feature = "spellbook"))]
+#[cfg(any(feature = "hunspell", feature = "zet", feature = "spellbook"))]
 pub(crate) struct DicAff {
     pub(crate) dic: String,
     pub(crate) aff: String,
 }
 
-#[cfg(any(feature = "zet", feature = "spellbook"))]
+#[cfg(any(feature = "hunspell", feature = "zet", feature = "spellbook"))]
 impl DicAff {
     pub(crate) fn load(
         extra_dictionaries: &[std::path::PathBuf],
@@ -88,8 +88,18 @@ impl DicAff {
             }
         })?;
 
-        let dic = fs_err::read_to_string(&dic)?;
-        let aff = fs_err::read_to_string(&aff)?;
+        let dic = String::from_utf8(fs::read(&dic)?).wrap_err_with(|| {
+            format!(
+                "Unsupported dictionary encoding in {}: expected UTF-8 text",
+                dic.display()
+            )
+        })?;
+        let aff = String::from_utf8(fs::read(&aff)?).wrap_err_with(|| {
+            format!(
+                "Unsupported affix encoding in {}: expected UTF-8 text",
+                aff.display()
+            )
+        })?;
 
         // We need to combine multiple dictionaries into one
         // since we want suffix support rather than plain word lists
@@ -104,7 +114,12 @@ impl DicAff {
             // after calling `sanitize_paths`
             // the ought to be all absolutes
             assert!(extra_dic_path.is_absolute());
-            let extra_dic = fs::read_to_string(extra_dic_path)?;
+            let extra_dic = String::from_utf8(fs::read(extra_dic_path)?).wrap_err_with(|| {
+                format!(
+                    "Unsupported dictionary encoding in {}: expected UTF-8 text",
+                    extra_dic_path.display()
+                )
+            })?;
             is_valid_hunspell_dic(&mut extra_dic.as_bytes())?;
             // A valid header-only dictionary (including "0\n") has no entries.
             let body = extra_dic
