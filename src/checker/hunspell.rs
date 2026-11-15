@@ -9,22 +9,17 @@
 
 use super::{apply_tokenizer, Checker, Detector, Suggestion, SuggestionContext};
 
-use crate::checker::dictaffix::is_valid_hunspell_dic_path;
-use crate::config::{Lang5, WrappedRegex};
-use crate::documentation::{CheckableChunk, ContentOrigin};
-use crate::util::sub_chars;
-use crate::Range;
-
-use fs_err as fs;
-use io::Write;
-use lazy_static::lazy_static;
+use crate::{
+    checker::{cached::cache_builtin, dictaffix::is_valid_hunspell_dic_path},
+    config::{Lang5, WrappedRegex},
+    documentation::{CheckableChunk, ContentOrigin},
+    util::sub_chars,
+    Range,
+};
 
 use nlprule::Tokenizer;
-use sha2::Digest;
-use std::io::{self};
-
 use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use hunspell_rs::{CheckResult, Hunspell};
@@ -37,93 +32,9 @@ mod tests;
 use crate::errors::*;
 
 use super::quirks::{
-    compound_ranges, replacements_contain_dashed, replacements_contain_dashless, transform,
-    Transformed,
+    compound_ranges, consists_of_vulgar_fractions_or_emojis, replacements_contain_dashed,
+    replacements_contain_dashless, transform, Transformed,
 };
-
-pub(super) static BUILTIN_HUNSPELL_AFF: &[u8] = include_bytes!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/hunspell-data/en_US.aff"
-));
-
-pub(super) static BUILTIN_HUNSPELL_DIC: &[u8] = include_bytes!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/hunspell-data/en_US.dic"
-));
-
-// XXX hunspell does not provide an API for using in-memory dictionary or
-// XXX affix files
-// XXX https://github.com/hunspell/hunspell/issues/721
-pub(super) fn cache_builtin_inner(
-    cache_dir: impl AsRef<Path>,
-    extension: &'static str,
-    data: &[u8],
-) -> Result<PathBuf> {
-    // Embedded data can change without a package version bump. Never reuse
-    // stale affix headers (notably SET UTF8 instead of SET UTF-8).
-    let digest = hex::encode(sha2::Sha256::digest(data));
-    let path = cache_dir.as_ref().join(format!(
-        "cargo-spellcheck/{}/{digest}/en_US.{extension}",
-        env!("CARGO_PKG_VERSION"),
-    ));
-    fs::create_dir_all(path.parent().unwrap())?;
-    // check if file exists
-    if let Ok(f) = fs::File::open(&path) {
-        // in case somebody else is currently writing to it
-        // wait for that to complete
-        f.file().lock_shared()?;
-        return Ok(path);
-    }
-    let mut f = fs::OpenOptions::new()
-        .truncate(false)
-        .create(true)
-        // Shared locking requires read access on Windows.
-        .read(true)
-        .write(true)
-        .open(&path)?;
-    // if there are multiple instances, allow the first to write it all
-    match f.file().try_lock() {
-        Ok(()) => {
-            // Do not truncate another writer's data before acquiring the lock.
-            f.set_len(0)?;
-            f.write_all(data)?;
-            return Ok(path);
-        }
-        Err(std::fs::TryLockError::WouldBlock) => {}
-        Err(std::fs::TryLockError::Error(err)) => return Err(err.into()),
-    }
-
-    // .. but block execution until the first completed so
-    // there are no cases of partial data
-    f.file().lock_shared()?;
-
-    Ok(path)
-}
-
-pub(super) fn cache_builtin() -> Result<(PathBuf, PathBuf)> {
-    log::info!("Using builtin en_US hunspell dictionary and affix files");
-    let base = directories::BaseDirs::new().expect("env HOME must be set");
-
-    let cache_dir = base.cache_dir();
-    let path_aff = cache_builtin_inner(cache_dir, "aff", BUILTIN_HUNSPELL_AFF)?;
-    let path_dic = cache_builtin_inner(cache_dir, "dic", BUILTIN_HUNSPELL_DIC)?;
-    Ok((path_dic, path_aff))
-}
-
-/// The value is `true` if string is made of emoji's or Unicode
-/// `VULGAR FRACTION`.
-pub fn consists_of_vulgar_fractions_or_emojis(word: &str) -> bool {
-    lazy_static! {
-        static ref VULGAR_OR_EMOJI: regex::RegexSet = regex::RegexSetBuilder::new([
-            r"[\u00BC-\u00BE\u2150-\u215E-\u2189]",
-            r"^[\p{Emoji}]+$"
-        ])
-        .case_insensitive(true)
-        .build()
-        .expect("REGEX grammar is human checked. qed");
-    };
-    VULGAR_OR_EMOJI.is_match(word)
-}
 
 fn catch_hunspell_panic<T>(operation: &str, action: impl FnOnce() -> Result<T>) -> Result<T> {
     catch_unwind(AssertUnwindSafe(action)).unwrap_or_else(|payload| {

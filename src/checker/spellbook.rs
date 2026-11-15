@@ -22,11 +22,9 @@ use doc_chunks::Ignores;
 use crate::errors::*;
 
 use super::quirks::{
-    compound_ranges, replacements_contain_dashed, replacements_contain_dashless, transform,
-    Transformed,
+    compound_ranges, consists_of_vulgar_fractions_or_emojis, replacements_contain_dashed,
+    replacements_contain_dashless, transform, Transformed,
 };
-
-use super::hunspell::consists_of_vulgar_fractions_or_emojis;
 
 #[cfg(test)]
 mod tests;

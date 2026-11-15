@@ -747,6 +747,7 @@ struct LoopBoundary;"#,
     }
 }
 
+#[cfg(all(feature = "hunspell", feature = "spellbook", feature = "zet"))]
 #[test]
 fn checker_discrepancies() {
     let _ = env_logger::Builder::new()

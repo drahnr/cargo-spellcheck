@@ -1,12 +1,14 @@
-#[cfg(all(not(feature = "hunspell"), not(feature = "nlprules")))]
-compile_error!("Well, cargo-spellcheck needs either `nlprules` or `hunspell` feature enabled.");
+#[cfg(not(feature = "tokenizer"))]
+compile_error!("cargo-spellcheck needs a spelling backend or the `nlprules` feature enabled.");
 
 use std::env;
-#[cfg(feature = "nlprules")]
+#[cfg(feature = "tokenizer")]
 use std::io::BufReader;
 use std::path::PathBuf;
+#[cfg(feature = "tokenizer")]
+use xz2::bufread::XzDecoder;
 #[cfg(feature = "nlprules")]
-use xz2::bufread::{XzDecoder, XzEncoder};
+use xz2::bufread::XzEncoder;
 
 fn main() -> std::result::Result<(), Box<dyn std::error::Error + 'static>> {
     println!("cargo:rerun-if-changed=build.rs");
@@ -70,6 +72,18 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error + 'static>> {
                 }
             )?
             .validate()?;
+    }
+
+    #[cfg(all(feature = "tokenizer", not(feature = "nlprules")))]
+    {
+        // The binary format matches the pinned nlprule runtime version. Spelling-only
+        // builds need this tokenizer, not the grammar rules or their build dependency.
+        const TOKENIZER: &str = "nlprule-data/0.6.4/en/en_tokenizer.bin.xz";
+        println!("cargo:rerun-if-changed={TOKENIZER}");
+        let source = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?).join(TOKENIZER);
+        let mut decoder = XzDecoder::new(BufReader::new(std::fs::File::open(source)?));
+        let mut destination = std::fs::File::create(out.join("en_tokenizer.bin"))?;
+        std::io::copy(&mut decoder, &mut destination)?;
     }
 
     let _ = out;

@@ -1,11 +1,17 @@
 use crate::errors::*;
 
+#[cfg(any(feature = "hunspell", feature = "zet", feature = "spellbook"))]
+use fs_err as fs;
 use hex::ToHex;
 use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
 use sha2::Digest;
 use std::io::Seek;
+#[cfg(any(feature = "hunspell", feature = "zet", feature = "spellbook"))]
+use std::io::Write;
 use std::path::Path;
+#[cfg(any(feature = "hunspell", feature = "zet", feature = "spellbook"))]
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 #[cfg(test)]
@@ -180,4 +186,77 @@ where
         file.set_len(loco)?;
         Ok(())
     }
+}
+
+#[cfg(any(feature = "hunspell", feature = "zet", feature = "spellbook"))]
+pub(super) static BUILTIN_HUNSPELL_AFF: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/hunspell-data/en_US.aff"
+));
+
+#[cfg(any(feature = "hunspell", feature = "zet", feature = "spellbook"))]
+pub(super) static BUILTIN_HUNSPELL_DIC: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/hunspell-data/en_US.dic"
+));
+
+// XXX hunspell does not provide an API for using in-memory dictionary or
+// XXX affix files
+// XXX https://github.com/hunspell/hunspell/issues/721
+#[cfg(any(feature = "hunspell", feature = "zet", feature = "spellbook"))]
+pub(super) fn cache_builtin_inner(
+    cache_dir: impl AsRef<Path>,
+    extension: &'static str,
+    data: &[u8],
+) -> Result<PathBuf> {
+    // Embedded data can change without a package version bump. Never reuse
+    // stale affix headers (notably SET UTF8 instead of SET UTF-8).
+    let digest = hex::encode(sha2::Sha256::digest(data));
+    let path = cache_dir.as_ref().join(format!(
+        "cargo-spellcheck/{}/{digest}/en_US.{extension}",
+        env!("CARGO_PKG_VERSION"),
+    ));
+    fs::create_dir_all(path.parent().unwrap())?;
+    // check if file exists
+    if let Ok(f) = fs::File::open(&path) {
+        // in case somebody else is currently writing to it
+        // wait for that to complete
+        f.file().lock_shared()?;
+        return Ok(path);
+    }
+    let mut f = fs::OpenOptions::new()
+        .truncate(false)
+        .create(true)
+        // Shared locking requires read access on Windows.
+        .read(true)
+        .write(true)
+        .open(&path)?;
+    // if there are multiple instances, allow the first to write it all
+    match f.file().try_lock() {
+        Ok(()) => {
+            // Do not truncate another writer's data before acquiring the lock.
+            f.set_len(0)?;
+            f.write_all(data)?;
+            return Ok(path);
+        }
+        Err(std::fs::TryLockError::WouldBlock) => {}
+        Err(std::fs::TryLockError::Error(err)) => return Err(err.into()),
+    }
+
+    // .. but block execution until the first completed so
+    // there are no cases of partial data
+    f.file().lock_shared()?;
+
+    Ok(path)
+}
+
+#[cfg(any(feature = "hunspell", feature = "zet", feature = "spellbook"))]
+pub(super) fn cache_builtin() -> Result<(PathBuf, PathBuf)> {
+    log::info!("Using builtin en_US hunspell dictionary and affix files");
+    let base = directories::BaseDirs::new().expect("env HOME must be set");
+
+    let cache_dir = base.cache_dir();
+    let path_aff = cache_builtin_inner(cache_dir, "aff", BUILTIN_HUNSPELL_AFF)?;
+    let path_dic = cache_builtin_inner(cache_dir, "dic", BUILTIN_HUNSPELL_DIC)?;
+    Ok((path_dic, path_aff))
 }

@@ -73,6 +73,7 @@ impl Default for Quirks {
     }
 }
 
+#[cfg(any(feature = "hunspell", feature = "zet", feature = "spellbook"))]
 impl Quirks {
     pub(crate) const fn allow_concatenated(&self) -> bool {
         self.allow_concatenation
