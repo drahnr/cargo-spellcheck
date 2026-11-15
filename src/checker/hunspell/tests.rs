@@ -162,6 +162,35 @@ fn checker_propagates_poison_errors_for_plain_atomic_and_fragment_tokens() {
 }
 
 #[test]
+fn membership_verification_propagates_native_failures() {
+    let (known, unknown, invalid, panic_message, poisoned_message) = (
+        "Test",
+        "Zzyzxqvocab",
+        "bad\0word",
+        "Hunspell panicked while checking word",
+        "unavailable after an earlier panic",
+    );
+    let dictionary = TestDictionary::new();
+    let checkers = crate::checker::Checkers::new(crate::Config {
+        hunspell: Some(dictionary.config()),
+        zet: None,
+        spellbook: None,
+        nlprules: None,
+        ..Default::default()
+    })
+    .unwrap();
+    let checker = checkers.hunspell.as_ref().unwrap();
+    assert!(checker.contains_word(known).unwrap());
+    assert!(!checker.contains_word(unknown).unwrap());
+
+    let words = std::collections::BTreeSet::from([invalid.to_owned()]);
+    let error = crate::checker::DictionaryReload::verify_words(&checkers, &words).unwrap_err();
+    assert!(error.to_string().contains(panic_message), "{error}");
+    let error = checker.contains_word(known).unwrap_err();
+    assert!(error.to_string().contains(poisoned_message), "{error}");
+}
+
+#[test]
 fn shared_handle_operations_are_serialized() {
     let dictionary = TestDictionary::new();
     let engine = dictionary.engine();

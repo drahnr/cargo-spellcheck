@@ -89,6 +89,7 @@ struct PacketSender;"#,
         let (_, span) = mappings.first().unwrap();
         let suggestion = Suggestion {
             detector: Detector::Dummy,
+            checked_word: None,
             origin: case.origin,
             chunk,
             span: *span,
@@ -223,6 +224,7 @@ struct PortableHandle;"#,
             for replacements in replacement_cases {
                 let suggestion = Suggestion {
                     detector: Detector::Dummy,
+                    checked_word: None,
                     origin: ContentOrigin::TestEntityRust,
                     chunk,
                     range: range.clone(),
@@ -275,45 +277,13 @@ fn fmt_cfg_annotation_is_bold_magenta() {
 }
 
 #[test]
-fn fmt_0_single() {
-    const CONTENT: &str = " Is it dyrck again?";
-    let chunk = CheckableChunk::from_str(
-        CONTENT,
-        indexmap::indexmap! { 0..18 => Span {
-            start: LineColumn {
-                line: 1,
-                column: 0,
-            },
-            end: LineColumn {
-                line: 1,
-                column: 17,
-            }
-        }
-        },
-        CommentVariant::TripleSlash,
-    );
-
-    let suggestion = Suggestion {
-        detector: Detector::Dummy,
-        origin: ContentOrigin::TestEntityRust,
-        chunk: &chunk,
-        range: 7..12,
-        span: Span {
-            start: LineColumn { line: 1, column: 6 },
-            end: LineColumn {
-                line: 1,
-                column: 10,
-            },
-        },
-        replacements: vec![
-            "replacement_0".to_owned(),
-            "replacement_1".to_owned(),
-            "replacement_2".to_owned(),
-        ],
-        description: Some("Possible spelling mistake found.".to_owned()),
-    };
-
-    const EXPECTED: &str = r#"error: spellcheck(Dummy)
+fn fmt_single_line_with_and_without_replacements() {
+    let (content, cases) = (
+        " Is it dyrck again?",
+        [
+            (
+                vec!["replacement_0", "replacement_1", "replacement_2"],
+                r#"error: spellcheck(Dummy)
   --> /tmp/test/entity.rs:1
    |
  1 |  Is it dyrck again?
@@ -344,16 +314,19 @@ fn fmt_0_no_suggestion() {
         CommentVariant::TripleSlash,
     );
 
-    let suggestion = Suggestion {
-        detector: Detector::Dummy,
-        origin: ContentOrigin::TestEntityRust,
-        chunk: &chunk,
-        range: 7..12,
-        span: Span {
-            start: LineColumn { line: 1, column: 6 },
-            end: LineColumn {
-                line: 1,
-                column: 10,
+    for (replacements, expected) in cases {
+        let suggestion = Suggestion {
+            detector: Detector::Dummy,
+            checked_word: None,
+            origin: ContentOrigin::TestEntityRust,
+            chunk: &chunk,
+            range: 7..12,
+            span: Span {
+                start: LineColumn { line: 1, column: 6 },
+                end: LineColumn {
+                    line: 1,
+                    column: 10,
+                },
             },
         },
         replacements: vec![],
@@ -415,6 +388,7 @@ fn fmt_1_multi() {
 
     let suggestion = Suggestion {
         detector: Detector::Dummy,
+        checked_word: None,
         origin: ContentOrigin::TestEntityRust,
         chunk: &chunk,
         range: 6..12,
@@ -484,6 +458,7 @@ fn fmt_2_multi_80_plus() {
 
     let suggestion = Suggestion {
         detector: Detector::Dummy,
+        checked_word: None,
         origin: ContentOrigin::TestEntityRust,
         chunk: &chunk,
         range: 66..94,
@@ -542,6 +517,7 @@ fn multiline_is_dbg_printable() {
 
     let suggestion = Suggestion {
         detector: Detector::Dummy,
+        checked_word: None,
         origin: ContentOrigin::TestEntityRust,
         chunk: &chunk,
         span: Span {
@@ -613,6 +589,7 @@ fn overlapped() {
     );
     let suggestion = Suggestion {
         detector: Detector::Dummy,
+        checked_word: None,
         origin: ContentOrigin::TestEntityRust,
         chunk: &chunk,
         span: Span {
@@ -769,6 +746,7 @@ fn fmt_with_path_preserves_origin_and_default_display() {
     ] {
         let suggestion = Suggestion {
             detector: Detector::Dummy,
+            checked_word: None,
             origin: origin.clone(),
             chunk: &chunk,
             span,

@@ -3,7 +3,6 @@ use std::path::{Path, PathBuf};
 use crate::errors::*;
 
 use fs_err as fs;
-use itertools::Itertools;
 use serde::Deserialize;
 use std::str::FromStr;
 
@@ -356,25 +355,36 @@ impl Args {
     ) -> Result<()> {
         // overwrite checkers
         if let Some(checkers) = filter_set {
-            #[cfg(feature = "hunspell")]
             if !checkers.contains(&CheckerType::Hunspell) && config.hunspell.take().is_none() {
                 log::warn!("Hunspell was never configured.")
             }
-            #[cfg(feature = "nlprules")]
             if !checkers.contains(&CheckerType::NlpRules) && config.nlprules.take().is_none() {
                 log::warn!("Nlprules checker was never configured.")
+            }
+            if !checkers.contains(&CheckerType::ZSpell) && config.zet.take().is_none() {
+                log::warn!("ZSpell was never configured.")
+            }
+            if !checkers.contains(&CheckerType::Spellbook) && config.spellbook.take().is_none() {
+                log::warn!("Spellbook was never configured.")
             }
 
             if !checkers.contains(&CheckerType::Reflow) {
                 log::warn!("Reflow is a separate sub command.")
             }
 
-            const EXPECTED_COUNT: usize =
-                1_usize + cfg!(feature = "nlprules") as usize + cfg!(feature = "hunspell") as usize;
+            Self::validate_checker_selection(checkers, config)?;
+        }
+        Ok(())
+    }
 
-            if checkers.iter().unique().count() == EXPECTED_COUNT {
-                bail!("Argument override for checkers disabled all checkers");
-            }
+    fn validate_checker_selection(checkers: &[CheckerType], config: &Config) -> Result<()> {
+        let active = (cfg!(feature = "hunspell") && config.hunspell.is_some())
+            || (cfg!(feature = "nlprules") && config.nlprules.is_some())
+            || (cfg!(feature = "zet") && config.zet.is_some())
+            || (cfg!(feature = "spellbook") && config.spellbook.is_some())
+            || (checkers.contains(&CheckerType::Reflow) && config.reflow.is_some());
+        if !active {
+            bail!("Argument override for checkers disabled all checkers");
         }
         Ok(())
     }
@@ -510,6 +520,15 @@ impl Args {
                 config.nlprules = None;
             }
             // reflow is a different subcommand, not relevant
+        }
+
+        if self.checkers().is_some()
+            && matches!(
+                &self.command,
+                None | Some(Sub::Check { .. } | Sub::Fix { .. })
+            )
+        {
+            Self::validate_checker_selection(&filter_set, &config)?;
         }
 
         Ok((config, config_path))

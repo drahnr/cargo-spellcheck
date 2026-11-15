@@ -132,6 +132,135 @@ fn unify_config() {
     );
 }
 
+fn configured_backends(config: &Config) -> [bool; 4] {
+    [
+        config.hunspell.is_some(),
+        config.nlprules.is_some(),
+        config.zet.is_some(),
+        config.spellbook.is_some(),
+    ]
+}
+
+#[test]
+fn checker_filter_accepts_all_backends_and_reflow() {
+    let selection = [
+        CheckerType::Hunspell,
+        CheckerType::NlpRules,
+        CheckerType::ZSpell,
+        CheckerType::Spellbook,
+        CheckerType::Reflow,
+    ];
+    let mut config = Config::full();
+    let expected = configured_backends(&config);
+    let expected_reflow_width = config.reflow.as_ref().unwrap().max_line_length;
+    Args::checker_selection_override(Some(&selection), &mut config).unwrap();
+    assert_eq!(configured_backends(&config), expected);
+    assert_eq!(
+        config.reflow.unwrap().max_line_length,
+        expected_reflow_width
+    );
+}
+
+#[cfg(all(feature = "hunspell", feature = "zet", feature = "spellbook"))]
+#[test]
+fn checker_filter_accepts_all_three_spelling_backends() {
+    let selection = [
+        CheckerType::Hunspell,
+        CheckerType::ZSpell,
+        CheckerType::Spellbook,
+    ];
+    let expected = [true, false, true, true];
+    let mut config = Config::full();
+    Args::checker_selection_override(Some(&selection), &mut config).unwrap();
+    assert_eq!(configured_backends(&config), expected);
+}
+
+#[test]
+fn checker_filter_removes_other_backend_configurations() {
+    let cases = [
+        (
+            CheckerType::Hunspell,
+            cfg!(feature = "hunspell"),
+            [true, false, false, false],
+        ),
+        (
+            CheckerType::NlpRules,
+            cfg!(feature = "nlprules"),
+            [false, cfg!(feature = "nlprules"), false, false],
+        ),
+        (
+            CheckerType::ZSpell,
+            cfg!(feature = "zet"),
+            [false, false, true, false],
+        ),
+        (
+            CheckerType::Spellbook,
+            cfg!(feature = "spellbook"),
+            [false, false, false, true],
+        ),
+    ];
+    for (checker, compiled, expected) in cases {
+        let mut config = Config::full();
+        let expected_reflow_width = config.reflow.as_ref().unwrap().max_line_length;
+        let result = Args::checker_selection_override(Some(&[checker]), &mut config);
+        assert_eq!(result.is_ok(), compiled, "{checker:?}");
+        assert_eq!(configured_backends(&config), expected, "{checker:?}");
+        assert_eq!(
+            config.reflow.unwrap().max_line_length,
+            expected_reflow_width
+        );
+    }
+}
+
+#[test]
+fn checker_filter_allows_explicit_reflow_and_rejects_empty_override() {
+    let mut config = Config::full();
+    let expected_reflow_width = config.reflow.as_ref().unwrap().max_line_length;
+    Args::checker_selection_override(Some(&[CheckerType::Reflow]), &mut config).unwrap();
+    assert_eq!(configured_backends(&config), [false; 4]);
+    assert_eq!(
+        config.reflow.as_ref().unwrap().max_line_length,
+        expected_reflow_width
+    );
+    assert!(Args::checker_selection_override(Some(&[]), &mut config).is_err());
+    // No explicit override does not introduce a new no-checker policy.
+    Args::checker_selection_override(None, &mut config).unwrap();
+    config.reflow = None;
+    assert!(Args::checker_selection_override(Some(&[CheckerType::Reflow]), &mut config).is_err());
+    assert!(Args::checker_selection_override(Some(&[CheckerType::Hunspell]), &mut config).is_err());
+}
+
+#[test]
+fn empty_explicit_checker_override_is_rejected_only_for_check_and_fix() {
+    let cases = [
+        ("cargo spellcheck", false),
+        ("cargo spellcheck check", false),
+        ("cargo spellcheck fix", false),
+        ("cargo spellcheck --fix", false),
+        ("cargo spellcheck reflow", true),
+        ("cargo spellcheck config --stdout", true),
+        ("cargo spellcheck list-files", true),
+        ("cargo spellcheck completions --shell=zsh", true),
+    ];
+    let path =
+        std::env::temp_dir().join(format!("spellcheck-filter-{}.toml", uuid::Uuid::new_v4()));
+    fs::write(&path, "").unwrap();
+    for (command, expected_ok) in cases {
+        let mut args = Args::parse(commandline_to_iter(command)).unwrap();
+        args.cfg = Some(path.clone());
+        let empty = Some(MultipleCheckerTypes(vec![]));
+        match args.command.as_mut() {
+            Some(Sub::Check { common } | Sub::Fix { common } | Sub::Reflow { common }) => {
+                common.checkers = empty
+            }
+            Some(Sub::Config { filter, .. }) => *filter = empty,
+            _ => args.common.checkers = empty,
+        }
+        assert_eq!(args.load_config().is_ok(), expected_ok, "{command}");
+    }
+    fs::remove_file(path).unwrap();
+}
+
 #[test]
 fn shell_check_env() {
     assert_matches!(load_shell_name("/usr/bin/zsh"), Ok(Shell::Zsh));

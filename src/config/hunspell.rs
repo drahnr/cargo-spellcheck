@@ -132,6 +132,10 @@ pub struct HunspellConfig {
     /// Additional dictionaries for topic specific lingo.
     #[serde(default)]
     pub extra_dictionaries: Vec<PathBuf>,
+    /// Existing extra dictionary to receive words accepted during an interactive run.
+    /// Relative paths are resolved against the configuration file's directory.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub learning_dictionary: Option<PathBuf>,
     /// Additional quirks besides dictionary lookups.
     #[serde(default)]
     pub quirks: Quirks,
@@ -143,6 +147,7 @@ impl Default for HunspellConfig {
             lang: Lang5::en_US,
             search_dirs: SearchDirs::default(),
             extra_dictionaries: Vec::default(),
+            learning_dictionary: None,
             quirks: Quirks::default(),
             tokenization_splitchars: default_tokenization_splitchars(),
             skip_os_lookups: false,
@@ -221,6 +226,147 @@ impl HunspellConfig {
             );
         }
 
+        // Validate learning targets only after CLI filtering has selected the active backends.
+        if let Some(configured) = self.learning_dictionary.as_mut() {
+            if !configured.is_absolute() {
+                *configured = base.join(&*configured);
+            }
+        }
+
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use fs_err as fs;
+
+    struct TempDir(PathBuf);
+
+    impl TempDir {
+        fn new() -> Self {
+            let path = std::env::temp_dir().join(format!(
+                "cargo-spellcheck-learning-config-{}",
+                uuid::Uuid::new_v4()
+            ));
+            fs::create_dir(&path).unwrap();
+            Self(path)
+        }
+
+        fn config(&self) -> HunspellConfig {
+            HunspellConfig {
+                search_dirs: vec![PathBuf::from(".")].into(),
+                skip_os_lookups: true,
+                extra_dictionaries: vec![PathBuf::from("lingo.dic")],
+                learning_dictionary: Some(PathBuf::from("lingo.dic")),
+                ..HunspellConfig::default()
+            }
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn learning_is_opt_in_and_omitted_when_unconfigured() {
+        assert!(HunspellConfig::default().learning_dictionary.is_none());
+        let config: HunspellConfig = toml::from_str("").unwrap();
+        assert!(config.learning_dictionary.is_none());
+        assert!(!toml::to_string(&config)
+            .unwrap()
+            .contains("learning_dictionary"));
+        let config: HunspellConfig = toml::from_str("learning_dictionary = 'lingo.dic'").unwrap();
+        assert_eq!(config.learning_dictionary, Some(PathBuf::from("lingo.dic")));
+    }
+
+    #[test]
+    fn resolves_learning_dictionary_relative_to_configuration() {
+        let dir = TempDir::new();
+        fs::write(dir.0.join("lingo.dic"), "0\n").unwrap();
+        let mut config = dir.config();
+        config.sanitize_paths(&dir.0).unwrap();
+        let expected = fs::canonicalize(dir.0.join("lingo.dic")).unwrap();
+        assert_eq!(config.learning_dictionary.as_ref(), Some(&expected));
+        assert_eq!(config.extra_dictionaries, vec![expected]);
+    }
+
+    #[test]
+    fn preserves_absolute_learning_dictionary_until_validation() {
+        let dir = TempDir::new();
+        fs::write(dir.0.join("lingo.dic"), "0\n").unwrap();
+        let mut config = dir.config();
+        config.learning_dictionary = Some(dir.0.join(".").join("lingo.dic"));
+        config.sanitize_paths(&dir.0).unwrap();
+        assert_eq!(
+            config.learning_dictionary,
+            Some(dir.0.join(".").join("lingo.dic"))
+        );
+    }
+
+    #[test]
+    fn does_not_guess_the_first_extra_dictionary() {
+        let dir = TempDir::new();
+        fs::write(dir.0.join("lingo.dic"), "0\n").unwrap();
+        let mut config = dir.config();
+        config.learning_dictionary = None;
+        config.sanitize_paths(&dir.0).unwrap();
+        assert!(config.learning_dictionary.is_none());
+    }
+
+    #[test]
+    fn defers_learning_dictionary_membership_validation() {
+        let dir = TempDir::new();
+        fs::write(dir.0.join("lingo.dic"), "0\n").unwrap();
+        fs::write(dir.0.join("other.dic"), "0\n").unwrap();
+        let mut config = dir.config();
+        config.learning_dictionary = Some(PathBuf::from("other.dic"));
+        config.sanitize_paths(&dir.0).unwrap();
+        assert_eq!(config.learning_dictionary, Some(dir.0.join("other.dic")));
+    }
+
+    #[test]
+    fn missing_learning_target_is_not_searched_for_or_created() {
+        let dir = TempDir::new();
+        fs::create_dir(dir.0.join("search")).unwrap();
+        fs::write(dir.0.join("search/lingo.dic"), "0\n").unwrap();
+        let mut config = dir.config();
+        config.search_dirs = vec![PathBuf::from("search")].into();
+        config.sanitize_paths(&dir.0).unwrap();
+        assert_eq!(config.learning_dictionary, Some(dir.0.join("lingo.dic")));
+        assert_eq!(
+            config.extra_dictionaries,
+            vec![fs::canonicalize(dir.0.join("search/lingo.dic")).unwrap()]
+        );
+        assert!(!dir.0.join("lingo.dic").exists());
+    }
+
+    #[test]
+    fn defers_learning_dictionary_file_type_validation() {
+        let dir = TempDir::new();
+        fs::write(dir.0.join("lingo.dic"), "0\n").unwrap();
+        fs::create_dir(dir.0.join("not-a-dictionary")).unwrap();
+        let mut config = dir.config();
+        config.learning_dictionary = Some(PathBuf::from("not-a-dictionary"));
+        config.sanitize_paths(&dir.0).unwrap();
+        assert_eq!(
+            config.learning_dictionary,
+            Some(dir.0.join("not-a-dictionary"))
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn defers_learning_dictionary_symlink_resolution() {
+        let dir = TempDir::new();
+        fs::write(dir.0.join("lingo.dic"), "0\n").unwrap();
+        std::os::unix::fs::symlink(dir.0.join("lingo.dic"), dir.0.join("alias.dic")).unwrap();
+        let mut config = dir.config();
+        config.learning_dictionary = Some(PathBuf::from("alias.dic"));
+        config.sanitize_paths(&dir.0).unwrap();
+        assert_eq!(config.learning_dictionary, Some(dir.0.join("alias.dic")));
     }
 }

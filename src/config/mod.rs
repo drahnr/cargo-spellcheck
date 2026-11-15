@@ -101,6 +101,72 @@ impl Config {
         Ok(())
     }
 
+    /// Validate and resolve one shared learning target after filtering enabled spelling engines.
+    pub(crate) fn learning_dictionary(&self) -> Result<Option<PathBuf>> {
+        fn canonical_dictionary(path: &Path, backend: &str, setting: &str) -> Result<PathBuf> {
+            let path = fs::canonicalize(path).wrap_err_with(|| {
+                format!(
+                    "{backend} {setting} {} must be an existing dictionary file",
+                    path.display()
+                )
+            })?;
+            if !path.is_file() {
+                bail!(
+                    "{backend} {setting} {} must be an existing dictionary file",
+                    path.display()
+                );
+            }
+            Ok(path)
+        }
+
+        let active = [
+            (
+                cfg!(feature = "hunspell"),
+                "Hunspell",
+                self.hunspell.as_ref(),
+            ),
+            (cfg!(feature = "zet"), "ZSpell", self.zet.as_ref()),
+            (
+                cfg!(feature = "spellbook"),
+                "Spellbook",
+                self.spellbook.as_ref(),
+            ),
+        ];
+        let active = active
+            .into_iter()
+            .filter(|(compiled, _, _)| *compiled)
+            .filter_map(|(_, name, config)| config.map(|config| (name, config)))
+            .collect::<Vec<_>>();
+        let mut target: Option<PathBuf> = None;
+        let mut language = None;
+        for (name, config) in &active {
+            if language.is_some_and(|language| language != config.lang()) {
+                bail!("Interactive vocabulary learning requires enabled spelling backends to use the same language ({name} differs)");
+            }
+            language = Some(config.lang());
+            if let Some(path) = config.learning_dictionary.as_ref() {
+                let path = canonical_dictionary(path, name, "learning_dictionary")?;
+                if target.as_ref().is_some_and(|target| target != &path) {
+                    bail!("Conflicting learning_dictionary targets: all enabled spelling backends must share one dictionary");
+                }
+                target = Some(path);
+            }
+        }
+        if let Some(target) = target.as_ref() {
+            for (name, config) in active {
+                let extra_dictionaries = config
+                    .extra_dictionaries
+                    .iter()
+                    .map(|path| canonical_dictionary(path, name, "extra_dictionaries"))
+                    .collect::<Result<Vec<_>>>()?;
+                if !extra_dictionaries.contains(target) {
+                    bail!("Learning dictionary {} must be listed in extra_dictionaries for every enabled spelling backend ({name} is missing it)", target.display());
+                }
+            }
+        }
+        Ok(target)
+    }
+
     pub fn parse<S: AsRef<str>>(s: S) -> Result<Self> {
         Ok(toml::from_str(s.as_ref())?)
     }
@@ -276,3 +342,6 @@ impl Default for Config {
         }
     }
 }
+
+#[cfg(test)]
+mod learning_tests;

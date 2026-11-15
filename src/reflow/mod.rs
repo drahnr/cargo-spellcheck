@@ -390,6 +390,7 @@ fn store_suggestion<'s>(
             detector: Detector::Reflow,
             origin: origin.clone(),
             description: None,
+            checked_word: None,
             range,
             replacements: vec![replacement],
             span,

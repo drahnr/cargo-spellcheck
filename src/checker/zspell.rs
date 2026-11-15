@@ -109,6 +109,10 @@ impl ZetChecker {
         let hunspell = Arc::new(inner);
         Ok(ZetChecker(hunspell, tokenizer))
     }
+
+    pub(super) fn contains_word(&self, word: &str) -> bool {
+        self.zspell.check_word(word)
+    }
 }
 
 impl Checker for ZetChecker {
@@ -233,6 +237,7 @@ fn obtain_suggestions<'s>(
             for (range, span) in plain.find_spans(range.clone()) {
                 acc.push(Suggestion {
                     detector: Detector::ZSpell,
+                    checked_word: Some(word.clone()),
                     range,
                     span,
                     origin: origin.clone(),

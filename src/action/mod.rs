@@ -6,7 +6,7 @@ use crate::errors::*;
 use crate::reflow::Reflow;
 
 use fs_err as fs;
-use futures::stream::{self, StreamExt};
+
 use rayon::iter::ParallelIterator;
 
 use crate::paths::OutputPaths;
@@ -15,13 +15,16 @@ use std::path::PathBuf;
 
 pub mod bandaid;
 pub mod interactive;
+mod learning;
+mod update;
 
 #[cfg(test)]
 mod tests;
 
 pub(crate) use bandaid::*;
 
-use interactive::{UserPicked, UserSelection};
+use interactive::{DocumentOutcome, UserPicked};
+use learning::SessionResolutions;
 
 /// State of conclusion.
 #[derive(Debug, Clone, Copy)]
@@ -374,58 +377,42 @@ impl Action {
         config: Config,
         output_paths: &OutputPaths,
     ) -> Result<Finish> {
-        let n_cpus = num_cpus::get();
+        self.run_fix_interactive_with(documents, config, |origin, suggestions, resolutions| {
+            UserPicked::select_interactive(origin, suggestions, resolutions, output_paths)
+        })
+    }
 
-        let checkers = Checkers::new(config)?;
-
+    fn run_fix_interactive_with(
+        mut self,
+        documents: Documentation,
+        config: Config,
+        mut select: impl for<'s> FnMut(
+            ContentOrigin,
+            Vec<Suggestion<'s>>,
+            &mut SessionResolutions,
+        ) -> Result<(UserPicked, DocumentOutcome)>,
+    ) -> Result<Finish> {
         let n = documents.entry_count();
-        log::debug!("Running checkers on all documents {n}");
-        let mut pick_stream = stream::iter(documents.iter().enumerate())
-            .map(|(mut idx, (origin, chunks))| {
-                // align the debug output with the user output
-                idx += 1;
-                log::trace!("Running checkers on {idx}/{n},{origin:?}");
-                let suggestions = checkers.check(origin, &chunks[..]);
-                async move { Ok::<_, color_eyre::eyre::Report>((idx, origin, suggestions?)) }
-            })
-            .buffered(n_cpus)
-            .fuse();
-
+        let mut resolutions = SessionResolutions::new(&config)?;
+        let mut checkers = Checkers::new(config)?;
         let mut collected_picks = UserPicked::default();
-        while let Some(result) = pick_stream.next().await {
-            match result {
-                Ok((idx, origin, suggestions)) => {
-                    let (picked, user_sel) = interactive::UserPicked::select_interactive(
-                        origin.clone(),
-                        suggestions,
-                        output_paths,
-                    )?;
 
-                    match user_sel {
-                        UserSelection::Quit => break,
-                        UserSelection::Abort => return Ok(Finish::Abort),
-                        UserSelection::Nop if !picked.is_empty() => {
-                            log::debug!(
-                                "User picked patches to be applied for {idx}/{n},{origin:?}"
-                            );
-                            collected_picks.extend(picked);
-                        }
-                        UserSelection::Nop => {
-                            log::debug!("Nothing to do for {idx}/{n},{origin:?}");
-                        }
-                        _ => unreachable!(
-                            "All other variants are only internal to `select_interactive`. qed"
-                        ),
-                    }
-                }
-                Err(e) => Err(e)?,
+        'documents: for (idx, (origin, chunks)) in documents.iter().enumerate() {
+            let suggestions = checkers.check(origin, chunks)?;
+            log::debug!("Running checkers on {}/{},{:?}", idx + 1, n, origin);
+            let (picked, outcome) = select(origin.clone(), suggestions, &mut resolutions)?;
+            if outcome == DocumentOutcome::Abort {
+                return Ok(Finish::Abort);
+            }
+            collected_picks.extend(picked);
+            if outcome == DocumentOutcome::Quit {
+                break 'documents;
             }
         }
         let total = collected_picks.total_count();
-        // clustering per file is not reasonable
-        // since user abort (`<CTRL>-C` or `q`) should not
-        // leave any residue on disk.
-        self.write_user_pick_changes_to_disk(collected_picks)?;
+        // Neither patches nor accepted vocabulary reach disk before completion
+        // or an explicit quit-and-apply. An abort discards the whole session.
+        resolutions.commit(collected_picks, &mut self, &mut checkers)?;
 
         Ok(Finish::MistakeCount(total))
     }

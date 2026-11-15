@@ -70,6 +70,13 @@ lang = "en_US"
 # on how to define a custom dictionary file.
 extra_dictionaries = []
 
+# Optional: persist interactively accepted words to this existing extra dictionary.
+# Also supported under [Spellbook] and [ZSpell]; there is no top-level setting.
+# All enabled spelling backends must load the shared target and use the same lang.
+# Relative to this configuration file, not searched in search_dirs.
+# Omit from all spelling backends for session-only acceptance (the default).
+# learning_dictionary = "lingo.dic"
+
 # If set to `true`, the OS specific default search paths
 # are skipped and only explicitly specified ones are used.
 skip_os_lookups = false
@@ -189,3 +196,125 @@ that rule. The captured compound is recursively transformed, advancing past the
 identity capture to the subsequent rule that splits it into two candidates.
 
 To increase verbosity add `-v` (multiple) to increase verbosity.
+
+
+## Learning accepted words
+
+In an interactive fix session, press `a` to accept a spelling without changing the
+source. Acceptance works with **Hunspell, Spellbook, and Zet**, including builds
+without Hunspell. It immediately suppresses the same checked word across all
+enabled spelling backends, including already-queued diagnostics and later
+sources. Grammar diagnostics cannot be learned.
+
+By default acceptance is **session-only**: no dictionary or configuration file is
+changed. The first `extra_dictionaries` entry is never implicitly chosen as a
+write target.
+
+To keep accepted words for future runs, explicitly configure an existing UTF-8
+dictionary in Hunspell `.dic` format as both an extra dictionary and the learning
+target. For example, when using `--checkers=hunspell`:
+
+```toml
+# .config/spellcheck.toml
+[Hunspell]
+search_dirs = ["."]
+extra_dictionaries = ["lingo.dic"]
+learning_dictionary = "lingo.dic"
+skip_os_lookups = true
+use_builtin = true
+```
+
+Create `.config/lingo.dic` **before** running cargo-spellcheck. An empty dictionary
+contains a numeric entry count followed by a newline:
+
+```text
+0
+```
+
+The same settings are supported under `[Spellbook]` and `[ZSpell]` (Zet); the existing
+per-backend `learning_dictionary` setting is retained, with no new top-level TOML
+setting. Set it under **any one enabled spelling backend** to select the shared
+learning target. If more than one enabled backend sets it, all configured targets
+must identify the same file. Conflicting targets are errors, not a precedence
+rule. Settings on disabled backends do not select a learning target.
+
+`learning_dictionary` is resolved relative to the configuration file's directory
+(or may be absolute). Its existing file is canonicalized and must match one of
+the canonicalized `extra_dictionaries` of **each enabled spelling backend**. Those
+backends must also use the same `lang`. Missing shared targets or differing
+languages fail validation when an interactive fix session starts. Learning-specific
+validation runs after backend filtering, so unused backend learning settings do
+not block ordinary checks. Unlike extra-dictionary lookup, the learning target
+is not searched for in `search_dirs`. This ensures that learned
+words will actually be loaded by every active spelling engine on the next run,
+including in CI.
+
+For example, use this configuration with `--checkers=spellbook,zet` in a build
+with both Rust spelling backends enabled:
+
+```toml
+# .config/spellcheck.toml
+[Spellbook]
+lang = "en_US"
+search_dirs = ["."]
+extra_dictionaries = ["lingo.dic"]
+skip_os_lookups = true
+use_builtin = true
+
+[ZSpell]
+lang = "en_US"
+search_dirs = ["."]
+extra_dictionaries = ["lingo.dic"]
+learning_dictionary = "lingo.dic"
+skip_os_lookups = true
+use_builtin = true
+```
+
+Only `[ZSpell]` names the write target here, but both engines load it and share
+accepted vocabulary. Hunspell is not required for either session-only acceptance
+or persistence.
+
+Accepted words are collected for the session and saved on normal completion or
+when leaving with `q`. **Abort does not persist** the session's accepted words.
+Only single plain words can be accepted: numeric-only entries, whitespace,
+control characters, `/` flags, backslash escapes, a leading `#`, and a byte-order
+mark are rejected.
+Multiword suggestions cannot be learned this way. Case is preserved. Existing
+entry order, affix flags, and morphology are retained. Duplicate plain entries
+are not added. If an accepted word exists only with flags, a plain entry is added
+alongside it so standalone acceptance is explicit. New entries are appended in
+sorted order, and the entry count is recomputed.
+To add flags or word variants, edit the dictionary explicitly instead. Learning
+never rewrites the TOML configuration. Custom replacements remain source edits;
+only explicit acceptance with `a` learns vocabulary. Acceptance uses the word
+checked by the spelling backend, not a replacement suggestion. It does not add
+words directly to individual engines: pending acceptance is a shared session
+overlay.
+
+On commit, source edits are applied first. A source-update failure stops the
+dictionary update and backend reload. After successful source updates, accepted
+words are merged into the dictionary, re-reading its current contents under the
+lock so concurrent additions are preserved. The saved dictionary is then read
+back for verification, and the enabled engines are rebuilt from their
+configurations. Each spelling engine is then asked to verify that the accepted
+words are recognized as standalone words. Restrictive flags that still override
+a plain entry produce an error rather than a false success. Explicit dictionary
+reloads also rebuild engines rather than mutating individual words.
+
+Dictionary update, verification, or reload failures are reported as errors.
+Already-written source edits are not rolled back, and a reload failure does not
+undo a saved dictionary. Individual dictionary replacement is atomic, **not a
+transaction across source files and dictionaries**; even source edits may be
+partially applied before a later source-update failure.
+
+Track the `.dic` file in your repository to share the vocabulary. Writes use an
+adjacent temporary file and an atomic replacement, preserving file permissions.
+Concurrent sessions coordinate through a stable sidecar such as
+`.config/lingo.dic.cargo-spellcheck.lock`. This local advisory lock file is left in
+place intentionally: removing it could let sessions lock different files. Do not
+delete it while sessions may be active, and do not commit it. Add this pattern to
+`.gitignore` (it matches at any directory depth):
+
+```gitignore
+*.dic.cargo-spellcheck.lock
+```

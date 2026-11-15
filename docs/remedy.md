@@ -25,8 +25,68 @@ use_builtin = true
 
 ---
 
-Avoiding `nlprule` backend by passing `--checkers=hunspell` might be a good idea,
-since `nlprule` tends to have a few false positives.
+To run only spelling checks, pass `--checkers=hunspell`, `--checkers=spellbook`,
+`--checkers=zet`, or a comma-separated combination of the spelling backends
+available in your build. This avoids the `nlprule` grammar backend, which can
+produce false positives.
+
+## Accepting project vocabulary
+
+During an interactive fix session, press `a` to accept a correctly spelled word
+without editing the source. This works with Hunspell, Spellbook, and Zet, including
+Rust-only builds. The accepted checked word is immediately suppressed across all
+enabled spelling backends, including queued diagnostics and later files; grammar
+diagnostics remain unlearnable. Custom replacements still edit the source and do
+not learn either word.
+
+Acceptance is session-only unless you explicitly set `learning_dictionary` under
+an enabled `[Hunspell]`, `[Spellbook]`, or `[ZSpell]` (Zet) section. The setting remains
+per-backend; there is no top-level TOML setting. cargo-spellcheck never guesses a
+target from `extra_dictionaries` and never rewrites your TOML file.
+
+For persistent project vocabulary, create `.config/lingo.dic` first, containing
+`0` followed by a newline for an empty dictionary. For `--checkers=hunspell`,
+configure:
+
+```toml
+# .config/spellcheck.toml
+[Hunspell]
+search_dirs = ["."]
+extra_dictionaries = ["lingo.dic"]
+learning_dictionary = "lingo.dic"
+skip_os_lookups = true
+use_builtin = true
+```
+
+For `--checkers=spellbook` or `--checkers=zet`, use the same settings under
+`[Spellbook]` or `[ZSpell]` instead. The learning target is relative to the
+configuration file and must already exist. If multiple spelling backends are
+enabled, configure the target under any one of them, include that same dictionary
+in **every enabled spelling backend's** `extra_dictionaries`, and use the same
+`lang` for each. Multiple `learning_dictionary` settings must resolve to the same
+file; conflicting targets, missing shared extra dictionaries, or differing
+languages are errors.
+
+On normal completion or `q`, accepted words are merged into the dictionary; Abort
+(including Ctrl-C) discards pending accepted words and source edits. Case is
+preserved, existing flags and entry order are retained, and duplicate plain
+entries are not added. Accepted words with only flagged entries get a plain entry
+alongside them. Only single plain words are accepted, not phrases or Hunspell
+flag/escape syntax. Add affix flags manually when appropriate, as described below.
+
+Source edits are applied before vocabulary is saved. A source-update failure
+stops the save and reload. Saving re-reads and merges the dictionary under its
+lock, reads it back for verification, then rebuilds the spelling engines from
+configuration and checks that each engine accepts the learned words. Save,
+verification, and reload errors are reported, but earlier
+writes are not rolled back: this is **not a cross-file transaction**. Pending
+acceptance uses a shared session overlay, not per-word engine mutation.
+
+Commit the dictionary so teammates and CI use the same vocabulary. Ignore the
+local sidecar lock with `*.dic.cargo-spellcheck.lock` in `.gitignore`; the lock is
+intentionally left in place to coordinate concurrent sessions safely. See
+[learning accepted words](configuration.md#learning-accepted-words) for validation
+and persistence details.
 
 ## Examples
 
