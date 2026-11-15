@@ -112,14 +112,36 @@ impl Config {
         Ok(())
     }
 
-    fn spelling_backends(&self) -> impl Iterator<Item = &HunspellConfig> {
+    fn spelling_backends(&self) -> impl Iterator<Item = (&'static str, &HunspellConfig)> {
         [
-            (cfg!(feature = "hunspell"), self.hunspell.as_ref()),
-            (cfg!(feature = "zet"), self.zet.as_ref()),
-            (cfg!(feature = "spellbook"), self.spellbook.as_ref()),
+            #[cfg(feature = "hunspell")]
+            ("Hunspell", self.hunspell.as_ref()),
+            #[cfg(feature = "zet")]
+            ("ZSpell", self.zet.as_ref()),
+            #[cfg(feature = "spellbook")]
+            ("Spellbook", self.spellbook.as_ref()),
         ]
         .into_iter()
-        .filter_map(|(compiled, config)| config.filter(|_| compiled))
+        .filter_map(|(name, config): (_, Option<&HunspellConfig>)| {
+            config.map(|config| (name, config))
+        })
+    }
+
+    fn spelling_backends_mut(
+        &mut self,
+    ) -> impl Iterator<Item = (&'static str, &mut HunspellConfig)> {
+        [
+            #[cfg(feature = "hunspell")]
+            ("Hunspell", self.hunspell.as_mut()),
+            #[cfg(feature = "zet")]
+            ("ZSpell", self.zet.as_mut()),
+            #[cfg(feature = "spellbook")]
+            ("Spellbook", self.spellbook.as_mut()),
+        ]
+        .into_iter()
+        .filter_map(|(name, config): (_, Option<&mut HunspellConfig>)| {
+            config.map(|config| (name, config))
+        })
     }
 
     /// Whether any configured spelling backend was compiled into this binary.
@@ -129,10 +151,8 @@ impl Config {
 
     /// Resolve an existing, readable regular file without hiding filesystem errors.
     fn existing_learning_dictionary(path: &Path) -> Result<Option<PathBuf>> {
-        match fs::symlink_metadata(path) {
-            Ok(_) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-            Err(error) => return Err(error.into()),
+        if Self::dictionary_metadata(path)?.is_none() {
+            return Ok(None);
         }
         // Inspect the directory entry first so dangling symlinks are errors, not absence.
         let canonical = fs::canonicalize(path)?;
@@ -149,20 +169,21 @@ impl Config {
     /// Select the project learning dictionary without creating any directories or files.
     /// The legacy location is used only when the preferred location is absent.
     pub fn default_learning_dictionary(base: &Path) -> Result<PathBuf> {
-        let base = if base.is_absolute() {
-            base.to_owned()
-        } else {
-            std::env::current_dir()?.join(base)
-        };
+        Ok(Self::resolve_default_learning_dictionary(base)?.0)
+    }
+
+    // As with fix-time validation, the flag denotes absence. Discovery remains read-only.
+    fn resolve_default_learning_dictionary(base: &Path) -> Result<(PathBuf, bool)> {
+        let base = Self::absolute_dictionary_path(base)?;
         let preferred = base.join(".config/spellcheck/learnings.dic");
         if let Some(path) = Self::existing_learning_dictionary(&preferred)? {
-            return Ok(path);
+            return Ok((path, false));
         }
         let legacy = base.join(".config/learnings.dic");
         if let Some(path) = Self::existing_learning_dictionary(&legacy)? {
-            return Ok(path);
+            return Ok((path, false));
         }
-        Ok(preferred)
+        Ok((preferred, true))
     }
 
     /// Load an existing default for normal checks without validating explicit learning settings.
@@ -171,47 +192,52 @@ impl Config {
         if !self.has_spelling_backends()
             || self
                 .spelling_backends()
-                .any(|config| config.learning_dictionary.is_some())
+                .any(|(_, config)| config.learning_dictionary.is_some())
         {
             return Ok(None);
         }
-        let path = Self::default_learning_dictionary(base)?;
-        if let Some(path) = Self::existing_learning_dictionary(&path)? {
-            self.add_learning_dictionary(&path);
-            Ok(Some(path))
-        } else {
-            Ok(None)
+        let (path, missing) = Self::resolve_default_learning_dictionary(base)?;
+        if missing {
+            return Ok(None);
         }
+        self.add_learning_dictionary(&path);
+        Ok(Some(path))
     }
 
     /// Register an already validated absolute target for the next backend reload.
     /// This does not set an explicit learning target or write to the filesystem.
     pub fn add_learning_dictionary(&mut self, path: &Path) {
-        for config in [
-            (cfg!(feature = "hunspell"), self.hunspell.as_mut()),
-            (cfg!(feature = "zet"), self.zet.as_mut()),
-            (cfg!(feature = "spellbook"), self.spellbook.as_mut()),
-        ]
-        .into_iter()
-        .filter_map(|(compiled, config)| config.filter(|_| compiled))
-        {
+        for (_, config) in self.spelling_backends_mut() {
             if !config.extra_dictionaries.iter().any(|extra| extra == path) {
                 config.extra_dictionaries.push(path.to_owned());
             }
         }
     }
 
+    fn absolute_dictionary_path(path: &Path) -> Result<PathBuf> {
+        if path.is_absolute() {
+            Ok(path.to_owned())
+        } else {
+            Ok(std::env::current_dir()?.join(path))
+        }
+    }
+
+    // Only absence is optional: permission errors, symlink loops and malformed parents propagate.
+    fn dictionary_metadata(path: &Path) -> Result<Option<std::fs::Metadata>> {
+        match fs::symlink_metadata(path) {
+            Ok(metadata) => Ok(Some(metadata)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(error.into()),
+        }
+    }
+
     /// Canonicalize the existing ancestor while preserving any missing path components.
     fn resolve_dictionary_path(path: &Path) -> Result<PathBuf> {
-        let mut ancestor = if path.is_absolute() {
-            path.to_owned()
-        } else {
-            std::env::current_dir()?.join(path)
-        };
+        let mut ancestor = Self::absolute_dictionary_path(path)?;
         let mut missing = Vec::new();
         loop {
-            match fs::symlink_metadata(&ancestor) {
-                Ok(_) => {
+            match Self::dictionary_metadata(&ancestor)? {
+                Some(_) => {
                     // A dangling symlink (including an ancestor) must not count as absence.
                     let mut resolved = fs::canonicalize(&ancestor)?;
                     if !missing.is_empty() && !fs::metadata(&resolved)?.is_dir() {
@@ -225,7 +251,7 @@ impl Config {
                     }
                     return Ok(resolved);
                 }
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                None => {
                     let component = ancestor
                         .components()
                         .next_back()
@@ -234,10 +260,9 @@ impl Config {
                         .to_owned();
                     missing.push(component);
                     if !ancestor.pop() {
-                        return Err(error.into());
+                        bail!("Cannot resolve dictionary {}", path.display());
                     }
                 }
-                Err(error) => return Err(error.into()),
             }
         }
     }
@@ -246,8 +271,8 @@ impl Config {
     /// The returned flag is true when the target is absent; nothing is created or truncated.
     pub(crate) fn validate_learning_dictionary(path: &Path) -> Result<(PathBuf, bool)> {
         let resolved = Self::resolve_dictionary_path(path)?;
-        match fs::symlink_metadata(&resolved) {
-            Ok(metadata) => {
+        match Self::dictionary_metadata(&resolved)? {
+            Some(metadata) => {
                 if !metadata.is_file() || metadata.permissions().readonly() {
                     bail!(
                         "Learning dictionary {} must be a writable regular file",
@@ -257,8 +282,7 @@ impl Config {
                 fs::OpenOptions::new().write(true).open(&resolved)?;
                 Ok((resolved, false))
             }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok((resolved, true)),
-            Err(error) => Err(error.into()),
+            None => Ok((resolved, true)),
         }
     }
 
@@ -266,56 +290,26 @@ impl Config {
     /// This only changes the in-memory extra dictionaries, never the configured target or TOML.
     pub(crate) fn omit_missing_learning_dictionary(&mut self, path: &Path) -> Result<()> {
         let target = Self::resolve_dictionary_path(path)?;
-        match fs::symlink_metadata(&target) {
-            Ok(_) => return Ok(()),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => return Err(error.into()),
+        if Self::dictionary_metadata(&target)?.is_some() {
+            return Ok(());
         }
-        for config in [
-            (cfg!(feature = "hunspell"), self.hunspell.as_mut()),
-            (cfg!(feature = "zet"), self.zet.as_mut()),
-            (cfg!(feature = "spellbook"), self.spellbook.as_mut()),
-        ]
-        .into_iter()
-        .filter_map(|(compiled, config)| config.filter(|_| compiled))
-        {
-            let extras = config
-                .extra_dictionaries
-                .iter()
-                .map(|extra| Ok((extra, Self::resolve_dictionary_path(extra)?)))
-                .collect::<Result<Vec<_>>>()?;
-            config.extra_dictionaries = extras
-                .into_iter()
-                .filter(|(_, resolved)| resolved != &target)
-                .map(|(extra, _)| extra.clone())
-                .collect();
+        for (_, config) in self.spelling_backends_mut() {
+            let mut extras = Vec::with_capacity(config.extra_dictionaries.len());
+            for extra in &config.extra_dictionaries {
+                if Self::resolve_dictionary_path(extra)? != target {
+                    extras.push(extra.clone());
+                }
+            }
+            config.extra_dictionaries = extras;
         }
         Ok(())
     }
 
     /// Validate and resolve one shared learning target after filtering enabled spelling engines.
     pub(crate) fn learning_dictionary(&self) -> Result<Option<PathBuf>> {
-        let active = [
-            (
-                cfg!(feature = "hunspell"),
-                "Hunspell",
-                self.hunspell.as_ref(),
-            ),
-            (cfg!(feature = "zet"), "ZSpell", self.zet.as_ref()),
-            (
-                cfg!(feature = "spellbook"),
-                "Spellbook",
-                self.spellbook.as_ref(),
-            ),
-        ];
-        let active = active
-            .into_iter()
-            .filter(|(compiled, _, _)| *compiled)
-            .filter_map(|(_, name, config)| config.map(|config| (name, config)))
-            .collect::<Vec<_>>();
         let mut target: Option<PathBuf> = None;
         let mut language = None;
-        for (name, config) in &active {
+        for (name, config) in self.spelling_backends() {
             if language.is_some_and(|language| language != config.lang()) {
                 bail!("Interactive vocabulary learning requires enabled spelling backends to use the same language ({name} differs)");
             }
@@ -330,22 +324,18 @@ impl Config {
             }
         }
         if let Some(target) = target.as_ref() {
-            for (name, config) in active {
-                let extra_dictionaries = config
-                    .extra_dictionaries
-                    .iter()
-                    .map(|path| {
-                        (|| -> Result<PathBuf> {
-                            let resolved = Self::resolve_dictionary_path(path)?;
-                            if &resolved != target && !fs::metadata(&resolved)?.is_file() {
-                                bail!("Dictionary {} must be a regular file", path.display());
-                            }
-                            Ok(resolved)
-                        })()
-                        .wrap_err_with(|| format!("{name} extra_dictionaries {} must be an existing dictionary file or the learning target", path.display()))
-                    })
-                    .collect::<Result<Vec<_>>>()?;
-                if !extra_dictionaries.contains(target) {
+            for (name, config) in self.spelling_backends() {
+                let mut registered = false;
+                for path in &config.extra_dictionaries {
+                    let resolved = Self::resolve_dictionary_path(path).and_then(|resolved| {
+                        if &resolved != target && !fs::metadata(&resolved)?.is_file() {
+                            bail!("Dictionary {} must be a regular file", path.display());
+                        }
+                        Ok(resolved)
+                    }).wrap_err_with(|| format!("{name} extra_dictionaries {} must be an existing dictionary file or the learning target", path.display()))?;
+                    registered |= &resolved == target;
+                }
+                if !registered {
                     bail!("Learning dictionary {} must be listed in extra_dictionaries for every enabled spelling backend ({name} is missing it)", target.display());
                 }
             }

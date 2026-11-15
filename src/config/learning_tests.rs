@@ -276,6 +276,71 @@ fn active_learning_registrations_must_be_existing_files() {
 }
 
 #[test]
+fn invalid_other_registrations_are_not_hidden_by_a_registered_target() {
+    let dir = TempDir::new();
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink("missing.dic", dir.path("broken.dic")).unwrap();
+        std::os::unix::fs::symlink("loop.dic", dir.path("loop.dic")).unwrap();
+    }
+    let invalid = [
+        "learning.dic/child.dic",
+        #[cfg(unix)]
+        "broken.dic",
+        #[cfg(unix)]
+        "loop.dic",
+    ];
+    for &(name, backend) in BACKENDS {
+        for target in ["learning.dic", "missing.dic"] {
+            for registration in &invalid {
+                let mut config = disabled_config();
+                *backend(&mut config) =
+                    Some(dir.spelling_config(Some(target), &[target, registration]));
+                let error = config.learning_dictionary().unwrap_err().to_string();
+                assert!(error.contains("extra_dictionaries"), "{name}: {error}");
+                assert!(error.contains(registration), "{name}: {error}");
+                let before = config.to_toml().unwrap();
+                if target == "missing.dic" {
+                    assert!(config
+                        .omit_missing_learning_dictionary(&dir.path(target))
+                        .is_err());
+                    assert_eq!(config.to_toml().unwrap(), before);
+                }
+            }
+        }
+    }
+    assert!(!dir.path("missing.dic").exists());
+}
+
+#[test]
+fn cli_filter_excludes_invalid_learning_settings_and_preserves_reflow() {
+    use super::args::Args;
+
+    let dir = TempDir::new();
+    for &(name, selected) in BACKENDS {
+        let invalid = dir.spelling_config(Some("nested"), &["nested"]);
+        let mut config = Config {
+            hunspell: Some(invalid.clone()),
+            zet: Some(invalid.clone()),
+            spellbook: Some(invalid),
+            ..Config::default()
+        };
+        *selected(&mut config) = Some(dir.spelling_config(Some("learning.dic"), &["learning.dic"]));
+        let mut loaded = dir.load(&config);
+        let reflow_width = loaded.reflow.as_ref().unwrap().max_line_length;
+        Args::checker_selection_override(Some(&[name.parse().unwrap()]), &mut loaded).unwrap();
+        assert_eq!(
+            loaded.learning_dictionary().unwrap(),
+            Some(dir.path("learning.dic"))
+        );
+        assert_eq!(
+            loaded.reflow.as_ref().unwrap().max_line_length,
+            reflow_width
+        );
+    }
+}
+
+#[test]
 fn load_from_accepts_equivalent_relative_targets_across_backends() {
     let dir = TempDir::new();
     let mut config = disabled_config();
@@ -801,6 +866,33 @@ fn validating_missing_defaults_canonicalizes_existing_ancestors_without_creation
         (dir.path("nested").join(PREFERRED), true)
     );
     assert!(!dir.path("nested/.config").exists());
+}
+
+#[test]
+fn dictionary_validation_rechecks_paths_after_prior_success() {
+    let dir = TempDir::new();
+    let preferred = write_default(&dir, PREFERRED);
+    assert_eq!(
+        Config::default_learning_dictionary(&dir.0).unwrap(),
+        preferred
+    );
+    assert_eq!(
+        Config::validate_learning_dictionary(&preferred).unwrap(),
+        (preferred.clone(), false)
+    );
+    fs::remove_file(&preferred).unwrap();
+    let mut config = dir.all_backends(None);
+    assert_eq!(
+        config.include_default_learning_dictionary(&dir.0).unwrap(),
+        None
+    );
+    assert_eq!(
+        Config::validate_learning_dictionary(&preferred).unwrap(),
+        (preferred.clone(), true)
+    );
+    fs::create_dir(&preferred).unwrap();
+    assert!(Config::default_learning_dictionary(&dir.0).is_err());
+    assert!(Config::validate_learning_dictionary(&preferred).is_err());
 }
 
 #[test]
