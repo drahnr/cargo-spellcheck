@@ -16,6 +16,7 @@ use crossterm::{
 use std::io::{stdout, Write};
 
 use super::learning::{DictionaryEntry, SessionResolutions};
+use crate::checker::SpellcheckResult;
 
 mod learning;
 
@@ -255,10 +256,7 @@ pub(super) enum DocumentOutcome {
 pub(super) enum UserSelection {
     /// This `BandAid` is going to be applied.
     Replacement(BandAid),
-    /// Accept the original spelling as project vocabulary.
-    AcceptWord,
-    /// Keep the source verbatim and select a dictionary entry before learning.
-    LearnWord,
+
     /// A separately confirmed vocabulary entry, optionally accompanying a source edit.
     RecordEntry {
         entry: DictionaryEntry,
@@ -299,6 +297,23 @@ where
     pub pick_idx: usize,
     /// Total number of pickable slots.
     pub n_items: usize,
+}
+
+impl UserSelection {
+    fn with_learning(self, outcome: learning::LearningOutcome) -> Self {
+        match outcome {
+            learning::LearningOutcome::Confirmed(preview) => Self::RecordEntry {
+                entry: preview.entry,
+                forms: preview.forms,
+                replacement: match self {
+                    Self::Replacement(replacement) => Some(replacement),
+                    _ => None,
+                },
+            },
+            learning::LearningOutcome::Declined => self,
+            learning::LearningOutcome::Aborted => Self::Abort,
+        }
+    }
 }
 
 impl<'s, 't> State<'s, 't>
@@ -356,14 +371,6 @@ where
             "\n\n"
         } else {
             ""
-        }
-    }
-
-    fn to_selection(&self) -> UserSelection {
-        if self.is_learning_entry() {
-            UserSelection::LearnWord
-        } else {
-            UserSelection::Replacement(self.to_bandaid())
         }
     }
 
@@ -545,6 +552,7 @@ impl UserPicked {
         state: &mut State,
         running_idx: usize,
         total: usize,
+        resolutions: &SessionResolutions,
     ) -> Result<UserSelection> {
         let acceptance = if state.can_accept { ",a" } else { "" };
         let question = format!(
@@ -653,7 +661,18 @@ impl UserPicked {
             match select_key(&mut state.pick_idx, state.n_items, event) {
                 Some(SelectionAction::Redraw) => continue,
                 Some(SelectionAction::Submit) => {
-                    return Ok(state.to_selection());
+                    return if state.is_learning_entry() {
+                        Ok(UserSelection::Nop.with_learning(learning::choose_word(
+                            state
+                                .suggestion
+                                .checked_word
+                                .as_deref()
+                                .expect("eligible word"),
+                            resolutions,
+                        )?))
+                    } else {
+                        Ok(UserSelection::Replacement(state.to_bandaid()))
+                    };
                 }
                 Some(SelectionAction::Skip) => return Ok(UserSelection::Skip),
                 Some(SelectionAction::Cancel) => return Ok(UserSelection::Quit),
@@ -663,7 +682,15 @@ impl UserPicked {
 
             match event.code {
                 KeyCode::Char('a') if state.can_accept => {
-                    return Ok(UserSelection::AcceptWord);
+                    return Ok(UserSelection::Nop.with_learning(learning::prompt(
+                        state
+                            .suggestion
+                            .checked_word
+                            .as_deref()
+                            .expect("eligible word"),
+                        true,
+                        resolutions,
+                    )?));
                 }
                 KeyCode::Char('j') => return Ok(UserSelection::Previous),
                 KeyCode::Char('q') => return Ok(UserSelection::Quit),
@@ -688,58 +715,32 @@ impl UserPicked {
         checkers: &Checkers,
         output_paths: &OutputPaths,
     ) -> Result<(Self, DocumentOutcome)> {
-        Self::select_with_followup(
+        Self::select_with_paths(
             origin,
             suggestions,
             resolutions,
             output_paths,
             |picked, state, idx, count, resolutions| {
-                let selection = picked.user_input(state, idx, count)?;
-                let (word, accept_as_is) = match &selection {
-                    UserSelection::AcceptWord | UserSelection::LearnWord => {
-                        match state.suggestion.checked_word.as_deref() {
-                            Some(word) => (word, true),
-                            None => return Ok(selection),
-                        }
-                    }
-                    UserSelection::Replacement(replacement)
-                        if state.can_accept
-                            && !state.is_ticked_entry()
-                            && resolutions
-                                .validate_learning_word(&replacement.content)
-                                .is_ok()
-                            && !resolutions.knows_word(&replacement.content)
-                            && !matches!(
-                                checkers
-                                    .word_membership(&replacement.content)
-                                    .map_err(|e| eyre!(e.into_boxed_dyn_error()))?,
-                                crate::checker::SpellcheckResult::Recognized
-                            ) =>
+                let selection = picked.user_input(state, idx, count, resolutions)?;
+                if let UserSelection::Replacement(replacement) = &selection {
+                    if state.can_accept
+                        && !state.is_ticked_entry()
+                        && resolutions
+                            .validate_learning_word(&replacement.content)
+                            .is_ok()
+                        && !resolutions.knows_word(&replacement.content)
+                        && !matches!(
+                            checkers
+                                .word_membership(&replacement.content)
+                                .map_err(|e| eyre!(e.into_boxed_dyn_error()))?,
+                            SpellcheckResult::Recognized
+                        )
                     {
-                        (replacement.content.as_str(), false)
+                        let outcome = learning::prompt(&replacement.content, false, resolutions)?;
+                        return Ok(selection.with_learning(outcome));
                     }
-                    _ => return Ok(selection),
-                };
-                let outcome = if matches!(selection, UserSelection::LearnWord) {
-                    learning::choose_word(word, resolutions)?
-                } else {
-                    learning::prompt(word, accept_as_is, resolutions)?
-                };
-                match outcome {
-                    learning::LearningOutcome::Record(entry, forms) => {
-                        Ok(UserSelection::RecordEntry {
-                            entry,
-                            forms,
-                            replacement: match selection {
-                                UserSelection::Replacement(replacement) => Some(replacement),
-                                _ => None,
-                            },
-                        })
-                    }
-                    learning::LearningOutcome::Skip => Ok(selection),
-                    learning::LearningOutcome::Cancel => Ok(UserSelection::Nop),
-                    learning::LearningOutcome::Abort => Ok(UserSelection::Abort),
                 }
+                Ok(selection)
             },
         )
     }
@@ -749,30 +750,19 @@ impl UserPicked {
         origin: ContentOrigin,
         suggestions: Vec<Suggestion<'s>>,
         resolutions: &mut SessionResolutions,
-        input: impl FnMut(&Self, &mut State<'_, 's>, usize, usize) -> Result<UserSelection>,
+        input: impl FnMut(
+            &Self,
+            &mut State<'_, 's>,
+            usize,
+            usize,
+            &SessionResolutions,
+        ) -> Result<UserSelection>,
     ) -> Result<(Self, DocumentOutcome)> {
         let output_paths = OutputPaths::new(&[], false)?;
         Self::select_with_paths(origin, suggestions, resolutions, &output_paths, input)
     }
 
-    #[cfg(test)]
     fn select_with_paths<'s>(
-        origin: ContentOrigin,
-        suggestions: Vec<Suggestion<'s>>,
-        resolutions: &mut SessionResolutions,
-        output_paths: &OutputPaths,
-        mut input: impl FnMut(&Self, &mut State<'_, 's>, usize, usize) -> Result<UserSelection>,
-    ) -> Result<(Self, DocumentOutcome)> {
-        Self::select_with_followup(
-            origin,
-            suggestions,
-            resolutions,
-            output_paths,
-            |picked, state, idx, count, _| input(picked, state, idx, count),
-        )
-    }
-
-    fn select_with_followup<'s>(
         origin: ContentOrigin,
         suggestions: Vec<Suggestion<'s>>,
         resolutions: &mut SessionResolutions,
@@ -782,7 +772,7 @@ impl UserPicked {
             &mut State<'_, 's>,
             usize,
             usize,
-            &mut SessionResolutions,
+            &SessionResolutions,
         ) -> Result<UserSelection>,
     ) -> Result<(Self, DocumentOutcome)> {
         let count = suggestions.len();
@@ -811,17 +801,15 @@ impl UserPicked {
                         continue 'inner;
                     }
 
-                    UserSelection::AcceptWord | UserSelection::LearnWord => {
-                        if let Err(error) = resolutions.accept(suggestion) {
-                            log::warn!("{}", error);
-                            continue 'inner;
-                        }
-                    }
                     UserSelection::RecordEntry {
                         entry,
                         forms,
                         replacement,
                     } => {
+                        if !state.can_accept {
+                            log::warn!("Cannot learn vocabulary from this finding");
+                            continue 'inner;
+                        }
                         if let Err(error) = resolutions.record_entry(entry, &forms) {
                             log::warn!("{error}");
                             println!("{}", suggestion.display_with_path(&path));

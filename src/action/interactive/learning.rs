@@ -16,10 +16,9 @@ use std::io::{stdout, Write};
 
 #[derive(Debug)]
 pub(super) enum LearningOutcome {
-    Skip,
-    Record(DictionaryEntry, Vec<String>),
-    Cancel,
-    Abort,
+    Confirmed(AffixSuggestion),
+    Declined,
+    Aborted,
 }
 
 pub(super) fn prompt(
@@ -39,29 +38,24 @@ pub(super) fn prompt(
         }
         write!(stdout(), "\r\n")?;
         if is_control(key, 'c') {
-            return Ok(LearningOutcome::Abort);
+            return Ok(LearningOutcome::Aborted);
         }
-        let outcome = match key.code {
-            KeyCode::Char('p') | KeyCode::Enter => choose_and_confirm(word, session)?,
-            KeyCode::Esc | KeyCode::Char('n') => None,
-            KeyCode::Char('e') => edit_and_choose(word, session)?,
+        return match key.code {
+            KeyCode::Char('p') | KeyCode::Enter => choose_and_confirm(word, session),
+            KeyCode::Esc | KeyCode::Char('n') => Ok(LearningOutcome::Declined),
+            KeyCode::Char('e') => edit_and_choose(word, session),
             _ => {
                 print_learning_prompt(&mut stdout(), word, accept_as_is)?;
                 continue;
             }
         };
-        return Ok(outcome.unwrap_or(if accept_as_is {
-            LearningOutcome::Cancel
-        } else {
-            LearningOutcome::Skip
-        }));
     }
 }
 
 pub(super) fn choose_word(word: &str, session: &SessionResolutions) -> Result<LearningOutcome> {
     session.validate_learning_word(word)?;
     let _raw = ScopedRaw::new()?;
-    Ok(choose_and_confirm(word, session)?.unwrap_or(LearningOutcome::Cancel))
+    choose_and_confirm(word, session)
 }
 
 fn print_entry_preview(
@@ -166,13 +160,13 @@ fn print_learning_commands(output: &mut impl Write, accept_as_is: bool) -> Resul
     )
 }
 
-fn edit_and_choose(word: &str, session: &SessionResolutions) -> Result<Option<LearningOutcome>> {
+fn edit_and_choose(word: &str, session: &SessionResolutions) -> Result<LearningOutcome> {
     let mut edited = word.to_owned();
     loop {
         let (action, text) = read_line(EditorStage::Word, &edited)?;
         match action {
-            Input::Abort => return Ok(Some(LearningOutcome::Abort)),
-            Input::Cancel => return Ok(None),
+            Input::Abort => return Ok(LearningOutcome::Aborted),
+            Input::Cancel => return Ok(LearningOutcome::Declined),
             Input::Submit => edited = text,
         }
         match session.validate_learning_word(&edited) {
@@ -184,7 +178,7 @@ fn edit_and_choose(word: &str, session: &SessionResolutions) -> Result<Option<Le
     choose_and_confirm(&edited, session)
 }
 
-fn choose_and_confirm(word: &str, session: &SessionResolutions) -> Result<Option<LearningOutcome>> {
+fn choose_and_confirm(word: &str, session: &SessionResolutions) -> Result<LearningOutcome> {
     let mut patterns = match session.pattern_suggestions(word) {
         Ok(patterns) => patterns,
         Err(error) => {
@@ -204,19 +198,20 @@ fn choose_and_confirm(word: &str, session: &SessionResolutions) -> Result<Option
     loop {
         match choose_pattern(&mut patterns, &mut selected, session)? {
             PatternAction::Manual => return choose_manually(word, session),
-            PatternAction::Cancel => return Ok(None),
-            PatternAction::Abort => return Ok(Some(LearningOutcome::Abort)),
+            PatternAction::Cancel => return Ok(LearningOutcome::Declined),
+            PatternAction::Abort => return Ok(LearningOutcome::Aborted),
             PatternAction::Submit => {
-                match confirm_entry(&patterns[selected].suggestion, session, false)? {
-                    EditOutcome::Back => continue,
-                    EditOutcome::Finished(outcome) => return Ok(outcome),
+                if let Some(outcome) =
+                    confirm_entry(&patterns[selected].suggestion, session, false)?
+                {
+                    return Ok(outcome);
                 }
             }
         }
     }
 }
 
-fn choose_manually(word: &str, session: &SessionResolutions) -> Result<Option<LearningOutcome>> {
+fn choose_manually(word: &str, session: &SessionResolutions) -> Result<LearningOutcome> {
     let mut suffixes = vec![session.preview_entry(word, None)?];
     match session.entry_suggestions(word) {
         Ok(suggestions) => suffixes.extend(suggestions),
@@ -227,25 +222,20 @@ fn choose_manually(word: &str, session: &SessionResolutions) -> Result<Option<Le
     }
     'suffix: loop {
         let (action, selected) = choose_entry(&suffixes, EntryStage::Suffix)?;
-        match action {
-            EntryAction::Abort => return Ok(Some(LearningOutcome::Abort)),
-            EntryAction::Cancel => return Ok(None),
-            EntryAction::Edit => match confirm_entry(&suffixes[selected], session, true)? {
-                EditOutcome::Back => continue 'suffix,
-                EditOutcome::Finished(outcome) => return Ok(outcome),
+        let (stems, choose_stem) = match action {
+            EntryAction::Abort => return Ok(LearningOutcome::Aborted),
+            EntryAction::Cancel => return Ok(LearningOutcome::Declined),
+            EntryAction::Edit => (vec![suffixes[selected].clone()], false),
+            EntryAction::Submit => match suffixes[selected].entry.flags() {
+                Some(flags) => (session.stem_suggestions(word, flags)?, true),
+                None => (vec![suffixes[selected].clone()], false),
             },
-            EntryAction::Submit => {}
-        }
-        let flags = suffixes[selected].entry.flags();
-        let stems = match flags {
-            Some(flags) => session.stem_suggestions(word, flags)?,
-            None => vec![suffixes[selected].clone()],
         };
         'stem: loop {
-            let selected = if flags.is_some() {
+            let selected = if choose_stem {
                 let (action, selected) = choose_entry(&stems, EntryStage::Stem)?;
                 match action {
-                    EntryAction::Abort => return Ok(Some(LearningOutcome::Abort)),
+                    EntryAction::Abort => return Ok(LearningOutcome::Aborted),
                     EntryAction::Cancel => continue 'suffix,
                     EntryAction::Submit | EntryAction::Edit => selected,
                 }
@@ -253,17 +243,12 @@ fn choose_manually(word: &str, session: &SessionResolutions) -> Result<Option<Le
                 0
             };
             match confirm_entry(&stems[selected], session, true)? {
-                EditOutcome::Back if flags.is_some() => continue 'stem,
-                EditOutcome::Back => continue 'suffix,
-                EditOutcome::Finished(outcome) => return Ok(outcome),
+                None if choose_stem => continue 'stem,
+                None => continue 'suffix,
+                Some(outcome) => return Ok(outcome),
             }
         }
     }
-}
-
-enum EditOutcome {
-    Back,
-    Finished(Option<LearningOutcome>),
 }
 
 fn edit_stem(
@@ -284,18 +269,19 @@ fn edit_stem(
     }
 }
 
+// None means only local backtracking from the editor to its picker.
 fn confirm_entry(
     suggestion: &AffixSuggestion,
     session: &SessionResolutions,
     mut edit_first: bool,
-) -> Result<EditOutcome> {
+) -> Result<Option<LearningOutcome>> {
     let mut preview = suggestion.clone();
     'edit: loop {
         if edit_first {
             let (action, edited) = edit_stem(&preview, session)?;
             match action {
-                Input::Abort => return Ok(EditOutcome::Finished(Some(LearningOutcome::Abort))),
-                Input::Cancel => return Ok(EditOutcome::Back),
+                Input::Abort => return Ok(Some(LearningOutcome::Aborted)),
+                Input::Cancel => return Ok(None),
                 Input::Submit => preview = edited,
             }
         }
@@ -310,17 +296,14 @@ fn confirm_entry(
             }
             if is_control(key, 'c') {
                 write!(stdout(), "\r\n")?;
-                return Ok(EditOutcome::Finished(Some(LearningOutcome::Abort)));
+                return Ok(Some(LearningOutcome::Aborted));
             }
             match key.code {
                 KeyCode::Enter | KeyCode::Char('y')
                     if key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT =>
                 {
                     write!(stdout(), "\r\n")?;
-                    return Ok(EditOutcome::Finished(Some(LearningOutcome::Record(
-                        preview.entry,
-                        preview.forms,
-                    ))));
+                    return Ok(Some(LearningOutcome::Confirmed(preview)));
                 }
                 KeyCode::Char('e') => {
                     write!(stdout(), "\r\n")?;
@@ -329,7 +312,7 @@ fn confirm_entry(
                 }
                 KeyCode::Esc | KeyCode::Char('n') => {
                     write!(stdout(), "\r\n")?;
-                    return Ok(EditOutcome::Finished(None));
+                    return Ok(Some(LearningOutcome::Declined));
                 }
                 _ => {}
             }
@@ -1450,6 +1433,38 @@ mod tests {
         assert_eq!(
             highlight_expansion("same", &["same".to_owned()]),
             "same".with(Color::Cyan).to_string()
+        );
+    }
+
+    #[test]
+    fn clipped_context_styles_only_visible_forms_not_explanations_or_ellipsis() {
+        let session = SessionResolutions::default();
+        let plain = session.preview_entry("naïve", None).unwrap();
+        for (width, expected) in [
+            (18, format!("{}…", "naï".with(Color::Cyan))),
+            (20, format!("{}…", "naïve".with(Color::Cyan))),
+            (32, format!("{} (plain word…", "naïve".with(Color::Cyan))),
+        ] {
+            let mut output = Vec::new();
+            print_picker_context(&mut output, &plain, width, None).unwrap();
+            assert_eq!(
+                String::from_utf8(output).unwrap(),
+                format!("\x1b7\x1b[1B\x1b[1G\x1b[2KWould match: {expected}\x1b8")
+            );
+        }
+        let flagged = AffixSuggestion {
+            entry: DictionaryEntry::with_test_flags("city", "S").unwrap(),
+            forms: vec!["city".into(), "cities".into()],
+        };
+        let mut output = Vec::new();
+        print_picker_context(&mut output, &flagged, 24, None).unwrap();
+        assert_eq!(
+            String::from_utf8(output).unwrap(),
+            format!(
+                "\x1b7\x1b[1B\x1b[1G\x1b[2KWould match: {}, {}…\x1b8",
+                "city".with(Color::Cyan),
+                "cit".with(Color::Cyan),
+            )
         );
     }
 

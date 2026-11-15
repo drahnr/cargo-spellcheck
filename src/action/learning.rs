@@ -96,6 +96,7 @@ impl SessionResolutions {
         self.accepted_words.contains(word)
     }
 
+    #[cfg(test)]
     pub(super) fn accept(&mut self, suggestion: &Suggestion<'_>) -> Result<()> {
         let word = suggestion
             .checked_word
