@@ -15,9 +15,27 @@ const fn yes() -> bool {
 pub struct Quirks {
     /// A regular expression, whose capture groups will be checked, instead of
     /// the initial token. Only the first one that matches will be used to split
-    /// the word. Expressions without capture groups allow-list matching tokens;
-    /// they can also exclude matches spanning adjacent tokens within a non-whitespace
-    /// sequence, without excluding neighboring words.
+    /// the word. Expressions without capture groups allow-list matching tokens.
+    /// All expressions can also match across two or more tokenizer tokens within
+    /// one non-whitespace sequence, without excluding neighbors outside the match.
+    /// Without capture groups, the eligible matched portion is excluded. With
+    /// capture groups (including named groups), each nonempty participating group
+    /// is a separate check candidate, even if it spans tokens; uncaptured portions
+    /// of the full match (group 0) are skipped. Compound captures are clipped to
+    /// group 0; existing per-token lookaround behavior is unchanged. Empty and
+    /// unmatched groups are ignored; if none remain in a compound match, its eligible
+    /// portion is skipped. Existing per-token empty-capture behavior is unchanged.
+    /// Overlapping or nested captures are independent;
+    /// identical capture ranges are deduplicated before recursive transformation.
+    /// Rules are ordered: an earlier expression matching an original token protects
+    /// that entire token from later cross-token matches. Unprotected tokens can
+    /// still be transformed by the same cross-token match. Ranges selected by an
+    /// earlier cross-token capture are protected from later cross-token exclusions.
+    /// An earlier exclusion is never restored by a later capture rule. Captured
+    /// fragments are recursively transformed using the same ordered rules; identity
+    /// captures advance to later rules to ensure termination. Captures and remaining
+    /// token fragments are transformed as standalone strings, so anchors and
+    /// lookarounds see fragment boundaries; recursive rules can still allow-list them.
     #[serde(default)]
     pub transform_regex: Vec<WrappedRegex>,
     /// Allow concatenated words instead of dashed connection. Note that this

@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 
 ### Features
 
+- Support multiple `transform_regex` capture groups in compounds spanning tokenizer
+  boundaries, preserving source offsets and ordered rule precedence. Captures may
+  themselves span tokens and undergo recursive transformations. Empty or absent
+  compound captures are ignored; existing per-token capture behavior is preserved.
 - Display source paths relative to the supplied input directory, or the current
   working directory when no path is supplied. Use `--full-paths` to print absolute
   paths in diagnostics and file listings instead.

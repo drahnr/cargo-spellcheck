@@ -90,8 +90,12 @@ use_builtin = true
 # into word fragments based on the capture groups which are to
 # be checked.
 # If no capture groups are present, the matched word is whitelisted.
-# Such matches can also span adjacent tokens within a non-whitespace sequence,
-# e.g. "->", "-+>", or "::", without excluding neighboring words.
+# All expressions can also match across tokenizer boundaries within one
+# non-whitespace sequence, e.g. compounds containing "->", "-+>", or "::".
+# Captures select fragments to check, including fragments spanning tokens;
+# without captures, only the matching portion is excluded, not neighboring words.
+# Rules are ordered: earlier matches on an original token take precedence over
+# later cross-token matches. See "Transformation rule precedence" below.
 transform_regex = ["^'([^\\s])'$", "^[0-9]+x$"]
 # Accepts `alphabeta` variants if the checker provides a replacement suggestion
 # of `alpha-beta`.
@@ -120,5 +124,68 @@ check_footnote_references = false
 # Reflows doc comments to adhere to adhere to a given maximum line width limit.
 max_line_length = 80
 ```
+
+### Transformation rule precedence
+
+`transform_regex` uses array order for Hunspell, Spellbook, and ZSpell:
+
+- For each tokenizer token, the first matching expression determines the
+  transformation. Capture groups select fragments to check; an expression without
+  capture groups allow-lists the whole matching token. Captured fragments are
+  recursively transformed using the same ordered rules. Identity captures (those
+  selecting the entire fragment unchanged) advance to later rules to terminate.
+- All expressions can also match across two or more tokenizer tokens within one
+  non-whitespace sequence. Without capture groups, only the eligible matching
+  portion is excluded. With capture groups, each nonempty participating group is
+  a separate check candidate, including a capture spanning multiple tokens. Named
+  captures use normal regex syntax. Uncaptured portions of the full match
+  (group 0) are skipped, while neighbors outside the match remain available for
+  checking. Source offsets are preserved. Compound processing accepts only
+  non-overlapping full matches in source order; overlapping matches reported by
+  advanced constructs such as `\K` in lookbehind are skipped.
+- For compound matches, captures are clipped to group 0; lookaround cannot select
+  text outside the match. Existing per-token lookaround behavior is unchanged.
+  Empty captures and unmatched optional groups are ignored. For compound matches,
+  if no nonempty captures remain, the eligible matched portion is skipped.
+  Existing per-token rules with only empty or absent captures still leave the
+  token unchanged. Overlapping or nested captures are independent candidates;
+  identical capture ranges are deduplicated before recursive transformation.
+- An earlier expression matching an **original token** protects that entire token
+  from a later cross-token match, even if the match overlaps only part of the
+  token. Other, unprotected tokens overlapped by the same match can still be
+  transformed. Ranges selected by an earlier cross-token capture are protected
+  from later cross-token exclusions. Conversely, an earlier exclusion is never
+  restored by a later capture rule.
+
+This protection applies to compound preprocessing, not to subsequent per-fragment
+transformations. Captures and remaining token fragments are then transformed as
+standalone strings: anchors and lookarounds see fragment boundaries rather than
+the original surrounding text. A rule that did not match the original token may
+therefore match its remaining fragment. Recursive rules can also allow-list a
+spanning capture (for example, a rule matching its entire captured text).
+
+For example, with tokens `reciever-`, `>`, and `message`, this order preserves the
+`reciever` spelling diagnostic because the first rule selects it for checking:
+
+```toml
+[Hunspell.quirks]
+transform_regex = ["(reciever)-", "reciever->"]
+```
+
+Reversing these two rules allow-lists `reciever->`, so `reciever` is not checked.
+In either order, the neighboring `message` token is still checked.
+
+To check both sides of compounds such as `foo::bar` and `foo->bar`, use multiple
+captures with generic letter patterns rather than matching specific words:
+
+```toml
+[Hunspell.quirks]
+transform_regex = ['(?P<left>[A-Za-z]+)(?:::|->)(?P<right>[A-Za-z]+)']
+```
+
+Each named group is checked separately; the separator is skipped. To select a
+spanning capture first, place `'(?P<compound>[A-Za-z]+(?:::|->)[A-Za-z]+)'` before
+that rule. The captured compound is recursively transformed, advancing past the
+identity capture to the subsequent rule that splits it into two candidates.
 
 To increase verbosity add `-v` (multiple) to increase verbosity.
