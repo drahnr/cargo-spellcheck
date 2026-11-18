@@ -488,6 +488,7 @@ impl UserPicked {
     pub(super) fn select_interactive(
         origin: ContentOrigin,
         suggestions: Vec<Suggestion<'_>>,
+        output_paths: &OutputPaths,
     ) -> Result<(Self, UserSelection)> {
         let count = suggestions.len();
         let mut picked = UserPicked::default();
@@ -524,7 +525,10 @@ impl UserPicked {
                 log::trace!("BUG: Suggestion did not contain a replacement, skip");
                 continue;
             }
-            println!("{suggestion}");
+            match output_paths.base_for(suggestion.origin.as_path()) {
+                Some(base) => println!("{}", suggestion.display_relative_to(base)),
+                None => println!("{suggestion}"),
+            }
 
             let mut state = State::from(suggestion);
 

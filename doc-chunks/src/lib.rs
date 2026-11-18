@@ -47,6 +47,7 @@ pub mod errors;
 pub mod literal;
 pub mod literalset;
 pub mod markdown;
+pub mod paths;
 
 pub use chunk::*;
 pub use cluster::*;

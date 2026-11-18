@@ -28,6 +28,7 @@ pub mod action;
 mod checker;
 mod config;
 pub mod errors;
+mod paths;
 mod reflow;
 mod suggestion;
 mod tinhat;
@@ -100,6 +101,7 @@ pub fn run(args: Args) -> Result<ExitCode> {
         }
     });
 
+    let full_paths = args.full_paths;
     let (unified, config) = match &args.command {
         Some(Sub::Completions { shell }) => {
             let sink = &mut std::io::stdout();
@@ -153,11 +155,16 @@ pub fn run(args: Args) -> Result<ExitCode> {
         } => {
             log::debug!("Executing: {action:?} with {config:?} from {config_path:?}");
 
+            let output_paths = paths::OutputPaths::new(&paths, full_paths)?;
             let documents =
                 traverse::extract(paths, recursive, skip_readme, dev_comments, &config)?;
 
             let rt = tokio::runtime::Runtime::new()?;
-            let finish = rt.block_on(async move { action.run(documents, config).await })?;
+            let finish = rt.block_on(async move {
+                action
+                    .run_with_output_paths(documents, config, &output_paths)
+                    .await
+            })?;
 
             match finish {
                 Finish::Success | Finish::MistakeCount(0) => Ok(ExitCode::Success),

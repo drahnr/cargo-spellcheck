@@ -9,6 +9,7 @@ use fs_err as fs;
 use futures::stream::{self, StreamExt};
 use rayon::iter::ParallelIterator;
 
+use crate::paths::OutputPaths;
 use std::io::{Read, Write};
 use std::path::PathBuf;
 
@@ -327,25 +328,49 @@ impl Action {
     }
     /// Run the requested action.
     pub async fn run(self, documents: Documentation, config: Config) -> Result<Finish> {
+        let output_paths = OutputPaths::new(&[], false)?;
+        self.run_with_output_paths(documents, config, &output_paths)
+            .await
+    }
+
+    /// Run an action with the caller's source-path display preferences.
+    pub(crate) async fn run_with_output_paths(
+        self,
+        documents: Documentation,
+        config: Config,
+        output_paths: &OutputPaths,
+    ) -> Result<Finish> {
         let fin = match self {
-            Self::ListFiles { .. } => self.run_list_files(documents, &config)?,
+            Self::ListFiles { .. } => self.run_list_files(documents, output_paths)?,
             Self::Reflow { .. } => self.run_reflow(documents, config).await?,
-            Self::Check { .. } => self.run_check(documents, config).await?,
-            Self::Fix { .. } => self.run_fix_interactive(documents, config).await?,
+            Self::Check { .. } => self.run_check(documents, config, output_paths).await?,
+            Self::Fix { .. } => {
+                self.run_fix_interactive(documents, config, output_paths)
+                    .await?
+            }
         };
         Ok(fin)
     }
 
     /// Run the requested action.
-    fn run_list_files(self, documents: Documentation, _config: &Config) -> Result<Finish> {
+    fn run_list_files(
+        self,
+        documents: Documentation,
+        output_paths: &OutputPaths,
+    ) -> Result<Finish> {
         for (origin, _chunks) in documents.iter() {
-            println!("{}", origin.as_path().display())
+            println!("{}", output_paths.path(origin.as_path()).display())
         }
         Ok(Finish::Success)
     }
 
     /// Run the requested action _interactively_, waiting for user input.
-    async fn run_fix_interactive(self, documents: Documentation, config: Config) -> Result<Finish> {
+    async fn run_fix_interactive(
+        self,
+        documents: Documentation,
+        config: Config,
+        output_paths: &OutputPaths,
+    ) -> Result<Finish> {
         let n_cpus = num_cpus::get();
 
         let checkers = Checkers::new(config)?;
@@ -367,8 +392,11 @@ impl Action {
         while let Some(result) = pick_stream.next().await {
             match result {
                 Ok((idx, origin, suggestions)) => {
-                    let (picked, user_sel) =
-                        interactive::UserPicked::select_interactive(origin.clone(), suggestions)?;
+                    let (picked, user_sel) = interactive::UserPicked::select_interactive(
+                        origin.clone(),
+                        suggestions,
+                        output_paths,
+                    )?;
 
                     match user_sel {
                         UserSelection::Quit => break,
@@ -400,20 +428,28 @@ impl Action {
     }
 
     /// Run the requested action.
-    async fn run_check(self, documents: Documentation, config: Config) -> Result<Finish> {
+    async fn run_check(
+        self,
+        documents: Documentation,
+        config: Config,
+        output_paths: &OutputPaths,
+    ) -> Result<Finish> {
         let checkers = Checkers::new(config)?;
         let num_mistakes = documents
             .into_par_iter()
             .map(|(origin, chunks)| {
                 checkers.check(&origin, &chunks).map(|suggestions| {
-                    let path = origin.as_path();
+                    let path = output_paths.path(origin.as_path());
                     let n = suggestions.len();
                     match suggestions.is_empty() {
                         true => log::info!("✅ {}", path.display()),
                         false => log::info!("❌ {} : {}", path.display(), n),
                     };
                     for suggestion in suggestions {
-                        println!("{suggestion}");
+                        match output_paths.base_for(suggestion.origin.as_path()) {
+                            Some(base) => println!("{}", suggestion.display_relative_to(base)),
+                            None => println!("{suggestion}"),
+                        }
                     }
                     n
                 })
