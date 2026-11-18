@@ -29,7 +29,8 @@ use doc_chunks::Ignores;
 use crate::errors::*;
 
 use super::quirks::{
-    replacements_contain_dashed, replacements_contain_dashless, transform, Transformed,
+    allow_list_ranges, replacements_contain_dashed, replacements_contain_dashless, transform,
+    Transformed,
 };
 
 pub(super) static BUILTIN_HUNSPELL_AFF: &[u8] = include_bytes!(concat!(
@@ -325,7 +326,9 @@ impl Checker for HunspellChecker {
                 allow_emojis: self.allow_emojis,
             };
 
-            'tokenization: for range in apply_tokenizer(&self.1, txt) {
+            'tokenization: for range in
+                allow_list_ranges(&self.transform_regex, txt, apply_tokenizer(&self.1, txt))
+            {
                 let word = sub_chars(txt, range.clone());
                 if range.len() == 1
                     && word

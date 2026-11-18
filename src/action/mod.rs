@@ -142,7 +142,7 @@ where
                         log::trace!(
                             target: TARGET,
                             "skip buffer: >{}<",
-                            &source_buffer[cc_end_byte_offset..cc_start_byte_offset].escape_debug()
+                            source_buffer[cc_end_byte_offset..cc_start_byte_offset].escape_debug()
                         );
 
                         break 'skip;
@@ -178,7 +178,7 @@ where
                     log::trace!(
                         target: TARGET,
                         "copy buffer: >{}<",
-                        &source_buffer[cc_start_byte_offset..cc_end_byte_offset].escape_debug()
+                        source_buffer[cc_start_byte_offset..cc_end_byte_offset].escape_debug()
                     );
                     break 'cc;
                 }
