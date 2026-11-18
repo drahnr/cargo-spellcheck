@@ -17,6 +17,7 @@ use io::Write;
 use lazy_static::lazy_static;
 
 use nlprule::Tokenizer;
+use sha2::Digest;
 use std::io::{self};
 
 use std::path::{Path, PathBuf};
@@ -51,11 +52,12 @@ pub(super) fn cache_builtin_inner(
     extension: &'static str,
     data: &[u8],
 ) -> Result<PathBuf> {
+    // Builds with the same version can embed different dictionary data. Keep
+    // cached files immutable without reusing stale data from an earlier build.
+    let digest = hex::encode(sha2::Sha256::digest(data));
     let path = cache_dir.as_ref().join(format!(
-        "cargo-spellcheck/{}/{}.{}",
+        "cargo-spellcheck/{}/en_US-{digest}.{extension}",
         env!("CARGO_PKG_VERSION"),
-        "en_US",
-        extension
     ));
     fs::create_dir_all(path.parent().unwrap())?;
     // check if file exists
@@ -438,6 +440,55 @@ mod tests {
     use std::io::BufRead;
 
     use super::*;
+
+    #[test]
+    fn builtin_cache_invalidates_changed_data_and_legacy_paths() {
+        let cache_dir = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+        let legacy_path = cache_dir.join(format!(
+            "cargo-spellcheck/{}/en_US.aff",
+            env!("CARGO_PKG_VERSION")
+        ));
+        fs::create_dir_all(legacy_path.parent().unwrap()).unwrap();
+        fs::write(&legacy_path, b"SET UTF8\n").unwrap();
+
+        let old = cache_builtin_inner(&cache_dir, "aff", b"SET UTF8\n").unwrap();
+        let corrected = cache_builtin_inner(&cache_dir, "aff", b"SET UTF-8\n").unwrap();
+        assert_ne!(corrected, old);
+        assert_ne!(corrected, legacy_path);
+        assert_eq!(fs::read(&corrected).unwrap(), b"SET UTF-8\n");
+        assert_eq!(fs::read(&old).unwrap(), b"SET UTF8\n");
+        assert_eq!(fs::read(&legacy_path).unwrap(), b"SET UTF8\n");
+        assert_eq!(
+            cache_builtin_inner(&cache_dir, "aff", b"SET UTF-8\n").unwrap(),
+            corrected
+        );
+        let dictionary = cache_builtin_inner(&cache_dir, "dic", b"SET UTF-8\n").unwrap();
+        assert_ne!(dictionary, corrected);
+        fs::remove_dir_all(cache_dir).unwrap();
+    }
+
+    #[test]
+    fn builtin_dictionary_uses_canonical_utf8_and_preserves_casing_after_teardown() {
+        assert!(BUILTIN_HUNSPELL_AFF.starts_with(b"SET UTF-8\n"));
+        let cache_dir = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+        let aff = cache_builtin_inner(&cache_dir, "aff", BUILTIN_HUNSPELL_AFF).unwrap();
+        let dic = cache_builtin_inner(&cache_dir, "dic", BUILTIN_HUNSPELL_DIC).unwrap();
+        for _ in 0..4 {
+            let hunspell = Hunspell::new(aff.to_str().unwrap(), dic.to_str().unwrap());
+            for word in ["test", "Test", "TEST"] {
+                assert_eq!(
+                    hunspell.check(word),
+                    CheckResult::FoundInDictionary,
+                    "{word}"
+                );
+            }
+            assert_eq!(
+                hunspell.check("Zzyzxqvocab"),
+                CheckResult::MissingInDictionary
+            );
+        }
+        fs::remove_dir_all(cache_dir).unwrap();
+    }
 
     #[test]
     fn hunspell_dic_format() {
