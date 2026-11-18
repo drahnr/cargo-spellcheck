@@ -260,6 +260,23 @@ impl Action {
     ) -> Result<()> {
         let path = fs::canonicalize(path.as_path())?;
         let path = path.as_path();
+        let mut lock_path = path.as_os_str().to_os_string();
+        lock_path.push(".cargo-spellcheck.lock");
+        let lock_file = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(PathBuf::from(lock_path))
+            .wrap_err("Could not open the source sidecar lock")?;
+        // Rename replaces the source inode, so coordinate through a stable
+        // sidecar and leave it in place for other sessions waiting on it.
+        let mut lock = fd_lock::RwLock::new(lock_file);
+        let _source_lock = lock.write().wrap_err("Could not lock the source file")?;
+        // Waiting for another process must not delay signal processing. Declare
+        // this before the buffers so their error-path cleanup stays protected.
+        let _hat = crate::TinHat::on();
+
         log::trace!("Attempting to open {} as read", path.display());
         let ro = fs::OpenOptions::new().read(true).open(path)?;
 
@@ -284,26 +301,19 @@ impl Action {
         let mut content = String::with_capacity(2e6 as usize);
         reader.get_mut().read_to_string(&mut content)?;
 
-        {
-            let th = crate::TinHat::on();
+        apply_patches(
+            bandaids.into_iter().map(Patch::from),
+            content.as_str(), // FIXME for efficiency, correct_lines should integrate with `BufRead` instead of a `String` buffer
+            &mut writer,
+        )?;
 
-            apply_patches(
-                bandaids.into_iter().map(Patch::from),
-                content.as_str(), // FIXME for efficiency, correct_lines should integrate with `BufRead` instead of a `String` buffer
-                &mut writer,
-            )?;
-
-            writer.flush()?;
-            // Required for windows support, which does not allow
-            // to move a file while it is opened, see
-            // <https://github.com/drahnr/cargo-spellcheck/issues/251>
-            drop(writer);
-            drop(reader);
-            fs::rename(tmp, path)?;
-
-            // Writing for this file is done, unblock the signal handler.
-            drop(th);
-        }
+        writer.flush()?;
+        // Required for windows support, which does not allow
+        // to move a file while it is opened, see
+        // <https://github.com/drahnr/cargo-spellcheck/issues/251>
+        drop(writer);
+        drop(reader);
+        fs::rename(tmp, path)?;
 
         Ok(())
     }
@@ -634,3 +644,6 @@ Icecream truck"#
         verify_correction!("A🐢C", patches, "A🐢CQ");
     }
 }
+
+#[cfg(test)]
+mod source_file_locks;
