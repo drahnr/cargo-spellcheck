@@ -221,7 +221,7 @@ fn transform_inner<'i, R: AsRef<Regex>>(
                             captures.get(0).unwrap().as_str(),
                             word,
                             m.as_str(),
-                            &intra_word_range
+                            intra_word_range
                         );
                         let offset = word
                             .char_indices()
