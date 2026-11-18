@@ -106,7 +106,7 @@ encoding_rs = { version = "0.8.31", optional = true, features = [] }
 zspell = { version = "0.5.5", optional = true }
 spellbook = { version = "0.1", optional = true }
 
-# full grammar check, but also tokenization and disambiguation
+# Shared tokenization; the grammar checker is enabled separately by `nlprules`.
 nlprule = { version = "=0.6.4", optional = true }
 
 # cache some expensive expansions
@@ -127,17 +127,17 @@ nix = "0.26.2"
 [features]
 default = ["all"]
 
-# hunspell uses the segmenter provided by nlprules
+# Spelling backends share the tokenizer without enabling the grammar checker.
 hunspell = [
   "dep:hunspell-rs",
   "hunspell-rs?/bundled",
-  "dep:fd-lock",
-  "nlprules",
+  "tokenizer",
   "dep:encoding_rs",
 ]
-zet = ["dep:zspell"]
-spellbook = ["dep:spellbook"]
-nlprules = ["dep:nlprule", "nlprule?/regex-fancy", "dep:nlprule-build"]
+zet = ["dep:zspell", "tokenizer"]
+spellbook = ["dep:spellbook", "tokenizer"]
+tokenizer = ["dep:nlprule", "nlprule?/regex-fancy", "dep:fd-lock"]
+nlprules = ["tokenizer", "dep:nlprule-build"]
 
 all = ["hunspell", "zet", "spellbook", "nlprules"]
 

@@ -236,6 +236,13 @@ impl Config {
         }
     }
 
+    /// Whether a compiled spelling backend is enabled in this configuration.
+    pub(crate) fn has_spelling_backends(&self) -> bool {
+        (cfg!(feature = "hunspell") && self.hunspell.is_some())
+            || (cfg!(feature = "spellbook") && self.spellbook.is_some())
+            || (cfg!(feature = "zet") && self.zet.is_some())
+    }
+
     pub fn full() -> Self {
         Default::default()
     }

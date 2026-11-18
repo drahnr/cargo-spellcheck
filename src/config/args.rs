@@ -3,7 +3,6 @@ use std::path::{Path, PathBuf};
 use crate::errors::*;
 
 use fs_err as fs;
-use itertools::Itertools;
 use serde::Deserialize;
 use std::str::FromStr;
 
@@ -346,30 +345,42 @@ impl Args {
     /// Overrides the enablement status of checkers in the configuration based
     /// on the checkers enabled by argument, if it is set.
     ///
-    /// Errors of no checkers are left.
+    /// Errors if no compiled checker is left. Reflow is configured separately.
     pub fn checker_selection_override(
         filter_set: Option<&[CheckerType]>,
         config: &mut Config,
     ) -> Result<()> {
         // overwrite checkers
         if let Some(checkers) = filter_set {
-            #[cfg(feature = "hunspell")]
-            if !checkers.contains(&CheckerType::Hunspell) && config.hunspell.take().is_none() {
+            if (!cfg!(feature = "hunspell") || !checkers.contains(&CheckerType::Hunspell))
+                && config.hunspell.take().is_none()
+            {
                 log::warn!("Hunspell was never configured.")
             }
-            #[cfg(feature = "nlprules")]
-            if !checkers.contains(&CheckerType::NlpRules) && config.nlprules.take().is_none() {
+            if (!cfg!(feature = "nlprules") || !checkers.contains(&CheckerType::NlpRules))
+                && config.nlprules.take().is_none()
+            {
                 log::warn!("Nlprules checker was never configured.")
+            }
+
+            if (!cfg!(feature = "zet") || !checkers.contains(&CheckerType::ZSpell))
+                && config.zet.take().is_none()
+            {
+                log::warn!("ZSpell was never configured.")
+            }
+            if (!cfg!(feature = "spellbook") || !checkers.contains(&CheckerType::Spellbook))
+                && config.spellbook.take().is_none()
+            {
+                log::warn!("Spellbook was never configured.")
             }
 
             if !checkers.contains(&CheckerType::Reflow) {
                 log::warn!("Reflow is a separate sub command.")
             }
 
-            const EXPECTED_COUNT: usize =
-                1_usize + cfg!(feature = "nlprules") as usize + cfg!(feature = "hunspell") as usize;
-
-            if checkers.iter().unique().count() == EXPECTED_COUNT {
+            if !config.has_spelling_backends()
+                && !(cfg!(feature = "nlprules") && config.nlprules.is_some())
+            {
                 bail!("Argument override for checkers disabled all checkers");
             }
         }
@@ -474,32 +485,40 @@ impl Args {
         // causes friction for users, especially in presence of inline codes which are
         // elided, and cause even worse suggestions.
         // ISSUE: https://github.com/drahnr/cargo-spellcheck/issues/242
-        let filter_set = self
-            .checkers()
-            .unwrap_or_else(|| vec![CheckerType::Hunspell]);
+        let filter_set = self.checkers().unwrap_or_else(|| {
+            [
+                (cfg!(feature = "hunspell"), CheckerType::Hunspell),
+                (cfg!(feature = "spellbook"), CheckerType::Spellbook),
+                (cfg!(feature = "zet"), CheckerType::ZSpell),
+            ]
+            .into_iter()
+            .find_map(|(compiled, checker)| compiled.then_some(checker))
+            .into_iter()
+            .collect()
+        });
         {
-            if filter_set.contains(&CheckerType::Hunspell) {
+            if cfg!(feature = "hunspell") && filter_set.contains(&CheckerType::Hunspell) {
                 if config.hunspell.is_none() {
                     config.hunspell = Some(crate::config::HunspellConfig::default());
                 }
             } else {
                 config.hunspell = None;
             }
-            if filter_set.contains(&CheckerType::ZSpell) {
+            if cfg!(feature = "zet") && filter_set.contains(&CheckerType::ZSpell) {
                 if config.zet.is_none() {
                     config.zet = Some(crate::config::ZetConfig::default());
                 }
             } else {
                 config.zet = None;
             }
-            if filter_set.contains(&CheckerType::Spellbook) {
+            if cfg!(feature = "spellbook") && filter_set.contains(&CheckerType::Spellbook) {
                 if config.spellbook.is_none() {
                     config.spellbook = Some(crate::config::SpellbookConfig::default());
                 }
             } else {
                 config.spellbook = None;
             }
-            if filter_set.contains(&CheckerType::NlpRules) {
+            if cfg!(feature = "nlprules") && filter_set.contains(&CheckerType::NlpRules) {
                 if config.nlprules.is_none() {
                     config.nlprules = Some(crate::config::NlpRulesConfig::default());
                 }
@@ -507,6 +526,15 @@ impl Args {
                 config.nlprules = None;
             }
             // reflow is a different subcommand, not relevant
+        }
+
+        if matches!(
+            &self.command,
+            None | Some(Sub::Check { .. } | Sub::Fix { .. })
+        ) && !config.has_spelling_backends()
+            && !(cfg!(feature = "nlprules") && config.nlprules.is_some())
+        {
+            bail!("No compiled checker is enabled; select an available checker with --checkers");
         }
 
         Ok((config, config_path))
@@ -811,6 +839,7 @@ mod tests {
                 "--code=77",
                 "--dev-comments",
                 "--skip-readme",
+                "--checkers=hunspell,nlprules,zet,spellbook",
             ]
             .iter()
             .map(ToOwned::to_owned)
@@ -865,6 +894,222 @@ mod tests {
                 assert_eq!(overwrite, true);
             }
         );
+    }
+
+    fn load_test_config(command: &'static str) -> Result<Config> {
+        let mut args = Args::parse(commandline_to_iter(command))?;
+        let path = std::env::temp_dir().join(format!("spellcheck-{}.toml", uuid::Uuid::new_v4()));
+        fs::write(&path, "")?;
+        args.cfg = Some(path.clone());
+        let result = args.load_config().map(|(config, _)| config);
+        fs::remove_file(path)?;
+        result
+    }
+
+    #[test]
+    fn default_checker_is_a_compiled_spelling_backend() {
+        use crate::checker::{Checker, Checkers};
+
+        let result = load_test_config("cargo spellcheck");
+        if !cfg!(any(
+            feature = "hunspell",
+            feature = "spellbook",
+            feature = "zet"
+        )) {
+            assert!(result.is_err());
+            return;
+        }
+        let mut config = result.unwrap();
+        assert_eq!(config.hunspell.is_some(), cfg!(feature = "hunspell"));
+        assert_eq!(
+            config.spellbook.is_some(),
+            cfg!(all(not(feature = "hunspell"), feature = "spellbook"))
+        );
+        assert_eq!(
+            config.zet.is_some(),
+            cfg!(all(
+                not(feature = "hunspell"),
+                not(feature = "spellbook"),
+                feature = "zet"
+            ))
+        );
+        assert!(config.nlprules.is_none());
+        for spelling in [&mut config.hunspell, &mut config.spellbook, &mut config.zet]
+            .into_iter()
+            .flatten()
+        {
+            spelling.skip_os_lookups = true;
+            spelling.use_builtin = true;
+        }
+        let checkers = Checkers::new(config).unwrap();
+        let documents = crate::Documentation::load_from_str(
+            crate::ContentOrigin::TestEntityRust,
+            "/// Zzyzxqvocab\nstruct Example;",
+            true,
+            false,
+        );
+        let (origin, chunks) = documents.iter().next().unwrap();
+        let suggestions = checkers.check(origin, chunks).unwrap();
+        assert!(suggestions.iter().any(|suggestion| {
+            crate::sub_chars(suggestion.chunk.as_str(), suggestion.range.clone()) == "Zzyzxqvocab"
+        }));
+    }
+
+    #[test]
+    fn check_and_fix_require_a_compiled_checker() {
+        for command in [
+            "cargo spellcheck --checkers=reflow",
+            "cargo spellcheck check --checkers=reflow",
+            "cargo spellcheck fix --checkers=reflow",
+            "cargo spellcheck --fix --checkers=reflow",
+        ] {
+            let error = load_test_config(command).unwrap_err();
+            assert!(error.to_string().contains("No compiled checker is enabled"));
+        }
+        for (compiled, command) in [
+            (
+                cfg!(feature = "hunspell"),
+                "cargo spellcheck --checkers=hunspell",
+            ),
+            (
+                cfg!(feature = "spellbook"),
+                "cargo spellcheck --checkers=spellbook",
+            ),
+            (cfg!(feature = "zet"), "cargo spellcheck --checkers=zet"),
+            (
+                cfg!(feature = "nlprules"),
+                "cargo spellcheck --checkers=nlprules",
+            ),
+        ] {
+            assert_eq!(load_test_config(command).is_ok(), compiled, "{command}");
+        }
+    }
+
+    #[test]
+    fn explicit_checker_filters_select_only_requested_compiled_backends() {
+        for (command, hunspell, spellbook, zet, nlprules) in [
+            (
+                "cargo spellcheck --checkers=hunspell",
+                true,
+                false,
+                false,
+                false,
+            ),
+            (
+                "cargo spellcheck --checkers=spellbook",
+                false,
+                true,
+                false,
+                false,
+            ),
+            ("cargo spellcheck --checkers=zet", false, false, true, false),
+            (
+                "cargo spellcheck --checkers=nlprules",
+                false,
+                false,
+                false,
+                true,
+            ),
+            (
+                "cargo spellcheck --checkers=hunspell,spellbook,zet,nlprules",
+                true,
+                true,
+                true,
+                true,
+            ),
+        ] {
+            let expected = [
+                hunspell && cfg!(feature = "hunspell"),
+                spellbook && cfg!(feature = "spellbook"),
+                zet && cfg!(feature = "zet"),
+                nlprules && cfg!(feature = "nlprules"),
+            ];
+            let result = load_test_config(command);
+            if expected.iter().any(|enabled| *enabled) {
+                let config = result.unwrap();
+                assert_eq!(
+                    [
+                        config.hunspell.is_some(),
+                        config.spellbook.is_some(),
+                        config.zet.is_some(),
+                        config.nlprules.is_some()
+                    ],
+                    expected,
+                    "{command}",
+                );
+            } else {
+                assert!(result.is_err(), "{command}");
+            }
+        }
+    }
+
+    #[test]
+    fn nonchecking_commands_do_not_require_a_checker() {
+        for command in [
+            "cargo spellcheck reflow --checkers=reflow",
+            "cargo spellcheck config --stdout",
+            "cargo spellcheck list-files",
+            "cargo spellcheck completions --shell=zsh",
+        ] {
+            assert!(load_test_config(command).is_ok(), "{command}");
+        }
+    }
+
+    #[test]
+    fn config_filter_accepts_all_compiled_checkers() {
+        let mut config = Config::full();
+        let reflow_width = config.reflow.as_ref().unwrap().max_line_length;
+        let checkers = [
+            CheckerType::Hunspell,
+            CheckerType::NlpRules,
+            CheckerType::ZSpell,
+            CheckerType::Spellbook,
+            CheckerType::Reflow,
+            CheckerType::Hunspell,
+        ];
+        Args::checker_selection_override(Some(&checkers), &mut config).unwrap();
+        assert_eq!(config.reflow.unwrap().max_line_length, reflow_width);
+        assert_eq!(config.hunspell.is_some(), cfg!(feature = "hunspell"));
+        assert_eq!(config.spellbook.is_some(), cfg!(feature = "spellbook"));
+        assert_eq!(config.zet.is_some(), cfg!(feature = "zet"));
+        assert_eq!(config.nlprules.is_some(), cfg!(feature = "nlprules"));
+    }
+
+    #[test]
+    fn config_filter_requires_a_retained_compiled_checker() {
+        for (checker, compiled) in [
+            (CheckerType::Hunspell, cfg!(feature = "hunspell")),
+            (CheckerType::NlpRules, cfg!(feature = "nlprules")),
+            (CheckerType::ZSpell, cfg!(feature = "zet")),
+            (CheckerType::Spellbook, cfg!(feature = "spellbook")),
+            (CheckerType::Reflow, false),
+        ] {
+            let mut config = Config::full();
+            let reflow_width = config.reflow.as_ref().unwrap().max_line_length;
+            let result = Args::checker_selection_override(Some(&[checker]), &mut config);
+            assert_eq!(result.is_ok(), compiled, "{checker:?}");
+            assert_eq!(
+                config.reflow.as_ref().unwrap().max_line_length,
+                reflow_width
+            );
+            assert_eq!(
+                config.has_spelling_backends(),
+                compiled && checker != CheckerType::NlpRules
+            );
+        }
+        let mut config = Config::full();
+        assert!(Args::checker_selection_override(Some(&[]), &mut config).is_err());
+        let mut config = Config::full();
+        config.hunspell = None;
+        config.zet = None;
+        config.spellbook = None;
+        config.nlprules = None;
+        assert!(Args::checker_selection_override(None, &mut config).is_ok());
+        assert!(Args::checker_selection_override(
+            Some(&[CheckerType::Hunspell, CheckerType::NlpRules]),
+            &mut config,
+        )
+        .is_err());
     }
 
     #[test]

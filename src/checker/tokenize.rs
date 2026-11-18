@@ -4,7 +4,9 @@ use crate::errors::*;
 use fs_err as fs;
 use lazy_static::lazy_static;
 
-use nlprule::{Rules, Tokenizer};
+#[cfg(feature = "nlprules")]
+use nlprule::Rules;
+use nlprule::Tokenizer;
 use std::collections::{hash_map::Entry, HashMap};
 use std::{
     path::{Path, PathBuf},
@@ -15,6 +17,7 @@ use thousands::Separable;
 static DEFAULT_TOKENIZER_BYTES: &[u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/en_tokenizer.bin"));
 
+#[cfg(feature = "nlprules")]
 static DEFAULT_RULES_BYTES: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/en_rules.bin"));
 
 lazy_static! {
@@ -89,10 +92,12 @@ pub(crate) fn tokenizer<P: AsRef<Path> + Clone>(
     }
 }
 
+#[cfg(feature = "nlprules")]
 lazy_static! {
     static ref RULES: Mutex<HashMap<Option<PathBuf>, Arc<Rules>>> = Mutex::new(HashMap::new());
 }
 
+#[cfg(feature = "nlprules")]
 fn rules_inner<P: AsRef<Path>>(override_path: Option<P>, cache_dir: &Path) -> Result<Rules> {
     log::info!("🧮 Loading rules...");
     let rules = if let Some(override_path) = override_path.as_ref() {
@@ -129,6 +134,7 @@ fn rules_inner<P: AsRef<Path>>(override_path: Option<P>, cache_dir: &Path) -> Re
     Ok(rules)
 }
 
+#[cfg(feature = "nlprules")]
 pub(crate) fn rules<P: AsRef<Path> + Clone>(override_path: Option<P>) -> Result<Arc<Rules>> {
     match RULES
         .lock()
@@ -145,8 +151,10 @@ pub(crate) fn rules<P: AsRef<Path> + Clone>(override_path: Option<P>) -> Result<
     }
 }
 
+#[cfg(any(test, feature = "hunspell", feature = "spellbook", feature = "zet"))]
 use crate::Range;
 
+#[cfg(any(test, feature = "hunspell", feature = "spellbook", feature = "zet"))]
 pub(crate) fn apply_tokenizer<'t, 'z>(
     tokenizer: &'t Arc<Tokenizer>,
     text: &'z str,

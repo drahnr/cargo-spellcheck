@@ -6,20 +6,15 @@
 
 use super::{apply_tokenizer, Checker, Detector, Suggestion, SuggestionContext};
 
-use crate::checker::dictaffix::is_valid_hunspell_dic_path;
+use crate::checker::dictaffix::{cache_builtin, is_valid_hunspell_dic_path};
 use crate::config::{Lang5, WrappedRegex};
 use crate::documentation::{CheckableChunk, ContentOrigin};
 use crate::util::sub_chars;
 use crate::Range;
 
-use fs_err as fs;
-use io::Write;
-use lazy_static::lazy_static;
-
 use nlprule::Tokenizer;
-use std::io::{self};
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use hunspell_rs::{CheckResult, Hunspell};
@@ -29,86 +24,9 @@ use doc_chunks::Ignores;
 use crate::errors::*;
 
 use super::quirks::{
-    compound_ranges, replacements_contain_dashed, replacements_contain_dashless, transform,
-    Transformed,
+    compound_ranges, consists_of_vulgar_fractions_or_emojis, replacements_contain_dashed,
+    replacements_contain_dashless, transform, Transformed,
 };
-
-pub(super) static BUILTIN_HUNSPELL_AFF: &[u8] = include_bytes!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/hunspell-data/en_US.aff"
-));
-
-pub(super) static BUILTIN_HUNSPELL_DIC: &[u8] = include_bytes!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/hunspell-data/en_US.dic"
-));
-
-// XXX hunspell does not provide an API for using in-memory dictionary or
-// XXX affix files
-// XXX https://github.com/hunspell/hunspell/issues/721
-pub(super) fn cache_builtin_inner(
-    cache_dir: impl AsRef<Path>,
-    extension: &'static str,
-    data: &[u8],
-) -> Result<PathBuf> {
-    let path = cache_dir.as_ref().join(format!(
-        "cargo-spellcheck/{}/{}.{}",
-        env!("CARGO_PKG_VERSION"),
-        "en_US",
-        extension
-    ));
-    fs::create_dir_all(path.parent().unwrap())?;
-    // check if file exists
-    if let Ok(f) = fs::File::open(&path) {
-        // in case somebody else is currently writing to it
-        // wait for that to complete
-        let flock = fd_lock::RwLock::new(f);
-        let _ = flock.read()?;
-        return Ok(path);
-    }
-    let f = fs::OpenOptions::new()
-        .truncate(true)
-        .create(true)
-        .write(true)
-        .open(&path)?;
-    let mut flock = fd_lock::RwLock::new(f);
-    // if there are multiple instances, allow the first to write it all
-    if let Ok(mut f) = flock.try_write() {
-        f.write_all(data)?;
-        return Ok(path);
-    }
-
-    // .. but block execution until the first completed so
-    // there are no cases of partial data
-    let _ = flock.read()?;
-
-    Ok(path)
-}
-
-pub(super) fn cache_builtin() -> Result<(PathBuf, PathBuf)> {
-    log::info!("Using builtin en_US hunspell dictionary and affix files");
-    let base = directories::BaseDirs::new().expect("env HOME must be set");
-
-    let cache_dir = base.cache_dir();
-    let path_aff = cache_builtin_inner(cache_dir, "aff", BUILTIN_HUNSPELL_AFF)?;
-    let path_dic = cache_builtin_inner(cache_dir, "dic", BUILTIN_HUNSPELL_DIC)?;
-    Ok((path_dic, path_aff))
-}
-
-/// The value is `true` if string is made of emoji's or Unicode
-/// `VULGAR FRACTION`.
-pub fn consists_of_vulgar_fractions_or_emojis(word: &str) -> bool {
-    lazy_static! {
-        static ref VULGAR_OR_EMOJI: regex::RegexSet = regex::RegexSetBuilder::new([
-            r"[\u00BC-\u00BE\u2150-\u215E-\u2189]",
-            r"^[\p{Emoji}]+$"
-        ])
-        .case_insensitive(true)
-        .build()
-        .expect("REGEX grammar is human checked. qed");
-    };
-    VULGAR_OR_EMOJI.is_match(word)
-}
 
 #[derive(Clone)]
 #[allow(clippy::arc_with_non_send_sync)]
@@ -435,7 +353,8 @@ fn obtain_suggestions<'s>(
 #[cfg(test)]
 mod tests {
     use crate::checker::dictaffix::is_valid_hunspell_dic;
-    use std::io::BufRead;
+    use fs_err as fs;
+    use std::io::{self, BufRead};
 
     use super::*;
 
