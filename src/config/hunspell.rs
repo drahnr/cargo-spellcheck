@@ -188,38 +188,190 @@ impl HunspellConfig {
 
         // convert all extra dictionaries to absolute paths
 
-        'o: for extra_dic in self.extra_dictionaries.iter_mut() {
-            for search_dir in
-                self.search_dirs
-                    .iter(!self.skip_os_lookups)
-                    .filter_map(|search_dir| {
-                        if !extra_dic.is_absolute() {
-                            base.join(search_dir).canonicalize().ok()
-                        } else {
-                            Some(search_dir.to_owned())
-                        }
-                    })
-            {
-                let abspath = if !extra_dic.is_absolute() {
-                    search_dir.join(&extra_dic)
-                } else {
-                    continue 'o;
-                };
-                if let Ok(abspath) = abspath.canonicalize() {
-                    if abspath.is_file() {
-                        *extra_dic = abspath;
-                        continue 'o;
-                    }
-                } else {
-                    log::debug!("Failed to canonicalize {}", abspath.display());
+        for extra_dic in &mut self.extra_dictionaries {
+            if extra_dic.is_absolute() {
+                let resolved = extra_dic.canonicalize().wrap_err_with(|| {
+                    format!("Could not resolve extra dictionary {}", extra_dic.display())
+                })?;
+                if !resolved.is_file() {
+                    bail!(
+                        "Extra dictionary {} must be a regular file",
+                        extra_dic.display()
+                    );
                 }
+                *extra_dic = resolved;
+                continue;
             }
-            bail!(
-                "Could not find extra dictionary {} in any of the search paths",
-                extra_dic.display()
-            );
+
+            let resolved = self
+                .search_dirs
+                .iter(!self.skip_os_lookups)
+                .find_map(|search_dir| {
+                    let candidate = search_dir.join(&*extra_dic);
+                    match candidate.canonicalize() {
+                        Ok(path) => path.is_file().then_some(path),
+                        Err(_) => {
+                            log::debug!("Failed to canonicalize {}", candidate.display());
+                            None
+                        }
+                    }
+                });
+            if let Some(resolved) = resolved {
+                *extra_dic = resolved;
+            } else {
+                bail!(
+                    "Could not find extra dictionary {} in any of the search paths; expected a regular file",
+                    extra_dic.display()
+                );
+            }
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    struct Fixture(PathBuf);
+
+    impl Fixture {
+        fn new() -> Self {
+            let path = std::env::temp_dir().join(format!(
+                "cargo-spellcheck-extra-dictionary-paths-{}",
+                uuid::Uuid::new_v4()
+            ));
+            fs::create_dir(&path).unwrap();
+            Self(fs::canonicalize(path).unwrap())
+        }
+
+        fn config(&self, dictionary: PathBuf, search_dirs: &[&str]) -> HunspellConfig {
+            HunspellConfig {
+                extra_dictionaries: vec![dictionary],
+                search_dirs: search_dirs
+                    .iter()
+                    .map(PathBuf::from)
+                    .collect::<Vec<_>>()
+                    .into(),
+                skip_os_lookups: true,
+                ..Default::default()
+            }
+        }
+    }
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn absolute_dictionary_is_canonicalized_independently_of_search_directories() {
+        let fixture = Fixture::new();
+        fs::create_dir(fixture.0.join("nested")).unwrap();
+        fs::create_dir(fixture.0.join("search")).unwrap();
+        fs::write(fixture.0.join("extra.dic"), "1\nAbsoluteword\n").unwrap();
+        fs::write(fixture.0.join("search/extra.dic"), "1\nSearchword\n").unwrap();
+        let dictionary = fixture.0.join("nested/../extra.dic");
+        let expected = fs::canonicalize(&dictionary).unwrap();
+
+        for search_dirs in [&[][..], &["missing"][..], &["search"][..]] {
+            let mut config = fixture.config(dictionary.clone(), search_dirs);
+            config.sanitize_paths(&fixture.0).unwrap();
+            assert_eq!(config.extra_dictionaries, vec![expected.clone()]);
+        }
+    }
+
+    #[test]
+    fn missing_absolute_dictionary_is_rejected_even_with_search_directories() {
+        let fixture = Fixture::new();
+        fs::create_dir(fixture.0.join("search")).unwrap();
+        fs::write(fixture.0.join("search/missing.dic"), "0\n").unwrap();
+        let dictionary = fixture.0.join("missing.dic");
+
+        for search_dirs in [&[][..], &["search"][..]] {
+            let mut config = fixture.config(dictionary.clone(), search_dirs);
+            let error = config.sanitize_paths(&fixture.0).unwrap_err();
+            assert!(error
+                .to_string()
+                .contains("Could not resolve extra dictionary"));
+            assert!(error
+                .to_string()
+                .contains(&dictionary.display().to_string()));
+            assert_eq!(
+                error.downcast_ref::<std::io::Error>().unwrap().kind(),
+                std::io::ErrorKind::NotFound
+            );
+        }
+        assert!(!dictionary.exists());
+    }
+
+    #[test]
+    fn absolute_directory_is_rejected_even_with_search_directories() {
+        let fixture = Fixture::new();
+        let dictionary = fixture.0.join("extra.dic");
+        fs::create_dir(&dictionary).unwrap();
+
+        for search_dirs in [&[][..], &["."][..]] {
+            let mut config = fixture.config(dictionary.clone(), search_dirs);
+            let error = config.sanitize_paths(&fixture.0).unwrap_err().to_string();
+            assert!(error.contains("must be a regular file"), "{error}");
+            assert!(error.contains(&dictionary.display().to_string()), "{error}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn absolute_dictionary_symlinks_are_canonicalized_and_dangling_links_are_rejected() {
+        let fixture = Fixture::new();
+        let dictionary = fixture.0.join("extra.dic");
+        let alias = fixture.0.join("alias.dic");
+        fs::write(&dictionary, "0\n").unwrap();
+        std::os::unix::fs::symlink(&dictionary, &alias).unwrap();
+        let mut config = fixture.config(alias.clone(), &[]);
+        config.sanitize_paths(&fixture.0).unwrap();
+        assert_eq!(config.extra_dictionaries, vec![dictionary.clone()]);
+
+        fs::remove_file(&dictionary).unwrap();
+        let mut config = fixture.config(alias.clone(), &["."]);
+        let error = config.sanitize_paths(&fixture.0).unwrap_err().to_string();
+        assert!(
+            error.contains("Could not resolve extra dictionary"),
+            "{error}"
+        );
+        assert!(error.contains(&alias.display().to_string()), "{error}");
+    }
+
+    #[test]
+    fn relative_dictionary_search_skips_missing_and_non_file_candidates() {
+        let fixture = Fixture::new();
+        fs::create_dir_all(fixture.0.join("first/extra.dic")).unwrap();
+        fs::create_dir(fixture.0.join("second")).unwrap();
+        fs::write(fixture.0.join("second/extra.dic"), "0\n").unwrap();
+        let mut config = fixture.config("extra.dic".into(), &["missing", "first", "second"]);
+        config.sanitize_paths(&fixture.0).unwrap();
+        assert_eq!(
+            config.extra_dictionaries,
+            vec![fs::canonicalize(fixture.0.join("second/extra.dic")).unwrap()]
+        );
+        assert!(!fixture.0.join("missing").exists());
+    }
+
+    #[test]
+    fn relative_missing_and_non_file_dictionaries_are_rejected() {
+        let fixture = Fixture::new();
+        fs::create_dir(fixture.0.join("directory.dic")).unwrap();
+        for dictionary in ["missing.dic", "directory.dic"] {
+            let mut config = fixture.config(dictionary.into(), &["."]);
+            let error = config.sanitize_paths(&fixture.0).unwrap_err().to_string();
+            assert!(error.contains(dictionary), "{error}");
+            assert!(
+                error.contains("search paths; expected a regular file"),
+                "{error}"
+            );
+        }
+        assert!(!fixture.0.join("missing.dic").exists());
     }
 }
