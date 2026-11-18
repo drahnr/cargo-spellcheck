@@ -15,6 +15,7 @@ use crate::documentation::{CheckableChunk, ContentOrigin};
 
 use std::cmp;
 use std::convert::TryFrom;
+use std::path::{Path, PathBuf};
 
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 
@@ -319,6 +320,14 @@ pub struct Suggestion<'s> {
 }
 
 impl<'s> Suggestion<'s> {
+    /// Display this suggestion with its origin path relative to `base`.
+    pub(crate) fn display_relative_to(&self, base: &std::path::Path) -> impl fmt::Display + '_ {
+        RelativeSuggestionDisplay {
+            suggestion: self,
+            path: doc_chunks::paths::relative_path(self.origin.as_path(), base),
+        }
+    }
+
     /// Determine if there is overlap.
     pub fn is_overlapped(&self, other: &Self) -> bool {
         if self.origin != other.origin {
@@ -339,11 +348,11 @@ impl<'s> Suggestion<'s> {
             self.span.start.column < other.span.end.column
         }
     }
-}
 
-impl<'s> fmt::Display for Suggestion<'s> {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+    /// Render this suggestion using `path` for its location header.
+    fn fmt_with_path(&self, formatter: &mut fmt::Formatter<'_>, path: &Path) -> fmt::Result {
         use console::Style;
+        use fmt::Display;
 
         let highlight = Style::new().bold().white();
         let error = Style::new().bold().red();
@@ -366,13 +375,16 @@ impl<'s> fmt::Display for Suggestion<'s> {
             .fmt(formatter)?;
 
         let x = self.span.start.line;
-        let (path, line) = match self.origin {
-            ContentOrigin::RustDocTest(ref path, ref span) => {
-                (path.display().to_string(), x + span.start.line)
-            }
-            ref origin => (origin.as_path().display().to_string(), x),
+        let line = match self.origin {
+            ContentOrigin::RustDocTest(_, ref span) => x + span.start.line,
+            _ => x,
         };
-        writeln!(formatter, " {path}:{line}", path = path, line = line)?;
+        writeln!(
+            formatter,
+            " {path}:{line}",
+            path = path.display(),
+            line = line
+        )?;
         context_marker
             .apply_to(format!("{:>width$}", "|", width = indent))
             .fmt(formatter)?;
@@ -516,6 +528,24 @@ impl<'s> fmt::Display for Suggestion<'s> {
             writeln!(formatter, "   {description}")?;
         }
         Ok(())
+    }
+}
+
+impl<'s> fmt::Display for Suggestion<'s> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.fmt_with_path(formatter, self.origin.as_path())
+    }
+}
+
+/// A suggestion display that owns its relative path without changing the origin.
+struct RelativeSuggestionDisplay<'a, 's> {
+    suggestion: &'a Suggestion<'s>,
+    path: PathBuf,
+}
+
+impl fmt::Display for RelativeSuggestionDisplay<'_, '_> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.suggestion.fmt_with_path(formatter, &self.path)
     }
 }
 
@@ -718,7 +748,7 @@ impl<'s> IntoIterator for &'s SuggestionSet<'s> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{CommentVariant, LineColumn};
+    use crate::{CommentVariant, Documentation, LineColumn};
 
     use std::fmt;
 
@@ -734,6 +764,109 @@ mod tests {
         let reality = display.to_string();
         let reality = console::strip_ansi_codes(reality.as_str());
         assert_eq!(reality, expected);
+    }
+
+    /// Relative rendering preserves the origin and the existing doctest line offset.
+    #[test]
+    fn fmt_relative_paths_preserve_origin_and_doctest_offset() {
+        /// Rendering inputs and expected location headers for each origin kind.
+        struct RenderingCase {
+            source: &'static str,
+            origin: ContentOrigin,
+            base: &'static str,
+            typo: &'static str,
+            correction: &'static str,
+            expected_relative_location: &'static str,
+            expected_absolute_location: &'static str,
+        }
+
+        let cases = [
+            RenderingCase {
+                source: r#"/// Stores downloaded artifacts.
+/// Reuses the persistant cache.
+struct ArtifactCache;"#,
+                origin: ContentOrigin::RustSourceFile(PathBuf::from(
+                    "/workspace/harbor/src/cache.rs",
+                )),
+                base: "/workspace/harbor",
+                typo: "persistant",
+                correction: "persistent",
+                expected_relative_location: "  --> src/cache.rs:2",
+                expected_absolute_location: "  --> /workspace/harbor/src/cache.rs:2",
+            },
+            RenderingCase {
+                source: r#"/// Sends queued packets.
+/// Retries an interupted connection.
+struct PacketSender;"#,
+                origin: ContentOrigin::RustDocTest(
+                    PathBuf::from("/workspace/harbor/src/transport.rs"),
+                    Span {
+                        start: LineColumn {
+                            line: 40,
+                            column: 0,
+                        },
+                        end: LineColumn {
+                            line: 43,
+                            column: 0,
+                        },
+                    },
+                ),
+                base: "/workspace/harbor/examples",
+                typo: "interupted",
+                correction: "interrupted",
+                expected_relative_location: "  --> ../src/transport.rs:42",
+                expected_absolute_location: "  --> /workspace/harbor/src/transport.rs:42",
+            },
+        ];
+
+        for case in cases {
+            let source = case.source;
+            let expected_origin = case.origin.clone();
+            let typo = case.typo;
+            let correction = case.correction;
+            let expected_relative_location = case.expected_relative_location;
+            let expected_absolute_location = case.expected_absolute_location;
+            let docs =
+                Documentation::load_from_str(ContentOrigin::TestEntityRust, source, true, false);
+            let chunks = docs.get(&ContentOrigin::TestEntityRust).unwrap();
+            let chunk = chunks
+                .iter()
+                .find(|chunk| chunk.as_str().contains(typo))
+                .expect("documentation containing the typo must be extracted");
+            let start = chunk.as_str().find(typo).unwrap();
+            let range = start..start + typo.len();
+            let mappings = chunk.find_spans(range.clone());
+            let (_, span) = mappings.first().unwrap();
+            let suggestion = Suggestion {
+                detector: Detector::Dummy,
+                origin: case.origin,
+                chunk,
+                span: *span,
+                range,
+                replacements: vec![correction.to_owned()],
+                description: None,
+            };
+
+            let relative_display = {
+                let base = PathBuf::from(case.base);
+                suggestion.display_relative_to(&base)
+            };
+            let relative_rendering = relative_display.to_string();
+            let relative_rendering = console::strip_ansi_codes(&relative_rendering);
+            let relative_location = relative_rendering.lines().nth(1).unwrap();
+            assert_eq!(relative_location, expected_relative_location);
+            assert_eq!(suggestion.origin, expected_origin);
+
+            let absolute_rendering = suggestion.to_string();
+            let absolute_rendering = console::strip_ansi_codes(&absolute_rendering);
+            let absolute_location = absolute_rendering.lines().nth(1).unwrap();
+            assert_eq!(absolute_location, expected_absolute_location);
+            let expected_absolute_rendering =
+                relative_rendering.replace(expected_relative_location, expected_absolute_location);
+            assert_eq!(absolute_rendering, expected_absolute_rendering);
+            let expected_replacement = format!("   | - {correction}");
+            assert!(relative_rendering.contains(&expected_replacement));
+        }
     }
 
     #[test]

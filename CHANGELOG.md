@@ -1,6 +1,14 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Features
+
+- Display source paths relative to the supplied input directory, or the current
+  working directory when no path is supplied. Use `--full-paths` to print absolute
+  paths in diagnostics and file listings instead.
+
 ## [0.10.0-alpha.1] - 2022-01-21
 
 ### Bug Fixes
