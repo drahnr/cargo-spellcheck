@@ -29,7 +29,7 @@ use doc_chunks::Ignores;
 use crate::errors::*;
 
 use super::quirks::{
-    allow_list_ranges, replacements_contain_dashed, replacements_contain_dashless, transform,
+    compound_ranges, replacements_contain_dashed, replacements_contain_dashless, transform,
     Transformed,
 };
 
@@ -327,7 +327,7 @@ impl Checker for HunspellChecker {
             };
 
             'tokenization: for range in
-                allow_list_ranges(&self.transform_regex, txt, apply_tokenizer(&self.1, txt))
+                compound_ranges(&self.transform_regex, txt, apply_tokenizer(&self.1, txt))
             {
                 let word = sub_chars(txt, range.clone());
                 if range.len() == 1

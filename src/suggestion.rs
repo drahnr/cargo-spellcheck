@@ -334,19 +334,7 @@ impl<'s> Suggestion<'s> {
             return false;
         }
 
-        if self.span.end.line < other.span.start.line || other.span.end.line < self.span.start.line
-        {
-            return false;
-        }
-
-        if self.span.start.line < other.span.start.line
-            || (self.span.start.line == other.span.start.line
-                && self.span.start.column < other.span.start.column)
-        {
-            self.span.end.column > other.span.start.column
-        } else {
-            self.span.start.column < other.span.end.column
-        }
+        self.span.start <= other.span.end && other.span.start <= self.span.end
     }
 
     /// Render this suggestion using `path` for its location header.
@@ -1160,8 +1148,36 @@ struct PacketSender;"#,
         log::info!("fmt display=\n{suggestion}\n<");
     }
 
+    /// Inclusive source spans overlap symmetrically only within the same origin.
     #[test]
     fn overlapped() {
+        /// Inputs and expected overlap for inclusive source-coordinate spans.
+        struct OverlapCase {
+            name: &'static str,
+            left: Span,
+            right: Span,
+            different_origin: bool,
+            expected: bool,
+        }
+
+        /// Build an inclusive source span from its start and end coordinates.
+        fn source_span(
+            start_line: usize,
+            start_column: usize,
+            end_line: usize,
+            end_column: usize,
+        ) -> Span {
+            Span {
+                start: LineColumn {
+                    line: start_line,
+                    column: start_column,
+                },
+                end: LineColumn {
+                    line: end_line,
+                    column: end_column,
+                },
+            }
+        }
         let chunk = CheckableChunk::from_str(
             r#"0
 2345
@@ -1196,45 +1212,110 @@ struct PacketSender;"#,
             replacements: vec!["whocares".to_owned()],
             description: None,
         };
-        let overlapped_smaller_suggestion = Suggestion {
-            detector: Detector::Dummy,
-            origin: ContentOrigin::TestEntityRust,
-            chunk: &chunk,
-            span: Span {
-                start: LineColumn {
-                    line: 8usize,
-                    column: 0,
-                },
-                end: LineColumn {
-                    line: 8usize,
-                    column: 2,
-                },
+        let cases = [
+            OverlapCase {
+                name: "partial same-line overlap",
+                left: source_span(8, 1, 8, 3),
+                right: source_span(8, 0, 8, 2),
+                different_origin: false,
+                expected: true,
             },
-            range: 2..6,
-            replacements: vec!["whocares".to_owned()],
-            description: None,
-        };
-
-        let overlapped_larger_suggestion = Suggestion {
-            detector: Detector::Dummy,
-            origin: ContentOrigin::TestEntityRust,
-            chunk: &chunk,
-            span: Span {
-                start: LineColumn {
-                    line: 8usize,
-                    column: 2,
-                },
-                end: LineColumn {
-                    line: 8usize,
-                    column: 3,
-                },
+            OverlapCase {
+                name: "contained same-line span",
+                left: source_span(8, 1, 8, 3),
+                right: source_span(8, 2, 8, 3),
+                different_origin: false,
+                expected: true,
             },
-            range: 2..6,
-            replacements: vec!["whocares".to_owned()],
-            description: None,
-        };
+            OverlapCase {
+                name: "shared endpoint",
+                left: source_span(8, 0, 8, 2),
+                right: source_span(8, 2, 8, 3),
+                different_origin: false,
+                expected: true,
+            },
+            OverlapCase {
+                name: "identical one-character spans",
+                left: source_span(8, 2, 8, 2),
+                right: source_span(8, 2, 8, 2),
+                different_origin: false,
+                expected: true,
+            },
+            OverlapCase {
+                name: "immediately adjacent spans",
+                left: source_span(8, 0, 8, 1),
+                right: source_span(8, 2, 8, 3),
+                different_origin: false,
+                expected: false,
+            },
+            OverlapCase {
+                name: "separated same-line spans",
+                left: source_span(8, 0, 8, 0),
+                right: source_span(8, 3, 8, 3),
+                different_origin: false,
+                expected: false,
+            },
+            OverlapCase {
+                name: "multiline containment despite smaller end column",
+                left: source_span(7, 8, 9, 4),
+                right: source_span(8, 5, 8, 7),
+                different_origin: false,
+                expected: true,
+            },
+            OverlapCase {
+                name: "crossing multiline spans",
+                left: source_span(7, 8, 8, 2),
+                right: source_span(8, 1, 9, 4),
+                different_origin: false,
+                expected: true,
+            },
+            OverlapCase {
+                name: "multiline shared endpoint",
+                left: source_span(7, 8, 8, 2),
+                right: source_span(8, 2, 9, 4),
+                different_origin: false,
+                expected: true,
+            },
+            OverlapCase {
+                name: "multiline spans adjacent on shared line",
+                left: source_span(7, 8, 8, 1),
+                right: source_span(8, 2, 9, 4),
+                different_origin: false,
+                expected: false,
+            },
+            OverlapCase {
+                name: "disjoint line ranges",
+                left: source_span(7, 8, 8, 2),
+                right: source_span(9, 0, 10, 4),
+                different_origin: false,
+                expected: false,
+            },
+            OverlapCase {
+                name: "identical spans in different origins",
+                left: source_span(8, 1, 8, 3),
+                right: source_span(8, 1, 8, 3),
+                different_origin: true,
+                expected: false,
+            },
+        ];
 
-        assert!(suggestion.is_overlapped(&overlapped_smaller_suggestion));
-        assert!(suggestion.is_overlapped(&overlapped_larger_suggestion));
+        for case in cases {
+            let mut left = suggestion.clone();
+            left.span = case.left;
+            let mut right = suggestion.clone();
+            right.span = case.right;
+            if case.different_origin {
+                right.origin = ContentOrigin::RustSourceFile(PathBuf::from("src/transport.rs"));
+            }
+            let expected = case.expected;
+
+            assert_eq!(left.is_overlapped(&right), expected, "{}", case.name);
+            assert_eq!(
+                right.is_overlapped(&left),
+                expected,
+                "{} reversed",
+                case.name
+            );
+        }
     }
 }
