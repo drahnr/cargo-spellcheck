@@ -90,6 +90,8 @@ use_builtin = true
 # into word fragments based on the capture groups which are to
 # be checked.
 # If no capture groups are present, the matched word is whitelisted.
+# Such matches can also span adjacent tokens within a non-whitespace sequence,
+# e.g. "->", "-+>", or "::", without excluding neighboring words.
 transform_regex = ["^'([^\\s])'$", "^[0-9]+x$"]
 # Accepts `alphabeta` variants if the checker provides a replacement suggestion
 # of `alpha-beta`.

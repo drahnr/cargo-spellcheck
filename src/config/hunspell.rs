@@ -15,7 +15,9 @@ const fn yes() -> bool {
 pub struct Quirks {
     /// A regular expression, whose capture groups will be checked, instead of
     /// the initial token. Only the first one that matches will be used to split
-    /// the word.
+    /// the word. Expressions without capture groups allow-list matching tokens;
+    /// they can also exclude matches spanning adjacent tokens within a non-whitespace
+    /// sequence, without excluding neighboring words.
     #[serde(default)]
     pub transform_regex: Vec<WrappedRegex>,
     /// Allow concatenated words instead of dashed connection. Note that this

@@ -333,6 +333,162 @@ pub mod tests {
         extraction_test_body(dbg!(SIMPLE), EXPECTED_SPANS);
     }
 
+    #[cfg(any(feature = "hunspell", feature = "spellbook", feature = "zet"))]
+    fn spelling_checkers_for_regex(detector: Detector, pattern: Option<&str>) -> Checkers {
+        use crate::config::{HunspellConfig, Quirks, WrappedRegex};
+
+        let transform_regex = Vec::from_iter(
+            pattern
+                .into_iter()
+                .map(|pattern| WrappedRegex::from(fancy_regex::Regex::new(pattern).unwrap())),
+        );
+        let spelling = HunspellConfig {
+            // Keep the regression independent of dictionaries installed on the host.
+            use_builtin: true,
+            skip_os_lookups: true,
+            extra_dictionaries: vec![],
+            quirks: Quirks {
+                transform_regex,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        Checkers::new(Config {
+            hunspell: (detector == Detector::Hunspell).then(|| spelling.clone()),
+            spellbook: (detector == Detector::Spellbook).then(|| spelling.clone()),
+            zet: (detector == Detector::ZSpell).then_some(spelling),
+            nlprules: None,
+            ..Default::default()
+        })
+        .unwrap()
+    }
+
+    #[cfg(any(feature = "hunspell", feature = "spellbook", feature = "zet"))]
+    fn assert_adjacent_spelling_diagnostics(
+        checkers: &Checkers,
+        detector: Detector,
+        pattern: &str,
+        words: [&str; 2],
+        separator: &str,
+    ) {
+        let [left, right] = words;
+        let source = format!("/// {left}{separator}{right}\nstruct Example;");
+        let documents =
+            Documentation::load_from_str(ContentOrigin::TestEntityRust, &source, true, false);
+        let (origin, chunks) = documents.iter().next().unwrap();
+        let suggestions = checkers.check(origin, chunks).unwrap();
+        let context = format!("{detector}: {pattern}: {source}");
+        assert_eq!(suggestions.len(), words.len(), "{context}");
+        for (suggestion, word) in suggestions.iter().zip(words) {
+            assert_eq!(suggestion.detector, detector, "{context}");
+            assert_eq!(&suggestion.origin, origin, "{context}");
+            let chunk = suggestion.chunk.as_str();
+            // Both offsets count characters, not bytes, even next to a Unicode word.
+            let start = chunk[..chunk.find(word).unwrap()].chars().count();
+            let length = word.chars().count();
+            assert_eq!(suggestion.range, start..start + length, "{context}");
+            assert_eq!(
+                crate::sub_chars(chunk, suggestion.range.clone()),
+                word,
+                "{context}"
+            );
+            let column = source[..source.find(word).unwrap()].chars().count();
+            assert_eq!(
+                suggestion.span,
+                Span {
+                    start: LineColumn { line: 1, column },
+                    // Source spans have inclusive ends; chunk ranges are exclusive.
+                    end: LineColumn {
+                        line: 1,
+                        column: column + length - 1,
+                    },
+                },
+                "{context}"
+            );
+            assert_eq!(
+                load_span_from(&mut source.as_bytes(), suggestion.span).unwrap(),
+                word,
+                "{context}"
+            );
+        }
+    }
+
+    #[cfg(any(feature = "hunspell", feature = "spellbook", feature = "zet"))]
+    fn check_adjacent_spelling_cases(
+        checkers: &Checkers,
+        detector: Detector,
+        pattern: &str,
+        separators: &[&str],
+    ) {
+        // Put the Unicode word on either side to exercise offsets across the match.
+        const TEST_CASES: &[[&str; 2]] = &[
+            ["Zzyzxqvocab", "zzyzxqvocabé"],
+            ["Zzyzxqvocabé", "zzyzxqvocab"],
+        ];
+        for &words in TEST_CASES {
+            for separator in separators {
+                for padded_separator in [
+                    format!(" {separator} "),
+                    separator.to_string(),
+                    format!(" {separator}"),
+                    format!("{separator} "),
+                ] {
+                    assert_adjacent_spelling_diagnostics(
+                        checkers,
+                        detector,
+                        pattern,
+                        words,
+                        &padded_separator,
+                    );
+                }
+            }
+        }
+    }
+
+    #[cfg(any(feature = "hunspell", feature = "spellbook", feature = "zet"))]
+    #[test]
+    fn no_capture_transform_regex_preserves_adjacent_spelling_diagnostics() {
+        const DETECTORS: &[Detector] = &[
+            #[cfg(feature = "hunspell")]
+            Detector::Hunspell,
+            #[cfg(feature = "spellbook")]
+            Detector::Spellbook,
+            #[cfg(feature = "zet")]
+            Detector::ZSpell,
+        ];
+        const TEST_CASES: &[(&str, &[&str])] = &[
+            ("->", &["->"]),
+            ("-+>", &["->", "-->", "---->"]),
+            ("::", &["::"]),
+            ("<-", &["<-"]),
+            ("[-=]>", &["->", "=>"]),
+            ("[-=]+>", &["->", "=>", "==>", "--->"]),
+        ];
+        for &detector in DETECTORS {
+            for &(pattern, separators) in TEST_CASES {
+                let checkers = spelling_checkers_for_regex(detector, Some(pattern));
+                check_adjacent_spelling_cases(&checkers, detector, pattern, separators);
+            }
+
+            // An unrelated regex must not change existing plain-arrow diagnostics.
+            let source = "/// Zzyzxqvocab->zzyzxqvocabé\nstruct Example;";
+            let documents =
+                Documentation::load_from_str(ContentOrigin::TestEntityRust, source, true, false);
+            let (origin, chunks) = documents.iter().next().unwrap();
+            let baseline = spelling_checkers_for_regex(detector, None)
+                .check(origin, chunks)
+                .unwrap();
+            let unrelated = spelling_checkers_for_regex(detector, Some("::"))
+                .check(origin, chunks)
+                .unwrap();
+            assert!(!baseline.is_empty(), "{detector}: {source}");
+            assert_eq!(
+                unrelated, baseline,
+                "{detector}: unrelated :: regex: {source}"
+            );
+        }
+    }
+
     #[test]
     fn checker_discrepancies() {
         let _ = env_logger::Builder::new()

@@ -136,7 +136,7 @@ fn check_chunk<'a>(
         let start = fix.span().char().start;
         let end = fix.span().char().end;
         if start > end {
-            log::debug!("BUG: crate nlprule yielded a negative range {:?} for chunk in {}, please file a bug", start..end, &origin);
+            log::debug!("BUG: crate nlprule yielded a negative range {:?} for chunk in {}, please file a bug", start..end, origin);
             continue 'nlp;
         }
         let range = start..end;
