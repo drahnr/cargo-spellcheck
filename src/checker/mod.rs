@@ -333,6 +333,133 @@ pub mod tests {
         extraction_test_body(dbg!(SIMPLE), EXPECTED_SPANS);
     }
 
+    #[cfg(any(feature = "hunspell", feature = "spellbook", feature = "zet"))]
+    #[test]
+    fn no_capture_transform_regex_preserves_adjacent_spelling_diagnostics() {
+        use crate::config::{HunspellConfig, Quirks, WrappedRegex};
+
+        let detectors = [
+            #[cfg(feature = "hunspell")]
+            Detector::Hunspell,
+            #[cfg(feature = "spellbook")]
+            Detector::Spellbook,
+            #[cfg(feature = "zet")]
+            Detector::ZSpell,
+        ];
+        let cases: &[(&str, &[&str])] = &[
+            ("->", &["->"]),
+            ("-+>", &["->", "-->", "---->"]),
+            ("::", &["::"]),
+            ("<-", &["<-"]),
+            ("[-=]>", &["->", "=>"]),
+            ("[-=]+>", &["->", "=>", "==>", "--->"]),
+        ];
+        for detector in detectors {
+            let checkers_for_regex = |pattern: Option<&str>| {
+                let spelling = HunspellConfig {
+                    use_builtin: true,
+                    skip_os_lookups: true,
+                    extra_dictionaries: vec![],
+                    quirks: Quirks {
+                        transform_regex: pattern
+                            .into_iter()
+                            .map(|pattern| {
+                                WrappedRegex::from(fancy_regex::Regex::new(pattern).unwrap())
+                            })
+                            .collect(),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                };
+                Checkers::new(Config {
+                    hunspell: (detector == Detector::Hunspell).then(|| spelling.clone()),
+                    spellbook: (detector == Detector::Spellbook).then(|| spelling.clone()),
+                    zet: (detector == Detector::ZSpell).then_some(spelling),
+                    nlprules: None,
+                    ..Default::default()
+                })
+                .unwrap()
+            };
+            for &(pattern, separators) in cases {
+                let checkers = checkers_for_regex(Some(pattern));
+                for (left, right) in [
+                    ("Zzyzxqvocab", "zzyzxqvocabé"),
+                    ("Zzyzxqvocabé", "zzyzxqvocab"),
+                ] {
+                    for separator in separators {
+                        for separator in [
+                            format!(" {separator} "),
+                            separator.to_string(),
+                            format!(" {separator}"),
+                            format!("{separator} "),
+                        ] {
+                            let source = format!("/// {left}{separator}{right}\nstruct Example;");
+                            let documents = Documentation::load_from_str(
+                                ContentOrigin::TestEntityRust,
+                                &source,
+                                true,
+                                false,
+                            );
+                            let (origin, chunks) = documents.iter().next().unwrap();
+                            let suggestions = checkers.check(origin, chunks).unwrap();
+                            let context = format!("{detector}: {pattern}: {source}");
+                            assert_eq!(suggestions.len(), 2, "{context}");
+                            for (suggestion, word) in suggestions.iter().zip([left, right]) {
+                                assert_eq!(suggestion.detector, detector, "{context}");
+                                assert_eq!(&suggestion.origin, origin, "{context}");
+                                let chunk = suggestion.chunk.as_str();
+                                let start = chunk[..chunk.find(word).unwrap()].chars().count();
+                                assert_eq!(
+                                    suggestion.range,
+                                    start..start + word.chars().count(),
+                                    "{context}"
+                                );
+                                assert_eq!(
+                                    crate::sub_chars(chunk, suggestion.range.clone()),
+                                    word,
+                                    "{context}"
+                                );
+                                let column = source[..source.find(word).unwrap()].chars().count();
+                                assert_eq!(
+                                    suggestion.span,
+                                    Span {
+                                        start: LineColumn { line: 1, column },
+                                        end: LineColumn {
+                                            line: 1,
+                                            column: column + word.chars().count() - 1,
+                                        },
+                                    },
+                                    "{context}"
+                                );
+                                assert_eq!(
+                                    load_span_from(&mut source.as_bytes(), suggestion.span)
+                                        .unwrap(),
+                                    word,
+                                    "{context}"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+
+            // An unrelated regex must not change existing plain-arrow diagnostics.
+            let source = "/// Zzyzxqvocab->zzyzxqvocabé\nstruct Example;";
+            let documents =
+                Documentation::load_from_str(ContentOrigin::TestEntityRust, source, true, false);
+            let (origin, chunks) = documents.iter().next().unwrap();
+            let baseline = checkers_for_regex(None).check(origin, chunks).unwrap();
+            let unrelated = checkers_for_regex(Some("::"))
+                .check(origin, chunks)
+                .unwrap();
+            assert!(!baseline.is_empty(), "{detector}: {source}");
+            assert_eq!(
+                unrelated, baseline,
+                "{detector}: unrelated :: regex: {source}"
+            );
+        }
+    }
+
     #[test]
     fn checker_discrepancies() {
         let _ = env_logger::Builder::new()

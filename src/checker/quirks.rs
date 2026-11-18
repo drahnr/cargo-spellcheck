@@ -45,6 +45,87 @@ pub(crate) enum Transformed<'i> {
     Atomic((Range, &'i str)),
 }
 
+/// Exclude no-capture regex matches that cross tokenizer boundaries.
+/// Matches within a single token retain the existing per-token transformation policy.
+pub(crate) fn allow_list_ranges<R: AsRef<Regex>>(
+    transform_regex: &[R],
+    text: &str,
+    ranges: impl Iterator<Item = Range>,
+) -> Vec<Range> {
+    let ranges = ranges.collect::<Vec<_>>();
+    let regexes = transform_regex
+        .iter()
+        .map(AsRef::as_ref)
+        .filter(|regex| regex.captures_len() == 1)
+        .collect::<Vec<_>>();
+    if regexes.is_empty() || ranges.len() < 2 {
+        return ranges;
+    }
+    let boundaries = text
+        .char_indices()
+        .map(|(offset, _)| offset)
+        .chain(std::iter::once(text.len()))
+        .collect::<Vec<_>>();
+    let mut excluded = Vec::new();
+    let mut offset = 0;
+    // Keep word-oriented anchors and wildcards from swallowing neighboring words.
+    for run in text.split_inclusive(char::is_whitespace) {
+        let word = run.trim_end_matches(char::is_whitespace);
+        for regex in &regexes {
+            for matched in regex.find_iter(word) {
+                let matched = match matched {
+                    Ok(matched) => matched,
+                    Err(error) => {
+                        log::warn!(target: "quirks", "Matching regex >{}< errored: {}", regex.as_str(), error);
+                        break;
+                    }
+                };
+                if matched.start() == matched.end() {
+                    continue;
+                }
+                let start = boundaries
+                    .binary_search(&(offset + matched.start()))
+                    .unwrap();
+                let end = boundaries.binary_search(&(offset + matched.end())).unwrap();
+                let first = ranges.partition_point(|range| range.end <= start);
+                if ranges.get(first + 1).is_some_and(|range| range.start < end) {
+                    excluded.push(start..end);
+                }
+            }
+        }
+        offset += run.len();
+    }
+    if excluded.is_empty() {
+        return ranges;
+    }
+    excluded.sort_unstable_by_key(|range| (range.start, range.end));
+    let mut excluded = excluded.into_iter().peekable();
+    let mut remaining = Vec::with_capacity(ranges.len());
+    for range in ranges {
+        let mut start = range.start;
+        while let Some(matched) = excluded.peek() {
+            if matched.end <= start {
+                excluded.next();
+                continue;
+            }
+            if matched.start >= range.end {
+                break;
+            }
+            if start < matched.start {
+                remaining.push(start..matched.start);
+            }
+            start = matched.end.min(range.end);
+            if start == range.end {
+                break;
+            }
+        }
+        if start < range.end {
+            remaining.push(start..range.end);
+        }
+    }
+    remaining
+}
+
 /// Transforms a word into a set of fragment-ranges and associated str slices.
 pub(crate) fn transform<'i, R: AsRef<Regex>>(
     transform_regex: &[R],
@@ -167,6 +248,41 @@ mod tests {
         const WORD: &str = "zeta-ray";
         const REPLACEMENTS: &[&str] = &["fffff", "qqq", "z", "zetaray"];
         assert!(replacements_contain_dashless(WORD, REPLACEMENTS));
+    }
+
+    #[test]
+    fn cross_token_allow_lists_preserve_offsets_and_per_token_rules() {
+        for (patterns, text, ranges, expected) in [
+            (
+                vec!["->"],
+                "éx->typo",
+                vec![0..3, 3..4, 4..8],
+                vec![0..2, 4..8],
+            ),
+            (vec!["-+>", "->"], "---->", vec![0..4, 4..5], vec![]),
+            (vec!["->"], "->->", vec![0..1, 1..2, 2..3, 3..4], vec![]),
+            (vec!["^.+>$"], "typo ->", vec![0..4, 5..6, 6..7], vec![0..4]),
+            (vec!["::"], "->", vec![0..1, 1..2], vec![0..1, 1..2]),
+            (vec!["(?=>)"], "->", vec![0..1, 1..2], vec![0..1, 1..2]),
+            (vec!["(-)>"], "->", vec![0..1, 1..2], vec![0..1, 1..2]),
+            (
+                vec!["typo"],
+                "typoextra word",
+                vec![0..9, 10..14],
+                vec![0..9, 10..14],
+            ),
+            (vec![], "->", vec![0..1, 1..2], vec![0..1, 1..2]),
+        ] {
+            let regexes = patterns
+                .iter()
+                .map(|pattern| WrappedRegex::from(Regex::new(pattern).unwrap()))
+                .collect::<Vec<_>>();
+            assert_eq!(
+                allow_list_ranges(&regexes, text, ranges.into_iter()),
+                expected,
+                "{patterns:?}: {text}"
+            );
+        }
     }
 
     #[test]
