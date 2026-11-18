@@ -2,8 +2,6 @@ use crate::errors::*;
 use crate::util::{self, sub_chars};
 use crate::{Range, Span};
 
-use fancy_regex::Regex;
-use lazy_static::lazy_static;
 use proc_macro2::LineColumn;
 
 use std::fmt;
@@ -288,11 +286,16 @@ fn detect_comment_variant(
         #[cfg(debug_assertions)]
         {
             let raw = util::load_span_from(&mut content.as_bytes(), orig)?;
-            let adjusted = util::load_span_from(&mut content.as_bytes(), span)?;
+            // Empty content has a reversed inclusive span, which cannot be read.
+            let adjusted_len = if rendered.len() == pre + post {
+                0
+            } else {
+                util::load_span_from(&mut content.as_bytes(), span)?.len()
+            };
 
             // we know pre and post only consist of single byte characters
             // so `.len()` is way faster here yet correct.
-            assert_eq!(adjusted.len() + pre + post, raw.len());
+            assert_eq!(adjusted_len + pre + post, raw.len());
         }
 
         (variant, span, pre, post)
@@ -300,52 +303,44 @@ fn detect_comment_variant(
         // pre and post are for the rendered content
         // not necessarily for the span
 
-        //^r(#+?)"(?:.*\s*)+(?=(?:"\1))("\1)$
-        lazy_static! {
-            static ref BOUNDED_RAW_STR: Regex =
-                Regex::new(r##"^(r(#*)")(?:.*\s*)+?(?=(?:"\2))("\2)\s*\]?\s*$"##)
-                    .expect("BOUNEDED_RAW_STR regex compiles");
-            static ref BOUNDED_STR: Regex = Regex::new(r##"^"(?:.(?!"\\"))*?"*\s*\]?\s*"$"##)
-                .expect("BOUNEDED_STR regex compiles");
+        // The parser has already validated the literal. Determine its ASCII
+        // delimiters without interpreting escapes or changing source offsets.
+        let (pre, post) = if rendered.starts_with('"') && rendered.ends_with('"') {
+            (1, 1)
+        } else if let Some(raw) = rendered.strip_prefix('r') {
+            let hashes = raw.bytes().take_while(|byte| *byte == b'#').count();
+            let pre = hashes + 2;
+            let post = hashes + 1;
+            if rendered.as_bytes().get(pre - 1) != Some(&b'"')
+                || !rendered.ends_with(&format!("\"{}", "#".repeat(hashes)))
+            {
+                return Err(Error::Span(format!(
+                    "Invalid raw documentation string: {}",
+                    rendered
+                )));
+            }
+            (pre, post)
+        } else {
+            return Err(Error::Span(format!(
+                "Expected a documentation string: {}",
+                rendered
+            )));
         };
 
-        let (pre, post) =
-            if let Some(captures) = BOUNDED_RAW_STR.captures(rendered.as_str()).ok().flatten() {
-                log::trace!("raw str: >{}<", rendered.as_str());
-                let pre = if let Some(prefix) = captures.get(1) {
-                    log::trace!("raw str pre: >{}<", prefix.as_str());
-                    prefix.as_str().len()
-                } else {
-                    return Err(Error::Span(
-                        "Should have a raw str pre match with a capture group".to_string(),
-                    ));
-                };
-                let post = if let Some(suffix) = captures.get(captures.len() - 1) {
-                    log::trace!("raw str post: >{}<", suffix.as_str());
-                    suffix.as_str().len()
-                } else {
-                    return Err(Error::Span(
-                        "Should have a raw str post match with a capture group".to_string(),
-                    ));
-                };
-
-                // r####" must match "####
-                debug_assert_eq!(pre, post + 1);
-
-                (pre, post)
-            } else if let Some(_captures) = BOUNDED_STR.captures(rendered.as_str()).ok().flatten() {
-                // r####" must match "####
-                let pre = 1;
-                let post = 1;
-                debug_assert_eq!('"', rendered.as_bytes()[0_usize] as char);
-                debug_assert_eq!('"', rendered.as_bytes()[rendered.len() - 1_usize] as char);
-                (pre, post)
-            } else {
-                return Err(Error::Span(format!("Regex should match >{rendered}<")));
-            };
-
-        span.start.column += pre;
-        span.end.column = span.end.column.saturating_sub(post);
+        let length = rendered.chars().count().saturating_sub(pre + post);
+        let mut positions = util::iter_with_line_column_from(rendered, span.start)
+            .skip(pre)
+            .take(length)
+            .map(|(_, _, _, cursor)| cursor);
+        if let Some(start) = positions.next() {
+            span.start = start;
+            // The last content character may be a newline on the preceding
+            // line, not column zero of the closing delimiter's line.
+            span.end = positions.last().unwrap_or(start);
+        } else {
+            span.start.column += pre;
+            span.end.column = span.start.column - 1;
+        }
 
         (
             CommentVariant::MacroDocEqStr(prefix, pre.saturating_sub(1)),
@@ -388,25 +383,20 @@ impl TrimmedLiteral {
         // many pitfalls to sanitize all cases, so reading given span
         // from the file again, and then determining its type is way safer.
 
-        // It's unclear why the trailing `]` character is part of the given span, it shout not be part
-        // of it, but the span we obtain from literal seems to be wrong, adding one trailing char.
-
-        // Either cut off `]` or `\n` - we don't need either.
+        // proc_macro2 ends are exclusive; our source spans are inclusive.
         span.end.column = span.end.column.saturating_sub(1);
-
-        // If the line ending has more than one character, we have to account
-        // for that. Otherwise cut of the last character of the ending such that
-        // we can't properly detect them anymore.
-        if crate::util::extract_delimiter(content)
-            .unwrap_or("\n")
-            .len()
-            > 1
+        let mut rendered = util::load_span_from(content.as_bytes(), span)?;
+        // Preserve comment-ending handling, but never extend string token spans:
+        // inside cfg_attr the next character belongs to the attribute syntax.
+        if rendered.starts_with('/')
+            && crate::util::extract_delimiter(content)
+                .unwrap_or("\n")
+                .len()
+                > 1
         {
-            log::trace!(target: "documentation", "Found two character line ending like CRLF");
             span.end.column += 1;
+            rendered = util::load_span_from(content.as_bytes(), span)?;
         }
-
-        let rendered = util::load_span_from(content.as_bytes(), span)?;
 
         // TODO cache the offsets for faster processing and avoiding repeated O(n) ops
         // let byteoffset2char = rendered.char_indices().enumerate().collect::<indexmap::IndexMap<_usize, (_usize, char)>>();

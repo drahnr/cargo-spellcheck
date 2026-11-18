@@ -305,6 +305,37 @@ struct Foo;
     }
 
     #[test]
+    fn issue_263() {
+        // excerpt from rust
+        const RAW: &str = r####"
+/// # Examples
+///
+#[cfg_attr(unix, doc = "```no_run")]
+#[cfg_attr(not(unix), doc = "```ignore")]
+/// assert_eq!(Path::new("./is_a_directory/").is_dir(), true);
+/// ```
+///
+"####;
+        let mut docs = Documentation::new();
+        docs.add_rust(ContentOrigin::TestEntityRust, RAW, true, false)
+            .unwrap();
+        let chunks = docs.get(&ContentOrigin::TestEntityRust).unwrap();
+        assert_eq!(chunks.len(), 2);
+        for chunk in chunks {
+            // The heading remains checkable; only the example code disappears.
+            assert_eq!(
+                chunk.erase_cmark(&Ignores::default()).as_str().trim(),
+                "Examples"
+            );
+            assert_eq!(
+                chunk.as_str().matches("```no_run").count()
+                    + chunk.as_str().matches("```ignore").count(),
+                1
+            );
+        }
+    }
+
+    #[test]
     fn file_justone() {
         end2end_file_rust!("demo/src/nested/justone.rs", 2);
     }
@@ -1643,8 +1674,8 @@ lines
                     column: 12_usize,
                 },
                 end: LineColumn {
-                    line: 6_usize,
-                    column: 0_usize,
+                    line: 5_usize,
+                    column: 5_usize,
                 },
             },
             variant: CommentVariant::MacroDocEqStr("#[doc = ".to_string(), 3),

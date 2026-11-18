@@ -693,7 +693,6 @@ dependencies = [
  "assert_matches",
  "console",
  "env_logger",
- "fancy-regex 0.13.0",
  "fs-err",
  "indexmap",
  "itertools 0.12.1",

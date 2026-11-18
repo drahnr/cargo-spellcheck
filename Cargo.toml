@@ -19,6 +19,7 @@ include = [
   "build.rs",
   "/LICENSE-*",
   "/README.md",
+  "docs/conditional-documentation.md",
   "tests/**/*.rs",
   "CHANGELOG.md",
 ]

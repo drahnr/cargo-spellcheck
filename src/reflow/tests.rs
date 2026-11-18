@@ -773,3 +773,35 @@ fn reflow_crlf() {
         "cargo spellcheck can be\r\n        /// configured with `-m <code>`\r\n        /// to return a non-zero return\r\n        /// code."
     ]);
 }
+
+#[test]
+fn reflow_conditional_chunks_preserve_source_for_mixed_line_endings() {
+    for (first, later) in [("\r\n", "\r\n"), ("\r\n", "\n"), ("\n", "\r\n")] {
+        let source = format!(
+            "/// Shared introduction.{first}\
+             #[cfg_attr(feature = \"one\", doc = \"Documentation contains enough ordinary words to require wrapping across several lines.\")]{later}\
+             struct Example;{later}"
+        );
+        syn::parse_file(&source).unwrap();
+        let origin = ContentOrigin::TestEntityRust;
+        let docs = Documentation::load_from_str(origin.clone(), &source, true, false);
+        let chunks = docs.get(&origin).unwrap();
+        assert_eq!(chunks.len(), 2);
+        assert!(chunks.iter().all(|chunk| !chunk.is_reflow_safe()));
+        let checker = Reflow::new(ReflowConfig {
+            max_line_length: 40,
+        })
+        .unwrap();
+        let suggestions = checker.check(&origin, chunks).unwrap();
+        assert!(suggestions.is_empty());
+        let patches = suggestions.iter().map(|suggestion| {
+            crate::Patch::from(crate::BandAid::from((
+                suggestion.replacements[0].clone(),
+                &suggestion.span,
+            )))
+        });
+        let mut output = Vec::new();
+        crate::action::apply_patches(patches, &source, &mut output).unwrap();
+        assert_eq!(String::from_utf8(output).unwrap(), source);
+    }
+}

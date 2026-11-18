@@ -15,15 +15,26 @@ pub struct LiteralSet {
     pub coverage: (usize, usize),
     /// Track what kind of comment the literals are
     variant: CommentVariant,
+    /// Attribute syntax or conditional projections prevent whole-block edits.
+    non_reflowable: bool,
 }
 
 impl LiteralSet {
     /// Initiate a new set based on the first literal
     pub fn from(literal: TrimmedLiteral) -> Self {
+        Self::from_docs(vec![literal], false)
+    }
+
+    /// Build a structurally contiguous documentation run. Selected literals
+    /// need not be on adjacent source lines (inactive attributes leave gaps).
+    pub(crate) fn from_docs(literals: Vec<TrimmedLiteral>, non_reflowable: bool) -> Self {
+        let first = literals.first().expect("a documentation run is nonempty");
+        let last = literals.last().unwrap();
         Self {
-            coverage: (literal.span().start.line, literal.span().end.line),
-            variant: literal.variant(),
-            literals: vec![literal],
+            coverage: (first.span().start.line, last.span().end.line),
+            variant: first.variant(),
+            literals,
+            non_reflowable,
         }
     }
 
@@ -121,7 +132,11 @@ impl LiteralSet {
         } else {
             crate::CommentVariant::Unknown
         };
-        CheckableChunk::from_string(content, source_mapping, variant)
+        let mut chunk = CheckableChunk::from_string(content, source_mapping, variant);
+        if self.non_reflowable {
+            chunk.disable_reflow();
+        }
+        chunk
     }
 }
 

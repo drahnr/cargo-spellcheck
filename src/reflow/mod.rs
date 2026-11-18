@@ -49,6 +49,13 @@ impl Checker for Reflow {
     {
         let mut acc = Vec::with_capacity(chunks.len());
         for chunk in chunks {
+            if !chunk.is_reflow_safe() {
+                log::debug!(
+                    "Skipping reflow for unsafe documentation chunk in {}",
+                    origin
+                );
+                continue;
+            }
             match chunk.variant() {
                 CommentVariant::SlashAsterisk
                 | CommentVariant::SlashAsteriskAsterisk
@@ -532,3 +539,41 @@ fn reflow<'s>(
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod safety_tests {
+    use super::*;
+    use crate::LineColumn;
+
+    #[test]
+    fn skips_unsafe_chunks_but_still_reflows_safe_chunks() {
+        let content =
+            "This paragraph contains enough words to require wrapping onto several shorter lines.";
+        let len = content.chars().count();
+        let safe = CheckableChunk::from_str(
+            content,
+            indexmap::indexmap! {
+                0..len => Span {
+                    start: LineColumn { line: 1, column: 0 },
+                    end: LineColumn { line: 1, column: len - 1 },
+                }
+            },
+            CommentVariant::CommonMark,
+        );
+        let mut unsafe_chunk = safe.clone();
+        unsafe_chunk.disable_reflow();
+        let chunks = [unsafe_chunk, safe];
+        let checker = Reflow::new(ReflowConfig {
+            max_line_length: 20,
+        })
+        .unwrap();
+        let origin = ContentOrigin::TestEntityCommonMark;
+
+        assert!(checker.check(&origin, &chunks[..1]).unwrap().is_empty());
+        let suggestions = checker.check(&origin, &chunks).unwrap();
+        assert!(!suggestions.is_empty());
+        assert!(suggestions
+            .iter()
+            .all(|suggestion| std::ptr::eq(suggestion.chunk, &chunks[1])));
+    }
+}
