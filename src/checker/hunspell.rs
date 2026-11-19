@@ -121,7 +121,7 @@ fn catch_hunspell_panic<T>(operation: &str, action: impl FnOnce() -> Result<T>) 
             .copied()
             .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
             .unwrap_or("non-string panic payload");
-        Err(eyre!("Hunspell panicked while {operation}: {message}"))
+        bail!("Hunspell panicked while {operation}: {message}")
     })
 }
 
