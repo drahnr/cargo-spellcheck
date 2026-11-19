@@ -28,8 +28,19 @@ pub struct CachedValue<T> {
     pub value: T,
 }
 
+// Cached keeps its file open between operations, so release each lock even on errors.
+struct FileLockGuard<'a>(&'a fs_err::File);
+
+impl Drop for FileLockGuard<'_> {
+    fn drop(&mut self) {
+        if let Err(err) = self.0.file().unlock() {
+            log::warn!("Failed to unlock cache file: {err:?}");
+        }
+    }
+}
+
 pub struct Cached<T> {
-    cache_file: fd_lock::RwLock<fs_err::File>,
+    cache_file: fs_err::File,
     // What to cache.
     what: String,
     _phantom: std::marker::PhantomData<T>,
@@ -52,7 +63,7 @@ where
             .write(true)
             .open(cache_file)?;
         Ok(Self {
-            cache_file: fd_lock::RwLock::new(cache_file),
+            cache_file,
             what: what.to_owned(),
             _phantom: std::marker::PhantomData,
         })
@@ -121,8 +132,9 @@ where
         }
     }
     pub fn fetch(&mut self) -> Result<Option<T>> {
-        let guard = self.cache_file.read()?;
-        let buf = std::io::BufReader::new(guard.file());
+        self.cache_file.file().lock_shared()?;
+        let guard = FileLockGuard(&self.cache_file);
+        let buf = std::io::BufReader::new(guard.0);
         // let buf = xz2::bufread::XzDecoder::new(buf);
         match bincode::deserialize_from(buf) {
             Ok(CacheEntry { what, val }) => {
@@ -146,7 +158,8 @@ where
     }
 
     pub fn update(&mut self, val: &T) -> Result<()> {
-        let mut write_guard = self.cache_file.write()?;
+        self.cache_file.file().lock()?;
+        let guard = FileLockGuard(&self.cache_file);
 
         let entry = CacheEntry {
             what: self.what.clone(),
@@ -157,11 +170,65 @@ where
         // let mut compressed = xz2::bufread::XzEncoder::new(&mut encoded, 6);
 
         // effectively truncate, but without losing the lock
-        let file = write_guard.file_mut();
+        let mut file = guard.0;
         file.rewind()?;
-        std::io::copy(&mut encoded, file)?;
+        std::io::copy(&mut encoded, &mut file)?;
         let loco = file.stream_position()?;
         file.set_len(loco)?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cache_operations_release_locks() {
+        let cache_dir = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+        let mut writer = Cached::<String>::new("test", &cache_dir).unwrap();
+        writer.update(&"cached value".to_owned()).unwrap();
+
+        let mut reader = Cached::<String>::new("test", &cache_dir).unwrap();
+        reader.cache_file.file().try_lock().unwrap();
+        reader.cache_file.file().unlock().unwrap();
+        assert_eq!(reader.fetch().unwrap(), Some("cached value".to_owned()));
+        writer.cache_file.file().try_lock().unwrap();
+        writer.cache_file.file().unlock().unwrap();
+
+        // A second shared reader must not require exclusive access.
+        writer.cache_file.file().lock_shared().unwrap();
+        let mut another_reader = Cached::<String>::new("test", &cache_dir).unwrap();
+        assert_eq!(
+            another_reader.fetch().unwrap(),
+            Some("cached value".to_owned())
+        );
+        writer.cache_file.file().unlock().unwrap();
+
+        drop((writer, reader, another_reader));
+        fs_err::remove_dir_all(cache_dir).unwrap();
+    }
+
+    #[test]
+    fn failed_cache_update_releases_lock() {
+        let cache_dir = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+        let mut cache = Cached::<String>::new("test", &cache_dir).unwrap();
+        let path = fs_err::read_dir(&cache_dir)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        cache.cache_file = fs_err::File::open(&path).unwrap();
+        assert!(cache.update(&"cannot write".to_owned()).is_err());
+
+        let other_file = fs_err::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(path)
+            .unwrap();
+        other_file.file().try_lock().unwrap();
+        drop((cache, other_file));
+        fs_err::remove_dir_all(cache_dir).unwrap();
     }
 }

@@ -66,25 +66,31 @@ pub(super) fn cache_builtin_inner(
     if let Ok(f) = fs::File::open(&path) {
         // in case somebody else is currently writing to it
         // wait for that to complete
-        let flock = fd_lock::RwLock::new(f);
-        let _ = flock.read()?;
+        f.file().lock_shared()?;
         return Ok(path);
     }
-    let f = fs::OpenOptions::new()
-        .truncate(true)
+    let mut f = fs::OpenOptions::new()
+        .truncate(false)
         .create(true)
+        // Shared locking requires read access on Windows.
+        .read(true)
         .write(true)
         .open(&path)?;
-    let mut flock = fd_lock::RwLock::new(f);
     // if there are multiple instances, allow the first to write it all
-    if let Ok(mut f) = flock.try_write() {
-        f.write_all(data)?;
-        return Ok(path);
+    match f.file().try_lock() {
+        Ok(()) => {
+            // Do not truncate another writer's data before acquiring the lock.
+            f.set_len(0)?;
+            f.write_all(data)?;
+            return Ok(path);
+        }
+        Err(std::fs::TryLockError::WouldBlock) => {}
+        Err(std::fs::TryLockError::Error(err)) => return Err(err.into()),
     }
 
     // .. but block execution until the first completed so
     // there are no cases of partial data
-    let _ = flock.read()?;
+    f.file().lock_shared()?;
 
     Ok(path)
 }
@@ -790,6 +796,71 @@ mod tests {
                 });
             }
         });
+    }
+
+    #[test]
+    fn cache_builtin_writes_and_reuses_existing_file() {
+        let cache_dir = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+        let data = b"cached dictionary";
+        let path = cache_builtin_inner(&cache_dir, "dic", data).unwrap();
+        assert_eq!(fs::read(&path).unwrap(), data);
+
+        let f = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&path)
+            .unwrap();
+        // The writer's lock must have been released when caching returned.
+        f.file().try_lock().unwrap();
+        drop(f);
+
+        let f = fs::File::open(&path).unwrap();
+        f.file().lock_shared().unwrap();
+        // Existing cache files can be reused alongside other shared readers.
+        assert_eq!(
+            cache_builtin_inner(&cache_dir, "dic", b"replacement").unwrap(),
+            path
+        );
+        assert_eq!(fs::read(&path).unwrap(), data);
+        drop(f);
+
+        let f = fs::OpenOptions::new().write(true).open(&path).unwrap();
+        // The cache reader must not retain its shared lock after returning.
+        f.file().try_lock().unwrap();
+        drop(f);
+        fs::remove_dir_all(cache_dir).unwrap();
+    }
+
+    #[test]
+    fn cache_builtin_waits_for_writer() {
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        let cache_dir = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+        let path = cache_builtin_inner(&cache_dir, "dic", b"partial").unwrap();
+        let mut writer = fs::OpenOptions::new().write(true).open(&path).unwrap();
+        writer.file().lock().unwrap();
+        let (started_tx, started_rx) = mpsc::channel();
+        let (done_tx, done_rx) = mpsc::channel();
+        let reader_cache_dir = cache_dir.clone();
+        let reader = std::thread::spawn(move || {
+            started_tx.send(()).unwrap();
+            let path = cache_builtin_inner(reader_cache_dir, "dic", b"replacement").unwrap();
+            done_tx.send(path).unwrap();
+        });
+
+        started_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert!(matches!(
+            done_rx.recv_timeout(Duration::from_millis(100)),
+            Err(mpsc::RecvTimeoutError::Timeout)
+        ));
+        writer.write_all(b"complete dictionary").unwrap();
+        drop(writer);
+
+        assert_eq!(done_rx.recv_timeout(Duration::from_secs(5)).unwrap(), path);
+        reader.join().unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"complete dictionary");
+        fs::remove_dir_all(cache_dir).unwrap();
     }
 
     #[test]
