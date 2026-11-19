@@ -130,8 +130,9 @@ pub(crate) fn traverse(
     path: &Path,
     doc_comments: bool,
     dev_comments: bool,
+    output_paths: crate::paths::OutputPaths,
 ) -> Result<impl Iterator<Item = Documentation>> {
-    traverse_with_depth_limit(path, usize::MAX, doc_comments, dev_comments)
+    traverse_with_depth_limit(path, usize::MAX, doc_comments, dev_comments, output_paths)
 }
 
 /// traverse path with a depth limit, if the path is a directory all its
@@ -141,19 +142,27 @@ pub(crate) fn traverse_with_depth_limit(
     max_depth: usize,
     doc_comments: bool,
     dev_comments: bool,
+    output_paths: crate::paths::OutputPaths,
 ) -> Result<impl Iterator<Item = Documentation>> {
     let it = TraverseModulesIter::with_depth_limit(path, max_depth)?
         .filter_map(move |path: PathBuf| -> Option<Documentation> {
             fs::read_to_string(&path).ok().map(|content| {
-                Documentation::load_from_str(
-                    ContentOrigin::RustSourceFile(path),
-                    content.as_str(),
-                    doc_comments,
-                    dev_comments,
-                )
+                let mut documentation = Documentation::new();
+                if let Some(base) = output_paths.base_for(&path) {
+                    documentation.set_warning_path_base(base.to_path_buf());
+                }
+                let origin = ContentOrigin::RustSourceFile(path);
+                if let Err(error) = documentation.add_rust(
+                    origin.clone(), content.as_str(), doc_comments, dev_comments,
+                ) {
+                    log::warn!("BUG: Failed to load content from {origin} (dev_comments={dev_comments:?}): {error:?}");
+                }
+                documentation
             })
         })
-        .filter(|documentation| !documentation.is_empty());
+        .filter(|documentation| {
+            !documentation.is_empty() || !documentation.warnings().is_empty()
+        });
     Ok(it)
 }
 

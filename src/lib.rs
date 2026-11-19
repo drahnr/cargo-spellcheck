@@ -156,8 +156,13 @@ pub fn run(args: Args) -> Result<ExitCode> {
             log::debug!("Executing: {action:?} with {config:?} from {config_path:?}");
 
             let output_paths = paths::OutputPaths::new(&paths, absolute_paths)?;
-            let documents =
-                traverse::extract(paths, recursive, skip_readme, dev_comments, &config)?;
+            let documents = traverse::extract_with_output_paths(
+                paths,
+                recursive,
+                skip_readme,
+                dev_comments,
+                &output_paths,
+            )?;
 
             let rt = tokio::runtime::Runtime::new()?;
             let finish = rt.block_on(async move {

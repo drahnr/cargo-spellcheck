@@ -412,13 +412,26 @@ fn handle_manifest<P: AsRef<Path>>(
     Ok(acc)
 }
 
-/// Extract all chunks from
+/// Extract documentation with default relative path rendering for tests.
+#[cfg(test)]
 pub(crate) fn extract(
+    paths: Vec<PathBuf>,
+    recurse: bool,
+    skip_readme: bool,
+    dev_comments: bool,
+    _config: &Config,
+) -> Result<Documentation> {
+    let output_paths = crate::paths::OutputPaths::new(&paths, false)?;
+    extract_with_output_paths(paths, recurse, skip_readme, dev_comments, &output_paths)
+}
+
+/// Extract all chunks from
+pub(crate) fn extract_with_output_paths(
     mut paths: Vec<PathBuf>,
     mut recurse: bool,
     skip_readme: bool,
     dev_comments: bool,
-    _config: &Config,
+    output_paths: &crate::paths::OutputPaths,
 ) -> Result<Documentation> {
     let cwd = cwd()?;
     // if there are no arguments, pretend to be told to check the whole project
@@ -544,6 +557,9 @@ pub(crate) fn extract(
             match check_entity {
                 CheckEntity::Source(path, recurse) => {
                     let content: String = fs::read_to_string(&path)?;
+                    if let Some(base) = output_paths.base_for(&path) {
+                        docs.set_warning_path_base(base.to_path_buf());
+                    }
                     docs.add_rust(
                         ContentOrigin::RustSourceFile(path.clone()),
                         content.as_str(),
@@ -552,17 +568,13 @@ pub(crate) fn extract(
                     )?;
 
                     if recurse {
-                        let iter =
-                            Vec::from_iter(traverse(path.as_path(), true, dev_comments)?.flat_map(
-                                |documentation| {
-                                    // Filter out duplicate _chunks_
-                                    // that `extend` would happily duplicate.
-                                    documentation
-                                        .into_iter()
-                                        .filter(|(origin, _chunks)| !docs.contains_key(origin))
-                                },
-                            ));
-                        docs.extend(iter);
+                        for documentation in
+                            traverse(path.as_path(), true, dev_comments, output_paths.clone())?
+                        {
+                            // Filter out duplicate _chunks_
+                            // that `extend` would happily duplicate.
+                            docs.merge_unique(documentation);
+                        }
                     }
                 }
                 CheckEntity::Markdown(path) => {
@@ -592,6 +604,71 @@ mod tests {
     use super::*;
 
     use itertools::Itertools;
+
+    /// Temporary module tree removed even when an extraction assertion fails.
+    struct WarningFixture(PathBuf);
+
+    impl Drop for WarningFixture {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn recursive_extraction_retains_warnings_from_empty_and_partial_documentation() {
+        let directory = std::env::temp_dir().join(format!(
+            "cargo-spellcheck-extraction-warnings-{}",
+            uuid::Uuid::new_v4()
+        ));
+        fs::create_dir(&directory).unwrap();
+        let fixture = WarningFixture(directory);
+        let root_source = r#"/// Transport entry.
+mod opaque;
+mod conditional;"#;
+        let opaque_source = r#"#[doc = include_str!("transport-guide.md")]
+struct TransportGuide;"#;
+        let conditional_source = r#"/// Packet handling.
+#[cfg_attr(feature = "trace", doc = include_str!("tracing.md"))]
+struct Packet;"#;
+        let root_path = fixture.0.join("lib.rs");
+        let opaque_path = fixture.0.join("opaque.rs");
+        let conditional_path = fixture.0.join("conditional.rs");
+        fs::write(&root_path, root_source).unwrap();
+        fs::write(&opaque_path, opaque_source).unwrap();
+        fs::write(&conditional_path, conditional_source).unwrap();
+        let paths = vec![root_path];
+        let config = Config::default();
+        let expected_warning_origins = HashSet::<_>::from_iter([
+            ContentOrigin::RustSourceFile(opaque_path.clone()),
+            ContentOrigin::RustSourceFile(conditional_path.clone()),
+        ]);
+        let expected_warning_count = expected_warning_origins.len();
+        let expected_kind = doc_chunks::ExtractionWarningKind::OpaqueDocumentation;
+        let expected_empty_chunk_count = 0;
+        let expected_partial_chunk_count = 1;
+        let documentation = extract(paths, true, true, false, &config).unwrap();
+        assert_eq!(documentation.warnings().len(), expected_warning_count);
+        let actual_warning_origins = HashSet::<_>::from_iter(
+            documentation
+                .warnings()
+                .iter()
+                .map(|located| located.origin.clone()),
+        );
+        assert_eq!(actual_warning_origins, expected_warning_origins);
+        for located in documentation.warnings() {
+            assert_eq!(located.warning.kind, expected_kind);
+        }
+        let opaque_origin = ContentOrigin::RustSourceFile(opaque_path);
+        let conditional_origin = ContentOrigin::RustSourceFile(conditional_path);
+        assert_eq!(
+            documentation.get(&opaque_origin).unwrap().len(),
+            expected_empty_chunk_count
+        );
+        assert_eq!(
+            documentation.get(&conditional_origin).unwrap().len(),
+            expected_partial_chunk_count
+        );
+    }
 
     const TEST_FILE_FRAGMENTS: &str = "src/nested/fragments.rs";
     const TEST_FILE_SIMPLE: &str = "src/nested/fragments/simple.rs";
