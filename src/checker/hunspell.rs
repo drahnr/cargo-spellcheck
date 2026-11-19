@@ -125,17 +125,23 @@ fn catch_hunspell_panic<T>(operation: &str, action: impl FnOnce() -> Result<T>) 
     })
 }
 
-// Bundled Hunspell maintains a process-global UTF-8 table and reference count.
-// Serializing each handle is insufficient: construction, dictionary addition,
-// and destruction all mutate this shared state.
+// Locking assumptions, based on bundled Hunspell in hunspell-sys 0.3.1:
+// - Each engine owns its AffixMgr. Lookups mutate fields such as pfx/sfx, so
+//   calls on the same engine require its exclusive mutex, not RwLock readers.
+// - We assume check/suggest on distinct engines only read shared native state.
+//   The global UTF-8 table is read-only during lookup, but construction,
+//   dictionary addition, and destruction mutate its non-atomic reference count.
+//   Those lifecycle operations must also hold this process-wide lock.
+// This relies on native internals, not the Rust binding's &self signatures.
+// Re-audit when upgrading/replacing the native library. Native handles created
+// outside this wrapper are not coordinated by these locks.
 static HUNSPELL_LIFECYCLE: Mutex<()> = Mutex::new(());
 
 struct NativeHunspell(Option<Hunspell>);
 
-// SAFETY: Native handles may move between threads, but must not be shared.
-// Hunspell mutates internal state even during lookups. HunspellSafe keeps this
-// owner behind a mutex; construction, dictionary addition, and destruction also
-// take the lifecycle lock.
+// SAFETY: We assume native handles have no thread affinity. HunspellSafe keeps
+// this owner behind an exclusive mutex; the lifecycle lock protects shared
+// native state as described above.
 unsafe impl Send for NativeHunspell {}
 
 impl Drop for NativeHunspell {
