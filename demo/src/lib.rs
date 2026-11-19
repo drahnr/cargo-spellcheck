@@ -34,3 +34,51 @@ pub fn take_the_money_and_leave() {
 pub fn exploding_complexity() {
 
 }
+
+/// # Examples
+///
+#[cfg_attr(unix, doc = "```no_run")]
+#[cfg_attr(not(unix), doc = "```ignore")]
+/// use std::path::Path;
+/// assert!(Path::new("./is_a_directory/").is_dir());
+/// ```
+///
+/// More explanation after the example.
+pub struct Directory;
+
+/// Select a transport for the current platform.
+#[cfg_attr(unix, doc = "Local sockets carry mesages between processes.")]
+#[cfg_attr(not(unix), doc = r#"Network sockets accept remote conectons."#)]
+pub struct PlatformTransport;
+
+/// Configure the local transfer buffer.
+#[cfg(unix)]
+#[cfg_attr(
+    unix,
+    cfg_attr(target_pointer_width = "64", doc = "Large buffers improve performnce."),
+    doc = "Socket permisions control access."
+)]
+pub struct LocalTransfer;
+
+#[doc = r#"Read the delivery adress before sending a parcel.
+
+Keep the tracking number for future refernce.
+"#]
+pub struct DeliveryLabel;
+
+/// Return literal documentation that the spellchecker deliberately does not expand.
+macro_rules! i_am_unsupported {
+    ($text:literal) => {
+        $text
+    };
+}
+
+// Selecting an unsupported macro skips this owner's documentation with a warning.
+#[doc = i_am_unsupported!("fun")]
+pub struct MacroDocumentation;
+
+// Only the Unix alternative selects the unsupported macro; the other remains checkable.
+/// Retry the transfer after a short delai.
+#[cfg_attr(unix, doc = i_am_unsupported!("fun"))]
+#[cfg_attr(not(unix), doc = "Reconnect after an interuption.")]
+pub struct ConditionalMacroDocumentation;

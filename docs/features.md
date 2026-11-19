@@ -5,6 +5,7 @@
 * [x] `cargo-spellcheck check`
 * [x] Spell checking using `hunspell`
 * [x] Merge multiline doc comments
+* [x] Check [conditional documentation](conditional-documentation.md), including nested `cfg_attr` and alternative code fences [#263](https://github.com/drahnr/cargo-spellcheck/issues/263)
 * [x] Handle multiline and fragmented mistakes (i.e. for grammar) [#25](https://github.com/drahnr/cargo-spellcheck/issues/25)
 * [x] Grammar check using [`nlprule`](https://github.com/bminixhofer/nlprule)
 * [x] Follow module declarations rather than blindly recurse

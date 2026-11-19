@@ -11,3 +11,12 @@ A plethora of spelling mistackz inclusive.
 "ever again"
 
 Mojis are ok 🍈🍐🍇
+
+## Documentation attributes
+
+`src/lib.rs` includes ordinary and raw-string `doc = ...` attributes, multiline
+prose, platform-specific `cfg_attr` alternatives, nested conditions, and an
+owner restricted by `cfg`.
+
+Unsupported variants are also present like `doc = i_am_unsupported!("fun")`
+are also present and must generate respective warnings.
