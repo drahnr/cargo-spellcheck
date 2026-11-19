@@ -18,8 +18,8 @@ use super::CheckableChunk;
 
 /// Relative span in relation to the beginning of a doc comment.
 ///
-/// Line values are 1-indexed relative, lines are inclusive. Column values in
-/// UTF-8 characters in a line, 0-indexed and inclusive.
+/// Line values are 1-indexed relative, lines are _inclusive_. Column values in
+/// UTF-8 characters in a line, 0-indexed and _inclusive_.
 #[derive(Clone, Debug, Copy, PartialEq, Eq)]
 pub struct Span {
     /// Start of the span, inclusive, see

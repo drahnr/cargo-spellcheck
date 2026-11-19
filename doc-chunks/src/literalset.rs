@@ -76,6 +76,10 @@ impl LiteralSet {
     ///
     /// Creates the map from content ranges to source spans.
     pub fn into_chunk(self) -> crate::CheckableChunk {
+        let preferred_line_delimiter = self
+            .literals
+            .iter()
+            .find_map(TrimmedLiteral::preferred_line_delimiter);
         let n = self.len();
         let mut source_mapping = indexmap::IndexMap::with_capacity(n);
         let mut content = String::with_capacity(n * 120);
@@ -121,7 +125,10 @@ impl LiteralSet {
         } else {
             crate::CommentVariant::Unknown
         };
-        CheckableChunk::from_string(content, source_mapping, variant)
+        let mut chunk = CheckableChunk::from_string(content, source_mapping, variant);
+        // Synthetic separators must not override the literals' source style.
+        chunk.set_preferred_line_delimiter(preferred_line_delimiter);
+        chunk
     }
 }
 
@@ -257,6 +264,28 @@ struct Fluff;"#;
 /// c
 struct Fluff;"#;
         assert_eq!(RAW, EXPECT);
+    }
+
+    #[test]
+    fn empty_set_renders_an_empty_chunk() {
+        let chunk = LiteralSet::default().into_chunk();
+        assert_eq!(chunk.as_str(), "");
+        assert_eq!(chunk.variant(), CommentVariant::Unknown);
+        assert_eq!(chunk.iter().len(), 0);
+        assert_eq!(chunk.preferred_line_delimiter(), None);
+    }
+
+    #[test]
+    fn synthetic_separators_do_not_supply_source_newline_metadata() {
+        let first =
+            TrimmedLiteral::from(CommentVariant::TripleSlash, "/// One", 3, 0, 1, 0).unwrap();
+        let second =
+            TrimmedLiteral::from(CommentVariant::TripleSlash, "/// Two", 3, 0, 2, 0).unwrap();
+        let mut set = LiteralSet::from(first);
+        set.add_adjacent(second).unwrap();
+        let chunk = set.into_chunk();
+        assert_eq!(chunk.as_str(), " One\n Two");
+        assert_eq!(chunk.preferred_line_delimiter(), None);
     }
 
     // range within the literalset content string
