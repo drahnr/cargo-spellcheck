@@ -80,6 +80,8 @@ pub struct CheckableChunk {
     source_mapping: IndexMap<Range, Span>,
     /// Track what kind of comment the chunk is.
     variant: CommentVariant,
+    /// Source newline style, which may differ from synthetic fragment separators.
+    preferred_line_delimiter: Option<&'static str>,
 }
 
 impl std::hash::Hash for CheckableChunk {
@@ -90,6 +92,7 @@ impl std::hash::Hash for CheckableChunk {
             t.hash(hasher);
         });
         self.variant.hash(hasher);
+        self.preferred_line_delimiter.hash(hasher);
     }
 }
 
@@ -115,10 +118,12 @@ impl CheckableChunk {
         source_mapping: IndexMap<Range, Span>,
         variant: CommentVariant,
     ) -> Self {
+        let preferred_line_delimiter = crate::util::extract_delimiter(&content);
         Self {
             content,
             source_mapping,
             variant,
+            preferred_line_delimiter,
         }
     }
 
@@ -344,6 +349,22 @@ impl CheckableChunk {
         self.content.as_str()
     }
 
+    /// Preferred line delimiter for rewriting, independent of normalized content.
+    ///
+    /// Extracted Rust documentation uses the first literal's known source
+    /// style: its starting line's LF/CRLF terminator, or the nearest preceding
+    /// terminator at an unterminated EOF. Mixed-ending runs therefore prefer their
+    /// first literal, not the majority style or synthetic separators.
+    /// Direct string constructors detect the delimiter from their original content.
+    /// Returns `None` if no source delimiter is known; callers choose a fallback.
+    pub fn preferred_line_delimiter(&self) -> Option<&'static str> {
+        self.preferred_line_delimiter
+    }
+
+    pub(crate) fn set_preferred_line_delimiter(&mut self, delimiter: Option<&'static str>) {
+        self.preferred_line_delimiter = delimiter;
+    }
+
     /// Get the display wrapper type to be used with i.e. `format!(..)`.
     pub fn display(&self, range: Range) -> ChunkDisplay<'_> {
         ChunkDisplay::from((self, range))
@@ -485,5 +506,41 @@ impl<'a> fmt::Display for ChunkDisplay<'a> {
         };
 
         write!(formatter, "{ctx1}{highlight}{ctx2}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    #[test]
+    fn direct_constructors_preserve_original_content_delimiters() {
+        for (content, expected) in [
+            ("Words", None),
+            ("Words\n", Some("\n")),
+            ("Words\r\n", Some("\r\n")),
+        ] {
+            let chunk =
+                CheckableChunk::from_str(content, IndexMap::new(), CommentVariant::CommonMark);
+            assert_eq!(chunk.as_str(), content);
+            assert_eq!(chunk.preferred_line_delimiter(), expected);
+            assert_eq!(chunk.clone().preferred_line_delimiter(), expected);
+        }
+    }
+
+    #[test]
+    fn source_delimiter_metadata_participates_in_equality_and_hashing() {
+        let lf = CheckableChunk::from_str("Words\n", IndexMap::new(), CommentVariant::TripleSlash);
+        let mut crlf = lf.clone();
+        crlf.set_preferred_line_delimiter(Some("\r\n"));
+        assert_ne!(lf, crlf);
+        assert_eq!(lf.as_str(), crlf.as_str());
+        let mut lf_hash = DefaultHasher::new();
+        lf.hash(&mut lf_hash);
+        let mut crlf_hash = DefaultHasher::new();
+        crlf.hash(&mut crlf_hash);
+        assert_ne!(lf_hash.finish(), crlf_hash.finish());
     }
 }
