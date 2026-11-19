@@ -1,6 +1,7 @@
 //! Chunk definition for what is going to be processed by the checkers
 //!
 //! A chunk consists of multiple consecutive literals joined by newlines.
+//! Conditional documentation may select literals separated by inactive attributes.
 
 use super::*;
 
@@ -80,8 +81,12 @@ pub struct CheckableChunk {
     source_mapping: IndexMap<Range, Span>,
     /// Track what kind of comment the chunk is.
     variant: CommentVariant,
+    /// Conditional or structurally gapped documentation cannot be rewritten as one span.
+    non_reflowable: bool,
     /// Source newline style, which may differ from synthetic fragment separators.
     preferred_line_delimiter: Option<&'static str>,
+    /// One satisfying Boolean assignment, not necessarily a realizable Rust target.
+    cfg_example: Option<String>,
 }
 
 impl std::hash::Hash for CheckableChunk {
@@ -92,7 +97,9 @@ impl std::hash::Hash for CheckableChunk {
             t.hash(hasher);
         });
         self.variant.hash(hasher);
+        self.non_reflowable.hash(hasher);
         self.preferred_line_delimiter.hash(hasher);
+        self.cfg_example.hash(hasher);
     }
 }
 
@@ -123,7 +130,9 @@ impl CheckableChunk {
             content,
             source_mapping,
             variant,
+            non_reflowable: false,
             preferred_line_delimiter,
+            cfg_example: None,
         }
     }
 
@@ -393,6 +402,29 @@ impl CheckableChunk {
         self.content.chars().count()
     }
 
+    /// Prevent reflow from rewriting conditional or structurally gapped documentation.
+    pub fn disable_reflow(&mut self) {
+        self.non_reflowable = true;
+    }
+
+    /// Whether the chunk can be safely rewritten as a single documentation block.
+    pub fn is_reflow_safe(&self) -> bool {
+        !self.non_reflowable
+    }
+
+    /// A symbolic cfg example selecting this documentation projection, if conditional.
+    ///
+    /// It satisfies selected fragment guards and owner constraints, including inherited cfg
+    /// constraints from enclosing items or modules. It does not validate Rust target
+    /// relationships or imply that this configuration was compiled.
+    pub fn cfg_example(&self) -> Option<&str> {
+        self.cfg_example.as_deref()
+    }
+
+    pub(crate) fn set_cfg_example(&mut self, example: Option<String>) {
+        self.cfg_example = example;
+    }
+
     /// The variant type of comment.
     pub fn variant(&self) -> CommentVariant {
         self.variant.clone()
@@ -542,5 +574,27 @@ mod tests {
         let mut crlf_hash = DefaultHasher::new();
         crlf.hash(&mut crlf_hash);
         assert_ne!(lf_hash.finish(), crlf_hash.finish());
+    }
+
+    #[test]
+    fn reflow_safety_defaults_to_safe_and_survives_cloning() {
+        let safe =
+            CheckableChunk::from_str("Shared prose", IndexMap::new(), CommentVariant::TripleSlash);
+        assert!(safe.is_reflow_safe());
+
+        let mut unsafe_chunk = safe.clone();
+        unsafe_chunk.disable_reflow();
+        unsafe_chunk.disable_reflow();
+        assert!(!unsafe_chunk.is_reflow_safe());
+        assert!(!unsafe_chunk.clone().is_reflow_safe());
+        assert!(safe.is_reflow_safe());
+        assert_ne!(safe, unsafe_chunk);
+        assert_eq!(safe.as_str(), unsafe_chunk.as_str());
+
+        let mut safe_hash = DefaultHasher::new();
+        safe.hash(&mut safe_hash);
+        let mut unsafe_hash = DefaultHasher::new();
+        unsafe_chunk.hash(&mut unsafe_hash);
+        assert_ne!(safe_hash.finish(), unsafe_hash.finish());
     }
 }

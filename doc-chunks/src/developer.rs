@@ -1,3 +1,8 @@
+//! Extract non-documentation comments as concrete literals and source-adjacent literal sets.
+//!
+//! This path uses syntax tokens to preserve source text and positions. Documentation
+//! attributes, cfg projection, and unexpanded macros belong to the documentation path.
+
 use std::fmt;
 use std::fmt::{Display, Formatter};
 

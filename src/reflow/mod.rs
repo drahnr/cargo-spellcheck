@@ -49,6 +49,13 @@ impl Checker for Reflow {
     {
         let mut acc = Vec::with_capacity(chunks.len());
         for chunk in chunks {
+            if !chunk.is_reflow_safe() {
+                log::debug!(
+                    "Skipping reflow for unsafe documentation chunk in {}",
+                    origin
+                );
+                continue;
+            }
             match chunk.variant() {
                 CommentVariant::SlashAsterisk
                 | CommentVariant::SlashAsteriskAsterisk

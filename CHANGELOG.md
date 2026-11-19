@@ -10,6 +10,8 @@ All notable changes to this project will be documented in this file.
   themselves span tokens and undergo recursive transformations. Empty or absent
   compound captures are ignored; existing per-token capture behavior is preserved.
 - Shorten output paths without ambiguity; add `--absolute-paths` to keep absolute paths.
+- Show conditional documentation context on the first diagnostic line as
+  `with cfg(...)`, with the cfg expression styled bold purple.
 
 ## [0.10.0-alpha.1] - 2022-01-21
 

@@ -4,17 +4,23 @@ use crate::{CheckableChunk, CommentVariant, Range};
 
 use std::fmt;
 
-/// A set of consecutive literals.
+/// An ordered set of concrete, source-mapped comment literals.
 ///
 /// Provides means to render them as a code block
+///
+/// Selected documentation literals may have source gaps; developer comments remain adjacent.
 #[derive(Clone, Default, Debug, Hash, PartialEq, Eq)]
 pub struct LiteralSet {
-    /// consecutive set of literals mapped by line number
+    /// Concrete literals in document order, each retaining its source span.
     literals: Vec<TrimmedLiteral>,
     /// lines spanned (start, end) inclusive
     pub coverage: (usize, usize),
     /// Track what kind of comment the literals are
     variant: CommentVariant,
+    /// Attribute syntax or conditional projections prevent whole-block edits.
+    non_reflowable: bool,
+    /// Example cfg assignment selecting this documentation variant.
+    cfg_example: Option<String>,
 }
 
 impl LiteralSet {
@@ -24,7 +30,30 @@ impl LiteralSet {
             coverage: (literal.span().start.line, literal.span().end.line),
             variant: literal.variant(),
             literals: vec![literal],
+            non_reflowable: false,
+            cfg_example: None,
         }
+    }
+
+    /// Build a complete documentation variant from known literals in document order.
+    /// Selected literals need not be on adjacent source lines (inactive attributes leave gaps).
+    pub(crate) fn from_doc_literals(literals: Vec<TrimmedLiteral>, non_reflowable: bool) -> Self {
+        let first = literals
+            .first()
+            .expect("a documentation variant is nonempty");
+        let last = literals.last().unwrap();
+        Self {
+            coverage: (first.span().start.line, last.span().end.line),
+            variant: first.variant(),
+            literals,
+            non_reflowable,
+            cfg_example: None,
+        }
+    }
+
+    /// Attach an example cfg assignment for diagnostics.
+    pub(crate) fn set_cfg_example(&mut self, example: String) {
+        self.cfg_example = Some(example);
     }
 
     /// Add a literal to a literal set, if the previous lines literal already
@@ -119,7 +148,7 @@ impl LiteralSet {
                 }
             }
         }
-        // all literals in a set have the same variant, so lets take the first one
+        // Selected literals can mix syntax; use the first one's rendering style.
         let variant = if let Some(literal) = self.literals.first() {
             literal.variant()
         } else {
@@ -128,6 +157,10 @@ impl LiteralSet {
         let mut chunk = CheckableChunk::from_string(content, source_mapping, variant);
         // Synthetic separators must not override the literals' source style.
         chunk.set_preferred_line_delimiter(preferred_line_delimiter);
+        chunk.set_cfg_example(self.cfg_example);
+        if self.non_reflowable {
+            chunk.disable_reflow();
+        }
         chunk
     }
 }
@@ -268,11 +301,17 @@ struct Fluff;"#;
 
     #[test]
     fn empty_set_renders_an_empty_chunk() {
-        let chunk = LiteralSet::default().into_chunk();
-        assert_eq!(chunk.as_str(), "");
-        assert_eq!(chunk.variant(), CommentVariant::Unknown);
-        assert_eq!(chunk.iter().len(), 0);
-        assert_eq!(chunk.preferred_line_delimiter(), None);
+        let set = LiteralSet::default();
+        let expected_content = "";
+        let expected_variant = CommentVariant::Unknown;
+        let expected_fragment_count = 0;
+        let expected_delimiter = None;
+        let chunk = set.into_chunk();
+        assert_eq!(chunk.as_str(), expected_content);
+        assert_eq!(chunk.variant(), expected_variant);
+        assert_eq!(chunk.iter().len(), expected_fragment_count);
+        assert!(chunk.is_reflow_safe());
+        assert_eq!(chunk.preferred_line_delimiter(), expected_delimiter);
     }
 
     #[test]

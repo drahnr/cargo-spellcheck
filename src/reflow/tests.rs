@@ -283,7 +283,9 @@ fn apply_rust_reflow(source: &str, max_line_length: usize) -> (String, usize) {
     let chunks = docs
         .get(&origin)
         .expect("Rust documentation must be extracted");
-    assert_eq!(chunks.len(), 1);
+    let expected_chunk_count = 1;
+    assert_eq!(chunks.len(), expected_chunk_count);
+    assert!(chunks[0].is_reflow_safe());
     let checker = Reflow::new(ReflowConfig { max_line_length }).unwrap();
     let suggestions = checker.check(&origin, chunks).unwrap();
     (
@@ -973,6 +975,72 @@ fn reflow_source_line_delimiter_first_selected_literal_wins() {
     }
 }
 
+/// Skip unsafe chunks without preventing a later safe chunk from being reflowed.
+#[test]
+fn skips_unsafe_chunks_but_still_reflows_safe_chunks() {
+    let content = "Queued packets retain delivery order.";
+    let expected_replacement = "Queued packets\nretain delivery\norder.";
+    let expected_unsafe_suggestions = 0;
+    let expected_mixed_suggestions = 1;
+    let len = content.chars().count();
+    let safe = CheckableChunk::from_str(
+        content,
+        indexmap::indexmap! {
+            0..len => Span {
+                start: LineColumn { line: 1, column: 0 },
+                end: LineColumn { line: 1, column: len - 1 },
+            }
+        },
+        CommentVariant::CommonMark,
+    );
+    let mut unsafe_chunk = safe.clone();
+    unsafe_chunk.disable_reflow();
+    let chunks = [unsafe_chunk, safe];
+    let checker = Reflow::new(ReflowConfig {
+        max_line_length: 20,
+    })
+    .unwrap();
+    let origin = ContentOrigin::TestEntityCommonMark;
+
+    let unsafe_suggestions = checker.check(&origin, &chunks[..1]).unwrap();
+    assert_eq!(unsafe_suggestions.len(), expected_unsafe_suggestions);
+    let suggestions = checker.check(&origin, &chunks).unwrap();
+    assert_eq!(suggestions.len(), expected_mixed_suggestions);
+    assert!(std::ptr::eq(suggestions[0].chunk, &chunks[1]));
+    assert_eq!(suggestions[0].replacements[0], expected_replacement);
+}
+
+/// Leave conditional documentation byte-for-byte intact for every newline mixture.
+#[test]
+fn reflow_source_line_delimiter_conditional_skip_preserves_source() {
+    // Each pair is the first selected delimiter and the delimiter on later lines.
+    let delimiters = [("\r\n", "\r\n"), ("\r\n", "\n"), ("\n", "\r\n")];
+    let expected_suggestions = 0;
+    for (first, later) in delimiters {
+        let source = r#"/// Shared introduction.
+#[cfg_attr(feature = "one", doc = "Trace packets without changing their delivery order.")]
+struct ConditionalGuide;
+"#
+        .replace('\n', later)
+        .replacen(later, first, 1);
+        let expected = source.clone();
+        syn::parse_file(&source).unwrap();
+        let origin = ContentOrigin::TestEntityRust;
+        let docs = Documentation::load_from_str(origin.clone(), &source, true, false);
+        let chunks = docs.get(&origin).unwrap();
+        assert!(!chunks.is_empty());
+        assert!(chunks.iter().all(|chunk| !chunk.is_reflow_safe()));
+        let checker = Reflow::new(ReflowConfig {
+            max_line_length: 40,
+        })
+        .unwrap();
+        let suggestions = checker.check(&origin, chunks).unwrap();
+        assert_eq!(suggestions.len(), expected_suggestions);
+        assert_eq!(apply_reflow_patches(&source, &suggestions), expected);
+    }
+}
+
+/// Keep CommonMark newline detection and its no-newline LF fallback intact.
 #[test]
 fn reflow_source_line_delimiter_commonmark_uses_original_content() {
     for delimiter in ["", "\n", "\r\n"] {
