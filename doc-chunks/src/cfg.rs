@@ -25,7 +25,47 @@ pub(super) enum Atom {
     Flag(String),
     Value(String, String),
     /// A feature-gated compiler-version test, kept symbolic rather than host-evaluated.
-    Version(String),
+    Version(RustVersion),
+}
+
+/// A validated Rust release threshold, ordered numerically rather than as a string.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(super) struct RustVersion([u16; 3]);
+
+impl RustVersion {
+    /// Match rustc 1.88's attribute version parser, including its optional zero patch.
+    fn parse(literal: &LitStr) -> syn::Result<Self> {
+        // rustc_attr_parsing::attributes::util::parse_version uses u16 components,
+        // rejects '-' suffixes, and otherwise delegates component acceptance to FromStr.
+        let value = literal.value();
+        let mut components = value.splitn(3, '.');
+        let release = (|| {
+            if value.contains('-') {
+                return None;
+            }
+            let major = components.next()?.parse().ok()?;
+            let minor = components.next()?.parse().ok()?;
+            let patch = components.next().unwrap_or("0").parse().ok()?;
+            Some(Self([major, minor, patch]))
+        })();
+        release.ok_or_else(|| {
+            syn::Error::new_spanned(
+                literal,
+                "expected a Rust release version with two or three u16 components",
+            )
+        })
+    }
+
+    /// Retain the existing short spelling for zero patches while canonicalizing equivalents.
+    fn as_predicate(self) -> String {
+        let Self([major, minor, patch]) = self;
+        let version = if patch == 0 {
+            format!("{major}.{minor}")
+        } else {
+            format!("{major}.{minor}.{patch}")
+        };
+        format!("version({version:?})")
+    }
 }
 
 /// Maximum nested cfg operators accepted before recursive parsing and AST traversal become unsafe.
@@ -101,7 +141,7 @@ impl Predicate {
                 if !content.is_empty() {
                     return Err(content.error("version() requires one string literal"));
                 }
-                Ok(Self::Atom(Atom::Version(version.value())))
+                Ok(Self::Atom(Atom::Version(RustVersion::parse(&version)?)))
             }
             "target" => {
                 // Compact target options are aliases, so they share atoms with target_* keys.
@@ -168,7 +208,7 @@ impl Atom {
         let (name, value) = match self {
             Self::Flag(name) => (name, None),
             Self::Value(name, value) => (name, Some(value)),
-            Self::Version(version) => return format!("version({version:?})"),
+            Self::Version(version) => return version.as_predicate(),
         };
         // Rust 1.88 accepts these legacy names but forbids their raw-identifier spellings.
         let legacy = matches!(name.as_str(), "self" | "super" | "Self" | "crate");
@@ -479,6 +519,7 @@ fn project_bdd(
 ) -> Result<ProjectionReport, ProjectionWarning> {
     // Intern repeated atoms once and track which source predicate exhausts the budget.
     let mut atoms = Vec::new();
+    let mut atom_sites = Vec::new();
     let predicates = constraints
         .iter()
         .enumerate()
@@ -493,6 +534,7 @@ fn project_bdd(
         predicate
             .collect_atoms(&mut atoms, budget.variable_limit())
             .map_err(|error| ProjectionWarning { error, site })?;
+        atom_sites.resize(atoms.len(), site);
     }
     // Share one variable order so repeated predicates stay correlated across all guards.
     let variables = BddVariableSet::new_anonymous(atoms.len() as u16);
@@ -503,6 +545,22 @@ fn project_bdd(
     };
     // Conjoin owner constraints before exploring which documentation fragments are selected.
     let mut valid = space.variables.mk_true();
+    let versions = ordered_version_indices(space.atoms.iter());
+    // Adjacent implications suffice: every newer threshold entails every older one.
+    for pair in versions.windows(2) {
+        let older = space.variables.mk_var(BddVariable::from_index(pair[0]));
+        let newer = space.variables.mk_var(BddVariable::from_index(pair[1]));
+        let warning = |error| ProjectionWarning {
+            error,
+            site: atom_sites[pair[0].max(pair[1])],
+        };
+        let implication = budget
+            .combine(&older, &newer.into_not(), op_function::or)
+            .map_err(warning)?;
+        valid = budget
+            .combine(&valid, &implication, op_function::and)
+            .map_err(warning)?;
+    }
     for (index, constraint) in constraints.iter().enumerate() {
         let warning = |error| ProjectionWarning {
             error,
@@ -654,6 +712,7 @@ struct ProjectionCollector<'a> {
     guards: &'a [&'a Predicate],
     constraints: &'a [&'a Predicate],
     atoms: IndexSet<Atom>,
+    versions: Vec<usize>,
     assignments: HashSet<Vec<u64>>,
     selections: HashSet<Vec<usize>>,
     projections: Vec<Projection>,
@@ -680,10 +739,12 @@ impl<'a> ProjectionCollector<'a> {
         atoms: IndexSet<Atom>,
         limit: usize,
     ) -> Self {
+        let versions = ordered_version_indices(atoms.iter());
         Self {
             guards,
             constraints,
             atoms,
+            versions,
             assignments: HashSet::new(),
             selections: HashSet::new(),
             projections: Vec::new(),
@@ -702,6 +763,13 @@ impl<'a> ProjectionCollector<'a> {
         }
         debug_assert_eq!(assignment.len(), self.atoms.len());
         if !self.assignments.insert(packed_assignment(&assignment)) {
+            return;
+        }
+        if self
+            .versions
+            .windows(2)
+            .any(|pair| !assignment[pair[0]] && assignment[pair[1]])
+        {
             return;
         }
         let value = |atom: &Atom| assignment[self.atoms.get_index_of(atom).unwrap()];
@@ -770,6 +838,19 @@ impl<'a> ProjectionCollector<'a> {
             }
         }
     }
+}
+
+/// Return atom indices in increasing release order for BDD constraints and concrete samples.
+fn ordered_version_indices<'a>(atoms: impl IntoIterator<Item = &'a Atom>) -> Vec<usize> {
+    let mut versions = Vec::from_iter(atoms.into_iter().enumerate().filter_map(|(index, atom)| {
+        if let Atom::Version(version) = atom {
+            Some((*version, index))
+        } else {
+            None
+        }
+    }));
+    versions.sort_unstable();
+    Vec::from_iter(versions.into_iter().map(|(_, index)| index))
 }
 
 /// Encode a fixed-width assignment exactly while avoiding a byte per Boolean in the ledger.
@@ -1162,6 +1243,7 @@ mod tests {
         )
     }
 
+    /// Check complete witnesses, owner constraints, release consistency, and exact fragment selection.
     fn assert_valid_projections(
         guards: &[Predicate],
         constraints: &[Predicate],
@@ -1207,6 +1289,22 @@ mod tests {
             assert!(constraints
                 .iter()
                 .all(|constraint| constraint.evaluate(&value)));
+            let release_assignment =
+                Vec::from_iter(assignment.iter().filter_map(|(atom, enabled)| {
+                    if let Atom::Version(version) = atom {
+                        Some((version, *enabled))
+                    } else {
+                        None
+                    }
+                }));
+            // Check every ordered pair independently of the adjacent-implication implementation.
+            for (older, older_enabled) in &release_assignment {
+                for (newer, newer_enabled) in &release_assignment {
+                    if older <= newer && *newer_enabled {
+                        assert!(*older_enabled, "inconsistent release witness: {source}");
+                    }
+                }
+            }
             let expected_selected: Vec<_> = guards
                 .iter()
                 .enumerate()
@@ -1873,8 +1971,8 @@ mod tests {
     /// Nightly cfg(version) remains symbolic and accepts raw strings and its optional comma.
     #[test]
     fn cfg_version_spellings_preserve_one_symbolic_version_atom() {
-        let expected_version = "1.88";
-        let expected_atom = Atom::Version(expected_version.to_owned());
+        let expected_version = RustVersion([1, 88, 0]);
+        let expected_atom = Atom::Version(expected_version);
         let expected_spelling = r#"version("1.88")"#;
         // Each source is a spelling of the same version predicate, not a host-version query.
         let sources = [
@@ -1952,6 +2050,272 @@ mod tests {
             .unwrap()
             .join()
             .unwrap();
+    }
+
+    #[test]
+    fn cfg_versions_canonicalize_rust_release_spellings() {
+        // Cases pair a rustc-accepted release spelling with its canonical symbolic predicate.
+        let cases = [
+            (r#"version("1.88")"#, r#"version("1.88")"#),
+            (r#"version("1.88.0")"#, r#"version("1.88")"#),
+            (r#"version("01.088.000")"#, r#"version("1.88")"#),
+            (r#"version("+1.+88.+0")"#, r#"version("1.88")"#),
+            (r###"r#version(r#"1.88.0"#,)"###, r#"version("1.88")"#),
+            (r#"version("1.88.1")"#, r#"version("1.88.1")"#),
+            (r#"version("01.088.001")"#, r#"version("1.88.1")"#),
+            (r#"version("1.88.2")"#, r#"version("1.88.2")"#),
+            (
+                r#"version("65535.65535.65535")"#,
+                r#"version("65535.65535.65535")"#,
+            ),
+        ];
+        for (source, expected_source) in cases {
+            let expected = parse(expected_source).unwrap();
+            let predicate = parse(source).unwrap();
+            let space = ConditionSpace::new([&predicate, &expected].into_iter()).unwrap();
+            let expected_atom_count = 1;
+            assert_eq!(space.atoms.len(), expected_atom_count, "{source}");
+            let expected_spelling = expected_source;
+            assert_eq!(space.atoms[0].as_predicate(), expected_spelling, "{source}");
+        }
+    }
+
+    #[test]
+    fn cfg_versions_reject_unknown_rust_release_literals() {
+        let expected_error = "expected a Rust release version with two or three u16 components";
+        // Rust's cfg(version) warns for these unknown version strings, rather than using SemVer.
+        let sources = [
+            r#"version("")"#,
+            r#"version("1")"#,
+            r#"version("1.88.")"#,
+            r#"version("1.88.0.1")"#,
+            r#"version("1.88.0-nightly")"#,
+            r#"version("1.88.0-dev")"#,
+            r#"version("1.88.0+build")"#,
+            r#"version(" 1.88")"#,
+            r#"version("1.88 ")"#,
+            r#"version("-1.88")"#,
+            r#"version("1.65536")"#,
+            r#"version("65536.0.0")"#,
+            r#"version("1.88.65536")"#,
+        ];
+        for source in sources {
+            let error =
+                parse(source).expect_err("unknown release must produce an attribute warning");
+            assert_eq!(error.to_string(), expected_error, "{source}");
+        }
+    }
+
+    #[test]
+    fn cfg_version_projections_obey_release_order_including_fallback() {
+        /// Explicit fragment selections for one symbolic compiler-release scenario.
+        struct Case {
+            /// Scenario included in assertion messages.
+            name: &'static str,
+            /// Guards in source-fragment order.
+            sources: &'static [&'static str],
+            /// Conditions required by the documentation owner.
+            constraints: &'static [&'static str],
+            /// All realizable, nonempty source-fragment selections.
+            expected_selections: &'static [&'static [usize]],
+        }
+        let cases = [
+            Case {
+                name: "equivalent release spellings cannot split fragments",
+                sources: &["true", r#"version("1.88")"#, r#"version("1.88.0")"#],
+                constraints: &[],
+                expected_selections: &[&[0], &[0, 1, 2]],
+            },
+            Case {
+                name: "patch thresholds stay distinct while implying equivalent minor thresholds",
+                sources: &[
+                    "true",
+                    r#"version("1.88.1")"#,
+                    r#"version("1.88")"#,
+                    r#"version("1.88.0")"#,
+                ],
+                constraints: &[],
+                expected_selections: &[&[0], &[0, 2, 3], &[0, 1, 2, 3]],
+            },
+            Case {
+                name: "minor release can be selected without its first patch release",
+                sources: &["true", r#"version("1.88")"#, r#"version("1.88.1")"#],
+                constraints: &[r#"version("1.88")"#, r#"not(version("1.88.1"))"#],
+                expected_selections: &[&[0, 1]],
+            },
+            Case {
+                name: "patch release cannot be selected without its minor threshold",
+                sources: &["true"],
+                constraints: &[r#"version("1.88.1")"#, r#"not(version("1.88"))"#],
+                expected_selections: &[],
+            },
+            Case {
+                name: "newer releases imply older releases",
+                sources: &["true", r#"version("1.88")"#, r#"version("1.90")"#],
+                constraints: &[],
+                expected_selections: &[&[0], &[0, 1], &[0, 1, 2]],
+            },
+            Case {
+                name: "numeric ordering is independent of atom insertion and lexicographic order",
+                sources: &[
+                    "true",
+                    r#"version("1.10")"#,
+                    r#"version("1.9")"#,
+                    r#"version("1.10.2")"#,
+                ],
+                constraints: &[],
+                expected_selections: &[&[0], &[0, 2], &[0, 1, 2], &[0, 1, 2, 3]],
+            },
+            Case {
+                name: "owner constraints participate in release consistency",
+                sources: &["true", r#"version("1.88")"#, r#"not(version("1.91"))"#],
+                constraints: &[r#"version("1.90")"#],
+                expected_selections: &[&[0, 1], &[0, 1, 2]],
+            },
+            Case {
+                name: "contradictory release interval emits no fragments",
+                sources: &["true"],
+                constraints: &[r#"version("1.90")"#, r#"not(version("1.88"))"#],
+                expected_selections: &[],
+            },
+            Case {
+                name: "future major releases stay symbolic rather than host evaluated",
+                sources: &["true", r#"version("2.0")"#, r#"version("1.65535.4")"#],
+                constraints: &[],
+                expected_selections: &[&[0], &[0, 2], &[0, 1, 2]],
+            },
+        ];
+        // Each budget name identifies an exact path or a separately forced fallback path.
+        let budgets = [
+            ("exact BDD", CfgBudget::default()),
+            (
+                "variable fallback",
+                CfgBudget {
+                    variables: 0,
+                    ..CfgBudget::default()
+                },
+            ),
+            (
+                "node fallback",
+                CfgBudget {
+                    bdd_nodes: 0,
+                    ..CfgBudget::default()
+                },
+            ),
+            (
+                "task fallback",
+                CfgBudget {
+                    bdd_tasks: 0,
+                    ..CfgBudget::default()
+                },
+            ),
+            (
+                "region fallback",
+                CfgBudget {
+                    variants: 0,
+                    ..CfgBudget::default()
+                },
+            ),
+            (
+                "retained-region fallback",
+                CfgBudget {
+                    variants: 1,
+                    ..CfgBudget::default()
+                },
+            ),
+        ];
+        for case in cases {
+            let guards = Vec::from_iter(case.sources.iter().map(|source| parse(source).unwrap()));
+            let constraints =
+                Vec::from_iter(case.constraints.iter().map(|source| parse(source).unwrap()));
+            let expected_selections = std::collections::BTreeSet::from_iter(
+                case.expected_selections
+                    .iter()
+                    .map(|selection| selection.to_vec()),
+            );
+            for (budget_name, budget) in budgets {
+                let budget = CfgBudget {
+                    samples: 16,
+                    ..budget
+                };
+                let report = project(guards.iter(), &constraints, budget);
+                let actual_selections = std::collections::BTreeSet::from_iter(
+                    report
+                        .projections
+                        .iter()
+                        .map(|projection| projection.selected.clone()),
+                );
+                assert_eq!(
+                    actual_selections, expected_selections,
+                    "{}: {budget_name}",
+                    case.name
+                );
+                // Impossible owners and single constrained selections can finish within
+                // the zero/one-region budgets without needing fallback.
+                let within_region_budget =
+                    budget.variants <= 1 && case.expected_selections.len() <= budget.variants;
+                let expected_warning = budget_name != "exact BDD" && !within_region_budget;
+                assert_eq!(
+                    report.warning.is_some(),
+                    expected_warning,
+                    "{}: {budget_name}",
+                    case.name
+                );
+                assert_valid_projections(
+                    &guards,
+                    &constraints,
+                    &report.projections,
+                    budget.samples,
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn cfg_version_projections_keep_conditional_fences_complete() {
+        // Each entry pairs a fragment guard with its literal documentation text.
+        let fragments = [
+            ("true", "Release notes.\n"),
+            (
+                r#"version("1.88")"#,
+                r#"```rust
+let release = 88;
+"#,
+            ),
+            (r#"version("1.88.0")"#, "```\n"),
+            (
+                r#"all(version("1.90"), not(version("1.88")))"#,
+                "impossible release\n",
+            ),
+        ];
+        let guards = Vec::from_iter(fragments.iter().map(|(source, _)| parse(source).unwrap()));
+        let constraints = [];
+        let budgets = [
+            CfgBudget::default(),
+            CfgBudget {
+                variables: 0,
+                ..CfgBudget::default()
+            },
+        ];
+        let expected_documents = std::collections::BTreeSet::from([
+            "Release notes.\n".to_owned(),
+            r#"Release notes.
+```rust
+let release = 88;
+```
+"#
+            .to_owned(),
+        ]);
+        for budget in budgets {
+            let report = project(guards.iter(), &constraints, budget);
+            let actual_documents = std::collections::BTreeSet::from_iter(
+                report.projections.iter().map(|projection| {
+                    String::from_iter(projection.selected.iter().map(|index| fragments[*index].1))
+                }),
+            );
+            assert_eq!(actual_documents, expected_documents);
+            assert_valid_projections(&guards, &constraints, &report.projections, budget.samples);
+        }
     }
 
     #[test]
