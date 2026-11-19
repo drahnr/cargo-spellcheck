@@ -20,6 +20,7 @@ use io::Write;
 use lazy_static::lazy_static;
 
 use nlprule::Tokenizer;
+use sha2::Digest;
 use std::io::{self};
 
 use std::panic::{catch_unwind, AssertUnwindSafe};
@@ -55,11 +56,12 @@ pub(super) fn cache_builtin_inner(
     extension: &'static str,
     data: &[u8],
 ) -> Result<PathBuf> {
+    // Embedded data can change without a package version bump. Never reuse
+    // stale affix headers (notably SET UTF8 instead of SET UTF-8).
+    let digest = hex::encode(sha2::Sha256::digest(data));
     let path = cache_dir.as_ref().join(format!(
-        "cargo-spellcheck/{}/{}.{}",
+        "cargo-spellcheck/{}/{digest}/en_US.{extension}",
         env!("CARGO_PKG_VERSION"),
-        "en_US",
-        extension
     ));
     fs::create_dir_all(path.parent().unwrap())?;
     // check if file exists
@@ -134,10 +136,13 @@ fn catch_hunspell_panic<T>(operation: &str, action: impl FnOnce() -> Result<T>) 
 // Locking assumptions, based on bundled Hunspell in hunspell-sys 0.3.1:
 // - Each engine owns its AffixMgr. Lookups mutate fields such as pfx/sfx, so
 //   calls on the same engine require its exclusive mutex, not RwLock readers.
-// - We assume check/suggest on distinct engines only read shared native state.
-//   The global UTF-8 table is read-only during lookup, but construction,
-//   dictionary addition, and destruction mutate its non-atomic reference count.
-//   Those lifecycle operations must also hold this process-wide lock.
+// - Construction, dictionary addition, and destruction update the shared UTF-8
+//   table's non-atomic reference count and require this process-wide lock.
+//   With balanced references, live UTF-8 engines pin the read-only table, so
+//   lookups on distinct engines do not need the lifecycle lock.
+// - Bundled AffixMgr incorrectly releases a reference for non-UTF-8 engines.
+//   The builtin SET UTF-8 header avoids that trigger; mixed-encoding engine
+//   lifetimes remain affected by the native bug, even with serialized calls.
 // This relies on native internals, not the Rust binding's &self signatures.
 // Re-audit when upgrading/replacing the native library. Native handles created
 // outside this wrapper are not coordinated by these locks.
@@ -180,11 +185,7 @@ impl HunspellSafe {
         Ok(Self(Arc::new(Mutex::new(NativeHunspell(Some(engine))))))
     }
 
-    fn with_engine<T>(
-        &self,
-        operation: &str,
-        action: impl FnOnce(&mut Hunspell) -> T,
-    ) -> Result<T> {
+    fn run_action<T>(&self, operation: &str, action: impl FnOnce(&mut Hunspell) -> T) -> Result<T> {
         catch_hunspell_panic(operation, || {
             // Lock inside the unwind boundary so a panicking call poisons the
             // shared handle. Never reuse potentially inconsistent native state.
@@ -200,22 +201,19 @@ impl HunspellSafe {
     }
 
     fn check(&self, word: &str) -> Result<CheckResult> {
-        self.with_engine(&format!("checking word {word:?}"), |engine| {
+        self.run_action(&format!("checking word {word:?}"), |engine| {
             engine.check(word)
         })
     }
 
     fn suggest(&self, word: &str) -> Result<Vec<String>> {
-        self.with_engine(&format!("suggesting replacements for {word:?}"), |engine| {
+        self.run_action(&format!("suggesting replacements for {word:?}"), |engine| {
             engine.suggest(word)
         })
     }
 
     fn add_dictionary(&self, path: &str) -> Result<bool> {
-        self.with_engine(&format!("adding dictionary {path:?}"), |engine| {
-            // add_dic constructs another HashMgr and updates the global UTF-8
-            // reference count. Take the handle lock before the lifecycle lock;
-            // construction/destruction never acquire a handle lock under it.
+        self.run_action(&format!("adding dictionary {path:?}"), |engine| {
             let _lifecycle = HUNSPELL_LIFECYCLE
                 .lock()
                 .unwrap_or_else(|error| error.into_inner());
@@ -710,7 +708,7 @@ mod tests {
                 threads.spawn(move || {
                     barrier.wait();
                     handle
-                        .with_engine("testing serialization", |_| {
+                        .run_action("testing serialization", |_| {
                             let count =
                                 active.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
                             maximum.fetch_max(count, std::sync::atomic::Ordering::SeqCst);
@@ -799,6 +797,28 @@ mod tests {
     }
 
     #[test]
+    fn cache_builtin_ignores_legacy_affix_file() {
+        let cache_dir = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+        let legacy = cache_dir.join(format!(
+            "cargo-spellcheck/{}/en_US.aff",
+            env!("CARGO_PKG_VERSION")
+        ));
+        fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+        fs::write(&legacy, b"SET UTF8\n").unwrap();
+
+        let path = cache_builtin_inner(&cache_dir, "aff", BUILTIN_HUNSPELL_AFF).unwrap();
+        assert_ne!(path, legacy);
+        assert_eq!(fs::read(&path).unwrap(), BUILTIN_HUNSPELL_AFF);
+        assert_eq!(
+            cache_builtin_inner(&cache_dir, "aff", BUILTIN_HUNSPELL_AFF).unwrap(),
+            path
+        );
+        // Older processes may still use the legacy path; do not overwrite it.
+        assert_eq!(fs::read(&legacy).unwrap(), b"SET UTF8\n");
+        fs::remove_dir_all(cache_dir).unwrap();
+    }
+
+    #[test]
     fn cache_builtin_writes_and_reuses_existing_file() {
         let cache_dir = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
         let data = b"cached dictionary";
@@ -817,12 +837,14 @@ mod tests {
         let f = fs::File::open(&path).unwrap();
         f.file().lock_shared().unwrap();
         // Existing cache files can be reused alongside other shared readers.
-        assert_eq!(
-            cache_builtin_inner(&cache_dir, "dic", b"replacement").unwrap(),
-            path
-        );
+        assert_eq!(cache_builtin_inner(&cache_dir, "dic", data).unwrap(), path);
         assert_eq!(fs::read(&path).unwrap(), data);
         drop(f);
+
+        let replacement = cache_builtin_inner(&cache_dir, "dic", b"replacement").unwrap();
+        assert_ne!(replacement, path);
+        assert_eq!(fs::read(replacement).unwrap(), b"replacement");
+        assert_eq!(fs::read(&path).unwrap(), data);
 
         let f = fs::OpenOptions::new().write(true).open(&path).unwrap();
         // The cache reader must not retain its shared lock after returning.
@@ -835,9 +857,8 @@ mod tests {
     fn cache_builtin_waits_for_writer() {
         use std::sync::mpsc;
         use std::time::Duration;
-
         let cache_dir = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
-        let path = cache_builtin_inner(&cache_dir, "dic", b"partial").unwrap();
+        let path = cache_builtin_inner(&cache_dir, "dic", b"complete dictionary").unwrap();
         let mut writer = fs::OpenOptions::new().write(true).open(&path).unwrap();
         writer.file().lock().unwrap();
         let (started_tx, started_rx) = mpsc::channel();
@@ -845,7 +866,8 @@ mod tests {
         let reader_cache_dir = cache_dir.clone();
         let reader = std::thread::spawn(move || {
             started_tx.send(()).unwrap();
-            let path = cache_builtin_inner(reader_cache_dir, "dic", b"replacement").unwrap();
+            let path =
+                cache_builtin_inner(reader_cache_dir, "dic", b"complete dictionary").unwrap();
             done_tx.send(path).unwrap();
         });
 
