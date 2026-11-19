@@ -36,8 +36,8 @@ pub enum CommentVariant {
     /// `#[doc=` with actual prefix like `#[doc=` and the total length of `r###`
     /// etc. including `r` but without `"`
     MacroDocEqStr(String, usize),
-    /// `#[doc= foo!(..)]`, content will be ignored, but allows clusters to not
-    /// continue.
+    /// Legacy marker for `#[doc = macro!(...)]`, retained for compatibility.
+    /// Extraction now tracks unexpanded macros as fragments and rejects selections containing them.
     MacroDocEqMacro,
     /// Commonmark File
     CommonMark,
@@ -404,25 +404,7 @@ fn detect_comment_variant(
 }
 
 impl TrimmedLiteral {
-    /// Create an empty comment.
-    ///
-    /// Prime use case is for `#[doc = foo!()]` cases.
-    pub(crate) fn new_empty(content: impl AsRef<str>, span: Span, variant: CommentVariant) -> Self {
-        Self {
-            // Track what kind of comment the literal is
-            variant,
-            span,
-            // .
-            rendered: String::new(),
-            pre: 0,
-            post: 0,
-            len_in_chars: 0,
-            len_in_bytes: 0,
-            preferred_line_delimiter: source_line_with_delimiter(content.as_ref(), span.start.line)
-                .and_then(|(_, delimiter)| delimiter),
-        }
-    }
-
+    /// Load a literal directly from its source span without interpreting escapes.
     pub(crate) fn load_from(content: &str, mut span: Span) -> Result<Self> {
         // let rendered = literal.to_string();
         // produces pretty unusable garabage, since it modifies the content of `///`
@@ -934,6 +916,38 @@ mod tests {
         assert_eq!(chunks.len(), 1);
         assert_eq!(chunks[0].preferred_line_delimiter(), Some("\n"));
         assert_chunk(source, &chunks[0], " Last.", &[(0..6, line_span(4, 3, 8))]);
+    }
+
+    #[test]
+    fn conditional_chunks_prefer_the_first_selected_literals_source_style() {
+        let source = r#"#[cfg_attr(flag, doc = "Conditional.")]
+/// Shared.
+struct Harbor;"#
+            .replacen('\n', "\r\n", 1);
+        let expected_chunk_count = 2;
+        let chunks = doc_chunks(&source);
+        assert_eq!(chunks.len(), expected_chunk_count);
+        for chunk in chunks {
+            match chunk.as_str() {
+                " Shared." => {
+                    let expected_content = " Shared.";
+                    let expected_delimiter = Some("\n");
+                    // Each entry pairs a content character range with its inclusive source span.
+                    let expected_fragments = [(0..8, line_span(2, 3, 10))];
+                    assert_eq!(chunk.preferred_line_delimiter(), expected_delimiter);
+                    assert_chunk(&source, &chunk, expected_content, &expected_fragments);
+                }
+                "Conditional.\n Shared." => {
+                    let expected_content = "Conditional.\n Shared.";
+                    let expected_delimiter = Some("\r\n");
+                    let expected_fragments =
+                        [(0..12, line_span(1, 24, 35)), (13..21, line_span(2, 3, 10))];
+                    assert_eq!(chunk.preferred_line_delimiter(), expected_delimiter);
+                    assert_chunk(&source, &chunk, expected_content, &expected_fragments);
+                }
+                other => panic!("unexpected projection: {other:?}"),
+            }
+        }
     }
 
     #[test]

@@ -12,6 +12,8 @@
 //! `CheckableChunk` internal string representation.
 //!
 //! And `Documentation` holds one or many `CheckableChunks` per file path.
+//! Conditional documentation is projected before constructing chunks; unknown
+//! macro content is skipped with extraction warnings.
 
 #![deny(unused_crate_dependencies)]
 
@@ -40,6 +42,8 @@ pub fn apply_offset(range: &mut Range, offset: usize) {
     range.end = range.end.saturating_add(offset);
 }
 
+mod cfg;
+pub use cfg::CfgBudget;
 pub mod chunk;
 pub mod cluster;
 mod developer;
@@ -56,11 +60,41 @@ pub use literal::*;
 pub use literalset::*;
 pub use markdown::*;
 
+/// An extraction warning paired with its origin and original-source coordinates.
+#[derive(Debug, Clone)]
+pub struct DocumentationWarning {
+    /// File or excerpt whose documentation could not be fully checked.
+    pub origin: ContentOrigin,
+    /// Extraction limitation with a span in the original source rather than its excerpt.
+    pub warning: ExtractionWarning,
+}
+
+impl DocumentationWarning {
+    fn from_extraction(origin: &ContentOrigin, warning: &ExtractionWarning) -> Self {
+        let mut warning = warning.clone();
+        // Excerpt-relative diagnostics must be translated before logging or exposing them.
+        if let ContentOrigin::RustDocTest(_, scope) = origin {
+            for position in [&mut warning.span.start, &mut warning.span.end] {
+                if position.line == 1 {
+                    position.column += scope.start.column;
+                }
+                position.line += scope.start.line.saturating_sub(1);
+            }
+        }
+        Self {
+            origin: origin.clone(),
+            warning,
+        }
+    }
+}
+
 /// Collection of all the documentation entries across the project
 #[derive(Debug, Clone)]
 pub struct Documentation {
     /// Mapping of a path to documentation literals
     index: IndexMap<ContentOrigin, Vec<CheckableChunk>>,
+    /// Extraction diagnostics retained even when their source produces no chunks.
+    warnings: Vec<DocumentationWarning>,
 }
 
 impl Default for Documentation {
@@ -74,7 +108,13 @@ impl Documentation {
     pub fn new() -> Self {
         Self {
             index: IndexMap::with_capacity(64),
+            warnings: Vec::new(),
         }
+    }
+
+    /// Inspect extraction limitations, including sources that produced no checkable chunks.
+    pub fn warnings(&self) -> &[DocumentationWarning] {
+        &self.warnings
     }
 
     /// Check if a particular key is contained.
@@ -138,7 +178,38 @@ impl Documentation {
         doc_comments: bool,
         dev_comments: bool,
     ) -> Result<()> {
-        let cluster = Clusters::load_from_str(content, doc_comments, dev_comments)?;
+        self.add_rust_with_budget(
+            origin,
+            content,
+            doc_comments,
+            dev_comments,
+            CfgBudget::default(),
+        )
+    }
+
+    /// Extract Rust comments with explicit per-owner cfg limits and retain extraction warnings.
+    /// Developer comments are grouped by source adjacency without cfg evaluation.
+    pub fn add_rust_with_budget(
+        &mut self,
+        origin: ContentOrigin,
+        content: &str,
+        doc_comments: bool,
+        dev_comments: bool,
+        budget: CfgBudget,
+    ) -> Result<()> {
+        let cluster =
+            Clusters::load_from_str_with_budget(content, doc_comments, dev_comments, budget)?;
+        for warning in cluster.warnings() {
+            let located = DocumentationWarning::from_extraction(&origin, warning);
+            log::warn!(
+                "{}:{}:{}: {}",
+                located.origin,
+                located.warning.span.start.line,
+                located.warning.span.start.column + 1,
+                located.warning.message,
+            );
+            self.warnings.push(located);
+        }
 
         let chunks = Vec::<CheckableChunk>::from(cluster);
         self.add_inner(origin, chunks);
@@ -328,5 +399,44 @@ impl IntoIterator for Documentation {
 
     fn into_iter(self) -> Self::IntoIter {
         self.index.into_iter()
+    }
+}
+
+#[cfg(test)]
+mod extraction_warning_tests {
+    use super::*;
+
+    #[test]
+    fn excerpt_warnings_survive_empty_output_and_use_original_source_coordinates() {
+        let source = r#"// Transport examples.
+fn fixture() {
+    #[cfg(not())]
+    /// Socket documentation.
+    struct Socket;
+}
+"#;
+        let excerpt = Span {
+            start: LineColumn { line: 3, column: 4 },
+            end: LineColumn {
+                line: 5,
+                column: 17,
+            },
+        };
+        let origin = ContentOrigin::RustDocTest(PathBuf::from("transport.rs"), excerpt);
+        let expected_count = 1;
+        let expected_chunk_count = 0;
+        let expected_kind = ExtractionWarningKind::UnsupportedAttribute;
+        let expected_start = LineColumn { line: 3, column: 5 };
+        let expected_payload = "[cfg(not())]";
+        let docs = Documentation::load_from_str(origin.clone(), source, true, false);
+        // Losing all chunks must not lose the diagnostic or its original file location.
+        assert_eq!(docs.get(&origin).unwrap_or(&[]).len(), expected_chunk_count);
+        assert_eq!(docs.warnings().len(), expected_count);
+        let located = &docs.warnings()[0];
+        assert_eq!(located.origin, origin);
+        assert_eq!(located.warning.kind, expected_kind);
+        assert_eq!(located.warning.span.start, expected_start);
+        let actual_payload = util::load_span_from(source.as_bytes(), located.warning.span).unwrap();
+        assert_eq!(actual_payload, expected_payload);
     }
 }

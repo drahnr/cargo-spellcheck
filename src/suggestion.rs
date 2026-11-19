@@ -356,6 +356,10 @@ impl<'s> Suggestion<'s> {
         highlight
             .apply_to(format!(": spellcheck({})", self.detector))
             .fmt(formatter)?;
+        if let Some(example) = self.chunk.cfg_example() {
+            formatter.write_str(" with ")?;
+            styled_cfg(example).fmt(formatter)?;
+        }
         formatter.write_str("\n")?;
 
         arrow_marker
@@ -523,6 +527,14 @@ impl<'s> fmt::Display for Suggestion<'s> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.fmt_with_path(formatter, self.origin.as_path())
     }
+}
+
+/// Style only the cfg annotation, leaving its surrounding header text unchanged.
+fn styled_cfg(example: &str) -> console::StyledObject<String> {
+    console::Style::new()
+        .bold()
+        .magenta()
+        .apply_to(format!("cfg({example})"))
 }
 
 /// A suggestion display that borrows its path without changing the origin.
@@ -856,6 +868,167 @@ struct PacketSender;"#,
             let expected_replacement = format!("   | - {correction}");
             assert!(relative_rendering.contains(&expected_replacement));
         }
+    }
+
+    /// Guarded documentation shows its symbolic cfg on the first diagnostic line.
+    #[test]
+    fn fmt_cfg_examples_are_shown_for_guarded_docs() {
+        use crate::Documentation;
+
+        /// Source, spelling correction, and expected symbolic predicate for a guard.
+        struct GuardedDocumentationCase {
+            source: &'static str,
+            expected_example: &'static str,
+            typo: &'static str,
+            correction: &'static str,
+        }
+
+        let cases = [
+            GuardedDocumentationCase {
+                source: r#"#[cfg(feature = "serde")]
+/// Supports serialzation to JSON.
+struct SerializableRecord;"#,
+                expected_example: r#"feature = "serde""#,
+                typo: "serialzation",
+                correction: "serialization",
+            },
+            GuardedDocumentationCase {
+                source: r#"#[cfg(not(target_arch = "wasm32"))]
+/// Observes files for chagnes.
+struct NativeFileWatcher;"#,
+                expected_example: r#"not(target_arch = "wasm32")"#,
+                typo: "chagnes",
+                correction: "changes",
+            },
+            GuardedDocumentationCase {
+                source: r#"#[cfg(all(feature = "simd", target_arch = "x86_64"))]
+/// Performs accelarated searches.
+struct VectorizedSearch;"#,
+                expected_example: r#"all(feature = "simd", target_arch = "x86_64")"#,
+                typo: "accelarated",
+                correction: "accelerated",
+            },
+            GuardedDocumentationCase {
+                source: r#"#[cfg_attr(docsrs, doc = "See the API referance.")]
+struct HostedDocumentation;"#,
+                expected_example: "docsrs",
+                typo: "referance",
+                correction: "reference",
+            },
+            GuardedDocumentationCase {
+                source: r#"#[cfg(all())]
+/// Always availble to readers.
+struct AlwaysDocumented;"#,
+                expected_example: "all()",
+                typo: "availble",
+                correction: "available",
+            },
+            GuardedDocumentationCase {
+                source: r#"#[cfg(not(unix))]
+/// Opens a compatable system handle.
+struct PortableHandle;"#,
+                expected_example: "not(unix)",
+                typo: "compatable",
+                correction: "compatible",
+            },
+        ];
+
+        for case in cases {
+            let source = case.source;
+            let expected_example = case.expected_example;
+            let typo = case.typo;
+            let correction = case.correction;
+            let docs =
+                Documentation::load_from_str(ContentOrigin::TestEntityRust, source, true, false);
+            let chunks = docs.get(&ContentOrigin::TestEntityRust).unwrap();
+            let chunk = chunks
+                .iter()
+                .find(|chunk| chunk.as_str().contains(typo))
+                .expect("conditional documentation must be extracted");
+            let expected_cfg_example = Some(expected_example);
+            assert_eq!(chunk.cfg_example(), expected_cfg_example);
+            let start = chunk.as_str().find(typo).unwrap();
+            let range = start..start + typo.len();
+            let mappings = chunk.find_spans(range.clone());
+            let expected_mapping_count = 1;
+            assert_eq!(mappings.len(), expected_mapping_count);
+            let (mapped_range, span) = mappings.first().unwrap();
+            let expected_range = &range;
+            assert_eq!(mapped_range, expected_range);
+
+            let (line, text) = source
+                .lines()
+                .enumerate()
+                .find(|(_, text)| text.contains(typo))
+                .unwrap();
+            let column = text.find(typo).unwrap();
+            let expected_span = Span {
+                start: LineColumn {
+                    line: line + 1,
+                    column,
+                },
+                end: LineColumn {
+                    line: line + 1,
+                    column: column + typo.len() - 1,
+                },
+            };
+            assert_eq!(*span, expected_span);
+
+            let descriptions = [None, Some("Possible spelling mistake found.".to_owned())];
+            for description in descriptions {
+                let replacement_cases = [vec![], vec![correction.to_owned()]];
+                for replacements in replacement_cases {
+                    let suggestion = Suggestion {
+                        detector: Detector::Dummy,
+                        origin: ContentOrigin::TestEntityRust,
+                        chunk,
+                        range: range.clone(),
+                        span: *span,
+                        replacements,
+                        description: description.clone(),
+                    };
+                    let display_path = Path::new("entity.rs");
+                    let renderings = [
+                        suggestion.to_string(),
+                        suggestion.display_with_path(display_path).to_string(),
+                    ];
+                    let expected_first_line =
+                        format!("error: spellcheck(Dummy) with cfg({expected_example})");
+                    let old_footer = "example cfg (symbolic):";
+                    let expected_annotation = format!("cfg({expected_example})");
+                    let expected_annotation_count = 1;
+                    let expected_replacement = format!(" - {correction}");
+                    let expected_location_suffix = format!("entity.rs:{}", line + 1);
+                    for rendering in renderings {
+                        let rendered = console::strip_ansi_codes(&rendering);
+                        let first_line = rendered.lines().next().unwrap();
+                        assert_eq!(first_line, expected_first_line);
+                        assert!(!rendered.contains(old_footer), "{rendered}");
+                        assert_eq!(
+                            rendered.matches(&expected_annotation).count(),
+                            expected_annotation_count,
+                        );
+                        assert!(rendered.contains(&expected_location_suffix), "{rendered}");
+                        if let Some(description) = &description {
+                            assert!(rendered.contains(description), "{rendered}");
+                        }
+                        if !suggestion.replacements.is_empty() {
+                            assert!(rendered.contains(&expected_replacement), "{rendered}");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Forced styling remains local and colors only the cfg annotation.
+    #[test]
+    fn fmt_cfg_annotation_is_bold_magenta() {
+        let example = "not(unix)";
+        let annotation = styled_cfg(example).force_styling(true);
+        let rendered = format!("error: spellcheck(Dummy) with {annotation}");
+        let expected = "error: spellcheck(Dummy) with \x1b[35m\x1b[1mcfg(not(unix))\x1b[0m";
+        assert_eq!(rendered, expected);
     }
 
     #[test]
