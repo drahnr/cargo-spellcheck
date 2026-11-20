@@ -187,18 +187,6 @@ pub enum CheckEntity {
     ManifestDescription(PathBuf, String),
 }
 
-impl CheckEntity {
-    #[allow(dead_code)]
-    pub fn as_path(&self) -> &Path {
-        match self {
-            Self::Markdown(ref path) => path,
-            Self::Source(ref path, _) => path,
-            Self::ManifestDescription(ref path, _) => path,
-        }
-        .as_path()
-    }
-}
-
 /// Returns both the parse manifest struct as well as the raw manifest string.
 fn load_manifest<P: AsRef<Path>>(manifest_dir: P) -> Result<(cargo_toml::Manifest, String)> {
     let manifest_dir = manifest_dir.as_ref();

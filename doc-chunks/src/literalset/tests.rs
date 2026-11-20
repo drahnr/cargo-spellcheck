@@ -120,12 +120,6 @@ fn coverage() {
 }
 
 macro_rules! test_raw {
-        ($test: ident, [ $($txt: literal),+ $(,)? ]; $range: expr, $expected: literal) => {
-            #[test]
-            fn $test() {
-                test_raw!([$($txt),+] ; $range, $expected);
-            }
-        };
 
         ([$($txt:literal),+ $(,)?]; $range: expr, $expected: literal) => {
             let _ = env_logger::builder()
