@@ -63,6 +63,163 @@ fn assert_warnings(
     }
 }
 
+fn assert_attribute_provenance(source: &str, expected_markdown: &str, reflow_safe: bool) {
+    let clusters = Clusters::load_from_str(source, true, false).unwrap();
+    assert!(clusters.warnings().is_empty(), "{:?}", clusters.warnings());
+    let chunks = Vec::<crate::CheckableChunk>::from(clusters);
+    let actual_markdown = Vec::from_iter(chunks.iter().map(|chunk| chunk.as_str()));
+    assert_eq!(actual_markdown, [expected_markdown], "source:\n{source}");
+    for chunk in chunks {
+        assert_eq!(chunk.is_reflow_safe(), reflow_safe, "source:\n{source}");
+        for (range, span) in chunk.iter().filter(|(range, _)| !range.is_empty()) {
+            let source_content = crate::util::load_span_from(source.as_bytes(), *span).unwrap();
+            assert_eq!(
+                source_content,
+                crate::util::sub_chars(chunk.as_str(), range.clone())
+            );
+        }
+    }
+}
+
+#[test]
+fn attribute_provenance_preserves_standalone_docs_and_multiline_contents() {
+    let cases = [
+        (
+            r#"    #[ doc = "**Harbor** `guide`." ]
+struct Harbor;"#,
+            r#"**Harbor** `guide`."#,
+        ),
+        (
+            r#"    #[r#doc = "**Harbor** `guide`."]
+struct Harbor;"#,
+            r#"**Harbor** `guide`."#,
+        ),
+        (
+            r#"#![doc = "**Harbor** `guide`."]"#,
+            r#"**Harbor** `guide`."#,
+        ),
+        (
+            r#"mod harbor {
+    #![ r#doc = "**Harbor** `guide`." ]
+}"#,
+            r#"**Harbor** `guide`."#,
+        ),
+        (
+            r#"#[doc = "**Harbor**\n`guide`."]
+struct Harbor;"#,
+            r#"**Harbor**\n`guide`."#,
+        ),
+        (
+            r###"    #[r#doc = r##"# Harbor
+
+```rust
+let café = "🦀";
+```
+"##]
+struct Harbor;"###,
+            r###"# Harbor
+
+```rust
+let café = "🦀";
+```
+"###,
+        ),
+        (
+            r##"#![r#doc = r#"**Harbor**
+`guide`."#]"##,
+            r#"**Harbor**
+`guide`."#,
+        ),
+        (
+            r#"/// **Harbor**
+///
+/// ```rust
+/// let café = "🦀";
+/// ```
+struct Harbor;"#,
+            r#" **Harbor**
+
+ ```rust
+ let café = "🦀";
+ ```"#,
+        ),
+        (r#"//! **Harbor** `guide`."#, r#" **Harbor** `guide`."#),
+        (
+            r#"/** **Harbor** `guide`. */
+struct Harbor;"#,
+            r#" **Harbor** `guide`. "#,
+        ),
+        (r#"/*! **Harbor** `guide`. */"#, r#" **Harbor** `guide`. "#),
+    ];
+    for (source, expected_markdown) in cases {
+        assert_attribute_provenance(source, expected_markdown, true);
+    }
+}
+
+#[test]
+fn attribute_provenance_rejects_inline_prefixes_and_split_wrappers() {
+    let cases = [
+        r#"struct Café; #[doc = "**Harbor** `guide`."]
+struct Harbor;"#,
+        r#"fn inspect() { #[r#doc = "**Harbor** `guide`."] struct Harbor; }"#,
+        r#"mod harbor { #![doc = "**Harbor** `guide`."] }"#,
+        r#"#[allow(dead_code)] #[doc = "**Harbor** `guide`."]
+struct Harbor;"#,
+        r#"#[doc = #[allow(dead_code)] "**Harbor** `guide`."]
+struct Harbor;"#,
+        r##"#[r#doc = #[allow(dead_code)] r#"**Harbor** `guide`."#]
+struct Harbor;"##,
+        r#"#[doc /* Preserve this annotation. */ = "**Harbor** `guide`."]
+struct Harbor;"#,
+        r#"# /* Preserve this annotation. */ [doc = "**Harbor** `guide`."]
+struct Harbor;"#,
+        r#"#[
+    doc = "**Harbor** `guide`."]
+struct Harbor;"#,
+        r#"#[doc =
+    "**Harbor** `guide`."]
+struct Harbor;"#,
+        r#"#
+[doc = "**Harbor** `guide`."]
+struct Harbor;"#,
+        r#"#![
+    r#doc = "**Harbor** `guide`."]"#,
+        r#"#[doc = "**Harbor** `guide`."
+]
+struct Harbor;"#,
+    ];
+    for source in cases {
+        assert_attribute_provenance(source, r#"**Harbor** `guide`."#, false);
+    }
+
+    let source = r##"#[doc = r#"**Harbor**
+`guide`.
+"#
+]
+struct Harbor;"##;
+    assert_attribute_provenance(
+        source,
+        r#"**Harbor**
+`guide`.
+"#,
+        false,
+    );
+}
+
+#[test]
+fn attribute_provenance_keeps_cfg_attr_docs_non_reflowable() {
+    let cases = [
+        r#"#[cfg_attr(all(), doc = "**Harbor** `guide`.")]
+struct Harbor;"#,
+        r#"#[cfg_attr(all(), cfg_attr(all(), r#doc = "**Harbor** `guide`."))]
+struct Harbor;"#,
+        r#"#![cfg_attr(all(), r#doc = "**Harbor** `guide`.")]"#,
+    ];
+    for source in cases {
+        assert_attribute_provenance(source, r#"**Harbor** `guide`."#, false);
+    }
+}
+
 /// Direct and cfg_attr-generated constraints accept one trailing comma, not extra predicates.
 #[test]
 fn cfg_trailing_commas_preserve_documentation_and_predicate_spans() {

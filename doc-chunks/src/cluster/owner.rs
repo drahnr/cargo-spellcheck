@@ -32,8 +32,10 @@ impl DocFragment {
 impl DocAssignment {
     fn into_fragment(self, source: &str) -> Result<Option<DocFragment>> {
         match self {
-            Self::LitStr(literal) => TrimmedLiteral::load_from(source, Span::from(literal.span()))
-                .map(|literal| Some(DocFragment::Literal(literal))),
+            Self::LitStr(literal) | Self::AttributedLitStr(literal) => {
+                TrimmedLiteral::load_from(source, Span::from(literal.span()))
+                    .map(|literal| Some(DocFragment::Literal(literal)))
+            }
             Self::Macro(mac) => Ok(Some(DocFragment::UnexpandedMacro(inclusive_span(mac.span())))),
             Self::NonDocLiteral => Ok(None),
             Self::Unsupported(span) => Ok(Some(DocFragment::Unsupported(ExtractionWarning {
@@ -136,7 +138,12 @@ impl OwnerDocumentation {
         self.parsing_limited = true;
     }
 
-    pub(super) fn append_attribute_tokens(&mut self, source: &str, group: Group) -> Result<()> {
+    pub(super) fn append_attribute_tokens(
+        &mut self,
+        source: &str,
+        start: proc_macro2::Span,
+        group: Group,
+    ) -> Result<()> {
         if let Some(limit) = attribute_parsing_limit(&group.stream()) {
             let mut warning = limit.warning();
             warning.span = inclusive_span(group.span());
@@ -156,7 +163,11 @@ impl OwnerDocumentation {
                 if let DocAttribute::Unsupported(warning) = &mut attribute {
                     warning.span = inclusive_span(group.span());
                 }
-                self.append_attribute(source, attribute, &GuardContext::default())?;
+                let attribute_span = Span {
+                    start: start.start(),
+                    ..inclusive_span(group.span())
+                };
+                self.append_attribute(source, attribute_span, attribute, &GuardContext::default())?;
             }
             Err(error) => {
                 // An unparsed attribute could supply a Markdown fence. Skip this owner's
@@ -176,11 +187,30 @@ impl OwnerDocumentation {
     fn append_attribute(
         &mut self,
         source: &str,
+        attribute_span: Span,
         attribute: DocAttribute,
         guard: &GuardContext,
     ) -> Result<()> {
         match attribute {
             DocAttribute::Doc(assignment) => {
+                let standalone_literal = match &assignment {
+                    DocAssignment::LitStr(literal) => {
+                        let span = literal.span();
+                        // Multiline contents are safe; split wrappers and inline item prefixes are not.
+                        guard.condition.is_none()
+                            && attribute_span.start.line == span.start().line
+                            && attribute_span.end.line == span.end().line
+                            && source
+                                .lines()
+                                .nth(attribute_span.start.line.saturating_sub(1))
+                                .is_some_and(|line| {
+                                    line.chars()
+                                        .take(attribute_span.start.column)
+                                        .all(char::is_whitespace)
+                                })
+                    }
+                    _ => false,
+                };
                 let Some(fragment) = assignment.into_fragment(source)? else {
                     self.intervening_attribute = true;
                     return Ok(());
@@ -200,13 +230,10 @@ impl OwnerDocumentation {
                 match &fragment {
                     DocFragment::Literal(literal) => {
                         if let crate::CommentVariant::MacroDocEqStr(prefix, _) = literal.variant() {
-                            // Reflow must not repeat an item or an incomplete attribute wrapper.
-                            let prefix =
-                                String::from_iter(prefix.chars().filter(|c| !c.is_whitespace()));
-                            self.non_reflowable |= !matches!(
-                                prefix.as_str(),
-                                "#[doc=" | "#![doc=" | "#[r#doc=" | "#![r#doc="
-                            );
+                            // Ordinary comments are absent from tokens; do not repeat them during reflow.
+                            self.non_reflowable |= !standalone_literal
+                                || prefix.contains("/*")
+                                || prefix.contains("//");
                         }
                     }
                     DocFragment::UnexpandedMacro(_) | DocFragment::Unsupported(_) => {
@@ -225,7 +252,7 @@ impl OwnerDocumentation {
                 let previous_len = self.fragments.len();
                 let guard = guard.nested(condition);
                 for attribute in attributes {
-                    self.append_attribute(source, attribute, &guard)?;
+                    self.append_attribute(source, attribute_span, attribute, &guard)?;
                 }
                 self.non_reflowable |= self.fragments.len() != previous_len;
                 self.intervening_attribute = true;

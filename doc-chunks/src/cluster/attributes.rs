@@ -1,19 +1,23 @@
 //! Parse documentation attributes while retaining guarded payloads and source spans.
 
-use proc_macro2::{Delimiter, Group, TokenStream, TokenTree};
+use proc_macro2::TokenStream;
 use syn::ext::IdentExt;
 use syn::parse::Parser;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::{parenthesized, Expr, Ident, Lit, LitStr, Macro, Token};
+use syn::{Expr, Ident, Lit, LitStr, Macro, MacroDelimiter, Meta, Token};
 
 use super::{ExtractionWarning, ExtractionWarningKind};
 use crate::cfg::Predicate;
 use crate::Span;
 
+#[cfg(test)]
+mod tests;
+
 /// Parsed `doc = ...` syntax, before loading source-backed documentation fragments.
 pub(super) enum DocAssignment {
     LitStr(LitStr),
+    AttributedLitStr(LitStr),
     Macro(Macro),
     NonDocLiteral,
     Unsupported(Span),
@@ -36,7 +40,13 @@ impl syn::parse::Parse for DocAssignment {
         let expression = input.parse::<Expr>()?;
         Ok(match expression {
             Expr::Lit(literal) => match literal.lit {
-                Lit::Str(literal) if literal.suffix().is_empty() => Self::LitStr(literal),
+                Lit::Str(value) if value.suffix().is_empty() => {
+                    if literal.attrs.is_empty() {
+                        Self::LitStr(value)
+                    } else {
+                        Self::AttributedLitStr(value)
+                    }
+                }
                 Lit::Str(literal) => Self::Unsupported(inclusive_span(literal.span())),
                 _ => Self::NonDocLiteral,
             },
@@ -117,70 +127,47 @@ fn parse_cfg_attr(content: syn::parse::ParseStream<'_>) -> syn::Result<DocAttrib
     })
 }
 
-fn parse_configuration_attribute(
-    name: &str,
-    group: Option<Group>,
-    span: proc_macro2::Span,
-) -> syn::Result<DocAttribute> {
-    let group = group
-        .ok_or_else(|| syn::Error::new(span, "expected parenthesized configuration attribute"))?;
-    if group.delimiter() != Delimiter::Parenthesis {
-        return Err(syn::Error::new(
-            span,
+fn parse_configuration_attribute(name: &Ident, meta: &Meta) -> syn::Result<DocAttribute> {
+    let Meta::List(list) = meta else {
+        return Err(syn::Error::new_spanned(
+            meta,
+            "expected parenthesized configuration attribute",
+        ));
+    };
+    if !matches!(list.delimiter, MacroDelimiter::Paren(_)) {
+        return Err(syn::Error::new_spanned(
+            meta,
             "expected parentheses for configuration attribute",
         ));
     }
     if name == "cfg" {
-        parse_cfg.parse2(group.stream())
+        list.parse_args_with(parse_cfg)
     } else {
-        parse_cfg_attr.parse2(group.stream())
+        list.parse_args_with(parse_cfg_attr)
     }
 }
 
 impl syn::parse::Parse for DocAttribute {
     fn parse(input: syn::parse::ParseStream<'_>) -> syn::Result<Self> {
-        let name = input
+        // Keep Expr parsing for doc values: MetaNameValue folds negative literals
+        // into Expr::Lit and rejects expression attributes, changing extraction policy.
+        if input
             .fork()
             .parse::<Ident>()
-            .ok()
-            .map(|name| name.unraw().to_string());
-        if name.as_deref() == Some("doc") && input.peek2(Token![=]) {
+            .is_ok_and(|name| name.unraw() == "doc")
+            && input.peek2(Token![=])
+        {
             return input.parse().map(Self::Doc);
         }
-        // Unsafe attribute wrappers are unrelated metadata, not nested doc/cfg attributes.
-        if input.peek(Token![unsafe]) {
-            input.parse::<Token![unsafe]>()?;
-            let content;
-            parenthesized!(content in input);
-            content.parse::<TokenStream>()?;
+        let meta = input.parse::<Meta>()?;
+        let Some(name) = meta.path().get_ident().map(IdentExt::unraw) else {
+            return Ok(Self::Other);
+        };
+        if name != "cfg" && name != "cfg_attr" {
             return Ok(Self::Other);
         }
-        let path = input.call(syn::Path::parse_mod_style)?;
-        let name = path.get_ident().map(|name| name.unraw().to_string());
-        let mut span = path.span();
-        let group = if input.peek(syn::token::Paren)
-            || input.peek(syn::token::Bracket)
-            || input.peek(syn::token::Brace)
-        {
-            let TokenTree::Group(group) = input.parse::<TokenTree>()? else {
-                unreachable!("a delimiter starts a token group");
-            };
-            span = span.join(group.span()).unwrap_or(span);
-            Some(group)
-        } else if input.peek(Token![=]) {
-            input.parse::<Token![=]>()?;
-            // Expression parsing owns closure and turbofish commas; never scan their tokens
-            // as if they were cfg_attr separators or nested documentation attributes.
-            let expression = input.parse::<Expr>()?;
-            span = span.join(expression.span()).unwrap_or(span);
-            None
-        } else {
-            None
-        };
-        let Some(name @ ("cfg" | "cfg_attr")) = name.as_deref() else {
-            return Ok(Self::Other);
-        };
-        let parsed = parse_configuration_attribute(name, group, span);
+        let span = meta.span();
+        let parsed = parse_configuration_attribute(&name, &meta);
         // Syntactically consumed payloads can be discarded by an enclosing cfg_attr.
         // Retain interpretation failures under that guard instead of poisoning the owner.
         Ok(parsed.unwrap_or_else(|error| {
@@ -192,20 +179,5 @@ impl syn::parse::Parse for DocAttribute {
                 ),
             })
         }))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::DocAssignment;
-
-    #[test]
-    fn doc_assignment_parse() {
-        let _ = syn::parse_str::<DocAssignment>(r########"doc=foo!(bar!(xxx))"########).unwrap();
-        let _ = syn::parse_str::<DocAssignment>(r########"doc="s""########).unwrap();
-        let _ = syn::parse_str::<DocAssignment>(r########"doc=r#"s"#"########).unwrap();
-        let _ = syn::parse_str::<DocAssignment>(r########"doc=r##"s"##"########).unwrap();
-        let _ = syn::parse_str::<DocAssignment>(r########"doc=r###"s"###"########).unwrap();
-        let _ = syn::parse_str::<DocAssignment>(r########"doc=r####"s"####"########).unwrap();
     }
 }
