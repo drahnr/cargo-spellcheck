@@ -101,7 +101,7 @@ pub fn run(args: Args) -> Result<ExitCode> {
         }
     });
 
-    let full_paths = args.full_paths;
+    let absolute_paths = args.absolute_paths;
     let (unified, config) = match &args.command {
         Some(Sub::Completions { shell }) => {
             let sink = &mut std::io::stdout();
@@ -155,7 +155,7 @@ pub fn run(args: Args) -> Result<ExitCode> {
         } => {
             log::debug!("Executing: {action:?} with {config:?} from {config_path:?}");
 
-            let output_paths = paths::OutputPaths::new(&paths, full_paths)?;
+            let output_paths = paths::OutputPaths::new(&paths, absolute_paths)?;
             let documents =
                 traverse::extract(paths, recursive, skip_readme, dev_comments, &config)?;
 

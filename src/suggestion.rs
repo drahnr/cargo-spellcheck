@@ -15,7 +15,7 @@ use crate::documentation::{CheckableChunk, ContentOrigin};
 
 use std::cmp;
 use std::convert::TryFrom;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 
@@ -320,11 +320,11 @@ pub struct Suggestion<'s> {
 }
 
 impl<'s> Suggestion<'s> {
-    /// Display this suggestion with its origin path relative to `base`.
-    pub(crate) fn display_relative_to(&self, base: &std::path::Path) -> impl fmt::Display + '_ {
-        RelativeSuggestionDisplay {
+    /// Display using the given path without changing the origin or its line offset.
+    pub(crate) fn display_with_path<'a>(&'a self, path: &'a Path) -> impl fmt::Display + 'a {
+        SuggestionDisplay {
             suggestion: self,
-            path: doc_chunks::paths::relative_path(self.origin.as_path(), base),
+            path,
         }
     }
 
@@ -525,15 +525,15 @@ impl<'s> fmt::Display for Suggestion<'s> {
     }
 }
 
-/// A suggestion display that owns its relative path without changing the origin.
-struct RelativeSuggestionDisplay<'a, 's> {
+/// A suggestion display that borrows its path without changing the origin.
+struct SuggestionDisplay<'a, 's> {
     suggestion: &'a Suggestion<'s>,
-    path: PathBuf,
+    path: &'a Path,
 }
 
-impl fmt::Display for RelativeSuggestionDisplay<'_, '_> {
+impl fmt::Display for SuggestionDisplay<'_, '_> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.suggestion.fmt_with_path(formatter, &self.path)
+        self.suggestion.fmt_with_path(formatter, self.path)
     }
 }
 
@@ -736,9 +736,10 @@ impl<'s> IntoIterator for &'s SuggestionSet<'s> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{CommentVariant, Documentation, LineColumn};
+    use crate::{CommentVariant, LineColumn};
 
     use std::fmt;
+    use std::path::PathBuf;
 
     /// A test helper comparing the output against an expected output.
     ///
@@ -755,13 +756,16 @@ mod tests {
     }
 
     /// Relative rendering preserves the origin and the existing doctest line offset.
+    #[cfg(unix)]
     #[test]
-    fn fmt_relative_paths_preserve_origin_and_doctest_offset() {
+    fn fmt_paths_preserve_origin_and_doctest_offset() {
+        use crate::Documentation;
+
         /// Rendering inputs and expected location headers for each origin kind.
         struct RenderingCase {
             source: &'static str,
             origin: ContentOrigin,
-            base: &'static str,
+            display_path: &'static str,
             typo: &'static str,
             correction: &'static str,
             expected_relative_location: &'static str,
@@ -776,7 +780,7 @@ struct ArtifactCache;"#,
                 origin: ContentOrigin::RustSourceFile(PathBuf::from(
                     "/workspace/harbor/src/cache.rs",
                 )),
-                base: "/workspace/harbor",
+                display_path: "src/cache.rs",
                 typo: "persistant",
                 correction: "persistent",
                 expected_relative_location: "  --> src/cache.rs:2",
@@ -799,7 +803,7 @@ struct PacketSender;"#,
                         },
                     },
                 ),
-                base: "/workspace/harbor/examples",
+                display_path: "../src/transport.rs",
                 typo: "interupted",
                 correction: "interrupted",
                 expected_relative_location: "  --> ../src/transport.rs:42",
@@ -835,10 +839,7 @@ struct PacketSender;"#,
                 description: None,
             };
 
-            let relative_display = {
-                let base = PathBuf::from(case.base);
-                suggestion.display_relative_to(&base)
-            };
+            let relative_display = suggestion.display_with_path(Path::new(case.display_path));
             let relative_rendering = relative_display.to_string();
             let relative_rendering = console::strip_ansi_codes(&relative_rendering);
             let relative_location = relative_rendering.lines().nth(1).unwrap();
@@ -906,6 +907,74 @@ struct PacketSender;"#,
    |   Possible spelling mistake found.
 "#;
         assert_display_eq(suggestion, EXPECTED);
+    }
+
+    #[test]
+    fn fmt_with_path_preserves_origin_and_default_display() {
+        let span = Span {
+            start: LineColumn { line: 1, column: 0 },
+            end: LineColumn { line: 1, column: 4 },
+        };
+        let chunk = CheckableChunk::from_str(
+            "typpo",
+            indexmap::indexmap! { 0..5 => span },
+            CommentVariant::TripleSlash,
+        );
+        let origin_path = std::env::current_dir().unwrap().join("src").join("lib.rs");
+        let display_path = std::path::Path::new("src").join("lib.rs");
+        let doctest_span = Span {
+            start: LineColumn {
+                line: 42,
+                column: 0,
+            },
+            end: LineColumn {
+                line: 44,
+                column: 0,
+            },
+        };
+
+        for (origin, line) in [
+            (ContentOrigin::RustSourceFile(origin_path.clone()), 1),
+            (
+                ContentOrigin::RustDocTest(origin_path.clone(), doctest_span),
+                43,
+            ),
+        ] {
+            let suggestion = Suggestion {
+                detector: Detector::Dummy,
+                origin: origin.clone(),
+                chunk: &chunk,
+                span,
+                range: 0..5,
+                replacements: vec!["typo".to_owned()],
+                description: Some("Possible spelling mistake found.".to_owned()),
+            };
+            let expected = format!(
+                r#"error: spellcheck(Dummy)
+  --> {}:{line}
+   |
+ 1 | typpo
+   | ^^^^^
+   | - typo
+   |
+   |   Possible spelling mistake found.
+"#,
+                origin_path.display(),
+            );
+            let default_display = suggestion.to_string();
+            assert_display_eq(&suggestion, &expected);
+            assert_display_eq(
+                suggestion.display_with_path(&display_path),
+                expected.replacen(
+                    &origin_path.display().to_string(),
+                    &display_path.display().to_string(),
+                    1,
+                ),
+            );
+            assert_eq!(suggestion.origin, origin);
+            assert_eq!(suggestion.origin.as_path(), origin_path);
+            assert_eq!(suggestion.to_string(), default_display);
+        }
     }
 
     #[test]
