@@ -65,20 +65,6 @@ impl TraverseModulesIter {
         Ok(())
     }
 
-    #[allow(unused)]
-    pub fn with_multi<P, J, I>(entries: I) -> Result<Self>
-    where
-        P: AsRef<Path>,
-        J: Iterator<Item = P>,
-        I: IntoIterator<Item = P, IntoIter = J>,
-    {
-        let mut me = Self::default();
-        for path in entries.into_iter() {
-            me.add_initial_path(path, 0)?;
-        }
-        Ok(me)
-    }
-
     pub fn with_depth_limit<P: AsRef<Path>>(path: P, max_depth: usize) -> Result<Self> {
         let mut me = Self {
             max_depth,
@@ -89,7 +75,7 @@ impl TraverseModulesIter {
     }
 
     /// Create a new path with (almost) infinite depth bounds
-    #[allow(unused)]
+    #[cfg(test)]
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
         Self::with_depth_limit(path, usize::MAX)
     }

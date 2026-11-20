@@ -291,26 +291,26 @@ fn fmt_single_line_with_and_without_replacements() {
    | - replacement_0, replacement_1, or replacement_2
    |
    |   Possible spelling mistake found.
-"#;
-    assert_display_eq(suggestion, EXPECTED);
-}
-
-#[test]
-fn fmt_0_no_suggestion() {
-    const CONTENT: &str = " Is it dyrck again?";
+"#,
+            ),
+            (
+                vec![],
+                r#"error: spellcheck(Dummy)
+  --> /tmp/test/entity.rs:1
+   |
+ 1 |  Is it dyrck again?
+   |        ^^^^^
+   |   Possible spelling mistake found.
+"#,
+            ),
+        ],
+    );
     let chunk = CheckableChunk::from_str(
-        CONTENT,
+        content,
         indexmap::indexmap! { 0..18 => Span {
-            start: LineColumn {
-                line: 1,
-                column: 0,
-            },
-            end: LineColumn {
-                line: 1,
-                column: 17,
-            }
-        }
-        },
+            start: LineColumn { line: 1, column: 0 },
+            end: LineColumn { line: 1, column: 17 },
+        } },
         CommentVariant::TripleSlash,
     );
 
@@ -328,19 +328,11 @@ fn fmt_0_no_suggestion() {
                     column: 10,
                 },
             },
-        },
-        replacements: vec![],
-        description: Some("Possible spelling mistake found.".to_owned()),
-    };
-
-    const EXPECTED: &str = r#"error: spellcheck(Dummy)
-  --> /tmp/test/entity.rs:1
-   |
- 1 |  Is it dyrck again?
-   |        ^^^^^
-   |   Possible spelling mistake found.
-"#;
-    assert_display_eq(suggestion, EXPECTED);
+            replacements: Vec::from_iter(replacements.into_iter().map(str::to_owned)),
+            description: Some("Possible spelling mistake found.".to_owned()),
+        };
+        assert_display_eq(suggestion, expected);
+    }
 }
 
 #[test]
