@@ -422,7 +422,7 @@ mod tests {
     fn defers_learning_dictionary_symlink_resolution() {
         let dir = TempDir::new();
         fs::write(dir.0.join("lingo.dic"), "0\n").unwrap();
-        std::os::unix::fs::symlink(dir.0.join("lingo.dic"), dir.0.join("alias.dic")).unwrap();
+        fs::os::unix::fs::symlink(dir.0.join("lingo.dic"), dir.0.join("alias.dic")).unwrap();
         let mut config = dir.config();
         config.learning_dictionary = Some(PathBuf::from("alias.dic"));
         config.sanitize_paths(&dir.0).unwrap();

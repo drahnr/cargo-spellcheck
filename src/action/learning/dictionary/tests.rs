@@ -1062,7 +1062,7 @@ mod default_dictionary {
     #[cfg(unix)]
     #[test]
     fn dangling_and_live_symlink_defaults_are_not_replaced() {
-        use std::os::unix::fs::symlink;
+        use fs::os::unix::fs::symlink;
 
         for target_exists in [false, true] {
             let dir = TempDir::new();

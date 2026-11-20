@@ -280,8 +280,8 @@ fn invalid_other_registrations_are_not_hidden_by_a_registered_target() {
     let dir = TempDir::new();
     #[cfg(unix)]
     {
-        std::os::unix::fs::symlink("missing.dic", dir.path("broken.dic")).unwrap();
-        std::os::unix::fs::symlink("loop.dic", dir.path("loop.dic")).unwrap();
+        fs::os::unix::fs::symlink("missing.dic", dir.path("broken.dic")).unwrap();
+        fs::os::unix::fs::symlink("loop.dic", dir.path("loop.dic")).unwrap();
     }
     let invalid = [
         "learning.dic/child.dic",
@@ -384,7 +384,7 @@ fn load_from_accepts_absolute_parent_components_in_targets_and_registrations() {
 #[test]
 fn load_from_accepts_absolute_symlinks_in_targets_and_registrations() {
     let dir = TempDir::new();
-    std::os::unix::fs::symlink(dir.path("learning.dic"), dir.path("alias.dic")).unwrap();
+    fs::os::unix::fs::symlink(dir.path("learning.dic"), dir.path("alias.dic")).unwrap();
     let mut config = dir.all_backends(Some("learning.dic"));
     for (index, &(_, backend)) in BACKENDS.iter().enumerate() {
         let spelling = backend(&mut config).as_mut().unwrap();
@@ -426,8 +426,8 @@ fn load_from_defers_invalid_registered_learning_targets_until_backend_filtering(
     let dir = TempDir::new();
     #[cfg(unix)]
     {
+        use fs::os::unix::fs::symlink;
         use nix::sys::stat::Mode;
-        use std::os::unix::fs::symlink;
 
         nix::unistd::mkfifo(&dir.path("fifo.dic"), Mode::S_IRUSR | Mode::S_IWUSR).unwrap();
         symlink("missing.dic", dir.path("broken.dic")).unwrap();
@@ -701,8 +701,8 @@ fn readonly_explicit_target_is_rejected_only_for_learning_without_modifying_it()
 #[cfg(unix)]
 #[test]
 fn learning_rejects_fifos_broken_symlinks_and_filesystem_errors_without_opening_them() {
+    use fs::os::unix::fs::symlink;
     use nix::sys::stat::Mode;
-    use std::os::unix::fs::symlink;
 
     let dir = TempDir::new();
     nix::unistd::mkfifo(&dir.path("fifo.dic"), Mode::S_IRUSR | Mode::S_IWUSR).unwrap();
@@ -748,7 +748,7 @@ fn learning_rejects_fifos_broken_symlinks_and_filesystem_errors_without_opening_
 #[test]
 fn missing_explicit_target_canonicalizes_existing_symlink_ancestors() {
     let dir = TempDir::new();
-    std::os::unix::fs::symlink(dir.path("nested"), dir.path("alias")).unwrap();
+    fs::os::unix::fs::symlink(dir.path("nested"), dir.path("alias")).unwrap();
     for &(_, backend) in BACKENDS {
         let mut config = dir.all_backends(None);
         for &(_, other) in BACKENDS {
@@ -842,7 +842,7 @@ fn validating_missing_defaults_rejects_dangling_ancestors() {
         let dir = TempDir::new();
         let link = dir.path(ancestor);
         fs::create_dir_all(link.parent().unwrap()).unwrap();
-        std::os::unix::fs::symlink("missing-directory", &link).unwrap();
+        fs::os::unix::fs::symlink("missing-directory", &link).unwrap();
         let target = Config::default_learning_dictionary(&dir.0).unwrap();
         assert_eq!(target, dir.path(PREFERRED));
         assert!(Config::validate_learning_dictionary(&target).is_err());
@@ -859,7 +859,7 @@ fn validating_missing_defaults_rejects_dangling_ancestors() {
 fn validating_missing_defaults_canonicalizes_existing_ancestors_without_creation() {
     let dir = TempDir::new();
     let alias = dir.path("alias");
-    std::os::unix::fs::symlink(dir.path("nested"), &alias).unwrap();
+    fs::os::unix::fs::symlink(dir.path("nested"), &alias).unwrap();
     let target = Config::default_learning_dictionary(&alias).unwrap();
     assert_eq!(
         Config::validate_learning_dictionary(&target).unwrap(),
@@ -937,7 +937,7 @@ fn malformed_default_parent_is_not_treated_as_absence() {
 #[cfg(unix)]
 #[test]
 fn default_selection_canonicalizes_file_symlinks_and_rejects_broken_or_directory_links() {
-    use std::os::unix::fs::symlink;
+    use fs::os::unix::fs::symlink;
 
     for location in [PREFERRED, LEGACY] {
         for target in ["learning.dic", "missing.dic", "nested"] {
@@ -969,7 +969,7 @@ fn default_selection_propagates_symlink_resolution_errors() {
     let dir = TempDir::new();
     write_default(&dir, LEGACY);
     fs::create_dir_all(dir.path(".config/spellcheck")).unwrap();
-    std::os::unix::fs::symlink("learnings.dic", dir.path(PREFERRED)).unwrap();
+    fs::os::unix::fs::symlink("learnings.dic", dir.path(PREFERRED)).unwrap();
     assert!(Config::default_learning_dictionary(&dir.0).is_err());
 }
 
