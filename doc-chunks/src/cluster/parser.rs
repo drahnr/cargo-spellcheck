@@ -105,8 +105,8 @@ impl Parser<'_> {
         }
         // Inner and outer docs form one Markdown document, including cfg constraints.
         while matches!(attribute_prefix(&tokens), Some((AttributeStyle::Inner, _))) {
-            let (_, group) = take_attribute(&mut tokens).unwrap();
-            owner.append_attribute_tokens(self.source, group)?;
+            let (_, start, group) = take_attribute(&mut tokens).unwrap();
+            owner.append_attribute_tokens(self.source, start, group)?;
         }
         let enclosing = owner.constraints().to_vec();
         let skip_scope = owner.parsing_limited();
@@ -129,7 +129,7 @@ impl Parser<'_> {
             if pending.reject_complex_header(scope) {
                 continue;
             }
-            if let Some((style, group)) = take_attribute(&mut tokens) {
+            if let Some((style, start, group)) = take_attribute(&mut tokens) {
                 if !pending.header.is_empty()
                     || pending
                         .attribute_style
@@ -140,7 +140,7 @@ impl Parser<'_> {
                 pending.attribute_style = Some(style);
                 pending
                     .documentation
-                    .append_attribute_tokens(self.source, group)?;
+                    .append_attribute_tokens(self.source, start, group)?;
                 continue;
             }
             match tokens.pop_front().unwrap() {
@@ -208,12 +208,15 @@ fn attribute_prefix(tokens: &VecDeque<TokenTree>) -> Option<(AttributeStyle, usi
     }
 }
 
-fn take_attribute(tokens: &mut VecDeque<TokenTree>) -> Option<(AttributeStyle, Group)> {
+fn take_attribute(
+    tokens: &mut VecDeque<TokenTree>,
+) -> Option<(AttributeStyle, proc_macro2::Span, Group)> {
     let (style, group_index) = attribute_prefix(tokens)?;
+    let start = tokens.front()?.span();
     let Some(TokenTree::Group(group)) = tokens.get(group_index) else {
         unreachable!("an attribute prefix ends in a bracket group");
     };
     let group = group.clone();
     tokens.drain(..=group_index);
-    Some((style, group))
+    Some((style, start, group))
 }

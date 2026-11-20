@@ -1,8 +1,8 @@
 //! Executable examples of structural, host-independent documentation projections.
 
-use super::{CheckableChunk, ContentOrigin, Documentation};
 use crate::documentation::{CfgBudget, Clusters, ExtractionWarningKind};
 use crate::util::{load_span_from, sub_chars};
+use crate::{CheckableChunk, ContentOrigin, Documentation};
 
 fn chunks(source: &str) -> Vec<CheckableChunk> {
     let docs = Documentation::load_from_str(ContentOrigin::TestEntityRust, source, true, false);

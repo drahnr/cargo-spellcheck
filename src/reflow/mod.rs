@@ -21,6 +21,9 @@ pub use crate::config::ReflowConfig;
 mod iter;
 pub use iter::Gluon;
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Debug)]
 pub struct Reflow {
     config: ReflowConfig,
@@ -551,6 +554,3 @@ fn reflow<'s>(
 
     Ok(acc)
 }
-
-#[cfg(test)]
-mod tests;

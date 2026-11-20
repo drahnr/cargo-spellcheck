@@ -8,6 +8,8 @@ use crate::documentation::{testcase::annotated_literals, SourceRange};
 use indexmap::IndexMap;
 use std::convert::From;
 
+mod cfg_attr;
+
 #[test]
 fn parse_and_construct() {
     let _ = env_logger::builder()

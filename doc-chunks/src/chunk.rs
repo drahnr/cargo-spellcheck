@@ -16,6 +16,9 @@ use crate::{
 };
 use crate::{Ignores, PlainOverlay};
 
+#[cfg(test)]
+mod tests;
+
 /// Definition of the source of a checkable chunk
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub enum ContentOrigin {
@@ -541,63 +544,5 @@ impl<'a> fmt::Display for ChunkDisplay<'a> {
         };
 
         write!(formatter, "{ctx1}{highlight}{ctx2}")
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-
-    #[test]
-    fn direct_constructors_preserve_original_content_delimiters() {
-        for (content, expected) in [
-            ("Words", None),
-            ("Words\n", Some("\n")),
-            ("Words\r\n", Some("\r\n")),
-        ] {
-            let chunk =
-                CheckableChunk::from_str(content, IndexMap::new(), CommentVariant::CommonMark);
-            assert_eq!(chunk.as_str(), content);
-            assert_eq!(chunk.preferred_line_delimiter(), expected);
-            assert_eq!(chunk.clone().preferred_line_delimiter(), expected);
-        }
-    }
-
-    #[test]
-    fn source_delimiter_metadata_participates_in_equality_and_hashing() {
-        let lf = CheckableChunk::from_str("Words\n", IndexMap::new(), CommentVariant::TripleSlash);
-        let mut crlf = lf.clone();
-        crlf.set_preferred_line_delimiter(Some("\r\n"));
-        assert_ne!(lf, crlf);
-        assert_eq!(lf.as_str(), crlf.as_str());
-        let mut lf_hash = DefaultHasher::new();
-        lf.hash(&mut lf_hash);
-        let mut crlf_hash = DefaultHasher::new();
-        crlf.hash(&mut crlf_hash);
-        assert_ne!(lf_hash.finish(), crlf_hash.finish());
-    }
-
-    #[test]
-    fn reflow_safety_defaults_to_safe_and_survives_cloning() {
-        let safe =
-            CheckableChunk::from_str("Shared prose", IndexMap::new(), CommentVariant::TripleSlash);
-        assert!(safe.is_reflow_safe());
-
-        let mut unsafe_chunk = safe.clone();
-        unsafe_chunk.disable_reflow();
-        unsafe_chunk.disable_reflow();
-        assert!(!unsafe_chunk.is_reflow_safe());
-        assert!(!unsafe_chunk.clone().is_reflow_safe());
-        assert!(safe.is_reflow_safe());
-        assert_ne!(safe, unsafe_chunk);
-        assert_eq!(safe.as_str(), unsafe_chunk.as_str());
-
-        let mut safe_hash = DefaultHasher::new();
-        safe.hash(&mut safe_hash);
-        let mut unsafe_hash = DefaultHasher::new();
-        unsafe_chunk.hash(&mut unsafe_hash);
-        assert_ne!(safe_hash.finish(), unsafe_hash.finish());
     }
 }

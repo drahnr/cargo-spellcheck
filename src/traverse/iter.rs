@@ -5,6 +5,9 @@ use fs_err as fs;
 
 use std::path::{Path, PathBuf};
 
+#[cfg(test)]
+mod tests;
+
 /// An iterator traversing module hierarchies yielding paths
 #[derive(Debug, Clone)]
 pub struct TraverseModulesIter {
@@ -148,9 +151,7 @@ pub(crate) fn traverse_with_depth_limit(
         .filter_map(move |path: PathBuf| -> Option<Documentation> {
             fs::read_to_string(&path).ok().map(|content| {
                 let mut documentation = Documentation::new();
-                if let Some(base) = output_paths.base_for(&path) {
-                    documentation.set_warning_path_base(base.to_path_buf());
-                }
+                documentation.set_warning_path(output_paths.path(&path));
                 let origin = ContentOrigin::RustSourceFile(path);
                 if let Err(error) = documentation.add_rust(
                     origin.clone(), content.as_str(), doc_comments, dev_comments,
@@ -164,56 +165,4 @@ pub(crate) fn traverse_with_depth_limit(
             !documentation.is_empty() || !documentation.warnings().is_empty()
         });
     Ok(it)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn demo_dir() -> PathBuf {
-        manifest_dir().join("demo")
-    }
-
-    #[test]
-    fn traverse_main_rs() {
-        let _ = env_logger::builder()
-            .filter_level(log::LevelFilter::Trace)
-            .is_test(true)
-            .try_init();
-        let manifest_path = demo_dir().join("src/main.rs");
-
-        let expect = indexmap::indexset! {
-            "src/main.rs",
-            "src/lib.rs",
-            "src/nested/mod.rs",
-            "src/nested/justone.rs",
-            "src/nested/justtwo.rs",
-            "src/nested/again/mod.rs",
-            "src/nested/again/code.rs",
-            "src/nested/fragments.rs",
-            "src/nested/fragments/enumerate.rs",
-            "src/nested/fragments/simple.rs",
-        }
-        .into_iter()
-        .map(|sub| demo_dir().join(sub))
-        .collect::<indexmap::set::IndexSet<PathBuf>>();
-
-        let found = TraverseModulesIter::new(manifest_path.as_path())
-            .expect("Must succeed to traverse file tree.")
-            .collect::<Vec<PathBuf>>();
-
-        let unexpected_files: Vec<_> = dbg!(&found)
-            .iter()
-            .filter(|found_path| !expect.contains(*found_path))
-            .collect();
-        assert_eq!(Vec::<&PathBuf>::new(), unexpected_files);
-
-        let missing_files: Vec<_> = expect
-            .iter()
-            .filter(|expected_path| !found.contains(expected_path))
-            .collect();
-        assert_eq!(Vec::<&PathBuf>::new(), missing_files);
-
-        assert_eq!(found.len(), expect.len());
-    }
 }
