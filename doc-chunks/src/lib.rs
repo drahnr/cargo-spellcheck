@@ -27,7 +27,6 @@ pub mod util;
 use self::util::{load_span_from, sub_char_range};
 
 use indexmap::IndexMap;
-use proc_macro2::TokenTree;
 use rayon::prelude::*;
 use serde::Deserialize;
 use std::path::PathBuf;
