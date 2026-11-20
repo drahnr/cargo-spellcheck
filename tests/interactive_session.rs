@@ -3,9 +3,11 @@
     any(feature = "hunspell", feature = "spellbook", feature = "zet")
 ))]
 
-use std::fs::{self, File};
+use fs_err as fs;
+use fs_err::os::unix::fs::symlink;
+use std::fs::{File, Permissions};
 use std::io::{self, Read, Write};
-use std::os::unix::fs::{symlink, PermissionsExt};
+use std::os::unix::fs::PermissionsExt;
 use std::os::unix::io::{AsRawFd, FromRawFd};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
@@ -1723,7 +1725,7 @@ fn invalid_learning_targets_fail_before_any_interactive_prompt() {
             match kind {
                 "readonly" => {
                     fs::write(&target, "0\n").unwrap();
-                    fs::set_permissions(&target, fs::Permissions::from_mode(0o444)).unwrap();
+                    fs::set_permissions(&target, Permissions::from_mode(0o444)).unwrap();
                 }
                 "directory" => fs::create_dir(&target).unwrap(),
                 "dangling symlink" => symlink("missing.dic", &target).unwrap(),

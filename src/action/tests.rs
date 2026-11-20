@@ -719,8 +719,8 @@ mod source_file_locks {
             }
         }
 
-        fn open_lock(&self) -> std::fs::File {
-            std::fs::OpenOptions::new()
+        fn open_lock(&self) -> fs::File {
+            fs::OpenOptions::new()
                 .read(true)
                 .write(true)
                 .create(true)
@@ -850,7 +850,7 @@ mod source_file_locks {
     fn source_update_waits_for_sidecar_and_rereads_after_locking() {
         let fixture = Fixture::new(b"old stale contents\n");
         let lock = fixture.open_lock();
-        lock.lock().unwrap();
+        lock.file().lock().unwrap();
         let mut worker = Worker::spawn(&fixture, "success");
         worker.expect_blocked();
         assert_eq!(fs::read(&fixture.source).unwrap(), b"old stale contents\n");
@@ -860,7 +860,7 @@ mod source_file_locks {
         let replacement = fixture.directory.join("replacement.md");
         fs::write(&replacement, "new latest contents\n").unwrap();
         fs::rename(replacement, &fixture.source).unwrap();
-        lock.unlock().unwrap();
+        lock.file().unlock().unwrap();
 
         worker.expect_event("returned-success");
         assert_eq!(
@@ -871,6 +871,7 @@ mod source_file_locks {
         // The child is still alive, so process exit cannot hide a leaked lock.
         fixture
             .open_lock()
+            .file()
             .try_lock()
             .expect("release lock on success");
         worker.finish();
@@ -888,6 +889,7 @@ mod source_file_locks {
         );
         fixture
             .open_lock()
+            .file()
             .try_lock()
             .expect("release lock on error");
         worker.finish();
@@ -905,13 +907,13 @@ mod source_file_locks {
         if scenario != "read-error" {
             let mut sidecar = source.as_os_str().to_os_string();
             sidecar.push(".cargo-spellcheck.lock");
-            let lock = std::fs::OpenOptions::new()
+            let lock = fs::OpenOptions::new()
                 .read(true)
                 .write(true)
                 .open(PathBuf::from(sidecar))
                 .unwrap();
             assert!(matches!(
-                lock.try_lock(),
+                lock.file().try_lock(),
                 Err(std::fs::TryLockError::WouldBlock)
             ));
         }

@@ -225,12 +225,7 @@ macro_rules! reflow_chyrp {
 
         reflow_content!($n break ContentOrigin::TestEntityRust, CONTENT => patches [ $( $expected ),+ ]);
     };
-    ($n:literal break [ $( $line:literal ),+ $(,)?] => ok) => {
 
-        const CONTENT:&'static str = chyrp_up!($( $line ),+);
-
-        reflow_content!($n break ContentOrigin::TestEntityRust, CONTENT => ok);
-    };
 }
 
 #[test]

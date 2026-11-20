@@ -1,6 +1,8 @@
 #[cfg(not(feature = "tokenizer"))]
 compile_error!("cargo-spellcheck needs a spelling backend or the `nlprules` feature enabled.");
 
+#[cfg(all(feature = "tokenizer", not(feature = "nlprules")))]
+use fs_err as fs;
 use std::env;
 #[cfg(feature = "tokenizer")]
 use std::io::BufReader;
@@ -81,8 +83,8 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error + 'static>> {
         const TOKENIZER: &str = "nlprule-data/0.6.4/en/en_tokenizer.bin.xz";
         println!("cargo:rerun-if-changed={TOKENIZER}");
         let source = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?).join(TOKENIZER);
-        let mut decoder = XzDecoder::new(BufReader::new(std::fs::File::open(source)?));
-        let mut destination = std::fs::File::create(out.join("en_tokenizer.bin"))?;
+        let mut decoder = XzDecoder::new(BufReader::new(fs::File::open(source)?));
+        let mut destination = fs::File::create(out.join("en_tokenizer.bin"))?;
         std::io::copy(&mut decoder, &mut destination)?;
     }
 

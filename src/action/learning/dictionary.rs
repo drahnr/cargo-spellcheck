@@ -211,11 +211,11 @@ fn persist_entries(
     temporary_name.push(name);
     temporary_name.push(format!(".{}.tmp", uuid::Uuid::new_v4()));
     let temporary = parent.join(temporary_name);
-    let mut options = std::fs::OpenOptions::new();
+    let mut options = fs::OpenOptions::new();
     options.write(true).create_new(true);
     #[cfg(unix)]
     {
-        use std::os::unix::fs::OpenOptionsExt;
+        use fs::os::unix::fs::OpenOptionsExt;
         options.mode(0o600);
     }
     let mut file = options

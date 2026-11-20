@@ -1,5 +1,5 @@
 use super::{Base, OutputPaths};
-use std::fs;
+use fs_err as fs;
 use std::path::{Path, PathBuf};
 
 struct TempDir(PathBuf);
@@ -183,7 +183,7 @@ fn longer_prefixes_do_not_lengthen_output() {
 #[cfg(unix)]
 #[test]
 fn symlink_and_parent_components_are_resolved_before_shortening() {
-    use std::os::unix::fs::symlink;
+    use fs::os::unix::fs::symlink;
 
     let temp = TempDir::new();
     let source = temp.file("actual/lib.rs");
@@ -200,7 +200,7 @@ fn symlink_and_parent_components_are_resolved_before_shortening() {
 #[cfg(unix)]
 #[test]
 fn symlink_directory_prefix_keeps_the_original_cli_identity() {
-    use std::os::unix::fs::symlink;
+    use fs::os::unix::fs::symlink;
 
     let temp = TempDir::new();
     let source = temp.file("actual/src/lib.rs");
@@ -214,7 +214,7 @@ fn symlink_directory_prefix_keeps_the_original_cli_identity() {
 #[cfg(unix)]
 #[test]
 fn symlink_file_uses_original_parent_not_target_parent() {
-    use std::os::unix::fs::symlink;
+    use fs::os::unix::fs::symlink;
 
     let temp = TempDir::new();
     let target = temp.file("target/real.rs");

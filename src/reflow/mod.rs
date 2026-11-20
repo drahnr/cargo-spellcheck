@@ -387,7 +387,7 @@ fn store_suggestion<'s>(
         )?
         .map(|replacement| Suggestion {
             chunk,
-            detector: Detector::Reflow,
+            detector: Reflow::detector(),
             origin: origin.clone(),
             description: None,
             checked_word: None,

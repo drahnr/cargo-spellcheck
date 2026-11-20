@@ -1,4 +1,4 @@
-use std::fs;
+use fs_err as fs;
 #[cfg(feature = "spellbook")]
 use std::path::Path;
 use std::path::PathBuf;

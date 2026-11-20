@@ -44,6 +44,7 @@ workspace = true
 
 
 [build-dependencies]
+fs-err = "2"
 nlprule-build = { version = "=0.6.4", optional = true }
 # compress the nlprule artifacts to be under the 10 MB limit
 # that cargo enforces
