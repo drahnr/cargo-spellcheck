@@ -545,20 +545,29 @@ fn project_bdd(
     };
     // Conjoin owner constraints before exploring which documentation fragments are selected.
     let mut valid = space.variables.mk_true();
-    let versions = ordered_version_indices(space.atoms.iter());
-    // Adjacent implications suffice: every newer threshold entails every older one.
-    for pair in versions.windows(2) {
-        let older = space.variables.mk_var(BddVariable::from_index(pair[0]));
-        let newer = space.variables.mk_var(BddVariable::from_index(pair[1]));
+    for relation in atom_relations(space.atoms.iter()) {
+        let [(left, left_value), (right, right_value)] = relation.clause();
+        let literal = |index, value| {
+            let variable = space.variables.mk_var(BddVariable::from_index(index));
+            if value {
+                variable
+            } else {
+                variable.into_not()
+            }
+        };
         let warning = |error| ProjectionWarning {
             error,
-            site: atom_sites[pair[0].max(pair[1])],
+            site: atom_sites[left.max(right)],
         };
-        let implication = budget
-            .combine(&older, &newer.into_not(), op_function::or)
+        let clause = budget
+            .combine(
+                &literal(left, left_value),
+                &literal(right, right_value),
+                op_function::or,
+            )
             .map_err(warning)?;
         valid = budget
-            .combine(&valid, &implication, op_function::and)
+            .combine(&valid, &clause, op_function::and)
             .map_err(warning)?;
     }
     for (index, constraint) in constraints.iter().enumerate() {
@@ -712,7 +721,7 @@ struct ProjectionCollector<'a> {
     guards: &'a [&'a Predicate],
     constraints: &'a [&'a Predicate],
     atoms: IndexSet<Atom>,
-    versions: Vec<usize>,
+    relations: Vec<AtomRelation>,
     assignments: HashSet<Vec<u64>>,
     selections: HashSet<Vec<usize>>,
     projections: Vec<Projection>,
@@ -739,12 +748,12 @@ impl<'a> ProjectionCollector<'a> {
         atoms: IndexSet<Atom>,
         limit: usize,
     ) -> Self {
-        let versions = ordered_version_indices(atoms.iter());
+        let relations = atom_relations(atoms.iter());
         Self {
             guards,
             constraints,
             atoms,
-            versions,
+            relations,
             assignments: HashSet::new(),
             selections: HashSet::new(),
             projections: Vec::new(),
@@ -765,11 +774,12 @@ impl<'a> ProjectionCollector<'a> {
         if !self.assignments.insert(packed_assignment(&assignment)) {
             return;
         }
-        if self
-            .versions
-            .windows(2)
-            .any(|pair| !assignment[pair[0]] && assignment[pair[1]])
-        {
+        if self.relations.iter().any(|relation| {
+            !relation
+                .clause()
+                .iter()
+                .any(|&(index, value)| assignment[index] == value)
+        }) {
             return;
         }
         let value = |atom: &Atom| assignment[self.atoms.get_index_of(atom).unwrap()];
@@ -838,6 +848,62 @@ impl<'a> ProjectionCollector<'a> {
             }
         }
     }
+}
+
+/// A binary clause shared by symbolic reasoning and concrete fallback validation.
+#[derive(Clone, Copy)]
+enum AtomRelation {
+    Implies(usize, usize),
+    Excludes(usize, usize),
+}
+
+impl AtomRelation {
+    fn clause(self) -> [(usize, bool); 2] {
+        match self {
+            Self::Implies(left, right) => [(left, false), (right, true)],
+            Self::Excludes(left, right) => [(left, false), (right, false)],
+        }
+    }
+}
+
+/// Encode only known relationships among observed atoms, without choosing a host target.
+fn atom_relations<'a>(atoms: impl IntoIterator<Item = &'a Atom>) -> Vec<AtomRelation> {
+    let atoms = Vec::from_iter(atoms);
+    let versions = ordered_version_indices(atoms.iter().copied());
+    // Adjacent implications suffice: every newer threshold entails every older one.
+    let mut relations = Vec::from_iter(
+        versions
+            .windows(2)
+            .map(|pair| AtomRelation::Implies(pair[1], pair[0])),
+    );
+    let mut unix = Vec::new();
+    let mut windows = Vec::new();
+    for (index, atom) in atoms.iter().enumerate() {
+        let family = match atom {
+            Atom::Flag(name) => name.as_str(),
+            Atom::Value(key, value) if key == "target_family" => value.as_str(),
+            _ => continue,
+        };
+        match family {
+            "unix" => unix.push(index),
+            "windows" => windows.push(index),
+            _ => {}
+        }
+    }
+    for family in [&unix, &windows] {
+        for pair in family.windows(2) {
+            relations.push(AtomRelation::Implies(pair[0], pair[1]));
+            relations.push(AtomRelation::Implies(pair[1], pair[0]));
+        }
+    }
+    // These families exclude one another, but neither is required. Other families
+    // are multi-valued (e.g. unix + wasm) and must not be made mutually exclusive.
+    for &left in &unix {
+        for &right in &windows {
+            relations.push(AtomRelation::Excludes(left, right));
+        }
+    }
+    relations
 }
 
 /// Return atom indices in increasing release order for BDD constraints and concrete samples.
@@ -1243,7 +1309,7 @@ mod tests {
         )
     }
 
-    /// Check complete witnesses, owner constraints, release consistency, and exact fragment selection.
+    /// Check complete witnesses, owner constraints, known atom relations, and exact fragment selection.
     fn assert_valid_projections(
         guards: &[Predicate],
         constraints: &[Predicate],
@@ -1302,6 +1368,32 @@ mod tests {
                 for (newer, newer_enabled) in &release_assignment {
                     if older <= newer && *newer_enabled {
                         assert!(*older_enabled, "inconsistent release witness: {source}");
+                    }
+                }
+            }
+            let platform_value = |atom: &Atom| match atom {
+                Atom::Flag(name) if matches!(name.as_str(), "unix" | "windows") => {
+                    Some(name == "unix")
+                }
+                Atom::Value(key, family)
+                    if key == "target_family" && matches!(family.as_str(), "unix" | "windows") =>
+                {
+                    Some(family == "unix")
+                }
+                _ => None,
+            };
+            for (left, left_enabled) in &assignment {
+                for (right, right_enabled) in &assignment {
+                    if let (Some(left), Some(right)) = (platform_value(left), platform_value(right))
+                    {
+                        if left == right {
+                            assert_eq!(left_enabled, right_enabled, "inconsistent alias: {source}");
+                        } else {
+                            assert!(
+                                !left_enabled || !right_enabled,
+                                "incompatible platform witness: {source}"
+                            );
+                        }
                     }
                 }
             }
@@ -2261,6 +2353,144 @@ mod tests {
                     "{}: {budget_name}",
                     case.name
                 );
+                assert_valid_projections(
+                    &guards,
+                    &constraints,
+                    &report.projections,
+                    budget.samples,
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn cfg_platform_relations_apply_to_exact_and_sampled_projections() {
+        struct Case {
+            name: &'static str,
+            sources: &'static [&'static str],
+            constraints: &'static [&'static str],
+            expected: &'static [&'static [usize]],
+        }
+        let cases = [
+            Case {
+                name: "platform flags exclude each other without being exhaustive",
+                sources: &["true", "unix", "windows", "all(unix, windows)"],
+                constraints: &[],
+                expected: &[&[0], &[0, 1], &[0, 2]],
+            },
+            Case {
+                name: "aliases stay correlated across guards",
+                sources: &[
+                    "true",
+                    "unix",
+                    r#"target_family = "unix""#,
+                    "windows",
+                    r#"target_family = "windows""#,
+                ],
+                constraints: &[],
+                expected: &[&[0], &[0, 1, 2], &[0, 3, 4]],
+            },
+            Case {
+                name: "raw and compact spellings retain the same relations",
+                sources: &[
+                    "true",
+                    r#"target(family = "windows")"#,
+                    "r#windows",
+                    r#"r#target_family = "unix""#,
+                    "r#unix",
+                ],
+                constraints: &[],
+                expected: &[&[0], &[0, 1, 2], &[0, 3, 4]],
+            },
+            Case {
+                name: "incompatible flag constraints remove the owner",
+                sources: &["true"],
+                constraints: &["unix", "windows"],
+                expected: &[],
+            },
+            Case {
+                name: "family constraints exclude conflicting flags",
+                sources: &["true", "windows"],
+                constraints: &[r#"target_family = "unix""#],
+                expected: &[&[0]],
+            },
+            Case {
+                name: "incompatible family constraints remove the owner",
+                sources: &["true"],
+                constraints: &[r#"target_family = "unix""#, r#"target_family = "windows""#],
+                expected: &[],
+            },
+            Case {
+                name: "flag implies its family",
+                sources: &["true"],
+                constraints: &["unix", r#"not(target_family = "unix")"#],
+                expected: &[],
+            },
+            Case {
+                name: "family implies its flag",
+                sources: &["true"],
+                constraints: &[r#"target_family = "windows""#, "not(windows)"],
+                expected: &[],
+            },
+            Case {
+                name: "other target family values can coexist",
+                sources: &[
+                    "true",
+                    r#"target_family = "unix""#,
+                    r#"target_family = "wasm""#,
+                ],
+                constraints: &[],
+                expected: &[&[0], &[0, 1], &[0, 2], &[0, 1, 2]],
+            },
+            Case {
+                name: "unrelated flags and values remain independent",
+                sources: &["true", "custom", r#"custom = "unix""#],
+                constraints: &[],
+                expected: &[&[0], &[0, 1], &[0, 2], &[0, 1, 2]],
+            },
+        ];
+        let budgets = [
+            CfgBudget::default(),
+            CfgBudget {
+                variables: 0,
+                ..CfgBudget::default()
+            },
+            CfgBudget {
+                bdd_nodes: 0,
+                ..CfgBudget::default()
+            },
+            CfgBudget {
+                bdd_tasks: 0,
+                ..CfgBudget::default()
+            },
+            CfgBudget {
+                variants: 0,
+                ..CfgBudget::default()
+            },
+            CfgBudget {
+                variants: 1,
+                ..CfgBudget::default()
+            },
+        ];
+        for case in cases {
+            let guards = Vec::from_iter(case.sources.iter().map(|source| parse(source).unwrap()));
+            let constraints =
+                Vec::from_iter(case.constraints.iter().map(|source| parse(source).unwrap()));
+            let expected = std::collections::BTreeSet::from_iter(
+                case.expected.iter().map(|selection| selection.to_vec()),
+            );
+            for budget in budgets {
+                let report = project(guards.iter(), &constraints, budget);
+                let actual = std::collections::BTreeSet::from_iter(
+                    report
+                        .projections
+                        .iter()
+                        .map(|projection| projection.selected.clone()),
+                );
+                assert_eq!(actual, expected, "{}: {budget:?}", case.name);
+                if budget == CfgBudget::default() {
+                    assert!(report.warning.is_none(), "{}", case.name);
+                }
                 assert_valid_projections(
                     &guards,
                     &constraints,

@@ -42,7 +42,13 @@ error: spellcheck(Hunspell) with cfg(all(feature = "tls", not(feature = "trace")
 The example is one assignment selecting the reported documentation version. It
 is not a claim that this configuration was compiled, that Cargo enables those
 features together, or that the assignment corresponds to an actual Rust target.
-Relationships between target options are not validated.
+Known platform relationships are enforced: `unix` is equivalent to
+`target_family = "unix"`, and `windows` is equivalent to
+`target_family = "windows"`. The Unix and Windows families are mutually exclusive,
+but neither is required. Other family values can coexist: for example,
+`target_family = "unix"` and `target_family = "wasm"` remain compatible. These
+constraints are not complete target validation; satisfying them does not
+guarantee that an actual Rust target exists.
 
 Compiler-version predicates stay symbolic too. Equivalent release spellings,
 such as `version("1.88")` and `version("1.88.0")`, share a threshold. Newer

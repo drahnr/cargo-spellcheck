@@ -85,7 +85,7 @@ pub struct CheckableChunk {
     non_reflowable: bool,
     /// Source newline style, which may differ from synthetic fragment separators.
     preferred_line_delimiter: Option<&'static str>,
-    /// One satisfying Boolean assignment, not necessarily a realizable Rust target.
+    /// One assignment satisfying known cfg constraints, not necessarily an actual Rust target.
     cfg_example: Option<String>,
 }
 
@@ -415,8 +415,11 @@ impl CheckableChunk {
     /// A symbolic cfg example selecting this documentation projection, if conditional.
     ///
     /// It satisfies selected fragment guards and owner constraints, including inherited cfg
-    /// constraints from enclosing items or modules. It does not validate Rust target
-    /// relationships or imply that this configuration was compiled.
+    /// constraints from enclosing items or modules, as well as known cfg relationships.
+    /// In particular, `unix` and `windows` are equivalent to their respective `target_family`
+    /// values and are mutually exclusive, but neither is required. Other family values can
+    /// coexist, such as `unix` and `wasm`. These constraints do not constitute complete target
+    /// validation, guarantee an actual Rust target, or imply that this configuration was compiled.
     pub fn cfg_example(&self) -> Option<&str> {
         self.cfg_example.as_deref()
     }
