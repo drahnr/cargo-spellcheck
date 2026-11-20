@@ -3214,9 +3214,15 @@ struct Example;
 struct X;
 "#;
         let clusters = Clusters::load_from_str(source, true, false).unwrap();
-        let mut lengths = Vec::from_iter(clusters.set.iter().map(LiteralSet::len));
-        lengths.sort_unstable();
-        assert_eq!(lengths, vec![1, 2]);
+        let chunks = Vec::<crate::CheckableChunk>::from(clusters);
+        let mut actual_markdown = Vec::from_iter(chunks.iter().map(|chunk| chunk.as_str()));
+        actual_markdown.sort_unstable();
+        let expected_markdown = [
+            r#"Alternative"#,
+            r#"First
+Second"#,
+        ];
+        assert_eq!(actual_markdown, expected_markdown);
     }
 
     #[test]
