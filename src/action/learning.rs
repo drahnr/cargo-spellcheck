@@ -125,14 +125,6 @@ impl SessionResolutions {
         Ok(())
     }
 
-    #[cfg(all(
-        test,
-        any(feature = "hunspell", feature = "zet", feature = "spellbook")
-    ))]
-    pub(super) fn is_persistent(&self) -> bool {
-        self.store.is_some()
-    }
-
     pub(super) fn learning_dictionary_path(&self) -> Option<&Path> {
         self.learning_path.as_deref()
     }
@@ -225,7 +217,7 @@ impl SessionResolutions {
         Ok(())
     }
 
-    /// Revalidate confirmed affixes before any writes, then update sources and vocabulary,
+    /// Re-validate confirmed affixes before any writes, then update sources and vocabulary,
     /// read back entries, and refresh and verify engines.
     /// Failures stop the sequence; this is not a cross-file transaction.
     pub(super) fn commit(

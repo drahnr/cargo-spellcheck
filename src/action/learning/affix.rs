@@ -47,18 +47,9 @@ impl AffixCatalog {
         validate_word(word)?;
         #[cfg(any(feature = "hunspell", feature = "zet", feature = "spellbook"))]
         {
-            let mut suggestions = Vec::new();
-            for suggestion in self.inner.expansions(word)? {
-                // An inflected surface can fail a suffix's stem condition. Keep
-                // that suffix selectable when engine-validated shortening works.
-                let flags = suggestion.entry.flags().expect("catalog suffix");
-                if suggestion.forms.iter().any(|form| form != word)
-                    || self.stem_suggestions(word, flags)?.len() > 1
-                {
-                    suggestions.push(suggestion);
-                }
-            }
-            Ok(suggestions)
+            // A later stem edit can activate a conditional rule. Keep every
+            // supported suffix selectable even when it currently adds no forms.
+            self.inner.expansions(word)
         }
         #[cfg(not(any(feature = "hunspell", feature = "zet", feature = "spellbook")))]
         bail!("Affix suggestions unavailable: no compiled spelling backend")
@@ -882,7 +873,7 @@ mod tests {
                     .iter()
                     .map(|s| s.entry.flags().unwrap())
                     .collect::<Vec<_>>(),
-                ["D", "S"]
+                ["D", "S", "Y"]
             );
             assert_eq!(
                 catalog.expand("foobar", Some("S")).unwrap().forms,
@@ -901,6 +892,25 @@ mod tests {
                 .contains("comment marker"));
             assert!(catalog.expand("foobar", Some("SD")).is_err());
             assert!(catalog.expand("foobar", Some("S\nInjected")).is_err());
+        }
+
+        #[test]
+        fn suffix_choices_remain_available_without_an_inferred_or_matching_rule() {
+            let fixture = Fixture::new("SET UTF-8\nSFX C Y 1\nSFX C e ing e\n");
+            let catalog = AffixCatalog::load(&fixture.config()).unwrap();
+            assert!(catalog.pattern_suggestions("widget").unwrap().is_empty());
+            let choices = catalog.suggestions("widget").unwrap();
+            assert_eq!(choices.len(), 1);
+            assert_eq!(choices[0].entry.to_line(), "widget/C");
+            assert_eq!(choices[0].forms, ["widget"]);
+            assert_eq!(catalog.stem_suggestions("widget", "C").unwrap(), choices);
+            assert_eq!(
+                catalog
+                    .expand("hope", choices[0].entry.flags())
+                    .unwrap()
+                    .forms,
+                ["hope", "hoping"]
+            );
         }
 
         #[test]

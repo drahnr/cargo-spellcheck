@@ -9,7 +9,7 @@ use crate::errors::Result;
 use crossterm::{
     cursor,
     event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
-    style::{Color, ContentStyle, PrintStyledContent},
+    style::{Color, ContentStyle, PrintStyledContent, SetForegroundColor, Stylize},
     terminal, QueueableCommand,
 };
 use std::io::{stdout, Write};
@@ -71,9 +71,13 @@ fn print_entry_preview(
 ) -> Result<()> {
     write!(output, "New entry: ")?;
     output.queue(PrintStyledContent(selection_style().apply(entry.to_line())))?;
-    write!(output, "\r\nAffix expansion: ")?;
+    write!(output, "\r\nWould match: ")?;
     if entry.flags().is_none() {
-        write!(output, "{} (plain word; no affixes)\r\n", entry.word())?;
+        write!(
+            output,
+            "{} (plain word; no affixes)\r\n",
+            highlight_stem(entry.word())
+        )?;
     } else if forms.is_empty() {
         write!(
             output,
@@ -83,6 +87,14 @@ fn print_entry_preview(
         write!(output, "{}\r\n", highlight_expansion(entry.word(), forms))?;
     }
     Ok(())
+}
+
+fn highlight_stem(stem: &str) -> String {
+    if stem.is_empty() {
+        String::new()
+    } else {
+        stem.with(Color::Cyan).to_string()
+    }
 }
 
 fn highlight_expansion(stem: &str, forms: &[String]) -> String {
@@ -114,7 +126,7 @@ fn highlight_expansion(stem: &str, forms: &[String]) -> String {
             format!(
                 "{}{}{}",
                 highlight(&form[..core.0]),
-                &form[core.0..core.1],
+                highlight_stem(&form[core.0..core.1]),
                 highlight(&form[core.1..])
             )
         })
@@ -326,6 +338,7 @@ fn confirm_entry(
 }
 
 const AFFIX_PROMPT: &str = "Affixes [y,a,e,n,?]: ";
+const NO_AFFIX: &str = "Ø";
 
 enum PatternAction {
     Submit,
@@ -351,7 +364,7 @@ fn extension_label(pattern: &AffixPattern) -> String {
         .suggestion
         .entry
         .flags()
-        .map_or_else(|| "-".to_owned(), |flags| format!("/{flags}"))
+        .map_or_else(|| NO_AFFIX.to_owned(), |flags| format!("/{flags}"))
 }
 
 fn extension_strip(labels: &[String], selected: usize, width: u16) -> (String, String) {
@@ -409,7 +422,60 @@ fn extension_strip(labels: &[String], selected: usize, width: u16) -> (String, S
     if end < labels.len() && used + 3 <= width {
         strip.push_str(" ..");
     }
-    (strip, format!("{:caret$}^", ""))
+    (
+        strip,
+        format!("{:selected_start$}{}", "", "^".repeat(selected_width)),
+    )
+}
+
+fn highlight_extension_strip(strip: &str) -> String {
+    strip
+        .split(' ')
+        .map(|label| match label {
+            "" | ".." => label.to_owned(),
+            NO_AFFIX => label.with(Color::Yellow).to_string(),
+            _ => selection_style().apply(label).to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn highlight_extension_marker(marker: &str) -> String {
+    let padding = marker.len() - marker.trim_start().len();
+    let (padding, marker) = marker.split_at(padding);
+    if marker.is_empty() {
+        padding.to_owned()
+    } else {
+        format!("{padding}{}", marker.with(Color::Red))
+    }
+}
+
+fn highlight_empty_affixes(row: &str, selected: bool) -> String {
+    let cells = row.split('|').collect::<Vec<_>>();
+    if cells.len() < 2 {
+        return row.to_owned();
+    }
+    let stem_index = usize::from(cells.len() == 3);
+    let foreground = if selected { Color::Green } else { Color::Blue };
+    let empty = format!(
+        "{}{NO_AFFIX}{}",
+        SetForegroundColor(Color::Yellow),
+        SetForegroundColor(foreground),
+    );
+    cells
+        .iter()
+        .enumerate()
+        .map(|(index, cell)| {
+            if index != stem_index && cell.trim() == NO_AFFIX {
+                // Restore the enclosing row's foreground without resetting its
+                // selected background/bold attributes or coloring the padding.
+                cell.replace(NO_AFFIX, &empty)
+            } else {
+                (*cell).to_owned()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("|")
 }
 
 fn choose_pattern(
@@ -444,6 +510,11 @@ fn choose_pattern(
     loop {
         let (next_heading, rows) = pattern_rows(patterns, &layout, width);
         heading = next_heading;
+        let rows = rows
+            .iter()
+            .enumerate()
+            .map(|(index, row)| highlight_empty_affixes(row, index == *selected))
+            .collect::<Vec<_>>();
         let pattern = &patterns[*selected];
         let stem = pattern.suggestion.entry.word();
         let choices = match cache.entry(stem.to_owned()) {
@@ -497,6 +568,8 @@ fn choose_pattern(
             choices.iter().map(extension_label).collect()
         };
         let (strip, caret) = extension_strip(&labels, current, width);
+        let strip = highlight_extension_strip(&strip);
+        let caret = highlight_extension_marker(&caret);
         print_picker_context(
             &mut output,
             &pattern.suggestion,
@@ -583,7 +656,7 @@ fn pattern_rows(
         .any(|pattern| pattern.prefix.is_some());
     let flags = |flag: &Option<String>| {
         flag.as_ref()
-            .map_or_else(|| "-".to_owned(), |flag| format!("/{flag}"))
+            .map_or_else(|| NO_AFFIX.to_owned(), |flag| format!("/{flag}"))
     };
     let prefix_width = patterns
         .iter()
@@ -839,23 +912,27 @@ fn print_picker_context(
     } else {
         suggestion.forms.join(", ")
     };
-    let context = format!("Affix expansion: {expansion}");
+    let context = format!("Would match: {expansion}");
     let visible = console::truncate_str(&context, usize::from(width.saturating_sub(1)), "…");
     // Clip plain text first so invisible extensions cannot leave stray styles.
-    let rendered = if let Some(forms) = visible
-        .strip_prefix("Affix expansion: ")
-        .filter(|_| suggestion.entry.flags().is_some())
-    {
+    let rendered = if let Some(forms) = visible.strip_prefix("Would match: ") {
         let (forms, ellipsis) = if visible != context && forms.ends_with('…') {
             (forms.strip_suffix('…').unwrap(), "…")
         } else {
             (forms, "")
         };
-        let forms = forms.split(", ").map(str::to_owned).collect::<Vec<_>>();
-        format!(
-            "Affix expansion: {}{ellipsis}",
+        let matches = if suggestion.entry.flags().is_some() {
+            let forms = forms.split(", ").map(str::to_owned).collect::<Vec<_>>();
             highlight_expansion(suggestion.entry.word(), &forms)
-        )
+        } else {
+            let stem_end = suggestion.entry.word().len().min(forms.len());
+            format!(
+                "{}{}",
+                highlight_stem(&forms[..stem_end]),
+                &forms[stem_end..]
+            )
+        };
+        format!("Would match: {matches}{ellipsis}")
     } else {
         visible.into_owned()
     };
@@ -1190,7 +1267,7 @@ mod tests {
 
     #[test]
     fn extension_strip_centers_the_selection_and_scrolls_whole_sorted_labels() {
-        let labels = std::iter::once("-".to_owned())
+        let labels = std::iter::once(NO_AFFIX.to_owned())
             .chain(('A'..='Z').map(|flag| format!("/{flag}")))
             .collect::<Vec<_>>();
         for width in [16, 24, 40, 80, 160] {
@@ -1198,15 +1275,20 @@ mod tests {
             for (selected, label) in labels.iter().enumerate() {
                 let (strip, caret) = extension_strip(&labels, selected, width);
                 assert!(console::measure_text_width(&strip) < usize::from(width));
-                assert_eq!(caret.trim(), "^");
-                let column = console::measure_text_width(caret.strip_suffix('^').unwrap());
+                let label_width = console::measure_text_width(label);
+                assert_eq!(caret.trim(), "^".repeat(label_width));
+                let column =
+                    console::measure_text_width(caret.split_once('^').unwrap().0) + label_width / 2;
                 assert_eq!(column, usize::from(width - 1) / 2);
                 let tokens = strip
                     .split_whitespace()
                     .filter(|token| *token != "..")
                     .collect::<Vec<_>>();
                 assert!(tokens.contains(&label.as_str()));
-                assert!(tokens.windows(2).all(|pair| pair[0] < pair[1]));
+                assert!(tokens.windows(2).all(|pair| {
+                    pair[0].strip_prefix('/').unwrap_or("")
+                        < pair[1].strip_prefix('/').unwrap_or("")
+                }));
                 let selected_offset = strip
                     .match_indices(label)
                     .find_map(|(offset, _)| {
@@ -1232,8 +1314,48 @@ mod tests {
     }
 
     #[test]
+    fn empty_affixes_are_yellow_without_recoloring_stems_or_real_flags() {
+        for selected in [false, true] {
+            let foreground = if selected { Color::Green } else { Color::Blue };
+            let empty = format!(
+                "{}Ø{}",
+                SetForegroundColor(Color::Yellow),
+                SetForegroundColor(foreground)
+            );
+            assert_eq!(
+                highlight_empty_affixes("Ø | stem | Ø", selected),
+                format!("{empty} | stem | {empty}")
+            );
+            assert_eq!(
+                highlight_empty_affixes("Ø | Ø", selected),
+                format!("Ø | {empty}")
+            );
+            assert_eq!(
+                highlight_empty_affixes("/Ø | stem | Ø", selected),
+                format!("/Ø | stem | {empty}")
+            );
+            assert_eq!(highlight_empty_affixes("stem/Ø", selected), "stem/Ø");
+        }
+        let strip = "  Ø /S /Ø ..";
+        assert_eq!(
+            highlight_extension_strip(strip),
+            format!(
+                "  {} {} {} ..",
+                "Ø".with(Color::Yellow),
+                selection_style().apply("/S"),
+                selection_style().apply("/Ø")
+            ),
+        );
+        assert_eq!(
+            highlight_extension_marker("  ^^^"),
+            format!("  {}", "^^^".with(Color::Red))
+        );
+        assert_eq!(highlight_extension_marker(""), "");
+    }
+
+    #[test]
     fn extension_strip_handles_unicode_labels_and_extremely_narrow_terminals() {
-        let labels = ["-", "/Ä", "/東京", "/🦀"].map(str::to_owned);
+        let labels = [NO_AFFIX, "/Ä", "/東京", "/🦀"].map(str::to_owned);
         for width in 0..80 {
             for selected in 0..labels.len() {
                 let (strip, caret) = extension_strip(&labels, selected, width);
@@ -1282,18 +1404,20 @@ mod tests {
     }
 
     #[test]
-    fn prefix_expansions_keep_the_unchanged_stem_core_unstyled() {
+    fn prefix_expansions_color_the_stem_core_separately_from_affixes() {
         let forms = ["hope", "unhope", "hoped", "unhoped", "unhoping"].map(str::to_owned);
         assert_eq!(
             highlight_expansion("hope", &forms),
             format!(
-                "hope, {}hope, hope{}, {}hope{}, {}hop{}",
+                "{hope}, {}{hope}, {hope}{}, {}{hope}{}, {}{hop}{}",
                 selection_style().apply("un"),
                 selection_style().apply("d"),
                 selection_style().apply("un"),
                 selection_style().apply("d"),
                 selection_style().apply("un"),
                 selection_style().apply("ing"),
+                hope = "hope".with(Color::Cyan),
+                hop = "hop".with(Color::Cyan),
             )
         );
     }
@@ -1310,7 +1434,12 @@ mod tests {
             let rendered = highlight_expansion(stem, &[stem.to_owned(), form.to_owned()]);
             assert_eq!(
                 rendered,
-                format!("{stem}, {prefix}{}", selection_style().apply(extension))
+                format!(
+                    "{}, {}{}",
+                    stem.with(Color::Cyan),
+                    prefix.with(Color::Cyan),
+                    selection_style().apply(extension)
+                )
             );
             assert_eq!(
                 console::strip_ansi_codes(&rendered),
@@ -1318,7 +1447,10 @@ mod tests {
             );
             assert!(rendered.ends_with("\x1b[0m"));
         }
-        assert_eq!(highlight_expansion("same", &["same".to_owned()]), "same");
+        assert_eq!(
+            highlight_expansion("same", &["same".to_owned()]),
+            "same".with(Color::Cyan).to_string()
+        );
     }
 
     #[test]
@@ -1360,7 +1492,7 @@ mod tests {
         assert!(raw.contains(&selection_style().apply("MSRV").to_string()));
         assert_eq!(
             console::strip_ansi_codes(&raw),
-            "New entry: MSRV\r\nAffix expansion: MSRV (plain word; no affixes)\r\n"
+            "New entry: MSRV\r\nWould match: MSRV (plain word; no affixes)\r\n"
         );
     }
 
@@ -1373,12 +1505,13 @@ mod tests {
         let raw = String::from_utf8(output).unwrap();
         assert!(raw.contains(&selection_style().apply("widget/S").to_string()));
         assert!(raw.contains(&format!(
-            "Affix expansion: widget, widget{}\r\n",
-            selection_style().apply("s")
+            "Would match: {stem}, {stem}{}\r\n",
+            selection_style().apply("s"),
+            stem = "widget".with(Color::Cyan)
         )));
         assert_eq!(
             console::strip_ansi_codes(&raw),
-            "New entry: widget/S\r\nAffix expansion: widget, widgets\r\n"
+            "New entry: widget/S\r\nWould match: widget, widgets\r\n"
         );
     }
 
@@ -1390,7 +1523,7 @@ mod tests {
         let raw = String::from_utf8(output).unwrap();
         assert_eq!(
             console::strip_ansi_codes(&raw),
-            "New entry: widget/S\r\nAffix expansion: unavailable (backend supplied no expanded forms)\r\n"
+            "New entry: widget/S\r\nWould match: unavailable (backend supplied no expanded forms)\r\n"
         );
     }
 

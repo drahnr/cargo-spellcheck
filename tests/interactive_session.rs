@@ -28,6 +28,7 @@ const SUFFIX_PROMPT: &str = "Suffix [y,e,n,?]: ";
 const STEM_CHOICE_PROMPT: &str = "Stem [y,e,n,?]: ";
 const EDIT_STEM_PROMPT: &str = "Stem [?]: ";
 const CONFIRM_PROMPT: &str = "Confirm learning [y,e,n,?]: ";
+const TRANSIENT_FEEDBACK: &str = "\x1b[1G\x1b[2Knext up...\x1b[1G\x1b[2K";
 const MAIN_COMMANDS: &[&str] = &[
     "Up", "Down", "Home", "End", "y", "Enter", "n", "q", "a", "d", "j", "e", "Esc", "Ctrl-C", "?",
 ];
@@ -592,7 +593,7 @@ impl Session {
                 format!("    {heading}"),
                 "Header must immediately follow the prompt and align with values: {raw:?}"
             );
-            for color in [Color::Green, Color::Blue, Color::Black] {
+            for color in [Color::Green, Color::Blue, Color::Black, Color::Cyan] {
                 assert!(
                     !header_line
                         .contains(&format!("{}", crossterm::style::SetForegroundColor(color))),
@@ -622,7 +623,7 @@ impl Session {
             .map(|flag| flag.strip_prefix('/').expect("Missing affix flag slash"))
             .collect::<String>();
         let selected = if flags.is_empty() {
-            "-".to_owned()
+            "Ø".to_owned()
         } else {
             format!("/{flags}")
         };
@@ -675,8 +676,8 @@ impl Session {
                 "Colored expansion context: {context:?}"
             );
         }
-        // Green-on-black is reserved for changed affix spans; callers validate
-        // those spans against the selected stem, not the list's selected row.
+        // Green-on-black marks strip flags and changed expansion affix spans;
+        // callers validate each separately from the list's selected row.
         (list, context)
     }
 
@@ -811,6 +812,14 @@ impl Session {
         };
         assert_eq!(status.code(), Some(expected_code), "{}", self.output());
         self.assert_no_learning_notices();
+        let raw = String::from_utf8_lossy(&self.transcript);
+        for (offset, _) in raw.match_indices("next up...") {
+            assert!(
+                raw[..offset].ends_with("\x1b[1G\x1b[2K")
+                    && raw[offset..].starts_with("next up...\x1b[1G\x1b[2K"),
+                "Feedback must be a single transient line, cleared before any further output or exit: {raw:?}"
+            );
+        }
     }
 
     fn assert_prompt_count(&self, expected: usize) {
@@ -879,7 +888,7 @@ fn styled_expansion(stem: &str, forms: &str) -> String {
                 if core.0 == core.1 {
                     String::new()
                 } else {
-                    format!("{}", form[core.0..core.1].with(Color::Cyan))
+                    format!("{}", (&form[core.0..core.1]).with(Color::Cyan))
                 },
                 highlight(&form[core.1..])
             )
@@ -902,40 +911,44 @@ fn picker_context_rows(raw: &str) -> Vec<&str> {
     rows.collect()
 }
 
+fn affix_marker_midpoint(marker: &str) -> usize {
+    console::measure_text_width(marker.split_once('^').expect("Missing marker").0)
+        + console::measure_text_width(marker.trim()) / 2
+}
+
 fn assert_affix_strip(raw: &str, selected: &str, columns: u16) {
     let rows = picker_context_rows(raw);
     assert_eq!(rows.len(), 3, "{raw:?}");
     let strip = console::strip_ansi_codes(rows[0]);
     let caret = console::strip_ansi_codes(rows[1]);
-    for row in &rows[..2] {
-        for color in [Color::Green, Color::Blue, Color::Black] {
-            assert!(
-                !row.contains(&format!("{}", crossterm::style::SetForegroundColor(color))),
-                "Strip and caret must stay default-colored: {raw:?}"
-            );
-        }
-        assert!(
-            !row.contains(&format!(
-                "{}",
-                crossterm::style::SetBackgroundColor(Color::Black)
-            )),
-            "Strip and caret must not be highlighted: {raw:?}"
-        );
-    }
+
     let tokens = strip.split_whitespace().collect::<Vec<_>>();
     for (index, token) in tokens.iter().enumerate() {
         assert!(
-            *token == "-"
+            *token == "Ø"
                 || (token.starts_with('/') && token.len() > 1)
                 || (*token == ".." && (index == 0 || index == tokens.len() - 1)),
             "Invalid or partially clipped strip label: {raw:?}"
         );
     }
+    let styled_strip = strip
+        .split(' ')
+        .map(|token| match token {
+            "" | ".." => token.to_owned(),
+            "Ø" => token.with(Color::Yellow).to_string(),
+            _ => token.with(Color::Green).on(Color::Black).bold().to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert_eq!(
+        rows[0], styled_strip,
+        "Flags must be bold green on black, Ø yellow foreground only, and spacing/edges default-colored: {raw:?}"
+    );
     let flags = tokens
         .iter()
         .filter(|token| **token != "..")
         .map(|token| {
-            if *token == "-" {
+            if *token == "Ø" {
                 ""
             } else {
                 token.strip_prefix('/').unwrap()
@@ -951,12 +964,20 @@ fn assert_affix_strip(raw: &str, selected: &str, columns: u16) {
         1,
         "Selected flags must remain visible: {raw:?}"
     );
-    assert_eq!(caret.trim(), "^", "Expected one caret: {raw:?}");
-    let caret_column = console::measure_text_width(caret.split_once('^').unwrap().0);
+    let marker = "^".repeat(console::measure_text_width(selected));
+    assert_eq!(caret.trim(), marker, "Marker must span the label: {raw:?}");
+    let padding = caret.split_once('^').unwrap().0;
+    assert_eq!(
+        rows[1],
+        format!("{padding}{}", marker.with(Color::Red)),
+        "Only the marker's foreground must be red: {raw:?}"
+    );
+    let caret_column = console::measure_text_width(padding);
+    let midpoint = affix_marker_midpoint(&caret);
     let center = usize::from(columns) / 2;
     assert!(
-        (center.saturating_sub(1)..=center).contains(&caret_column),
-        "Caret must stay centered in the {columns}-column terminal: {raw:?}"
+        (center.saturating_sub(1)..=center).contains(&midpoint),
+        "Marker midpoint must stay centered in the {columns}-column terminal: {raw:?}"
     );
     let selected_start = strip
         .match_indices(selected)
@@ -970,9 +991,8 @@ fn assert_affix_strip(raw: &str, selected: &str, columns: u16) {
         .unwrap();
     assert_eq!(
         caret_column,
-        console::measure_text_width(&strip[..selected_start])
-            + console::measure_text_width(selected) / 2,
-        "Caret must align under the selected label's display-width midpoint: {raw:?}"
+        console::measure_text_width(&strip[..selected_start]),
+        "Marker must start under the selected label: {raw:?}"
     );
 }
 
@@ -984,37 +1004,47 @@ fn assert_picker_expansion_style(raw: &str, stem: &str) -> String {
         .strip_suffix("\x1b8")
         .expect("Missing context cursor restore");
     let text = console::strip_ansi_codes(line);
-    if text.ends_with('…') {
-        // Truncation may hide an entire extension, but must never leave an open
-        // selection style or a partial escape sequence at the context boundary.
+    if let Some(visible) = text.strip_suffix('…') {
+        // Truncation may cut the stem or its plain-word explanation, but the
+        // ellipsis must stay outside either stem or affix styling.
         assert!(!text.contains('\x1b'), "Broken truncated ANSI: {raw:?}");
-        if text
-            .trim_end_matches('…')
-            .split(", ")
-            .all(|form| stem.starts_with(form))
+        if let Some(explanation) = visible
+            .strip_prefix(stem)
+            .filter(|tail| " (plain word; no affixes)".starts_with(tail))
         {
             assert_eq!(
-                line, text,
-                "Truncated stem prefixes must stay unstyled: {raw:?}"
+                line,
+                format!("{}{explanation}…", stem.with(Color::Cyan)),
+                "Only the plain word must be cyan, not its explanation or ellipsis: {raw:?}"
+            );
+        } else if visible.split(", ").all(|form| stem.starts_with(form)) {
+            assert_eq!(
+                line,
+                format!("{}…", styled_expansion(stem, visible)),
+                "Visible stem prefixes must be cyan, with a default-colored ellipsis: {raw:?}"
             );
         }
-        let green = format!("{}", crossterm::style::SetForegroundColor(Color::Green));
-        if let Some(last_green) = line.rfind(&green) {
-            let probe = format!("{}", "probe".with(Color::Green).on(Color::Black).bold());
-            let reset = probe.split_once("probe").unwrap().1;
-            assert!(
-                line[last_green..].contains(reset),
-                "Unreset affix style: {raw:?}"
-            );
+        for style in [
+            "probe".with(Color::Cyan),
+            "probe".with(Color::Green).on(Color::Black).bold(),
+        ] {
+            let probe = style.to_string();
+            let (start, reset) = probe.split_once("probe").unwrap();
+            if let Some(last_start) = line.rfind(start) {
+                assert!(
+                    line[last_start..].contains(reset),
+                    "Unreset match preview style: {raw:?}"
+                );
+            }
         }
     } else {
         assert_eq!(
             line,
             styled_expansion(stem, &text),
-            "Only added/changed affix spans may be highlighted: {raw:?}"
+            "Stem cores must be cyan; only added/changed affixes may be bold green on black: {raw:?}"
         );
     }
-    format!("Affix expansion: {text}")
+    format!("Would match: {text}")
 }
 
 fn assert_command_effect(help: &str, key: &str, effect: &str) {
@@ -1237,17 +1267,40 @@ fn assert_affix_picker_list(
     assert_eq!(rendered.len(), rows.len(), "{raw:?}");
     let mut aligned = None;
     let mut expected = Vec::new();
-    for (row, (prefix, stem, suffix)) in rendered.iter().zip(rows) {
+    let mut normalized = raw.to_owned();
+    for (index, (row, (prefix, stem, suffix))) in rendered.iter().zip(rows).enumerate() {
         let text = console::strip_ansi_codes(selection_row_content(row));
         let (content, hint) = text.rsplit_once("< ").expect("Missing affix row hint");
         let content = content.trim_end_matches(' ');
         let cells = content.split('|').map(str::trim).collect::<Vec<_>>();
+        // Fixtures retain '-' as the logical absence sentinel, never as display text.
+        let display_prefix = if *prefix == "-" { "Ø" } else { *prefix };
+        let display_suffix = if *suffix == "-" { "Ø" } else { *suffix };
         let values = if with_prefix {
-            vec![*prefix, *stem, *suffix]
+            vec![display_prefix, *stem, display_suffix]
         } else {
-            vec![*stem, *suffix]
+            vec![*stem, display_suffix]
         };
         assert_eq!(cells, values, "Incorrect affix cells: {raw:?}");
+        let foreground = if index == active_idx {
+            Color::Green
+        } else {
+            Color::Blue
+        };
+        let yellow_cell = format!(
+            "{}Ø{}",
+            crossterm::style::SetForegroundColor(Color::Yellow),
+            crossterm::style::SetForegroundColor(foreground)
+        );
+        let missing = usize::from(*suffix == "-") + usize::from(with_prefix && *prefix == "-");
+        assert_eq!(
+            row.matches(&yellow_cell).count(),
+            missing,
+            "Each missing affix must use yellow foreground only, then restore the row's {foreground:?} foreground: {raw:?}"
+        );
+        // Remove only the verified foreground overrides so the shared assertion
+        // still checks the full row's bold/background, padding, hints, and marker.
+        normalized = normalized.replacen(*row, &row.replace(&yellow_cell, "Ø"), 1);
         let columns = separators(content);
         if let Some(aligned) = &aligned {
             assert_eq!(&columns, aligned, "Misaligned affix columns: {raw:?}");
@@ -1274,7 +1327,7 @@ fn assert_affix_picker_list(
     }
     // Retain the shared renderer's exact marker, color, padding, hint alignment,
     // and terminal-width checks for these already column-padded contents too.
-    assert_learning_picker_list(raw, &expected, active_idx);
+    assert_learning_picker_list(&normalized, &expected, active_idx);
 }
 
 fn exercise_acceptance(backends: &[Backend], persistent: bool) {
@@ -1311,6 +1364,7 @@ fn exercise_acceptance(backends: &[Backend], persistent: bool) {
     let mut next = fixture.cli("fix", &paths);
     next.finish(0);
     next.assert_prompt_count(0);
+    assert!(!next.output().contains("next up..."));
 }
 
 #[test]
@@ -1337,6 +1391,91 @@ fn mixed_backends_share_acceptance_and_a_single_learning_target() {
 }
 
 #[test]
+fn feedback_is_transient_between_learning_replacement_skip_and_completion() {
+    for backend in BACKENDS {
+        let fixture = Fixture::with_suffixes(
+            &[("first.md", MISTAKES), ("second.md", "Thirdwrng")],
+            std::slice::from_ref(backend),
+        );
+        let mut session = fixture.cli("fix", &["first.md", "second.md"]);
+        session.prompt("1/3", "first.md");
+        assert!(!session.output().contains("next up..."));
+
+        let start = session.consumed;
+        session.accept_plain(UNKNOWN);
+        session.prompt("2/3", "first.md");
+        let raw = String::from_utf8_lossy(&session.transcript[start..session.consumed]);
+        let (before, after) = raw
+            .split_once(TRANSIENT_FEEDBACK)
+            .expect("Missing learning feedback");
+        assert!(
+            !before.contains("Possible spelling mistake found"),
+            "{raw:?}"
+        );
+        assert!(after.contains("Possible spelling mistake found"), "{raw:?}");
+        assert_eq!(session.output().matches("next up...").count(), 1);
+
+        let start = session.consumed;
+        session.replace_custom("Test");
+        session.prompt("3/3", "first.md");
+        let raw = String::from_utf8_lossy(&session.transcript[start..session.consumed]);
+        let (before, after) = raw
+            .split_once(TRANSIENT_FEEDBACK)
+            .expect("Missing replacement feedback");
+        assert!(
+            !before.contains("Possible spelling mistake found"),
+            "{raw:?}"
+        );
+        assert!(after.contains("Possible spelling mistake found"), "{raw:?}");
+        assert_eq!(session.output().matches("next up...").count(), 2);
+
+        let start = session.consumed;
+        session.send(b"n");
+        session.prompt("1/1", "second.md");
+        let raw = String::from_utf8_lossy(&session.transcript[start..session.consumed]);
+        let (before, after) = raw
+            .split_once(TRANSIENT_FEEDBACK)
+            .expect("Missing skip feedback");
+        assert!(
+            !before.contains("Possible spelling mistake found"),
+            "{raw:?}"
+        );
+        assert!(after.contains("Possible spelling mistake found"), "{raw:?}");
+        assert_eq!(session.output().matches("next up...").count(), 3);
+
+        let start = session.consumed;
+        session.send(b"n");
+        session.finish(17);
+        let raw = String::from_utf8_lossy(&session.transcript[start..]);
+        assert!(
+            raw.contains(TRANSIENT_FEEDBACK),
+            "Missing final skip feedback: {raw:?}"
+        );
+        assert_eq!(session.output().matches("next up...").count(), 4);
+        session.assert_prompt_count(4);
+        assert_eq!(fixture.read("first.md"), "Zzyzxqvocab Test Thirdwrng");
+        assert_eq!(fixture.read("second.md"), "Thirdwrng");
+        assert_eq!(fixture.read("lingo.dic"), "1\nZzyzxqvocab\n");
+        fixture.assert_config_unchanged();
+    }
+}
+
+#[test]
+fn finding_free_fix_session_has_no_feedback() {
+    for backend in BACKENDS {
+        let fixture =
+            Fixture::with_suffixes(&[("known.md", "Test")], std::slice::from_ref(backend));
+        let mut session = fixture.cli("fix", &["known.md"]);
+        session.finish(0);
+        session.assert_prompt_count(0);
+        assert!(!session.output().contains("next up..."));
+        assert_eq!(fixture.read("known.md"), "Test");
+        assert_eq!(fixture.read("lingo.dic"), "0\n");
+        fixture.assert_config_unchanged();
+    }
+}
+
+#[test]
 fn quit_commits_accepted_words_and_selected_edits_but_stops_remaining_work() {
     let fixture = Fixture::new(
         true,
@@ -1354,6 +1493,7 @@ fn quit_commits_accepted_words_and_selected_edits_but_stops_remaining_work() {
     session.send(b"q");
     session.finish(17);
     session.assert_prompt_count(3);
+    assert_eq!(session.output().matches("next up...").count(), 2);
     assert!(!session.output().contains("remaining.md"));
 
     let edited = fixture.read("first.md");
@@ -1380,6 +1520,7 @@ fn ctrl_c_discards_both_accepted_words_and_pending_source_edits() {
     session.send(b"\x03");
     session.finish(130);
     session.assert_prompt_count(3);
+    assert_eq!(session.output().matches("next up...").count(), 2);
     assert!(!session.output().contains("remaining.md"));
     assert_eq!(fixture.read("first.md"), MISTAKES);
     assert_eq!(fixture.read("remaining.md"), "Thirdwrng");
@@ -2415,7 +2556,7 @@ fn inferred_suffix_defaults_to_shortened_stem_without_manual_pickers() {
             }
             assert_eq!(
                 session.affix_menu(&[("-", STEM, "/S"), ("-", WORD, "-")], 0, false),
-                "Affix expansion: Zzyzxqroot, Zzyzxqroots"
+                "Would match: Zzyzxqroot, Zzyzxqroots"
             );
             assert!(!session.output().contains(EDIT_STEM_PROMPT));
             assert!(!session.output().contains(CONFIRM_PROMPT));
@@ -2435,6 +2576,167 @@ fn inferred_suffix_defaults_to_shortened_stem_without_manual_pickers() {
             fixture.assert_config_unchanged();
             fixture.check(&paths, 0);
             fixture.check(&["stem.md"], 0);
+        }
+    }
+}
+
+#[test]
+fn uninferred_conditional_suffix_can_be_cycled_to_then_made_productive_by_editing() {
+    const WORD: &str = "Zzyzxqwidget";
+    const STEM: &str = "Zzyzxqhope";
+    const FORMS: &str = "Zzyzxqhope, Zzyzxqhoping";
+    for backend in BACKENDS {
+        let fixture = Fixture::with_affixes(
+            &[("first.md", WORD), ("forms.md", "Zzyzxqhope Zzyzxqhoping")],
+            std::slice::from_ref(backend),
+            "SET UTF-8\nSFX C Y 1\nSFX C e ing e\n",
+        );
+        let mut session = fixture.cli("fix", &["first.md"]);
+        session.prompt("1/1", "first.md");
+        session.send(b"\x1b[H");
+        session.main_picker_redraw(WORD, 0);
+        session.send(b"\r");
+        assert_eq!(
+            session.affix_menu(&[("-", WORD, "-")], 0, false),
+            format!("Would match: {WORD} (plain word; no affixes)")
+        );
+        assert_eq!(
+            session
+                .affix_strip()
+                .0
+                .split_whitespace()
+                .collect::<Vec<_>>(),
+            ["Ø", "/C"]
+        );
+
+        // C cannot apply to this word, but selecting it must preserve the stem
+        // and show only the unchanged cyan base form, without a plain-word label.
+        session.send(b"\x1b[C");
+        assert_eq!(
+            session.affix_redraw(&[("-", WORD, "/C")], 0, false, false),
+            format!("Would match: {WORD}")
+        );
+        let selected_strip = session.affix_strip();
+        session.send(b"e");
+        session.edit_stem(WORD, STEM);
+        assert_eq!(
+            session.affix_menu(&[("-", STEM, "/C")], 0, false),
+            format!("Would match: {FORMS}")
+        );
+        assert_eq!(session.affix_strip(), selected_strip);
+        assert!(!session.output().contains(CONFIRM_PROMPT));
+        assert!(!session.output().contains(SUFFIX_PROMPT));
+        assert!(!session.output().contains(STEM_CHOICE_PROMPT));
+        session.send(b"\r");
+        session.learning_confirmation("Zzyzxqhope/C", FORMS);
+        assert_eq!(fixture.read("lingo.dic"), "0\n");
+        session.send(b"y");
+        session.finish(0);
+        session.assert_prompt_count(1);
+        assert_eq!(fixture.read("first.md"), WORD);
+        assert_eq!(fixture.read("lingo.dic"), "1\nZzyzxqhope/C\n");
+        fixture.assert_config_unchanged();
+        fixture.check(&["forms.md"], 0);
+        fixture.check(&["first.md"], 17);
+    }
+}
+
+#[test]
+fn manual_suffix_picker_keeps_uninferred_conditional_suffix_for_later_stem_edits() {
+    const WORD: &str = "Zzyzxqwidget";
+    const STEM: &str = "Zzyzxqhope";
+    const FORMS: &str = "Zzyzxqhope, Zzyzxqhoping";
+    for backend in BACKENDS {
+        for candidates in [false, true] {
+            let fixture = Fixture::with_affixes(
+                &[("first.md", WORD), ("forms.md", "Zzyzxqhope Zzyzxqhoping")],
+                std::slice::from_ref(backend),
+                "SET UTF-8\nSFX C Y 1\nSFX C e ing e\n",
+            );
+            let mut session = fixture.cli("fix", &["first.md"]);
+            session.prompt("1/1", "first.md");
+            session.send(b"a");
+            session.learning_prompt(WORD, false);
+            session.send(b"p");
+            session.affix_menu(&[("-", WORD, "-")], 0, false);
+            session.send(b"a");
+            session.expect(SUFFIX_PROMPT);
+            assert_eq!(session.suffix_redraw(WORD, 0), ["C"]);
+            session.send(b"\x1b[A");
+            assert_eq!(session.suffix_redraw(WORD, 1), ["C"]);
+            if candidates {
+                session.send(b"\r");
+                assert_eq!(
+                    session.stem_menu(&["Zzyzxqwidget/C"]),
+                    format!("Would match: {WORD}")
+                );
+                session.send(b"\r");
+            } else {
+                session.send(b"e");
+            }
+            session.edit_stem(WORD, STEM);
+            session.learning_confirmation("Zzyzxqhope/C", FORMS);
+            assert_eq!(
+                session.output().matches(STEM_CHOICE_PROMPT).count(),
+                usize::from(candidates)
+            );
+            assert_eq!(fixture.read("lingo.dic"), "0\n");
+            session.send(b"y");
+            session.finish(0);
+            session.assert_prompt_count(1);
+            assert_eq!(fixture.read("first.md"), WORD);
+            assert_eq!(fixture.read("lingo.dic"), "1\nZzyzxqhope/C\n");
+            fixture.assert_config_unchanged();
+            fixture.check(&["forms.md"], 0);
+            fixture.check(&["first.md"], 17);
+        }
+    }
+}
+
+#[test]
+fn productive_suffix_remains_selectable_without_an_inferred_shortening() {
+    const WORD: &str = "Zzyzxqwidget";
+    const FORMS: &str = "Zzyzxqwidget, Zzyzxqwidgets";
+    for backend in BACKENDS {
+        for manual in [false, true] {
+            let fixture = Fixture::with_suffixes(
+                &[
+                    ("first.md", WORD),
+                    ("forms.md", "Zzyzxqwidget Zzyzxqwidgets"),
+                ],
+                std::slice::from_ref(backend),
+            );
+            let mut session = fixture.cli("fix", &["first.md"]);
+            session.prompt("1/1", "first.md");
+            session.send(b"a");
+            session.learning_prompt(WORD, false);
+            session.send(b"p");
+            session.affix_menu(&[("-", WORD, "-")], 0, false);
+            if manual {
+                session.send(b"a");
+                session.expect(SUFFIX_PROMPT);
+                assert_eq!(session.suffix_redraw(WORD, 0), ["S"]);
+                session.send(b"\x1b[A");
+                session.suffix_redraw(WORD, 1);
+                session.send(b"e");
+                session.edit_stem(WORD, WORD);
+            } else {
+                session.send(b"\x1b[C");
+                assert_eq!(
+                    session.affix_redraw(&[("-", WORD, "/S")], 0, false, false),
+                    format!("Would match: {FORMS}")
+                );
+                session.send(b"\r");
+            }
+            session.learning_confirmation("Zzyzxqwidget/S", FORMS);
+            assert_eq!(fixture.read("lingo.dic"), "0\n");
+            session.send(b"y");
+            session.finish(0);
+            session.assert_prompt_count(1);
+            assert_eq!(fixture.read("first.md"), WORD);
+            assert_eq!(fixture.read("lingo.dic"), "1\nZzyzxqwidget/S\n");
+            fixture.assert_config_unchanged();
+            fixture.check(&["forms.md"], 0);
         }
     }
 }
@@ -2466,7 +2768,7 @@ fn cycling_all_suffix_bundles_keeps_the_stem_and_refreshes_edited_expansions() {
         let initial_strip = session.affix_strip();
         assert_eq!(
             initial_strip.0.split_whitespace().collect::<Vec<_>>(),
-            ["-", "/D", "/S"]
+            ["Ø", "/D", "/S"]
         );
         session.command_help(AFFIX_COMMANDS, &[]);
         session.help_prompt(AFFIX_PROMPT);
@@ -2479,17 +2781,21 @@ fn cycling_all_suffix_bundles_keeps_the_stem_and_refreshes_edited_expansions() {
         rows[0].2 = "/D";
         assert_eq!(
             session.affix_redraw(&rows, 0, false, false),
-            "Affix expansion: Zzyzxqroot, Zzyzxqrooted"
+            "Would match: Zzyzxqroot, Zzyzxqrooted"
         );
         let edited_strip = session.affix_strip();
         assert_ne!(edited_strip.0, initial_strip.0, "Left must shift the strip");
-        assert_eq!(edited_strip.1, initial_strip.1, "Caret must stay fixed");
+        assert_eq!(
+            affix_marker_midpoint(&edited_strip.1),
+            affix_marker_midpoint(&initial_strip.1),
+            "Marker midpoint must stay fixed"
+        );
         session.send(b"e");
         session.edit_stem(STEM, EDITED);
         rows[0].1 = EDITED;
         assert_eq!(
             session.affix_menu(&rows, 0, false),
-            "Affix expansion: Zzyzxqverb, Zzyzxqverbed"
+            "Would match: Zzyzxqverb, Zzyzxqverbed"
         );
         assert_eq!(session.affix_strip(), edited_strip);
         assert!(!session.output().contains(CONFIRM_PROMPT));
@@ -2524,14 +2830,18 @@ fn cycling_all_suffix_bundles_keeps_the_stem_and_refreshes_edited_expansions() {
             rows[0].2 = suffix;
             assert_eq!(
                 session.affix_redraw(&rows, 0, false, false),
-                format!("Affix expansion: {forms}")
+                format!("Would match: {forms}")
             );
             let after = session.affix_strip();
             assert_ne!(
                 after.0, before.0,
                 "Left/Right must shift the strip, including wrap"
             );
-            assert_eq!(after.1, before.1, "Caret must stay fixed during cycling");
+            assert_eq!(
+                affix_marker_midpoint(&after.1),
+                affix_marker_midpoint(&before.1),
+                "Marker midpoint must stay fixed during cycling"
+            );
             assert_eq!(fixture.read("first.md"), SOURCE);
             assert_eq!(fixture.read("lingo.dic"), "0\n");
         }
@@ -2586,7 +2896,7 @@ fn cycling_catalog_exposes_prefixes_and_only_cross_product_pairs() {
                 .0
                 .split_whitespace()
                 .collect::<Vec<_>>(),
-            ["-", "/D", "/G", "/R", "/S", "/U", "/UD", "/US"]
+            ["Ø", "/D", "/G", "/R", "/S", "/U", "/UD", "/US"]
         );
         // Cycling the explicit plain row must also keep its own surface stem,
         // rather than substitute the shorter stem from the inferred row.
@@ -2596,7 +2906,7 @@ fn cycling_catalog_exposes_prefixes_and_only_cross_product_pairs() {
         rows[1].2 = "/D";
         assert_eq!(
             session.affix_redraw(&rows, 1, false, true),
-            "Affix expansion: Zzyzxqroots, Zzyzxqrootsed"
+            "Would match: Zzyzxqroots, Zzyzxqrootsed"
         );
         session.send(b"\x1b[D");
         rows[1].2 = "-";
@@ -2623,7 +2933,7 @@ fn cycling_catalog_exposes_prefixes_and_only_cross_product_pairs() {
             rows[0] = (prefix, STEM, suffix);
             assert_eq!(
                 session.affix_redraw(&rows, 0, false, true),
-                format!("Affix expansion: {forms}")
+                format!("Would match: {forms}")
             );
             assert_eq!(fixture.read("lingo.dic"), "0\n");
         }
@@ -2653,10 +2963,69 @@ fn cycling_catalog_exposes_prefixes_and_only_cross_product_pairs() {
 }
 
 #[test]
+fn danish_o_flag_is_distinct_from_the_yellow_no_affix_placeholder() {
+    const WORD: &str = "Zzyzxqroots";
+    const STEM: &str = "Zzyzxqroot";
+    const FORMS: &str = "Zzyzxqroot, Zzyzxqroots";
+    for backend in BACKENDS {
+        let fixture = Fixture::with_affixes(
+            &[("first.md", WORD), ("forms.md", "Zzyzxqroot Zzyzxqroots")],
+            std::slice::from_ref(backend),
+            "SET UTF-8\nFLAG UTF-8\nSFX Ø Y 1\nSFX Ø 0 s .\n",
+        );
+        let mut session = fixture.cli("fix", &["first.md"]);
+        session.prompt("1/1", "first.md");
+        session.send(b"\x1b[H");
+        session.main_picker_redraw(WORD, 0);
+        session.send(b"\r");
+        let mut rows = [("-", STEM, "/Ø"), ("-", WORD, "-")];
+        assert_eq!(
+            session.affix_menu(&rows, 0, false),
+            format!("Would match: {FORMS}")
+        );
+        assert_eq!(
+            session
+                .affix_strip()
+                .0
+                .split_whitespace()
+                .collect::<Vec<_>>(),
+            ["Ø", "/Ø"]
+        );
+        // Select the plain row to check its yellow cell with selected styling,
+        // while the real /Ø flag retains the unselected row's blue foreground.
+        session.send(b"\x1b[A");
+        session.affix_redraw(&rows, 1, false, false);
+        session.send(b"\x1b[H");
+        session.affix_redraw(&rows, 0, false, false);
+        // Cycling must treat Ø as no flags, but /Ø as a real productive suffix.
+        session.send(b"\x1b[D");
+        rows[0].2 = "-";
+        assert_eq!(
+            session.affix_redraw(&rows, 0, false, false),
+            format!("Would match: {STEM} (plain word; no affixes)")
+        );
+        session.send(b"\x1b[C");
+        rows[0].2 = "/Ø";
+        assert_eq!(
+            session.affix_redraw(&rows, 0, false, false),
+            format!("Would match: {FORMS}")
+        );
+        session.send(b"y");
+        session.learning_confirmation("Zzyzxqroot/Ø", FORMS);
+        session.send(b"y");
+        session.finish(0);
+        assert_eq!(fixture.read("first.md"), WORD);
+        assert_eq!(fixture.read("lingo.dic"), "1\nZzyzxqroot/Ø\n");
+        fixture.assert_config_unchanged();
+        fixture.check(&["forms.md"], 0);
+    }
+}
+
+#[test]
 fn automatic_affix_strip_clips_whole_labels_and_wraps_under_a_fixed_caret() {
     const WORD: &str = "Zzyzxqroots";
     let mut affixes = "SET UTF-8\nPFX U Y 1\nPFX U 0 un .\n".to_owned();
-    let mut choices = vec!["-".to_owned(), "/U".to_owned()];
+    let mut choices = vec!["Ø".to_owned(), "/U".to_owned()];
     for flag in 'A'..='T' {
         let suffix = if flag == 'S' {
             "s".to_owned()
@@ -2694,9 +3063,9 @@ fn automatic_affix_strip_clips_whole_labels_and_wraps_under_a_fixed_caret() {
             for (key, selected) in [
                 (b"\x1b[D".as_slice(), "/R"),
                 (b"\x1b[C".as_slice(), "/S"),
-                (b"\x1b[A".as_slice(), "-"),
+                (b"\x1b[A".as_slice(), "Ø"),
                 (b"\x1b[D".as_slice(), "/UT"),
-                (b"\x1b[C".as_slice(), "-"),
+                (b"\x1b[C".as_slice(), "Ø"),
                 (b"\x1b[C".as_slice(), "/A"),
             ] {
                 session.send(key);
@@ -2704,7 +3073,11 @@ fn automatic_affix_strip_clips_whole_labels_and_wraps_under_a_fixed_caret() {
                 assert_affix_strip(&context, selected, columns);
                 let current = session.affix_strip();
                 assert_ne!(current.0, previous.0, "Selection must shift the strip");
-                assert_eq!(current.1, previous.1, "Caret must remain fixed");
+                assert_eq!(
+                    affix_marker_midpoint(&current.1),
+                    affix_marker_midpoint(&previous.1),
+                    "Marker midpoint must remain fixed"
+                );
                 let tokens = current.0.split_whitespace().collect::<Vec<_>>();
                 let visible = tokens
                     .iter()
@@ -2826,7 +3199,7 @@ fn inferred_prefix_suffix_pair_preserves_selection_help_flags_and_native_reload(
         session.send(b"\r");
         assert_eq!(
             session.affix_menu(&rows, 0, true),
-            format!("Affix expansion: {FORMS}")
+            format!("Would match: {FORMS}")
         );
         assert!(!session.output().contains("Learn \""));
         assert!(!session.output().contains(WORD_PROMPT));
@@ -2850,7 +3223,7 @@ fn inferred_prefix_suffix_pair_preserves_selection_help_flags_and_native_reload(
         session.help_prompt(AFFIX_PROMPT);
         assert_eq!(
             session.affix_redraw(&rows, 1, true, true),
-            "Affix expansion: Zzyzxqrooted, unZzyzxqrooted"
+            "Would match: Zzyzxqrooted, unZzyzxqrooted"
         );
         // e edits the selected row; Esc must restore it unchanged, not the
         // default pair or the manual suffix/stem candidate menus.
@@ -2908,7 +3281,7 @@ fn inferred_prefix_only_uses_three_columns_and_highlights_the_added_prefix() {
         session.send(b"\r");
         assert_eq!(
             session.affix_menu(&[("/U", STEM, "-"), ("-", WORD, "-")], 0, true),
-            "Affix expansion: Zzyzxqroot, unZzyzxqroot"
+            "Would match: Zzyzxqroot, unZzyzxqroot"
         );
         session.send(b"\r");
         session.learning_confirmation("Zzyzxqroot/U", "Zzyzxqroot, unZzyzxqroot");
@@ -2960,13 +3333,13 @@ fn real_suffix_learning_suggests_shortened_stem_persists_flags_and_reloads_expan
             session.send(b"\r");
             assert_eq!(
                 session.stem_menu(&entries),
-                "Affix expansion: Zzyzxqroot, Zzyzxqroots"
+                "Would match: Zzyzxqroot, Zzyzxqroots"
             );
             // The shortened root is first; the unchanged surface remains last.
             session.send(b"\x1b[A");
             assert_eq!(
                 session.stem_redraw(&entries, 1),
-                "Affix expansion: Zzyzxqroots, Zzyzxqrootss"
+                "Would match: Zzyzxqroots, Zzyzxqrootss"
             );
             session.send(b"\x1b[B");
             session.stem_redraw(&entries, 0);
@@ -2988,6 +3361,38 @@ fn real_suffix_learning_suggests_shortened_stem_persists_flags_and_reloads_expan
             fixture.check(&["stem.md"], 0);
             fixture.check(&["typo.md"], 17);
         }
+    }
+}
+
+#[test]
+fn plain_match_preview_clips_stem_and_explanation_without_coloring_the_ellipsis() {
+    for length in [10, 90] {
+        let word = format!("Zzyzxq{}", "a".repeat(length));
+        let fixture = Fixture::with_suffixes(&[("first.md", &word)], &BACKENDS[..1]);
+        let mut session = fixture.cli_with_columns("fix", &["first.md"], 40);
+        session.prompt("1/1", "first.md");
+        session.send(b"a");
+        session.learning_prompt(&word, false);
+        session.send(b"p");
+        session.expect(AFFIX_PROMPT);
+        let (_, raw_context) = session.picker_redraw(AFFIX_PROMPT);
+        assert_affix_strip(&raw_context, "Ø", 40);
+        let context = assert_picker_expansion_style(&raw_context, &word);
+        assert!(context.ends_with('…'), "{context}");
+        if length == 10 {
+            assert!(context.contains(" (plain"), "{context}");
+        } else {
+            assert!(!context.contains(&word), "{context}");
+        }
+        session.send(b"y");
+        session.learning_confirmation(&word, &word);
+        session.send(b"n");
+        session.prompt("1/1", "first.md");
+        session.send(b"q");
+        session.finish(0);
+        assert_eq!(fixture.read("first.md"), word);
+        assert_eq!(fixture.read("lingo.dic"), "0\n");
+        fixture.assert_config_unchanged();
     }
 }
 

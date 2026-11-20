@@ -41,25 +41,40 @@ Esc, Ctrl-C, and each command's actual effect. The main prompt is
 `Resolve this issue [y,n,q,a,d,j,e,?]?`, omitting `a` for unlearnable findings
 (`Resolve this issue [y,n,q,d,j,e,?]?`).
 
+After learning, replacement, or skipping, a transient `next up...` line is erased
+before the next finding is printed or the session ends.
+
 During an interactive fix session, select the `{word} < learn` row to keep the
 source unchanged and immediately see inferred affix patterns. The best
 engine-validated pattern is preselected, and the unchanged plain word is initially
 the last choice (or the only choice when no pattern is inferred). The table shows
 `stem | suffix`, or `prefix | stem | suffix` if the dictionary's full supported
 catalog contains a productive prefix, even when no inferred row has one. Flags
-appear as `/U` or `/S`, and missing flags as `-`; a header aligns with the padded
-value columns. `< pattern` and `< plain` hints remain outside the highlight.
+appear as `/U` or `/S`, and missing flags as yellow `Ø` (uppercase Danish slashed
+O); a header aligns with the padded value columns. Selected rows remain bold green
+on black and unselected rows blue on black. Each `Ø` overrides only the foreground,
+then restores the row's green or blue foreground without changing its boldness or
+background. `< pattern` and `< plain` hints remain outside the highlight.
 
 At `Affixes [y,a,e,n,?]: `, Left/Right cycles backward/forward through **all
 supported bundles on the current stem**, including plain, every supported suffix
 or prefix, and every allowed prefix/suffix pair—not only patterns that generate
 the original word. A visible horizontal strip below the table shows alternatives
-as `-` or `/FLAGS`, globally alphabetically sorted by complete flag strings, plain
-first: for example, `- /D /G /R /S /U /UD /US`. The initial selection remains the
-best inferred match, not the first label. A `^` on the next row stays centered
-under the selected label's display-width midpoint as Left/Right shifts the strip.
-Both directions wrap; narrow terminals clip whole labels and show `..` at edges
-with hidden choices. Strip labels and caret use the default color.
+as `Ø` or `/FLAGS`, globally alphabetically sorted by complete flag strings, plain
+first: for example, `Ø /D /G /R /S /U /UD /US`. Plain sorts by its empty flags,
+not the displayed symbol. The initial selection remains the best inferred match,
+not the first label. All visible `/FLAGS` labels are bold green on black; `Ø` uses
+yellow foreground only. An actual Danish `Ø` flag appears as `/Ø`, with the same
+style as other affix labels. A red foreground-only marker starts under the selected
+label and spans its full display width (`^^` for `/S`, `^^^` for `/US`, `^` for
+`Ø`). Its midpoint stays centered as Left/Right shifts the strip. Both directions
+wrap; narrow terminals clip whole labels and show `..` at edges with hidden
+choices. Spaces and `..` remain in the default color.
+
+All supported catalog suffixes remain selectable in both the alternatives strip
+and manual suffix picker, even when no pattern was inferred or a suffix's
+condition currently fails. Select the suffix, then edit the stem to make it
+productive; until then, the preview may contain only the unchanged base word.
 
 Rules marked `N` never form cross-product pairs. The selected stem stays exactly
 unchanged. The same row, strip, and expansion update in place, without remounting
@@ -105,13 +120,18 @@ selection, strip, or caret position. The automatic picker reserves three context
 rows below the list: alternatives strip, caret, and expansion. Manual suffix and
 stem pickers retain only the expansion context row.
 
-Both the one-line picker expansion and the full confirmation preview leave each
-form's longest unchanged contiguous stem core in the default color and highlight
-added or changed prefix and suffix spans in bold green on black. For example,
-`hope` → `hoped` highlights `d`, `city` → `cities` highlights `ies`, and `root` →
-`unrooted` highlights `un` and `ed`, leaving `root` unstyled. An unchanged base
-form is unstyled. The picker context truncates to terminal width without leaking
-ANSI styling, while confirmation shows the full expansion.
+Both the one-line picker expansion and the full confirmation preview start with
+`Would match: `. Each form's longest unchanged contiguous stem core is cyan,
+without bold or a background color; added or changed prefix and suffix spans
+remain bold green on black. For example, `hope` → `hoped` highlights `d`, `city`
+→ `cities` highlights `ies`, and `root` → `unrooted` highlights `un` and `ed`,
+with `root` in cyan. An unchanged base form, including a plain-word preview, is
+entirely cyan. The label, separators, `(plain word; no affixes)` explanation, and
+truncation ellipsis stay in the default color. The picker context truncates to
+terminal width without leaking ANSI styling, coloring only the visible prefix
+if a plain word is clipped, while confirmation shows the full expansion.
+These expansion colors are independent of the table's row styling, yellow
+no-affix cells, and styled alternatives strip.
 
 This works with Hunspell, Spellbook, and Zet, including Rust-only builds.
 Confirmed expanded forms are immediately recognized across all enabled spelling
