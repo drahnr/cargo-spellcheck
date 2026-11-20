@@ -168,6 +168,48 @@ fn print_selection_list<'a>(
     Ok(())
 }
 
+struct FeedbackLine<W: Write> {
+    output: W,
+    visible: bool,
+}
+
+impl<W: Write> FeedbackLine<W> {
+    fn new(output: W) -> Self {
+        Self {
+            output,
+            visible: false,
+        }
+    }
+
+    fn show(&mut self) -> Result<()> {
+        self.visible = true;
+        self.output
+            .queue(cursor::MoveToColumn(0))?
+            .queue(terminal::Clear(terminal::ClearType::CurrentLine))?;
+        write!(self.output, "next up...")?;
+        self.output.flush()?;
+        Ok(())
+    }
+
+    fn clear(&mut self) -> Result<()> {
+        if self.visible {
+            self.output
+                .queue(cursor::MoveToColumn(0))?
+                .queue(terminal::Clear(terminal::ClearType::CurrentLine))?
+                .flush()?;
+            self.visible = false;
+        }
+        Ok(())
+    }
+}
+
+impl<W: Write> Drop for FeedbackLine<W> {
+    fn drop(&mut self) {
+        // Also remove the status on early returns and input errors.
+        let _ = self.clear();
+    }
+}
+
 /// Helper strict to assure we leave the terminals raw mode
 pub struct ScopedRaw;
 
@@ -740,6 +782,7 @@ impl UserPicked {
     ) -> Result<(Self, DocumentOutcome)> {
         let count = suggestions.len();
         let mut picked = UserPicked::default();
+        let mut feedback = FeedbackLine::new(stdout());
 
         for (idx, suggestion) in suggestions.iter().enumerate() {
             // Suggestions are generated before interaction; consult session state
@@ -747,6 +790,7 @@ impl UserPicked {
             if resolutions.accepts(suggestion) {
                 continue;
             }
+            feedback.clear()?;
             let path = output_paths.path(suggestion.origin.as_path());
             println!("{}", suggestion.display_with_path(&path));
 
@@ -791,9 +835,11 @@ impl UserPicked {
                     }
                     UserSelection::Skip => {}
                 };
+                feedback.show()?;
                 break 'inner;
             }
         }
+        feedback.clear()?;
         Ok((picked, DocumentOutcome::Complete))
     }
 }

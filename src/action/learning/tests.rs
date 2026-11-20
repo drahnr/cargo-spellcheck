@@ -690,7 +690,7 @@ mod affix_sessions {
         let sessions = fixture.sessions_with_target(target.clone());
         for (backend, mut session) in sessions {
             assert_eq!(session.learning_dictionary_path(), Some(target.as_path()));
-            assert!(session.is_persistent());
+            assert!(session.store.is_some());
             let config = session.config.as_ref().unwrap();
             for spelling in [&config.hunspell, &config.zet, &config.spellbook]
                 .into_iter()
@@ -1391,7 +1391,7 @@ mod affix_sessions {
         fs_err::remove_file(fixture.0.join("en_US.aff")).unwrap();
         let before = fixture.snapshot();
         for (backend, mut session) in fixture.sessions() {
-            assert!(session.is_persistent());
+            assert!(session.store.is_some());
             session
                 .record_entry(DictionaryEntry::plain("Ferris").unwrap(), &[])
                 .unwrap();
@@ -1541,7 +1541,7 @@ mod affix_sessions {
     fn plain_recording_without_configuration_remains_session_only() {
         let events = Events::default();
         let mut session = SessionResolutions::default();
-        assert!(!session.is_persistent());
+        assert!(session.store.is_none());
         let error = session.entry_suggestions("Tokio").err().unwrap();
         assert!(error.to_string().contains("unavailable"), "{error:?}");
         record_entries(&mut session);

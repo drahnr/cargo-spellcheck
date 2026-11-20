@@ -264,9 +264,12 @@ selected at index zero. Left/Right can then change the flags on any selected row
 If the dictionary's full supported catalog contains a productive prefix, the
 table has three columns, `prefix | stem | suffix`, even when all inferred choices
 use only suffixes. A suffix-only catalog has two columns, `stem | suffix`. Flag cells show
-`/U`, `/S`, or another dictionary flag identifier; missing flags show `-`. The
-initial plain row shows the original word in the stem column and `-` in both affix
-columns. A default-color column header appears on one line directly after the
+`/U`, `/S`, or another dictionary flag identifier; missing flags show `Ø`
+(uppercase Danish slashed O) in yellow. The initial plain row shows the original
+word in the stem column and `Ø` in both affix columns. Each yellow cell changes
+only the foreground, retaining the row's background and boldness, then restores
+the selected row's green or unselected row's blue foreground for the rest of the
+row. A default-color column header appears on one line directly after the
 prompt, above the list. Column padding uses terminal display widths, and long
 stems are clipped at Unicode boundaries to keep rows within the terminal width.
 Flagged rows have a `< pattern` hint, while unflagged rows have `< plain`; hints
@@ -274,18 +277,25 @@ align outside the selection highlight.
 
 Left/Right cycles backward/forward through **all supported affix bundles for the
 currently selected stem**, not just decompositions that generate the original
-surface word. The stem stays exactly as selected or edited. Alternatives are
-visible in a horizontal strip below the table, labelled `-` for plain or `/FLAGS`
+surface word. All catalog suffixes remain selectable even when no pattern was
+inferred or their conditions currently fail; edit the stem afterward to make a
+suffix productive. The stem stays exactly as selected or edited. Alternatives are
+visible in a horizontal strip below the table, labelled `Ø` for plain or `/FLAGS`
 for an affix bundle. They are globally sorted alphabetically by their complete
 flag strings, with plain first, rather than grouped by prefix or suffix. For
-example, the order is `- /D /G /R /S /U /UD /US`. This ordering does not change the
+example, the order is `Ø /D /G /R /S /U /UD /US`. This ordering does not change the
 initial selection: the best inferred match remains selected, not the first strip
 label.
 
-A `^` on the next row marks the selected label's terminal-display-width midpoint.
-Left/Right shifts the strip beneath this fixed, centered caret; both directions
-wrap. Narrow terminals show a window of whole labels, with `..` at either edge
-when choices on that side are hidden. Labels and caret stay in the default color.
+Every visible `/FLAGS` strip label is bold green on black; `Ø` uses yellow
+foreground only. A red foreground-only marker on the next row starts directly
+under the selected label and spans its full terminal display width: `^^` for
+`/S`, `^^^` for `/US`, and `^` for `Ø`. The marker's midpoint stays centered as
+Left/Right shifts the strip; both directions wrap. Narrow terminals show a window
+of whole labels, with `..` at either edge when choices on that side are hidden.
+Spaces and `..` stay in the default color. Plain remains the first logical
+option, sorted by its empty flags rather than the displayed `Ø`; an actual Danish
+`Ø` flag is shown as `/Ø` and styled like any other affix label.
 Only supported pairs whose prefix and suffix rules allow cross-product are
 offered; a rule marked `N` cannot participate in a pair. Cycling updates the same
 selected row, strip, and expansion in place, without adding table rows or
@@ -313,6 +323,8 @@ editor flow. The automatic table already makes every supported bundle reachable;
 this fallback offers suffix-specific stem suggestions instead. Its suffix picker
 uses `Suffix [y,e,n,?]: `. Its bottom row (index zero) is `{word} < plain`; the
 other rows are `/FLAG < suffix`, with flag identifiers sorted lexicographically.
+Every supported catalog suffix is listed, even if it currently leaves the word
+unchanged or no shortened stem was inferred; the stem remains editable afterward.
 Enter or `y` on a suffix opens `Stem [y,e,n,?]: `, whose rows show full
 `stem/FLAG < stem` entries. Candidate roots are validated by engine expansion:
 shortened stems that generate the original word are suggested first, preferring
@@ -328,18 +340,21 @@ above the list and is remounted after help without changing the selection. Index
 zero is at the bottom: Up increments the index, Down decrements it, and navigation
 wraps. Home/End selects the first/last choice. The automatic affix picker reserves
 three context rows below the list: the alternatives strip, its caret, and
-`Affix expansion: ...`. Manual suffix and stem pickers have only the expansion
+`Would match: ...`. Manual suffix and stem pickers have only the expansion
 context row. Each context row fits on one terminal line without leaking highlight
 styling; the expansion is truncated as needed and is not the final confirmation
 preview.
 
-In both the picker context and the full confirmation expansion, each form's
-longest unchanged contiguous stem core stays in the terminal's default color.
-Added or changed prefix and suffix spans are bold green on black: `hope` → `hoped`
-highlights `d`, `city` → `cities` highlights `ies`, and `root` → `unrooted`
-highlights both `un` and `ed`, leaving `root` unstyled. An unchanged base form is
-entirely unstyled. Separators and the plain-word explanation also remain in the
-default color.
+Both the picker context and the full confirmation preview use the label
+`Would match: `. Each form's longest unchanged contiguous stem core is cyan,
+without bold or a background color. Added or changed prefix and suffix spans
+remain bold green on black: `hope` → `hoped` highlights `d`, `city` → `cities`
+highlights `ies`, and `root` → `unrooted` highlights both `un` and `ed`, with
+`root` in cyan. An unchanged base form, including a plain-word preview, is
+entirely cyan. The label, separators, `(plain word; no affixes)` explanation, and
+truncation ellipsis remain in the default color. When clipping cuts a plain
+word, only its visible prefix is cyan. These expansion colors are independent of
+the table's row styling, yellow no-affix cells, and styled alternatives strip.
 
 In the manual flow, Enter, `y`, or `e` on a stem candidate opens the **mandatory**
 stem editor, `Stem [?]: `, prefilled with that stem. Enter or `y` on the plain
@@ -357,7 +372,7 @@ edit.
 
 Enter/`y` in the automatic affix table, or Enter in a manual stem editor, shows
 the highlighted exact `New entry: stem/FLAG` (or a plain word) and the **full**
-engine-generated `Affix expansion`, followed by
+engine-generated `Would match: ` preview, followed by
 `Confirm learning [y,e,n,?]: `. Plain entries explicitly
 show “plain word; no affixes”. Enter or `y` records the entry; `n` or Esc declines
 learning and returns to the finding (or continues with the selected replacement).

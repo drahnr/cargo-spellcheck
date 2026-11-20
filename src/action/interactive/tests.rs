@@ -29,6 +29,53 @@ fn suggestion(chunk: &CheckableChunk, range: Range, detector: Detector) -> Sugge
 }
 
 #[test]
+fn feedback_is_one_replaceable_line_cleared_before_the_next_finding() {
+    let mut output = Vec::new();
+    {
+        let mut feedback = FeedbackLine::new(&mut output);
+        feedback.show().unwrap();
+        feedback.show().unwrap();
+        feedback.clear().unwrap();
+        feedback.clear().unwrap();
+    }
+    write!(output, "next finding").unwrap();
+    assert_eq!(
+        String::from_utf8(output).unwrap(),
+        "\x1b[1G\x1b[2Knext up...\x1b[1G\x1b[2Knext up...\x1b[1G\x1b[2Knext finding"
+    );
+}
+
+#[test]
+fn feedback_is_cleared_on_termination_and_errors() {
+    fn finish(output: &mut Vec<u8>, fail: bool) -> Result<()> {
+        let mut feedback = FeedbackLine::new(output);
+        feedback.show()?;
+        if fail {
+            return Err(crate::errors::eyre!("input failed"));
+        }
+        Ok(())
+    }
+    for fail in [false, true] {
+        let mut output = Vec::new();
+        assert_eq!(finish(&mut output, fail).is_err(), fail);
+        assert_eq!(
+            String::from_utf8(output).unwrap(),
+            "\x1b[1G\x1b[2Knext up...\x1b[1G\x1b[2K"
+        );
+    }
+}
+
+#[test]
+fn unused_feedback_does_not_touch_the_terminal() {
+    let mut output = Vec::new();
+    {
+        let mut feedback = FeedbackLine::new(&mut output);
+        feedback.clear().unwrap();
+    }
+    assert!(output.is_empty());
+}
+
+#[test]
 fn shortcut_help_is_only_brief_context_commands() {
     for custom in [false, true] {
         for can_accept in [false, true] {
