@@ -7,14 +7,27 @@ use crate::{CheckableChunk, Config, ContentOrigin, Detector, Suggestion};
 
 use crate::errors::*;
 
+#[cfg(any(
+    test,
+    feature = "hunspell",
+    feature = "zet",
+    feature = "spellbook",
+    feature = "nlprules"
+))]
 mod cached;
-use self::cached::Cached;
 
 mod dictionary;
 pub(crate) use self::dictionary::DictionaryReload;
 
 use std::collections::HashSet;
 
+#[cfg(any(
+    test,
+    feature = "hunspell",
+    feature = "zet",
+    feature = "spellbook",
+    feature = "nlprules"
+))]
 mod tokenize;
 
 #[cfg(feature = "hunspell")]
@@ -23,6 +36,13 @@ pub(crate) use self::hunspell::HunspellChecker;
 pub(crate) use self::nlprules::NlpRulesChecker;
 #[cfg(feature = "spellbook")]
 pub(crate) use self::spellbook::SpellbookChecker;
+#[cfg(any(
+    test,
+    feature = "hunspell",
+    feature = "zet",
+    feature = "spellbook",
+    feature = "nlprules"
+))]
 pub(crate) use self::tokenize::*;
 #[cfg(feature = "zet")]
 pub(crate) use self::zspell::ZetChecker;
@@ -142,6 +162,12 @@ impl<T> SpellcheckResult<T> {
 
 // Keep construction concrete while sharing configuration gating between initial
 // setup and prepare-before-install dictionary reloads.
+#[cfg(any(
+    feature = "hunspell",
+    feature = "zet",
+    feature = "spellbook",
+    feature = "nlprules"
+))]
 macro_rules! create_checker {
     ($checker:ty, $config:expr, $field:ident) => {
         if $config.is_enabled(<$checker>::detector()) {
@@ -289,28 +315,35 @@ impl Checker for Checkers {
 
     fn check<'a, 's>(
         &self,
-        origin: &ContentOrigin,
-        chunks: &'a [CheckableChunk],
+        _origin: &ContentOrigin,
+        _chunks: &'a [CheckableChunk],
     ) -> Result<Vec<Suggestion<'s>>>
     where
         'a: 's,
     {
-        let mut collective = HashSet::<Suggestion<'s>>::new();
+        let collective = HashSet::<Suggestion<'s>>::new();
+        #[cfg(any(
+            feature = "hunspell",
+            feature = "zet",
+            feature = "spellbook",
+            feature = "nlprules"
+        ))]
+        let mut collective = collective;
         #[cfg(feature = "hunspell")]
         if let Some(ref hunspell) = self.hunspell {
-            collective.extend(hunspell.check(origin, chunks)?);
+            collective.extend(hunspell.check(_origin, _chunks)?);
         }
         #[cfg(feature = "zet")]
         if let Some(ref zet) = self.zet {
-            collective.extend(zet.check(origin, chunks)?);
+            collective.extend(zet.check(_origin, _chunks)?);
         }
         #[cfg(feature = "spellbook")]
         if let Some(ref spellbook) = self.spellbook {
-            collective.extend(spellbook.check(origin, chunks)?);
+            collective.extend(spellbook.check(_origin, _chunks)?);
         }
         #[cfg(feature = "nlprules")]
         if let Some(ref nlprule) = self.nlprules {
-            collective.extend(nlprule.check(origin, chunks)?);
+            collective.extend(nlprule.check(_origin, _chunks)?);
         }
 
         Ok(normalize_suggestions(Vec::from_iter(collective)))

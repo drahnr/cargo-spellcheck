@@ -1,5 +1,4 @@
-use super::Cached;
-use crate::checker::cached::CachedValue;
+use super::cached::{Cached, CachedValue};
 use crate::errors::*;
 use fs_err as fs;
 use lazy_static::lazy_static;
