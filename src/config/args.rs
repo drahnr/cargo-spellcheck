@@ -92,13 +92,13 @@ pub struct UnknownCheckerTypeVariant(String);
 #[clap(rename_all = "kebab-case")]
 #[clap(subcommand_negates_reqs(true))]
 pub struct Args {
-    /// Print full source paths instead of paths relative to the input directory or cwd.
-    #[clap(long, global(true))]
-    pub full_paths: bool,
-
     #[clap(short, long, global(true))]
     /// Provide a configuration.
     pub cfg: Option<PathBuf>,
+
+    #[clap(long, global(true))]
+    /// Display absolute source paths instead of paths relative to the inputs.
+    pub absolute_paths: bool,
 
     #[clap(flatten)]
     pub verbosity: clap_verbosity_flag::Verbosity,

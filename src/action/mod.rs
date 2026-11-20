@@ -446,10 +446,8 @@ impl Action {
                         false => log::info!("❌ {} : {}", path.display(), n),
                     };
                     for suggestion in suggestions {
-                        match output_paths.base_for(suggestion.origin.as_path()) {
-                            Some(base) => println!("{}", suggestion.display_relative_to(base)),
-                            None => println!("{suggestion}"),
-                        }
+                        let path = output_paths.path(suggestion.origin.as_path());
+                        println!("{}", suggestion.display_with_path(&path));
                     }
                     n
                 })
