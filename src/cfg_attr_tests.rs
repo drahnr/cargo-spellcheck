@@ -423,6 +423,70 @@ struct Conditional;"#,
 }
 
 #[test]
+fn incompatible_platform_guards_have_no_documentation_projection() {
+    for guards in [
+        "#[cfg(all(unix, windows))]",
+        "#[cfg(unix)]\n#[cfg(target_family = \"windows\")]",
+        "#[cfg(windows)]\n#[cfg(target_family = \"unix\")]",
+        "#[cfg(all(target_family = \"unix\", target_family = \"windows\"))]",
+    ] {
+        let source =
+            format!("{guards}\n/// Unreachable.\nstruct Removed;\n/// Retained.\nstruct Other;");
+        let chunks = assert_plain(&source, &["Retained."]);
+        assert_eq!(chunks[0].cfg_example(), None);
+    }
+    assert_plain(
+        r#"/// Anchor.
+#[cfg_attr(all(unix, windows), doc = "Unreachable.")]
+struct Conditional;"#,
+        &["Anchor."],
+    );
+}
+
+#[test]
+fn platform_flags_and_family_values_select_the_same_documentation() {
+    for platform in ["unix", "windows"] {
+        let source = format!(
+            r#"/// Anchor.
+#[cfg_attr({platform}, doc = "Flag.")]
+#[cfg_attr(target_family = "{platform}", doc = "Family.")]
+#[cfg_attr(not({platform}), doc = "No flag.")]
+#[cfg_attr(not(target_family = "{platform}"), doc = "No family.")]
+struct Platform;"#
+        );
+        assert_plain(
+            &source,
+            &["Anchor. Flag. Family.", "Anchor. No flag. No family."],
+        );
+    }
+}
+
+#[test]
+fn documentation_can_select_neither_unix_nor_windows() {
+    let source = r#"/// Anchor.
+#[cfg_attr(unix, doc = "Unix.")]
+#[cfg_attr(windows, doc = "Windows.")]
+#[cfg_attr(all(not(unix), not(windows)), doc = "Neither flag.")]
+#[cfg_attr(all(not(target_family = "unix"), not(target_family = "windows")), doc = "Neither family.")]
+struct Platform;"#;
+    assert_plain(
+        source,
+        &[
+            "Anchor. Unix.",
+            "Anchor. Windows.",
+            "Anchor. Neither flag. Neither family.",
+        ],
+    );
+    assert_plain(
+        r#"#[cfg(all(not(unix), not(windows)))]
+#[cfg(all(not(target_family = "unix"), not(target_family = "windows")))]
+/// Neither platform.
+struct Neither;"#,
+        &["Neither platform."],
+    );
+}
+
+#[test]
 fn multiple_values_of_one_cfg_key_can_be_enabled_together() {
     struct Case {
         key: &'static str,
